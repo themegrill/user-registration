@@ -8,6 +8,6 @@ on:
 
 jobs:
   review:
-    uses: wpeverest/.github/.github/workflows/copilot-review-on-comment.yml@master
+    uses: themegrill/.github/.github/workflows/copilot-review-on-comment.yml@master
     secrets:
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
