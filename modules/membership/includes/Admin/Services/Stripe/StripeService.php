@@ -2908,6 +2908,12 @@ class StripeService {
 			return $response;
 		}
 
+		if ( ! empty( $subscription['member_id'] ) && get_user_meta( $subscription['member_id'], 'urm_retry_unrecoverable_' . $subscription['sub_id'], true ) ) {
+			$response['message'] = __( 'Subscription no longer exists at Stripe and will not be retried', 'user-registration' );
+
+			return $response;
+		}
+
 		PaymentGatewayLogging::log_general(
 			'stripe',
 			'Retrying Stripe subscription payment' . "\n" . wp_json_encode(
@@ -3047,11 +3053,21 @@ class StripeService {
 						'error_code'      => $e->getStripeCode(),
 						'error_message'   => $e->getMessage(),
 						'subscription_id' => $subscription['subscription_id'],
-						'user_id'         => $subscription['user_id'] ?? 'unknown',
+						'member_id'       => $subscription['member_id'] ?? 'unknown',
 					),
 					JSON_PRETTY_PRINT
 				)
 			);
+
+			// A missing subscription can never come back (deleted, or created under the other API mode),
+			// so stop the daily cron from retrying this row forever.
+			if ( 'resource_missing' === $e->getStripeCode() && ! empty( $subscription['member_id'] ) ) {
+				update_user_meta(
+					$subscription['member_id'],
+					'urm_retry_unrecoverable_' . $subscription['sub_id'],
+					$e->getMessage()
+				);
+			}
 
 			$response['message'] = $e->getMessage();
 
