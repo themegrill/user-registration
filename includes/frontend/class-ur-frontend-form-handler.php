@@ -154,7 +154,7 @@ class UR_Frontend_Form_Handler {
 			$is_known_role            = in_array( $configured_user_role, array_keys( ur_get_default_admin_roles() ) );
 			$current_user_capability  = apply_filters( 'ur_registration_user_capability', 'create_users' );
 			// A logged-in submitter already passed this same capability check in ur_process_registration(); an anonymous one never has.
-			$is_trusted_submitter     = is_user_logged_in() && ( current_user_can( 'administrator' ) || current_user_can( $current_user_capability ) );
+			$is_trusted_submitter     = is_user_logged_in() && ( current_user_can( 'manage_options' ) || current_user_can( $current_user_capability ) );
 			$user_role                = ( $is_known_role && ( $is_trusted_submitter || ! ur_registration_role_is_privileged( $configured_user_role ) ) ) ? $configured_user_role : 'subscriber';
 			$user_role                = apply_filters( 'user_registration_user_role', $user_role, self::$valid_form_data, $form_id );
 			$user_registered_date = apply_filters( 'user_registration_user_registered_date', current_time( 'Y-m-d H:i:s' ) );

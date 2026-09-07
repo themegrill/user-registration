@@ -1318,29 +1318,33 @@ if ( ! function_exists( 'ur_registration_role_is_privileged' ) ) {
 			return true;
 		}
 
+		$default_restricted_caps = array(
+			'manage_options',
+			'edit_others_posts',
+			'edit_users',
+			'delete_users',
+			'create_users',
+			'promote_users',
+			'install_plugins',
+			'edit_plugins',
+			'delete_plugins',
+			'edit_theme_options',
+			'unfiltered_html',
+			'update_core',
+		);
+
 		/**
 		 * Filters the capabilities that mark a role too privileged to be
 		 * auto-assigned to an anonymous public registration.
 		 *
 		 * @param array $restricted_caps Capability keys.
 		 */
-		$restricted_caps = apply_filters(
-			'user_registration_restricted_registration_capabilities',
-			array(
-				'manage_options',
-				'edit_others_posts',
-				'edit_users',
-				'delete_users',
-				'create_users',
-				'promote_users',
-				'install_plugins',
-				'edit_plugins',
-				'delete_plugins',
-				'edit_theme_options',
-				'unfiltered_html',
-				'update_core',
-			)
-		);
+		$restricted_caps = apply_filters( 'user_registration_restricted_registration_capabilities', $default_restricted_caps );
+
+		// Fail closed: an invalid filter return must not silently disable the check.
+		if ( ! is_array( $restricted_caps ) ) {
+			$restricted_caps = $default_restricted_caps;
+		}
 
 		foreach ( $restricted_caps as $cap ) {
 			if ( ! empty( $wp_role->capabilities[ $cap ] ) ) {
