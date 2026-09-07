@@ -1450,6 +1450,15 @@ class AJAX {
 
 				delete_user_meta( $user_id, 'urm_pending_cancel_' . $subscription_id );
 
+				// Prepare data to register subscription reactivation event.
+				$payload = array(
+					'subscription_id' => $subscription_id,
+					'member_id'       => $user_id,
+					'event_type'      => 'reactivated',
+				);
+
+				do_action( 'ur_membership_subscription_event_triggered', $payload );
+
 				wp_send_json_success(
 					array(
 						'message' => __( 'Membership reactivated successfully.', 'user-registration' ),
