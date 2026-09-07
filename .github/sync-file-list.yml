@@ -13,3 +13,5 @@ wpeverest/user-registration-pro@develop:
     - phpcs.xml
     - uninstall.php
     - wpml-config.xml
+    - tests/e2e
+    - playwright.config.ts

@@ -24,4 +24,14 @@ jobs:
       artifacts-bucket: themegrill-pr-artifacts
       public-base-url: https://themegrill-pr-artifacts.s3.amazonaws.com
       s3-region: us-east-1
-    secrets: inherit
+    # Cross-org call: this repo actually lives in themegrill (transferred
+    # from wpeverest), and the reusable workflow lives in wpeverest/.github --
+    # `secrets: inherit` cannot reach across that boundary reliably (same
+    # issue confirmed on user-registration-pro: worked briefly right after
+    # the transfer, then started failing with "Secret BOT_TOKEN is required,
+    # but not provided" once GitHub's own org-membership check caught up).
+    # Name every secret explicitly instead, same as every other themegrill repo.
+    secrets:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      ARTIFACTS_KEY: ${{ secrets.ARTIFACTS_KEY }}
+      ARTIFACTS_SECRET: ${{ secrets.ARTIFACTS_SECRET }}
