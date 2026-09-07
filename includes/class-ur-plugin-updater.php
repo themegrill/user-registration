@@ -447,10 +447,6 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 	 * Deactivate a license.
 	 */
 	public function deactivate_license() {
-		if ( get_transient( 'user_registration_pro_activated' ) ) {
-			return;
-		}
-
 		$reset = UR_Updater_Key_API::deactivate(
 			array(
 				'license' => $this->api_key,
