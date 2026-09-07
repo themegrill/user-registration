@@ -65,7 +65,23 @@ class UR_Frontend_Form_Handler {
 		self::$valid_form_data = array();
 
 		self::$form_id      = $form_id;
-		$post_content_array = ( $form_id ) ? UR()->form->get_form( $form_id, array( 'content_only' => true ) ) : array();
+		$post_content_array = ( $form_id ) ? UR()->form->get_form( $form_id, array( 'content_only' => true, 'publish' => true ) ) : array();
+
+		if ( empty( $post_content_array ) ) {
+			$logger->error(
+				sprintf( '[Form #%d] Form could not be loaded for submission (missing, unpublished, or trashed).', $form_id ),
+				array(
+					'source'  => 'form-submission',
+					'form_id' => $form_id,
+				)
+			);
+
+			wp_send_json_error(
+				array(
+					'message' => __( 'This form is currently unavailable.', 'user-registration' ),
+				)
+			);
+		}
 
 		if ( gettype( $form_data ) != 'array' && gettype( $form_data ) != 'object' ) {
 			$form_data = array();
@@ -134,8 +150,13 @@ class UR_Frontend_Form_Handler {
 		// $logger->info( __( 'Response received', 'user-registration' ), array( 'source' => 'form-submission' ) );
 
 		if ( count( self::$response_array ) === 0 ) {
-			$user_role            = ! in_array( ur_get_form_setting_by_key( $form_id, 'user_registration_form_setting_default_user_role' ), array_keys( ur_get_default_admin_roles() ) ) ? 'subscriber' : ur_get_form_setting_by_key( $form_id, 'user_registration_form_setting_default_user_role' );
-			$user_role            = apply_filters( 'user_registration_user_role', $user_role, self::$valid_form_data, $form_id );
+			$configured_user_role     = ur_get_form_setting_by_key( $form_id, 'user_registration_form_setting_default_user_role' );
+			$is_known_role            = in_array( $configured_user_role, array_keys( ur_get_default_admin_roles() ) );
+			$current_user_capability  = apply_filters( 'ur_registration_user_capability', 'create_users' );
+			// A logged-in submitter already passed this same capability check in ur_process_registration(); an anonymous one never has.
+			$is_trusted_submitter     = is_user_logged_in() && ( current_user_can( 'administrator' ) || current_user_can( $current_user_capability ) );
+			$user_role                = ( $is_known_role && ( $is_trusted_submitter || ! ur_registration_role_is_privileged( $configured_user_role ) ) ) ? $configured_user_role : 'subscriber';
+			$user_role                = apply_filters( 'user_registration_user_role', $user_role, self::$valid_form_data, $form_id );
 			$user_registered_date = apply_filters( 'user_registration_user_registered_date', current_time( 'Y-m-d H:i:s' ) );
 			$userdata             = array(
 				'user_login'      => isset( self::$valid_form_data['user_login'] ) ? self::$valid_form_data['user_login']->value : '',
