@@ -2908,7 +2908,7 @@ class StripeService {
 			return $response;
 		}
 
-		if ( ! empty( $subscription['member_id'] ) && get_user_meta( $subscription['member_id'], 'urm_retry_unrecoverable_' . $subscription['sub_id'], true ) ) {
+		if ( ! empty( $subscription['member_id'] ) && get_user_meta( absint( $subscription['member_id'] ), 'urm_retry_unrecoverable_' . $subscription['sub_id'], true ) ) {
 			$response['message'] = __( 'Subscription no longer exists at Stripe and will not be retried', 'user-registration' );
 
 			return $response;
@@ -3062,10 +3062,12 @@ class StripeService {
 			// A missing subscription can never come back (deleted, or created under the other API mode),
 			// so stop the daily cron from retrying this row forever.
 			if ( 'resource_missing' === $e->getStripeCode() && ! empty( $subscription['member_id'] ) ) {
+				// The failure detail is already in the log entry above, so store only a timestamp:
+				// it is never empty, and keeps the gateway's message out of user meta.
 				update_user_meta(
-					$subscription['member_id'],
+					absint( $subscription['member_id'] ),
 					'urm_retry_unrecoverable_' . $subscription['sub_id'],
-					$e->getMessage()
+					current_time( 'mysql' )
 				);
 			}
 
