@@ -95,6 +95,129 @@ if ( ! function_exists( 'ur_membership_verify_nonce' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_membership_get_privileged_capabilities' ) ) {
+	/**
+	 * Capabilities that make a role unsafe to grant automatically through a membership.
+	 *
+	 * The stock editor role holds unfiltered_html and WooCommerce's shop_manager holds list_users,
+	 * so neither is listed here: both are roles a site may legitimately attach to a plan.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @return array List of capability names.
+	 */
+	function ur_membership_get_privileged_capabilities() {
+		/**
+		 * Filters the capabilities that bar a role from being granted through a membership.
+		 *
+		 * @since 5.2.8
+		 *
+		 * @param array $capabilities List of capability names.
+		 */
+		return apply_filters(
+			'user_registration_membership_privileged_capabilities',
+			array(
+				'manage_options',
+				'promote_users',
+				'edit_users',
+				'create_users',
+				'delete_users',
+				'remove_users',
+				'install_plugins',
+				'activate_plugins',
+				'update_plugins',
+				'edit_plugins',
+				'install_themes',
+				'switch_themes',
+				'edit_themes',
+				'edit_files',
+				'edit_dashboard',
+			)
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_membership_is_privileged_role' ) ) {
+	/**
+	 * Whether a role holds a capability that makes it unsafe to grant through a membership.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param string $role Role slug.
+	 * @return bool True when the role is too privileged to grant automatically.
+	 */
+	function ur_membership_is_privileged_role( $role ) {
+		$role_object = wp_roles()->get_role( sanitize_key( $role ) );
+
+		if ( ! $role_object ) {
+			return false;
+		}
+
+		foreach ( ur_membership_get_privileged_capabilities() as $capability ) {
+			if ( ! empty( $role_object->capabilities[ $capability ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'ur_membership_get_safe_role' ) ) {
+	/**
+	 * Constrain the role a membership grants, as a backstop at the point of assignment.
+	 *
+	 * A plan's role is administrator-authored data, so a privileged value is honoured when the
+	 * plan was authored by someone entitled to assign roles, and refused otherwise. That keeps a
+	 * plan injected by a lower role from granting itself anything, without overriding a choice an
+	 * administrator deliberately made. Every refusal is logged, because a silent downgrade reads
+	 * as the membership simply not working.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param string $role          Role slug taken from the membership data.
+	 * @param int    $membership_id Membership post ID the role came from.
+	 * @param string $fallback      Role used when the requested one is missing or refused.
+	 * @return string Role slug safe to grant.
+	 */
+	function ur_membership_get_safe_role( $role, $membership_id = 0, $fallback = 'subscriber' ) {
+		$role = sanitize_key( $role );
+		$safe = $role;
+
+		if ( empty( $role ) || ! wp_roles()->is_role( $role ) ) {
+			$safe = $fallback;
+		} elseif ( ur_membership_is_privileged_role( $role ) ) {
+			$author_id = $membership_id ? (int) get_post_field( 'post_author', absint( $membership_id ) ) : 0;
+
+			if ( ! $author_id || ! user_can( $author_id, 'promote_users' ) ) {
+				$safe = $fallback;
+
+				ur_get_logger()->warning(
+					sprintf(
+						/* translators: 1: requested role slug, 2: membership ID, 3: role granted instead. */
+						'Refused to grant privileged role "%1$s" from membership %2$d because its author cannot assign roles; granted "%3$s" instead.',
+						$role,
+						absint( $membership_id ),
+						$fallback
+					),
+					array( 'source' => 'user-registration-membership' )
+				);
+			}
+		}
+
+		/**
+		 * Filters the role a membership grants, after the privilege backstop has run.
+		 *
+		 * @since 5.2.8
+		 *
+		 * @param string $safe          Role slug that will be granted.
+		 * @param string $role          Role slug requested by the membership data.
+		 * @param int    $membership_id Membership post ID the role came from.
+		 */
+		return apply_filters( 'user_registration_membership_safe_role', $safe, $role, $membership_id );
+	}
+}
+
 if ( ! function_exists( 'ur_membership_get_currencies' ) ) {
 	/**
 	 * ur_membership_get_currencies

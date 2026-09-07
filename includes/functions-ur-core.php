@@ -5401,11 +5401,14 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				 */
 				$redirect = apply_filters( 'user_registration_login_redirect', $redirect, $user );
 
+				// Validate above the branch: the AJAX response is navigated to client side, so a fix on the header redirect alone would not cover it.
+				$redirect = wp_validate_redirect( $redirect, get_home_url() );
+
 				if ( ur_is_ajax_login_enabled() && empty( $_POST['resubmitted'] ) ) { // phpcs:ignore
 					wp_send_json_success( array( 'message' => $redirect ) );
 					wp_send_json( $user );
 				} else {
-					wp_redirect( wp_validate_redirect( $redirect, $redirect ) ); // phpcs:ignore
+					wp_safe_redirect( $redirect );
 					exit;
 				}
 
@@ -5459,9 +5462,12 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				 */
 				do_action( 'user_registration_login_failed' );
 
-				$redirect_url = wp_get_raw_referer() ? wp_get_raw_referer() : ur_get_my_account_url();
+				$referer = wp_get_raw_referer();
+
+				// wp_validate_redirect() returns an empty string for empty input, not the fallback, so guard it explicitly.
+				$redirect_url = $referer ? wp_validate_redirect( $referer, ur_get_my_account_url() ) : ur_get_my_account_url();
 				$redirect_url = add_query_arg( 'urm_error', $error_key, $redirect_url );
-				wp_redirect( $redirect_url );
+				wp_safe_redirect( $redirect_url );
 				exit;
 
 			}

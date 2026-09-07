@@ -519,23 +519,13 @@ class SubscriptionService {
 		$selected_membership_details['membership'] = $data['selected_membership_id'];
 
 		// Validate that the submitted payment method is one the destination membership actually supports.
-		if ( 'free' !== ( $selected_membership_details['type'] ?? '' ) ) {
-			$configured_gateways = array();
-			if ( ! empty( $selected_membership_details['payment_gateways'] ) && is_array( $selected_membership_details['payment_gateways'] ) ) {
-				foreach ( $selected_membership_details['payment_gateways'] as $gw_key => $gw_data ) {
-					if ( isset( $gw_data['status'] ) && 'on' === $gw_data['status'] ) {
-						$configured_gateways[] = $gw_key;
-					}
-				}
-			}
-			if ( ! empty( $configured_gateways ) && ! in_array( $payment_method, $configured_gateways, true ) ) {
-				return array(
-					'response' => array(
-						'status'  => false,
-						'message' => __( 'Invalid payment method for this membership.', 'user-registration' ),
-					),
-				);
-			}
+		if ( ! ( new MembershipService() )->is_valid_payment_method_for_membership( $selected_membership_details, $payment_method, $data ) ) {
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => __( 'Invalid payment method for this membership.', 'user-registration' ),
+				),
+			);
 		}
 
 		$selected_membership_details['payment_method'] = $payment_method;

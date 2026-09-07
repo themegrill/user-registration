@@ -45,6 +45,7 @@ class UR_Frontend {
 		add_filter( 'user_registration_my_account_shortcode', array( $this, 'user_registration_my_account_layout' ) );
 		add_filter( 'user_registration_before_save_profile_details', array( $this, 'user_registration_before_save_profile_details' ), 10, 3 );
 		add_filter( 'user_registration_login_redirect', array( $this, 'login_redirect' ), 10, 2 );
+		add_filter( 'allowed_redirect_hosts', array( $this, 'allow_custom_redirect_host' ) );
 		add_filter( 'user_registration_redirect_after_logout', array( $this, 'logout_redirect' ), 10, 1 );
 		add_action( 'init', array( $this, 'ur_register_payment_tab_if_eligible' ) );
 	}
@@ -233,6 +234,41 @@ class UR_Frontend {
 		}
 		return apply_filters( 'user_registration_login_redirect_url', $redirect, $user, $redirect_option );
 	}
+	/**
+	 * Allow the admin-configured external login redirect host through wp_validate_redirect().
+	 *
+	 * The after-login redirect is validated against the allowed hosts, so the External URL set
+	 * in Login Options has to be listed or that setting would fall back to the home page.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param string[] $hosts Allowed redirect host names.
+	 * @return string[] Allowed redirect host names.
+	 */
+	public function allow_custom_redirect_host( $hosts ) {
+		if ( ! ur_string_to_bool( get_option( 'user_registration_login_options_enable_custom_redirect', false ) ) ) {
+			return $hosts;
+		}
+
+		if ( 'external-url' !== get_option( 'user_registration_login_options_redirect_after_login', 'no-redirection' ) ) {
+			return $hosts;
+		}
+
+		$external_url = get_option( 'user_registration_login_options_after_login_redirect_external_url', '' );
+
+		if ( empty( $external_url ) || ! ur_is_valid_url( $external_url ) ) {
+			return $hosts;
+		}
+
+		$host = wp_parse_url( $external_url, PHP_URL_HOST );
+
+		if ( ! empty( $host ) ) {
+			$hosts[] = $host;
+		}
+
+		return $hosts;
+	}
+
 	public function logout_redirect( $redirect ) {
 		if ( ! ur_string_to_bool( get_option( 'user_registration_login_options_enable_custom_redirect', false ) ) ) {
 			return $redirect;

@@ -129,6 +129,7 @@ if ( ! class_exists( 'Admin' ) ) :
 			add_action( 'init', array( $this, 'includes' ) );
 			add_action( 'init', array( $this, 'create_membership_post_type' ), 0 );
 			add_action( 'init', array( $this, 'create_membership_groups_post_type' ), 0 );
+			add_action( 'init', array( $this, 'protect_membership_post_meta' ), 0 );
 			add_action( 'init', array( 'WPEverest\URMembership\ShortCodes', 'init' ) );
 			add_action( 'init', array( $this, 'add_membership_options' ) );
 			add_action( 'plugins_loaded', array( $this, 'include_membership_payment_files' ) );
@@ -555,35 +556,9 @@ if ( ! class_exists( 'Admin' ) ) :
 			$payment_gateway = $data['payment_method'] ?? 'unknown';
 
 			// Reject attacker-supplied payment_method values that don't match the membership.
-			// A paid/subscription membership must use one of its configured gateways; 'free'
-			// is never a valid gateway for a non-free membership.
-			if ( 'free' !== $membership_type ) {
-				if ( 'free' === $data['payment_method'] ) {
-					// UR-4386: 'free' on a paid plan is only valid when a 100% coupon zeroes a
-					// one-time plan (free order, no gateway). Re-validate server-side; reject a forge.
-					if ( ! $this->is_full_discount_free_order( $membership_type, $membership_meta, $data ) ) {
-						wp_delete_user( absint( $member_id ) );
-						wp_send_json_error( array( 'message' => esc_html__( 'Invalid payment method for this membership.', 'user-registration' ) ) );
-					}
-				} else {
-					$configured_gateways = array();
-					if ( ! empty( $membership_meta['payment_gateways'] ) && is_array( $membership_meta['payment_gateways'] ) ) {
-						foreach ( $membership_meta['payment_gateways'] as $gw_key => $gw_data ) {
-							if ( isset( $gw_data['status'] ) && 'on' === $gw_data['status'] ) {
-								$configured_gateways[] = $gw_key;
-							}
-						}
-					}
-					// Also include globally active gateways (Settings > Payments) so that
-					// gateways enabled site-wide are accepted even if not per-membership saved.
-					$global_gateways     = array_keys( urm_get_all_active_payment_gateways( $membership_type ) );
-					$configured_gateways = array_unique( array_merge( $configured_gateways, $global_gateways ) );
-
-					if ( ! empty( $configured_gateways ) && ! in_array( $data['payment_method'], $configured_gateways, true ) ) {
-						wp_delete_user( absint( $member_id ) );
-						wp_send_json_error( array( 'message' => esc_html__( 'Invalid payment method for this membership.', 'user-registration' ) ) );
-					}
-				}
+			if ( ! ( new MembershipService() )->is_valid_payment_method_for_membership( $membership_meta, $data['payment_method'], $data ) ) {
+				wp_delete_user( absint( $member_id ) );
+				wp_send_json_error( array( 'message' => esc_html__( 'Invalid payment method for this membership.', 'user-registration' ) ) );
 			}
 
 			// PaymentGatewayLogging — session start + form submission
@@ -775,32 +750,6 @@ if ( ! class_exists( 'Admin' ) ) :
 				update_user_meta( $member_id, 'ur_user_status', \UR_Admin_User_Manager::PENDING );
 			}
 		}
-		/*
-		 * Whether a payment_method="free" submission on a non-free plan is a legitimate 100%-coupon
-		 * free order. Only ONE-TIME (paid) plans qualify; the coupon is re-validated against the DB
-		 * so a forged payment_method="free" cannot bypass payment. UR-4386.
-		 *
-		 * @param string $membership_type Membership type (free|paid|subscription).
-		 * @param array  $membership_meta Membership meta.
-		 * @param array  $data            Submitted registration data.
-		 * @return bool
-		 */
-		private function is_full_discount_free_order( $membership_type, $membership_meta, $data ) {
-			if ( 'paid' !== $membership_type || empty( $data['coupon'] ) || ! ur_check_module_activation( 'coupon' ) ) {
-				return false;
-			}
-			$coupon_details = ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
-			if ( empty( $coupon_details ) || empty( $coupon_details['coupon_status'] ) ) {
-				return false;
-			}
-			$plan_amount    = floatval( $membership_meta['amount'] ?? 0 );
-			$discount_type  = $coupon_details['coupon_discount_type'] ?? 'fixed';
-			$discount_value = floatval( $coupon_details['coupon_discount'] ?? 0 );
-			$discount       = ( 'percent' === $discount_type ) ? ( $plan_amount * $discount_value / 100 ) : $discount_value;
-
-			return ( $plan_amount > 0 ) && ( 0.0 === round( max( 0, $plan_amount - $discount ), 2 ) );
-		}
-
 		public function update_redirect_url_for_membership( $redirect_url, $form_id ) {
 			$thank_you_page_id           = get_option( 'user_registration_thank_you_page_id' );
 			$login_option                = ur_get_form_setting_by_key( $form_id, 'user_registration_form_setting_login_options' );
@@ -920,6 +869,7 @@ if ( ! class_exists( 'Admin' ) ) :
 						'show_ui'           => true,
 						'capability_type'   => 'post',
 						'map_meta_cap'      => true,
+						'capabilities'      => $this->get_membership_post_type_capabilities(),
 						'show_in_menu'      => false,
 						'hierarchical'      => false,
 						'rewrite'           => false,
@@ -970,6 +920,7 @@ if ( ! class_exists( 'Admin' ) ) :
 						'show_ui'           => true,
 						'capability_type'   => 'post',
 						'map_meta_cap'      => true,
+						'capabilities'      => $this->get_membership_post_type_capabilities(),
 						'show_in_menu'      => false,
 						'hierarchical'      => false,
 						'rewrite'           => false,
@@ -980,6 +931,76 @@ if ( ! class_exists( 'Admin' ) ) :
 					)
 				)
 			);
+		}
+
+		/**
+		 * Capability map for the membership post types.
+		 *
+		 * A membership plan stores the role a member is granted on purchase, so authoring one is an
+		 * administrative act. Mapping every primitive post capability to manage_options keeps lower
+		 * roles out of post-new.php and post.php for these types, and because add_post_meta maps
+		 * through edit_post it also keeps them out of core's custom-fields write path.
+		 *
+		 * @since 5.2.8
+		 *
+		 * @return array Capability map for register_post_type().
+		 */
+		private function get_membership_post_type_capabilities() {
+			return array(
+				'edit_posts'             => 'manage_options',
+				'edit_others_posts'      => 'manage_options',
+				'edit_published_posts'   => 'manage_options',
+				'edit_private_posts'     => 'manage_options',
+				'publish_posts'          => 'manage_options',
+				'read_private_posts'     => 'manage_options',
+				'create_posts'           => 'manage_options',
+				'delete_posts'           => 'manage_options',
+				'delete_private_posts'   => 'manage_options',
+				'delete_published_posts' => 'manage_options',
+				'delete_others_posts'    => 'manage_options',
+			);
+		}
+
+		/**
+		 * Protect the membership post meta from core's custom-fields write path.
+		 *
+		 * These keys hold the plan configuration, including the granted role, and are not prefixed
+		 * with an underscore, so is_protected_meta() does not cover them. An auth_callback keeps
+		 * core's add-meta handler out even if a site widens the post type capabilities through the
+		 * registration filters. The plugin's own update_post_meta() calls are unaffected.
+		 *
+		 * @since 5.2.8
+		 */
+		public function protect_membership_post_meta() {
+			$protected_meta = array(
+				'ur_membership'        => array( 'ur_membership', 'ur_membership_description' ),
+				'ur_membership_groups' => array( 'urmg_memberships', 'urmg_mode', 'urmg_upgrade_type', 'urmg_upgrade_path', 'urmg_default_group' ),
+			);
+
+			foreach ( $protected_meta as $post_type => $meta_keys ) {
+				foreach ( $meta_keys as $meta_key ) {
+					register_post_meta(
+						$post_type,
+						$meta_key,
+						array(
+							'single'        => true,
+							'show_in_rest'  => false,
+							'auth_callback' => array( $this, 'can_manage_membership_meta' ),
+						)
+					);
+				}
+			}
+		}
+
+		/**
+		 * Whether the current user may write membership post meta.
+		 *
+		 * @since 5.2.8
+		 *
+		 * @return bool True when the user can manage the site's options.
+		 */
+		public function can_manage_membership_meta() {
+			return current_user_can( 'manage_options' );
 		}
 
 		/**
