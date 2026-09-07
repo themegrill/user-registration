@@ -1,4 +1,27 @@
 wpeverest/user-registration-pro@develop:
+    # The E2E suite. Pro is a standalone replica of this plugin plus premium
+    # code, so these specs run there unchanged — and their passing unchanged is
+    # what proves the shared code really is shared. A spec written here must
+    # therefore reach pro, and this is the only mechanism that should carry it.
+    #
+    # A directory sync is deliberate: it picks up new specs without anyone
+    # editing this list. `deleteOrphaned` defaults to false and applies only to
+    # directory syncs, so pro's own specs (pro-surfaces.spec.ts,
+    # licence.spec.ts) are left alone.
+    #
+    # NOT listed, and each one would do damage if it were:
+    #   .themegrill-qa/suite.json  free declares 4 areas in area_paths, pro 13.
+    #                              Overwriting drops nine and strips the
+    #                              includes/pro/** globs from two more. An
+    #                              unmatched file forces a FULL run, so CI stays
+    #                              green and merely stops narrowing.
+    #   .themegrill-qa/knowledge.md  pro's is a delta over this one on purpose.
+    #   package.json               pro has an extra test:e2e:pro script.
+    #   .github/workflows/         pro calls pro-suite.yml, not suite.yml, with
+    #                              different inputs and secrets. A value like
+    #                              test_timeout_ms must be carried over by hand.
+    - tests/e2e
+    - playwright.config.ts
     - source: assets
       exclude: |
         js/divi-vb-modules.js
