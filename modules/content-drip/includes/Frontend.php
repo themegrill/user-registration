@@ -30,7 +30,6 @@ class Frontend {
 	private function init_hooks() {
 		// add_action( 'wp_enqueue_scripts', array( $this, 'load_scripts' ), 10, 2 );
 	}
-
 	/**
 	 * Enqueue styles for the course portal page.
 	 *
