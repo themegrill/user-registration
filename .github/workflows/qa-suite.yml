@@ -1,0 +1,55 @@
+# Written by `/claudegrill:setup`. Safe to edit — it is a plain caller.
+#
+# THIS IS THE ONLY PR CHECK MOST PRODUCTS NEED. No ANTHROPIC_API_KEY, no agent,
+# runner minutes only.
+#
+# It works without AI because the developer already wrote the spec: they ran
+# /claudegrill:verify-fix locally, write-spec added a @fresh spec to their
+# branch, and they committed it with the fix. By the time CI sees the PR the
+# regression is already a deterministic assertion.
+#
+# ONE job, on pull requests only. Nothing runs on a schedule: the team's model is
+# a local /claudegrill:verify-fix while the fix is being written, and the e2e
+# suite on the PR. No cron, no nightly, no WordPress-core watcher.
+#
+# `scope: changed` narrows a run to the areas the diff maps to. That is safe by
+# construction — a changed file matching no `area_paths` pattern in
+# .themegrill-qa/suite.json falls back to the full tier, so an unmapped change
+# costs runner time, never coverage.
+#
+# Worth knowing, since nothing else runs the suite now: a spec whose area is
+# never touched by any PR will not execute. Set `scope: full` below if you would
+# rather every PR run the whole @fresh tier.
+
+name: QA suite
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+jobs:
+  # The only check. Scoped, fast, runs on every PR including drafts.
+  pr:
+    uses: ThemeGrill/claudegrill/.github/workflows/suite.yml@main
+    with:
+      product_slug: user-registration
+      product_type: plugin
+      scope: changed
+      # The shared default is 45s, and it is too tight for THIS product.
+      #
+      # Nearly every spec here is a whole user journey — provision a form,
+      # publish a page, register an account on the front end, log in as that
+      # account, then delete it — which is a dozen page loads against
+      # Playground's WASM PHP. Measured on a reset Playground locally the
+      # slowest is ~25s, and the GitHub runner is comfortably slower than a
+      # developer's machine: at 45s the three login specs passed only on retry
+      # and the ajax spec timed out outright, all of them for want of headroom
+      # rather than because anything was wrong.
+      #
+      # 90s is roughly 3x the measured worst case, so a genuinely hung spec is
+      # still capped. It stays well inside the ceilings above it, which the
+      # reusable workflow asks for: max_failures (3) x 90s is 4.5 minutes
+      # against a 30-minute timeout_ms and a 40-minute job limit.
+      test_timeout_ms: 90000
+
