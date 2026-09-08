@@ -262,7 +262,7 @@ class UR_Frontend {
 
 		$host = wp_parse_url( $external_url, PHP_URL_HOST );
 
-		if ( ! empty( $host ) ) {
+		if ( ! empty( $host ) && ! in_array( $host, $hosts, true ) ) {
 			$hosts[] = $host;
 		}
 
