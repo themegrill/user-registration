@@ -1007,10 +1007,11 @@ if ( ! class_exists( 'Admin' ) ) :
 		 * @param int    $user_id   User attempting the write.
 		 * @param string $cap       Capability being checked.
 		 * @param array  $caps      Primitive capabilities required.
-		 * @return bool True when the user can manage the site's options.
+		 * @return bool True when the evaluated user can manage the site's options.
 		 */
 		public function can_manage_membership_meta( $allowed = false, $meta_key = '', $object_id = 0, $user_id = 0, $cap = '', $caps = array() ) {
-			return current_user_can( 'manage_options' );
+			// Check the user WordPress is evaluating, not the current request user, so the callback is correct when caps are tested for another user.
+			return user_can( $user_id, 'manage_options' );
 		}
 
 		/**
