@@ -143,7 +143,9 @@ class MembershipService {
 		$membership_type = isset( $membership_meta['type'] ) ? $membership_meta['type'] : 'unknown';
 
 		if ( 'free' === $membership_type ) {
-			return true;
+			// A free plan has no gateway, so only an empty or 'free' method is legitimate. Rejecting a
+			// forged gateway value keeps a free plan off the paid, deferred-role order path.
+			return '' === $payment_method || 'free' === $payment_method;
 		}
 
 		// UR-4386: 'free' on a paid plan is only valid when a 100% coupon zeroes a one-time plan.
