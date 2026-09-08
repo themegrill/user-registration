@@ -234,7 +234,7 @@ class MembershipService {
 			$member       = get_user_by( 'login', $data['username'] );
 
 			// Update user source and add membership_role.
-			$members_data['defer_role'] = ! empty( $members_data['membership_data']['payment_method'] ) && 'free' !== $members_data['membership_data']['payment_method'];
+			$members_data['defer_role'] = 'free' !== ( $members_data['membership_data']['payment_method'] ?? '' );
 			$this->members_service->update_user_meta( $members_data, $member->ID );
 
 			$subscription_service = new SubscriptionService();

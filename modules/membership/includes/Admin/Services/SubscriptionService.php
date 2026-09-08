@@ -329,7 +329,13 @@ class SubscriptionService {
 
 		if ( ! empty( $data['context'] ) && 'thank_you_page' === $data['context'] && ! empty( $data['transaction_id'] ) ) {
 			$order_by_txn = $this->orders_repository->get_order_by_transaction_id( $data['transaction_id'] );
-			if ( ! empty( $order_by_txn ) && ! empty( $order_by_txn['ID'] ) ) {
+
+			// Only trust this order if it belongs to the member the page is rendered for,
+			// otherwise a submitted transaction_id could surface another member's order.
+			if ( ! empty( $order_by_txn ) && ! empty( $order_by_txn['ID'] )
+				&& isset( $order_by_txn['user_id'], $data['member_id'] )
+				&& (int) $order_by_txn['user_id'] === (int) $data['member_id']
+			) {
 				$member_order = $order_by_txn;
 			}
 		}

@@ -48,20 +48,23 @@ $redirect_btn_url  = ! empty( $attributes['redirect_page_id'] )
 		<div class="ur-message">
 			<p>
 			<?php
-				$username = isset( $_GET['username'] ) ? sanitize_text_field( wp_unslash( $_GET['username'] ) ) : '';
-
 				$values = array();
 
-			if ( ! empty( $username ) ) {
-				$user                = get_user_by( 'login', sanitize_text_field( $username ) );
-				$values['member_id'] = $user->ID;
-				$values['email']     = $user->user_email;
-				$values['context']   = 'thank_you_page';
-				if ( ! empty( $transaction_id ) ) {
-					$values['transaction_id'] = $transaction_id;
-				}
+				// Smart tags resolve only for the logged-in visitor's own account; a requested
+				// username is never trusted, so one member cannot read another's details here.
+			if ( is_user_logged_in() ) {
+				$user = wp_get_current_user();
 
-				$main_content = apply_filters( 'user_registration_process_smart_tags', $main_content, $values );
+				if ( $user && $user->exists() ) {
+					$values['member_id'] = $user->ID;
+					$values['email']     = $user->user_email;
+					$values['context']   = 'thank_you_page';
+					if ( ! empty( $transaction_id ) ) {
+						$values['transaction_id'] = $transaction_id;
+					}
+
+					$main_content = apply_filters( 'user_registration_process_smart_tags', $main_content, $values );
+				}
 			}
 				echo wp_kses_post( $main_content );
 			?>
