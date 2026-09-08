@@ -995,12 +995,20 @@ if ( ! class_exists( 'Admin' ) ) :
 		/**
 		 * Whether the current user may write membership post meta.
 		 *
+		 * Registered as a register_post_meta() auth_callback, which WordPress invokes with the
+		 * filter arguments below. AND-ing with $allowed means this can only ever narrow a core
+		 * decision, never widen one.
+		 *
 		 * @since 5.2.8
 		 *
+		 * @param bool   $allowed   Whether the write is allowed so far.
+		 * @param string $meta_key  Meta key being written.
+		 * @param int    $object_id Post ID.
+		 * @param int    $user_id   User attempting the write.
 		 * @return bool True when the user can manage the site's options.
 		 */
-		public function can_manage_membership_meta() {
-			return current_user_can( 'manage_options' );
+		public function can_manage_membership_meta( $allowed = false, $meta_key = '', $object_id = 0, $user_id = 0 ) {
+			return $allowed && current_user_can( 'manage_options' );
 		}
 
 		/**

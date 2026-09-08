@@ -5406,14 +5406,9 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 
 				if ( ur_is_ajax_login_enabled() && empty( $_POST['resubmitted'] ) ) { // phpcs:ignore
 					wp_send_json_success( array( 'message' => $redirect ) );
-					wp_send_json( $user );
 				} else {
 					wp_safe_redirect( $redirect );
 					exit;
-				}
-
-				if ( ur_is_ajax_login_enabled() && empty( $_POST['resubmitted'] ) ) { // phpcs:ignore
-					wp_send_json( $user );
 				}
 			}
 		} catch ( Exception $e ) {
