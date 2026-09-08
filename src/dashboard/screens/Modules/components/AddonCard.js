@@ -470,7 +470,11 @@ const AddonCard = ({ addon, showToast }) => {
 			<HStack justify="space-between" align="center">
 				<HStack spacing="3">
 					<Link
-						href={addon.link}
+						href={urUtmUrl(addon.link, {
+							source: "dashboard-all-features",
+							medium: "button",
+							content: "card-documentation-link"
+						})}
 						fontSize="13px"
 						color="#6B7280"
 						textDecoration="underline"
