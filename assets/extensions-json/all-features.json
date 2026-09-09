@@ -7,7 +7,7 @@
       "image": "extensions-json/sections/icons/membership.png",
       "excerpt": "Create custom membership plans and control website access for user registrations.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-membership/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-membership/",
       "plan": [
         "free"
       ],
@@ -37,7 +37,7 @@
       "image": "extensions-json/sections/icons/paypal.png",
       "excerpt": "Integrate PayPal to accept payments for registration or subscriptions.",
       "category": "E-Commerce",
-      "link": "https://docs.wpuserregistration.com/docs/payments-paypal/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/payments-paypal/",
       "released_date": "14/08/2018",
       "plan": [
         "personal",
@@ -59,7 +59,7 @@
       "image": "extensions-json/sections/icons/calculations.png",
       "excerpt": "Performs calculations based on user input during registration.",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/calculations/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/calculations/",
       "plan": [
         "plus",
         "professional",
@@ -76,7 +76,7 @@
       "image": "extensions-json/sections/icons/coupons.png",
       "excerpt": "Offer personalized discounts and boost engagement.",
       "category": "E-Commerce",
-      "link": "https://docs.wpuserregistration.com/docs/coupons-addon/?utm_source=dashboard-all-features&utm_medium=card-documentation-link#42-toc-title",
+      "link": "https://docs.wpuserregistration.com/docs/coupons-addon/#42-toc-title",
       "released_date": "20/06/2024",
       "plan": [
         "personal",
@@ -94,7 +94,7 @@
       "image": "extensions-json/sections/icons/content_restriction.png",
       "excerpt": "Restrict access to specific pages or content sections based on user data.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/content-restriction/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/content-restriction/",
       "released_date": "22/09/2017",
       "plan": [
         "personal",
@@ -112,7 +112,7 @@
       "image": "extensions-json/sections/icons/frontend_listing.png",
       "excerpt": "Display users registered on the site as a directory (for community sites or directories).",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/member-directory/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/member-directory/",
       "released_date": "06/04/2021",
       "plan": [
         "personal",
@@ -130,7 +130,7 @@
       "image": "extensions-json/sections/icons/sms_integration.png",
       "excerpt": "Let users verify their account via SMS code sent to their phone number.",
       "category": "Security",
-      "link": "https://docs.wpuserregistration.com/docs/sms-integration/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/sms-integration/",
       "released_date": "19/08/2024",
       "plan": [
         "personal",
@@ -148,7 +148,7 @@
       "image": "extensions-json/sections/icons/membership.png",
       "excerpt": "Organize membership plans into groups, enabling seamless upgrades and multi-plan purchases.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/membership-groups/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/membership-groups/",
       "released_date": "07/01/2026",
       "plan": [
         "free"
@@ -163,7 +163,7 @@
       "image": "extensions-json/sections/icons/tax.png",
       "excerpt": "Automatically charge applicable taxes on membership payments with region-based tax rates.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-taxes-and-vat/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-taxes-and-vat/",
       "plan": [
         "plus",
         "professional",
@@ -180,7 +180,7 @@
       "image": "extensions-json/sections/icons/local-currency.png",
       "excerpt": "Enable local currency pricing so members are charged in their own currency.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/local-currency-with-membership-forms/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/local-currency-with-membership-forms/",
       "plan": [
         "plus",
         "professional",
@@ -197,7 +197,7 @@
       "image": "extensions-json/sections/icons/custom_email.png",
       "excerpt": "Send automated emails to users based on specific triggers or time intervals.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/custom-email/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/custom-email/",
       "released_date": "12/01/2026",
       "plan": [
         "personal",
@@ -215,7 +215,7 @@
       "image": "extensions-json/sections/icons/masteriyo.gif",
       "excerpt": "Give the access to the selective course based on the membership.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/masteriyo-integration/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/masteriyo-integration/",
       "plan": [
         "free"
       ],
@@ -230,7 +230,7 @@
       "image": "extensions-json/sections/icons/pdf_invoice.png",
       "excerpt": "Allows payment invoice download for each successful payments right through your customer's account.",
       "category": "E-Commerce",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-pdf-invoice/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-pdf-invoice/",
       "released_date": "19/01/2026",
       "plan": [
         "personal",
@@ -248,7 +248,7 @@
       "image": "extensions-json/sections/icons/content_drip.png",
       "excerpt": "Drip content access over time, based on either a fixed date or days after the membership purchase.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-content-drip/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-content-drip/",
       "released_date": "22/09/2017",
       "plan": [
         "plus",
@@ -265,7 +265,7 @@
       "image": "extensions-json/sections/icons/team_membership.png",
       "excerpt": "Sell and manage team memberships with flexible seat control and pricing tiers.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-team-membership/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-team-membership/",
       "released_date": "19/01/2026",
       "plan": [
         "plus",
@@ -282,7 +282,7 @@
       "image": "extensions-json/sections/icons/file_downloads.png",
       "excerpt": "Upload files and restrict access by membership level or user-defined conditions.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-file-downloads/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-file-downloads/",
       "plan": [
         "plus",
         "professional",
