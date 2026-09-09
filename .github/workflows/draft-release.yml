@@ -127,7 +127,7 @@ jobs:
 
       - name: Build
         id: build
-        uses: themegrill/action-build@4.0.2
+        uses: themegrill/action-build@4.0.3
         with:
           generate-zip: true
 
