@@ -244,7 +244,7 @@ class UR_Admin_Assets {
 				 *
 				 * @param string URL
 				 */
-				'upgrade_url'                  => apply_filters( 'user_registration_upgrade_url', 'https://wpuserregistration.com/upgrade/?utm_source=form-template&utm_medium=button&utm_campaign=ur-upgrade-to-pro' ),
+				'upgrade_url'                  => apply_filters( 'user_registration_upgrade_url', ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'form-template', 'medium' => 'button' ) ) ),
 				'upgrade_button'               => esc_html__( 'Upgrade Plan', 'user-registration' ),
 				'upgrade_message'              => esc_html__( 'This template requires premium addons. Please upgrade to the Premium plan to unlock all these awesome Templates.', 'user-registration' ),
 				'upgrade_title'                => esc_html__( 'is a Premium Template', 'user-registration' ),
@@ -419,7 +419,7 @@ class UR_Admin_Assets {
 				'ajax_form_submit_error'                   => esc_html__( 'Something went wrong while saving form through AJAX request.', 'user-registration' ),
 				'ajax_form_submit_troubleshooting_link'    => esc_url_raw( 'https://docs.wpuserregistration.com/docs/how-to-handle-ajax-submission-error' ),
 				'isPro'                                    => is_plugin_active( 'user-registration-pro/user-registration.php' ),
-				'ur_upgrade_plan_link'                     => esc_url( 'https://wpuserregistration.com/upgrade/?utm_source=plugin&utm_medium=button&utm_campaign=ur-upgrade-to-pro' ),
+				'ur_upgrade_plan_link'                     => esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'plugin', 'medium' => 'button' ) ) ),
 				'ur_remove_password_field_link'            => esc_url( 'https://docs.wpuserregistration.com/docs/remove-password-field/' ),
 				'ur_form_non_deletable_fields'             => ur_non_deletable_fields(),
 				'ur_assets_url'                            => UR()->plugin_url() . '/assets/',
@@ -670,7 +670,7 @@ class UR_Admin_Assets {
 				'user-registration'
 			),
 			'upgrade_plan'                                => esc_html__( 'Upgrade Plan', 'user-registration' ),
-			'upgrade_link'                                => esc_url( 'https://wpuserregistration.com/upgrade/?utm_source=integration-settings&utm_medium=premium-addon-popup&utm_campaign=' . urlencode( UR()->utm_campaign ) ),
+			'upgrade_link'                                => esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'integration-settings', 'medium' => 'popup' ) ) ),
 			'user_registration_locked_form_fields_notice_nonce' => wp_create_nonce( 'locked_form_fields_notice_nonce' ),
 			'license_activation_required_title'           => __( 'License Activation Required', 'user-registration' ),
 			'license_activation_required_message'         => __( 'Please activate your <strong>User Registration & Membership License</strong> to use this integration', 'user-registration' ),

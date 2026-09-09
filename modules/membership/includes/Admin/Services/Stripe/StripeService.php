@@ -1015,6 +1015,25 @@ class StripeService {
 		} elseif ( 'succeeded' === $payment_status ) {
 			$member_order = $this->members_orders_repository->get_member_orders( $member_id );
 
+			// The retrieved PaymentIntent must belong to the order being completed. Verification runs
+			// against the order that owns the transaction while completion applies to the member's newest
+			// order; without this guard a succeeded PaymentIntent from an earlier order can be replayed to
+			// complete a newer pending order, renewing/extending a membership with no new payment.
+			if ( empty( $member_order ) || (int) $latest_order['ID'] !== (int) $member_order['ID'] ) {
+				return $this->update_order_error(
+					$response,
+					__( 'Payment verification failed.', 'user-registration' ),
+					'Payment confirmation rejected: PaymentIntent does not belong to the order being completed',
+					array(
+						'error_code'        => 'PAYMENT_INTENT_ORDER_MISMATCH',
+						'member_id'         => $member_id,
+						'payment_intent_id' => $pi_id,
+						'verified_order_id' => $latest_order['ID'],
+						'target_order_id'   => $member_order['ID'] ?? 0,
+					)
+				);
+			}
+
 			if ( 'completed' === $member_order['status'] ) {
 				$response['message'] = $is_upgrading ? __( 'Membership upgraded successfully.', 'user-registration' ) : get_option( 'user_registration_successful_membership_creation_message', esc_html__( 'New member has been successfully created.', 'user-registration' ) );
 				$response['status']  = true;
