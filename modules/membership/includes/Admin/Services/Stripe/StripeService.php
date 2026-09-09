@@ -928,6 +928,25 @@ class StripeService {
 			return $response;
 		}
 
+		$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+		$member_order = is_array( $member_order ) ? $member_order : array();
+
+		// The verified PaymentIntent must own the order being confirmed, otherwise a settled intent from an earlier order completes whichever order is newest.
+		if ( empty( $member_order ) || (int) $latest_order['ID'] !== (int) $member_order['ID'] ) {
+			return $this->update_order_error(
+				$response,
+				__( 'Payment verification failed for this order.', 'user-registration' ),
+				'Payment confirmation rejected: PaymentIntent belongs to a different order',
+				array(
+					'error_code'        => 'TRANSACTION_ORDER_MISMATCH',
+					'member_id'         => $member_id,
+					'payment_intent_id' => $pi_id,
+					'intent_order_id'   => $latest_order['ID'],
+					'target_order_id'   => $member_order['ID'] ?? 0,
+				)
+			);
+		}
+
 		// Exclude the order that actually owns this transaction (already fetched above), not the
 		// client-supplied order_id which can arrive empty on the registration/first-purchase
 		// flow. Otherwise the order's own transaction is treated as a duplicate and the payment
