@@ -1460,6 +1460,10 @@ class NewPaypalService {
 
 		$this->send_payment_success_email( $member_order['ID'], $member_subscription, $membership_metas, $member_id, $membership_id );
 
+		// UR-4710: PayPal is offsite, so role was deferred at registration/upgrade time.
+		// Redirect confirms payment here — grant it now instead of waiting for next login.
+		( new MembersService() )->maybe_grant_pending_role( $member_id );
+
 		if ( $is_upgrading && ! empty( $member_subscription['ID'] ) ) {
 			PaymentGatewayLogging::log_general(
 				'paypal',
