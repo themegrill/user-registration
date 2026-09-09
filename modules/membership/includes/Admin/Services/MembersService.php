@@ -163,6 +163,7 @@ class MembersService {
 				'membership'     => absint( $data['membership'] ),
 				'start_date'     => date( 'Y-m-d', strtotime( $data['start_date'] ) ),
 				'payment_method' => sanitize_text_field( $data['payment_method'] ?? '' ),
+				'type'           => isset( $membership_meta['type'] ) ? sanitize_text_field( $membership_meta['type'] ) : 'unknown',
 			);
 
 			if ( isset( $data['is_purchasing_multiple'] ) ) {
