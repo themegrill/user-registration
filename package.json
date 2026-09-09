@@ -1,7 +1,7 @@
 {
     "name": "user-registration",
     "title": "User Registration",
-    "version": "5.2.7",
+    "version": "5.2.8",
     "homepage": "https://wpuserregistration.com/",
     "repository": {
         "type": "git",

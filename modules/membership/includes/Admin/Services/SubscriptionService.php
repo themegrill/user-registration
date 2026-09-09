@@ -329,7 +329,13 @@ class SubscriptionService {
 
 		if ( ! empty( $data['context'] ) && 'thank_you_page' === $data['context'] && ! empty( $data['transaction_id'] ) ) {
 			$order_by_txn = $this->orders_repository->get_order_by_transaction_id( $data['transaction_id'] );
-			if ( ! empty( $order_by_txn ) && ! empty( $order_by_txn['ID'] ) ) {
+
+			// Only trust this order if it belongs to the member the page is rendered for,
+			// otherwise a submitted transaction_id could surface another member's order.
+			if ( ! empty( $order_by_txn ) && ! empty( $order_by_txn['ID'] )
+				&& isset( $order_by_txn['user_id'], $data['member_id'] )
+				&& (int) $order_by_txn['user_id'] === (int) $data['member_id']
+			) {
 				$member_order = $order_by_txn;
 			}
 		}
@@ -519,23 +525,13 @@ class SubscriptionService {
 		$selected_membership_details['membership'] = $data['selected_membership_id'];
 
 		// Validate that the submitted payment method is one the destination membership actually supports.
-		if ( 'free' !== ( $selected_membership_details['type'] ?? '' ) ) {
-			$configured_gateways = array();
-			if ( ! empty( $selected_membership_details['payment_gateways'] ) && is_array( $selected_membership_details['payment_gateways'] ) ) {
-				foreach ( $selected_membership_details['payment_gateways'] as $gw_key => $gw_data ) {
-					if ( isset( $gw_data['status'] ) && 'on' === $gw_data['status'] ) {
-						$configured_gateways[] = $gw_key;
-					}
-				}
-			}
-			if ( ! empty( $configured_gateways ) && ! in_array( $payment_method, $configured_gateways, true ) ) {
-				return array(
-					'response' => array(
-						'status'  => false,
-						'message' => __( 'Invalid payment method for this membership.', 'user-registration' ),
-					),
-				);
-			}
+		if ( ! ( new MembershipService() )->is_valid_payment_method_for_membership( $selected_membership_details, $payment_method, $data ) ) {
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => __( 'Invalid payment method for this membership.', 'user-registration' ),
+				),
+			);
 		}
 
 		$selected_membership_details['payment_method'] = $payment_method;

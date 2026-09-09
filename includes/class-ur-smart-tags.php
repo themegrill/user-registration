@@ -114,6 +114,7 @@ class UR_Smart_Tags {
 			'{{username}}'               => esc_html__( 'User Name', 'user-registration' ),
 			'{{email}}'                  => esc_html__( 'Email', 'user-registration' ),
 			'{{ur_login}}'               => esc_html__( 'UR Login', 'user-registration' ),
+			'{{force_logout_url}}'       => esc_html__( 'Force Logout URL', 'user-registration' ),
 			'{{all_fields}}'             => esc_html__( 'All Fields', 'user-registration' ),
 			'{{auto_pass}}'              => esc_html__( 'Auto Pass', 'user-registration' ),
 			'{{user_roles}}'             => esc_html__( 'User Roles', 'user-registration' ),
@@ -288,6 +289,12 @@ class UR_Smart_Tags {
 						$ur_login = ( get_home_url() !== $ur_login_or_account_page ) ? $ur_login_or_account_page : wp_login_url();
 						$ur_login = str_replace( get_home_url() . '/', '', $ur_login );
 						$content  = str_replace( '{{' . $other_tag . '}}', $ur_login, $content );
+						break;
+
+					case 'force_logout_url':
+						// Only the prevent concurrent login email supplies this through $values; anywhere
+						// else there is no link to give, so drop the tag rather than print it.
+						$content = str_replace( '{{' . $other_tag . '}}', '', $content );
 						break;
 
 					case 'auto_pass':

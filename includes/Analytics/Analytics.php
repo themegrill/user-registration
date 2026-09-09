@@ -126,9 +126,10 @@ class Analytics {
 			apply_filters(
 				'user_registration_analytics_localized_data',
 				array(
-					'install_date' => get_option( 'user_registration_installation_date' ),
-					'memberships'  => ( new MembershipService() )->get_memberships_list(),
-					'currency'     => strtoupper( get_option( 'user_registration_payment_currency', 'USD' ) ),
+					'install_date'  => get_option( 'user_registration_installation_date' ),
+					'memberships'   => ( new MembershipService() )->get_memberships_list(),
+					'currency'      => strtoupper( get_option( 'user_registration_payment_currency', 'USD' ) ),
+					'utm_campaign'  => UR()->utm_campaign,
 				)
 			)
 		);

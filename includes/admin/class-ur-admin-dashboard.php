@@ -74,7 +74,7 @@ class UR_Admin_Dashboard {
 				'licensePlan'             => ur_get_license_plan(),
 				'licenseActivationURL'    => esc_url_raw( admin_url( '/admin.php?page=user-registration-settings&tab=license' ) ),
 				'utmCampaign'             => UR()->utm_campaign,
-				'upgradeURL'              => esc_url_raw( 'https://wpuserregistration.com/upgrade/?utm_campaign=' . UR()->utm_campaign ),
+				'upgradeURL'              => esc_url_raw( 'https://wpuserregistration.com/upgrade/' ),
 				'plugins'                 => array_reduce(
 					$allowed_plugin_slugs,
 					function ( $acc, $curr ) use ( $installed_plugin_slugs ) {
