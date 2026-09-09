@@ -1,0 +1,766 @@
+{
+  "source": "/private/tmp/claude-501/-Users-iamprazol-Work-Projects-wordpress-test-urm/4d79ef88-c012-4f2d-b887-e0b7be6086cc/scratchpad/UR-Automation",
+  "areas": [
+    {
+      "area": "08--addons",
+      "file": "testcases/08--addons.md",
+      "tests": 174,
+      "documented": 10,
+      "assertions": 322,
+      "locators": 63,
+      "titles": [
+        "Verify All Addons Activation",
+        "Verify Setting up Invite code field to the Form Builder & Added to Form successfully",
+        "Verify User Registration with Valid Invite code",
+        "Verify User Registration with Invalid Invite code",
+        "Verify User Registration with Expired Invite Code",
+        "Verify User Registration with user Limit for Invite Code",
+        "Verify generation of random codes with specified prefixes and limits",
+        "Validate Form Restriction basic functionality",
+        "Validate Form Restriction >> Enable User Registration Max Limit >> Total Registration",
+        "Validate Form Restriction >> Enable User Registration Max Limit >> Per Day",
+        "Validate Form Restriction >> Enable User Registration Max Limit >> Per Week",
+        "Validate Form Restriction >> Enable User Registration Max Limit >> Per Month",
+        "Validate Form Restriction >> Enable User Registration Max Limit >> Per Year",
+        "Validate Form Restriction >> Enable Form Scheduling >> Select All",
+        "Validate Form Restriction >> Enable Form Scheduling >> Select Any Particular Day",
+        "Validate Form Restriction >> Enable Form Scheduling >> Enable Date-wise Scheduling",
+        "Validate Form Restriction >> Enable Form Scheduling >> Enable Time-wise Scheduling",
+        "Validate Form Restriction >> Enable Verification >> Restriction Type >> Select Password",
+        "Validate Form Restriction >> Enable Verification >> Restriction Type >> Select Age",
+        "Validate Form Restriction >> Enable Country Restriction",
+        "Validate Form Restriction >> Enable IP Restriction",
+        "Validate working of hide/show field when condition is satisfied",
+        "Validate working of Enable Conditional Redirection>>Custom page",
+        "Validate working of Enable Conditional Redirection>>External Url",
+        "Validate working of Conditional Logic for Submit Button>>Show",
+        "Verify Field Visibility On Registration Form Only",
+        "Verify Field Visibility On Profile Details",
+        "Verify Field visibility on Registration Form and Profile Details",
+        "Verify Read-only Field on Registration Form Only",
+        "Validate working of drag and drop of advanced fields",
+        "Validate field options> label",
+        "Validate field options> descriptions",
+        "Validate field options> hide label",
+        "Validate field options> required",
+        "Validate profile picture upload",
+        "Validate Basic Functionality >> Profile Completeness",
+        "Validate Enable Profile Incomplete Notice >> Display A Notice To Users If Their Profile Is Incomplete",
+        "Validate Enable Profile Completion Congrats Email",
+        "Validate conversational form enabled successfully",
+        "Validate tool tip are visible Properly on Conversational Form",
+        "Validate Show Welcome message Section",
+        "Admin >> Post Submission >> Enable Post Submissions",
+        "Admin >> Post Submission >> Disable Post Submissions",
+        "Admin >> Post Submission >> Verify visibility of tooltips",
+        "Admin >> Post Submission >> Create and connect Form Fields with Post Submission",
+        "Admin >> Post Submission >> Post Types >> Post",
+        "Admin >> Post Submission >> Post Types >> Page",
+        "Admin >> Post Submission >> Post Status >> Draft",
+        "Admin >> Post Submission >> Post Status >> Pending Review",
+        "Admin >> Post Submission >> Post Status >> Private",
+        "Admin >> Post Submission >> Post Status >> Published",
+        "Admin >> Post Submission >> Post Author >> Current User",
+        "Admin >> Post Submission >> Post Author >> Custom User",
+        "Admin >> Post Submission >> Taxonomies >> Category",
+        "Admin >> Post Submission >> Taxonomies >> Tags",
+        "Verify that the file upload field is visible",
+        "Verify that the file upload field can be set as mandatory",
+        "Verify that we can conditionally show File Upload field",
+        "Verify that we can conditionally hide File Upload field",
+        "Verify that we can upload supported file types",
+        "Verify that we can upload selected file types",
+        "Verify that we cannot upload unsupported file types",
+        "Verify that the files exceeding upload limit cannot be uploaded",
+        "Verify that files exceeding the maximum file size limit are not accepted",
+        "Verify that users can upload single file",
+        "Verify that users can upload multiple files",
+        "Verify that the uploaded file in preview can be removed and replaced",
+        "Verify that the duplicate file names are handled",
+        "Verify that malicious files cannot be uploaded",
+        "Verify that the file upload works properly across all devices",
+        "Verify that the uploaded file is displayed in the user's profile",
+        "Verify that the admin can access and download the uploaded file",
+        "Verify that we can upload supported file types set from global settings",
+        "Verify that we can upload selected file types set from global settings",
+        "Verify that the updated settings are applied dynamically",
+        "Verify Creating a New Frontend Listing",
+        "Verify Working Of Listing Layout as Grid",
+        "Verify Working of Listing Layout as Lists",
+        "Verify Working Display Profile Picture Toggle",
+        "Verify Working of display Sorter Toggle",
+        "Verify Working Of Enable View Profile Toggle",
+        "Verify Working of Display Search Form Toggle",
+        "Verify Working of Display Advance Filter Toggle",
+        "Verify Working of Display Amount Filter Toggle",
+        "Admin >> Add new Private Note",
+        "Admin >> Add new Private Note >> Empty Title",
+        "Admin >> Add new Private note >> Empty Note description",
+        "Admin >> Add new Private Note >> Enable Reply",
+        "Admin >> Add new Private Note >> Disable Reply",
+        "Admin >> Add new Private Note >> File Upload",
+        "Admin >> Add new Private Note >> Select Target Audience >> All users",
+        "Admin >> Add new Private Note >> Select Target Audience >> Role",
+        "Admin >> Add new Private Note >> Select Target Audience >> Specific User",
+        "Admin >> Edit Note",
+        "Admin >> Delete Note",
+        "Admin >> Delete note in bulk",
+        "User >> Add replies to the note",
+        "User >> Add replies to the note >> Upload file",
+        "Admin >> Note Reply >> Add reply",
+        "Admin >> Note Reply >> Add reply with file",
+        "Admin >> Note Reply >> Delete Reply",
+        "Admin >> Note Reply >> Delete Reply in bulk",
+        "Admin >> Save and Continue >> Enable Save and Continue",
+        "Admin >> Save and Continue >> Disable Save and Continue",
+        "Admin >> Save and Continue >> Verify visibility of tooltips",
+        "Admin >> Save and Continue >> Change the button label",
+        "Admin >> Save and Continue >> Set the button class name",
+        "Admin >> Save and Continue >> Link Expiration Period >> In a week",
+        "Admin >> Save and Continue >> Link Expiration Period >> In two weeks",
+        "Admin >> Save and Continue >> Link Expiration Period >> In a month",
+        "Admin >> Save and Continue >> Confirmation Title",
+        "Admin >> Save and Continue >> Confirmation Message",
+        "Admin >> Save and Continue >> Copy Link",
+        "Admin >> Save and Continue >> Email Verification >> Using form email",
+        "Admin >> Save and Continue >> Email Verification >> Using email input",
+        "Admin >> Save and Continue >> Email Verification >> Empty email",
+        "Admin >> Save and Continue >> Field data persistence",
+        "Admin >> Two Factor Authentication >> Roles to Enforce 2FA >> Subscriber",
+        "Admin >> Two Factor Authentication >> Roles to Enforce 2FA >> Contributor",
+        "Admin >> Two Factor Authentication >> Roles to Enforce 2FA >> Author",
+        "Admin >> Two Factor Authentication >> Roles to Enforce 2FA >> Editor",
+        "Admin >> Two Factor Authentication >> Enforce 2FA for All Users >> Enable",
+        "Admin >> Two Factor Authentication >> Enforce 2FA for All Users >> Disable",
+        "Admin >> Two Factor Authentication >> OTP Settings >> OTP Length",
+        "Admin >> Two Factor Authentication >> OTP Settings >> OTP Expiry Time",
+        "Admin >> Two Factor Authentication >> OTP Settings >> OTP Resend Limit & Resend OTP Hold Period",
+        "Admin >> Two Factor Authentication >> OTP Settings >> Incorrect OTP Limit & Login Hold Period",
+        "Frontend >> Two Factor Authentication >> Login with Two Factor Authentication",
+        "Frontend >> Two Factor Authentication >> Resend Authentication code",
+        "Frontend >> Two Factor Authentication >> Missing Authentication code",
+        "Validate whole site restriction",
+        "Validate full content restriction",
+        "Validate diasbaling full content restriction",
+        "Validate Partial Content Restriction",
+        "Validate Allow Access to >> Choose Specific Roles >> Administrator",
+        "Validate Allow Access to >> Choose Specific Roles >> Subscriber",
+        "Validate Content Restriction >> Restricted Content Message",
+        "Verify Content Rule for Restrict >> Roles: Subscriber, Target Content: Pick Posts, Action: Show Message",
+        "Verify Content Rule for Restrict >> Roles: Administrator, Target Content: Pick Posts, Action: Show Message",
+        "Verify Content Rule for Restrict >> User State: Logout, Target Content: Pick Pages, Action: Show Message",
+        "Verify Content Rule for Restrict >> User State: LoggeIn, Target Content: Pick Pages, Action: Show Message",
+        "Verify Content Rule for Restrict >> User State: Logout, Target Content: Pick Pages, Action: Redirect",
+        "Verify Content Rule for Restrict >> User State: Logout, Target Content: Pick Pages, Action: Redirect to a Local Page",
+        "Verify Content Rule for Restrict >> User State: Logout, Target Content: Pick Pages, Action: Show UR Form",
+        "Verify Content Rule for Restrict >> User State: Logout, Target Content: Whole Site, Action: Render Shortcode > Login form",
+        "Verify Content Rule for Restrict >> User Assets Based: Email Domain, Target Content: Pick Pages, Action: Show Message",
+        "Verify Content Rule for Restrict >> Others: User Registration Source, Target Content: Pick Pages, Action: Show Message",
+        "Verify Content Rule for Restrict >> Others: UR Form Field, Target Content: Pick Pages, Action: Show Message> Modify Restrict Message",
+        "Validate Basic Email Templates Setup Navigation",
+        "Validate custome email template can be added properly",
+        "Validate Selected Email template Applied on Actual Email Delivery >> E2E",
+        "Validate Stripe can be configured Successfully with valid test keys",
+        "Validate Stripe Can Be link to normal registration form",
+        "Validate Payment History Generated For Submitted User",
+        "Validate Payment details on user end",
+        "Validate authorize can be configured Successfully with valid test keys",
+        "Validate authorize can Be link to normal registration form",
+        "Validate Payment History Generated For Submitted User",
+        "Validate Payment details on user end",
+        "Validate mollie can be configured Successfully with valid test keys",
+        "Validate Mollie integration with a normal registration form and validate frontend payment.",
+        "Validate Payment History And Mollie API Transaction Integrity",
+        "Validate Payment details on user end",
+        "Validate Paypal Form Integration, Checkout Flow, and API Order Validation >> E2E",
+        "Validate Payment History Generated For Submitted User",
+        "Validate Payment details on user end",
+        "Validate add new endpoint",
+        "Validate disabled endpoint behaviour in my account",
+        "Validate remove endpoint",
+        "Validate advanced settings customizer load properly",
+        "Verify MaxMind Settings Are Available Under Integration Geolocation",
+        "Verify MaxMind Settings Persist After Save",
+        "Verify Local Currency Enable Geolocation Shows Redirect Notice Instead Of Inline MaxMind Fields",
+        "Verify Geolocation Settings Section Reflects Addon Activation State"
+      ]
+    },
+    {
+      "area": "09-ur-membership",
+      "file": "testcases/09-ur-membership.md",
+      "tests": 58,
+      "documented": 31,
+      "assertions": 166,
+      "locators": 12,
+      "titles": [
+        "Verify Admin Membership Basic Navigation : Memberships , Add New , Create Group , Members",
+        "Verify the creation of a new membership plan >> Free",
+        "Verify the creation of a new membership plan >> Paid",
+        "Verify the creation of a new membership plan >> Subscription",
+        "Verify Membership Registration Process >> E2E",
+        "Verify the creation of a new membership plan with content restriction checks",
+        "Validate that restricted content can be accessed by authorized members",
+        "Verify Super Admin Bypasses Membership Content Restriction",
+        "Verify Non-Member Logged-In User Is Still Restricted From Membership Content",
+        "Verify user can upgrade from free plan to one-time paid plan",
+        "Verify Upgrade Is Rejected With Invalid Payment Method",
+        "Verify User Cannot Upgrade Another Users Subscription",
+        "Verify only assigned upgrade plans are shown to current member",
+        "Verify Stripe Upgrade: Free Plan to One-Time Paid Plan",
+        "Verify Stripe Upgrade: Free Plan to Subscription Plan",
+        "Verify PayPal Upgrade: Free Plan to One-Time Paid Plan",
+        "Verify PayPal Upgrade: Free Plan to Subscription Plan",
+        "Verify membership upgrade action is visible for eligible member >> Upgrade Action E2E",
+        "Verify Stripe Payment Intent Is Fully Succeeded For One-Time Membership Plan",
+        "Verify Stripe Customer And Active Subscription Created For Subscription Membership Plan",
+        "Verify Stripe Subscription Auto Renewal Is Correctly Configured",
+        "Verify Declined Card Does Not Create Active Membership",
+        "Verify Free Payment Method Is Rejected For Paid Stripe Membership",
+        "Verify PayPal Order Is Completed For One-Time Membership Plan",
+        "Verify Membership Is Activated In Admin After PayPal Payment",
+        "Verify PayPal Cancellation Does Not Create Active Membership",
+        "Verify PayPal Subscription Is Activated For Subscription Membership Plan",
+        "Verify PayPal Subscription Billing Details Match Plan Configuration",
+        "Verify PayPal Subscription Webhook Event Is Fired On Activation",
+        "Verify Free Payment Method Is Rejected For Paid PayPal Membership",
+        "Verify PayPal Webhook Rejects Invalid Signature",
+        "Verify PayPal Webhook Fails Closed When Webhook ID Not Configured",
+        "Verify Authorize.net Transaction Is Valid For One-Time Membership Plan",
+        "Verify Membership Is Activated In Admin After Authorize.net Payment",
+        "Verify Declined Card Does Not Create Active Membership",
+        "Verify Subscription Membership Is Activated After Authorize.net Payment",
+        "Verify Mollie Transaction Is Valid For One-Time Membership Plan",
+        "Verify Membership Is Activated In Admin After Mollie Payment",
+        "Verify Subscription Membership Is Activated After Mollie Payment",
+        "Validate Payment Successful Email For One-Time Stripe Membership",
+        "Validate Payment Successful Email For Subscription Stripe Membership",
+        "Validate Payment Received Email Sent To Admin For Stripe Membership",
+        "Verify Multiple Membership Purchase Succeeds For A Plan Inside An Allow-Multiple Group",
+        "Verify Multiple-Membership Policy Enforcement Does Not Depend On The Type Parameter",
+        "Verify Multiple Membership Purchase Is Rejected For A Plan Outside Any Allow-Multiple Group",
+        "Verify Mollie Subscription Does Not Charge First Billing Cycle Twice",
+        "Verify Expired Coupon Does Not Discount Stripe Checkout",
+        "Verify Plan-Restricted Coupon Does Not Discount Stripe Checkout For A Different Plan",
+        "Verify Expired Coupon Does Not Discount PayPal Checkout",
+        "Verify Stripe Subscription Enters Grace Period On Cancellation And Reactivation Reverts It",
+        "Verify PayPal Subscription Is Suspended On Cancellation And Reactivation Reverts It",
+        "Verify Subscription Expires And Is Fully Cancelled After Cron Runs Following Grace Period",
+        "Verify Subscription Based Plan Is Blocked For Free Version >> Upsell Gating",
+        "Verify Registration Succeeds With No Frontend Form Nonce Present",
+        "Verify Pending Bank Transfer Membership Does Not Block Login",
+        "Verify User Cannot Cancel Another Members Pending Email Change",
+        "Verify CSV Export Neutralizes A Formula Injection Payload",
+        "PayPal Tampered Order Token Is Rejected On Capture"
+      ]
+    },
+    {
+      "area": "05--setting-login-options",
+      "file": "testcases/05--setting-login-options.md",
+      "tests": 33,
+      "documented": 0,
+      "assertions": 131,
+      "locators": 45,
+      "titles": [
+        "Login with Email when Username is selected",
+        "Login with Email when Email is selected",
+        "Login with Username when Email is selected",
+        "Login with Username when Username is selected",
+        "Login with Username and email both is selected and login with Username",
+        "Login with Username and email both is selected and login with Email",
+        "Validate that loss password hyperlink is shown in Login Page while enabling loss password from General",
+        "Validate that loss password hyperlink is not shown in Login Page while disabling loss password from General",
+        "Validate that login title is shown in the login page while enabling login title in General",
+        "Validate that login title is not shown in the login page while disabling login title in General",
+        "Validate whether 'Not a member yet? Register now.' is displayed or not",
+        "Validate whether 'Not a member yet? Register now.' is hidden or not",
+        "Form Login and edit profile is working properly in Ajax",
+        "Form Login and edit profile is working properly in Post.",
+        "Validate Hide Field Labels",
+        "Validate disable Hide Field Labels",
+        "Validate when 'Disable Default WordPress Login Screen' is enabled",
+        "Verify Message >> Username Required",
+        "Verify Message >> Empty Password",
+        "Verify Message >> Invalid/Unknown Username",
+        "Verify Message >> Unknown Email",
+        "Verify Message >> Pending Approval",
+        "Verify Message >> Denied Account",
+        "Verify Success Message >> Auto Approval And Manual Login",
+        "Verify Success Message >> Auto Approval After Email Confirmation",
+        "Verify Success Message >> Admin Approval",
+        "Verify Error Message >> Required",
+        "Verify Error Message >> Special Character Validation in Username",
+        "Verify Error Message >> Email",
+        "Verify Error Message >> Website Url",
+        "Verify Error Message >> Number",
+        "Verify Error Message >> Confirm Email",
+        "Verify Error Message >> Confirm Password"
+      ]
+    },
+    {
+      "area": "02--form-settings",
+      "file": "testcases/02--form-settings.md",
+      "tests": 13,
+      "documented": 0,
+      "assertions": 68,
+      "locators": 2,
+      "titles": [
+        "Validate password Strength Very Weak",
+        "Validate password Strength Weak",
+        "Validate password Strength Medium",
+        "Validate password Strength Strong",
+        "Validate User Approval and Login Options (Auto Approval and Manual Login)",
+        "Validate User Approval and Login Options (Auto Approval Auto Login)",
+        "Validate User Approval and Login Options (Admin approval)",
+        "Validate User Approval and Login Options (Auto Approval after email confirmation)",
+        "Validate User Approval and Login Options (Admin approval after email confirmation)",
+        "Validate the Working of Blacklist Domain(Denied Domains)",
+        "Validate the Working of Whitelist Domain(Allowed Domains)",
+        "Validate the Working of Blacklist Domain(Denied Domains) with two domains entries",
+        "Validate the Working of Whitelist Domain(Allowed Domains) with two domain entries"
+      ]
+    },
+    {
+      "area": "06--email-related-tests",
+      "file": "testcases/06--email-related-tests.md",
+      "tests": 11,
+      "documented": 0,
+      "assertions": 57,
+      "locators": 17,
+      "titles": [
+        "Verify admin approval with approval link email and also approve user through email",
+        "Verify admin approval with approval link email and also deny user through email",
+        "Validate Auto Generated Password Email",
+        "Validate email sent to admin after user's account deletion",
+        "Validate Delete Account>>Direct Delete and also verify user email",
+        "Validate Delete Account>> Prompt password popup before delete account and also verify user email",
+        "Validate Admin Email and Successfully Registered Email",
+        "Validate Registration Pending Email, Registration Denied Email and Registration Approved Email",
+        "Validate Email Confirmation",
+        "Validate Forget Password",
+        "Validate passwordless login"
+      ]
+    },
+    {
+      "area": "07--setting-misc",
+      "file": "testcases/07--setting-misc.md",
+      "tests": 7,
+      "documented": 0,
+      "assertions": 69,
+      "locators": 36,
+      "titles": [
+        "Validate working of popup type>> Registration popup",
+        "Validate register user in registration popup form",
+        "Validate working of popup type>> Login popup",
+        "Validate login user in login popup form",
+        "Validate enable privacy option",
+        "Validate Redirection after login settings>> subscriber",
+        "Validate Redirection after logout settings>> Subscriber"
+      ]
+    },
+    {
+      "area": "04--setting-general-options",
+      "file": "testcases/04--setting-general-options.md",
+      "tests": 6,
+      "documented": 0,
+      "assertions": 33,
+      "locators": 11,
+      "titles": [
+        "Validate when 'Prevent WP Dashboard Access' is not enabled",
+        "Validate when 'Prevent WP Dashboard Access' is enabled",
+        "Validate when 'Enable Hide/Show Password' is enabled",
+        "Validate when 'Enable Hide/Show Password' is disabled",
+        "Validate disable profile picture from general",
+        "Validate enable profile picture from general"
+      ]
+    },
+    {
+      "area": "01--form-builder",
+      "file": "testcases/01--form-builder.md",
+      "tests": 3,
+      "documented": 3,
+      "assertions": 6,
+      "locators": 0,
+      "titles": [
+        "Validate working of Drag and Drop of all Fields",
+        "Validate that Label and Description of Fields are changed",
+        "Validate Working of Hide Label Field Option"
+      ]
+    },
+    {
+      "area": "03--my-account",
+      "file": "testcases/03--my-account.md",
+      "tests": 3,
+      "documented": 0,
+      "assertions": 27,
+      "locators": 14,
+      "titles": [
+        "Validate working of Edit profile",
+        "Validate Change password when entering same current password and new password",
+        "Validate Change password when entering new password"
+      ]
+    },
+    {
+      "area": "00-plugin-installation",
+      "file": "testcases/00-plugin-installation.md",
+      "tests": 1,
+      "documented": 0,
+      "assertions": 0,
+      "locators": 0,
+      "titles": [
+        "Upload And Activate Plugin From Zip >> Fresh Installation"
+      ]
+    },
+    {
+      "area": "ur-dbtest",
+      "file": "testcases/ur-dbtest.md",
+      "tests": 1,
+      "documented": 0,
+      "assertions": 1,
+      "locators": 0,
+      "titles": [
+        "Plugin Option Exists In WP Options"
+      ]
+    }
+  ],
+  "suggested_areas": [
+    "08--addons",
+    "09-ur-membership",
+    "05--setting-login-options",
+    "02--form-settings",
+    "06--email-related-tests",
+    "07--setting-misc",
+    "04--setting-general-options",
+    "01--form-builder",
+    "03--my-account",
+    "00-plugin-installation",
+    "ur-dbtest"
+  ],
+  "shared_keywords": 1221,
+  "totals": {
+    "tests": 310,
+    "documented": 44,
+    "assertions": 880
+  },
+  "tags": [
+    {
+      "tag": "free",
+      "tests": 44,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "core_feature",
+      "tests": 36,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "ci_cd",
+      "tests": 16,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "negative",
+      "tests": 15,
+      "looks_like": "facet"
+    },
+    {
+      "tag": "security",
+      "tests": 14,
+      "looks_like": "facet"
+    },
+    {
+      "tag": "subscription",
+      "tests": 14,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "email",
+      "tests": 13,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "one_time",
+      "tests": 13,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "pro",
+      "tests": 10,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "ur-fix-5.2.5",
+      "tests": 10,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "membership_upgrade",
+      "tests": 9,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "stripe",
+      "tests": 9,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "paypal_sync",
+      "tests": 9,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "payment_smoke",
+      "tests": 7,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "login",
+      "tests": 6,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "auth_validation",
+      "tests": 6,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "vulnerability_ur4561",
+      "tests": 6,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "membership_activation",
+      "tests": 6,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "paypal",
+      "tests": 5,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "stripe_sync",
+      "tests": 5,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "ur-fix-3319",
+      "tests": 4,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "gateway_validation",
+      "tests": 4,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "authorize_sync",
+      "tests": 4,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "payment_setup",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "stripe_registration_flow",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "paypal_registration_flow",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "subscription_activation",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "webhook",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "mollie_sync",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "needs_investigation",
+      "tests": 3,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "role_based_redirection",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "content_access",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "need_refactor",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "declined_card",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "payment_bypass",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "vulnerability_ur4556",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "vulnerability_ur4555",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "payment_transaction",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "p1",
+      "tests": 2,
+      "looks_like": "facet"
+    },
+    {
+      "tag": "p0",
+      "tests": 2,
+      "looks_like": "facet"
+    },
+    {
+      "tag": "needs_locator_check",
+      "tests": 2,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "build_verification",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "addons_smoke",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "addons_activation_check",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "stripe_setup",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "membership_smoke",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "membership_e2e",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "redundant",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "idor",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "payment_intent",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "customer",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "auto_renewal",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "payment_order",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "cancellation",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "billing_details",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "core",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "admin",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "vulnerability_ur4623",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "mollie",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "vulnerability_ur4628",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "expiry",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "cron",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "needs_wp_crontrol",
+      "tests": 1,
+      "looks_like": "feature"
+    },
+    {
+      "tag": "free_version",
+      "tests": 1,
+      "looks_like": "feature"
+    }
+  ]
+}

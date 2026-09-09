@@ -8,7 +8,7 @@
         "url": "https://github.com/wpeverest/user-registration.git"
     },
     "license": "GPL-3.0+",
-    "packageManager": "pnpm@9.15.9",
+    "packageManager": "pnpm@10.30.3",
     "main": "Gruntfile.js",
     "scripts": {
         "build": "pnpm exec grunt && pnpm run makepot && wp-scripts build --node-env=production --mode=production",
@@ -34,10 +34,17 @@
         "typecheck": "tsc --noEmit",
         "qa-setup": "composer install --no-dev && pnpm install",
         "qa-build": "wp-scripts build --node-env=production --mode=production && grunt release",
-        "sonar": "docker run --rm -e SONAR_HOST_URL=\"https://sonarqube.themegrill.com/\" -e SONAR_TOKEN=\"%SONAR_TOKEN%\" -v \"%cd%:/usr/src\" sonarsource/sonar-scanner-cli"
+        "sonar": "docker run --rm -e SONAR_HOST_URL=\"https://sonarqube.themegrill.com/\" -e SONAR_TOKEN=\"%SONAR_TOKEN%\" -v \"%cd%:/usr/src\" sonarsource/sonar-scanner-cli",
+        "test:e2e": "playwright test",
+        "test:e2e:fresh": "playwright test --grep @fresh",
+        "test:e2e:demo": "playwright test --grep @demo",
+        "test:e2e:ui": "playwright test --ui",
+        "test:e2e:report": "playwright show-report",
+        "test:e2e:install": "playwright install chromium"
     },
     "devDependencies": {
         "@lodder/grunt-postcss": "^3.1.1",
+        "@playwright/test": "1.57.0",
         "@radix-ui/react-tabs": "^1.1.13",
         "@types/node": "^25.0.3",
         "@types/react": "18.3.1",

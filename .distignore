@@ -16,3 +16,4 @@ package.json
 phpcs.xml
 /tests/
 phpunit.watcher.yml.dist
+playwright.config.ts
