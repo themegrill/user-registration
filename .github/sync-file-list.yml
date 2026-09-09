@@ -1,4 +1,4 @@
-wpeverest/user-registration-pro@develop:
+themegrill/user-registration-pro@develop:
     - source: assets
       exclude: |
         js/divi-vb-modules.js
