@@ -261,6 +261,7 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 * Fix      - Use timing-safe comparison for email confirmation and approval tokens.
 * Fix      - Stripe payment could be replayed to renew a membership without paying.
 * Fix      - Privilege escalation via membership role and open redirect after login.
+* Fix      - PayPal-paid membership role stayed pending until the member's next login.
 * Add      - `{{force_logout_url}}` smart tag for Pro's prevent concurrent login email.
 * Fix      - Expired membership could be renewed by replaying an earlier Stripe payment.
 * Fix      - Deactivate License button did nothing when pro-activation transient was set.
