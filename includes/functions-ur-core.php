@@ -7,7 +7,6 @@
  * @package UserRegistration/Functions
  * @version 1.0.0
  */
-
 use WPEverest\URMembership\Admin\Repositories\MembershipRepository;
 use WPEverest\URMembership\Admin\Repositories\MembersOrderRepository;
 use WPEverest\URMembership\Admin\Services\MembershipService;
