@@ -7,7 +7,7 @@
       "image": "extensions-json/sections/icons/advanced_fields.png",
       "excerpt": "Add customizable fields for collecting complex user data during registration.",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-advanced-fields/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-advanced-fields/",
       "plan": [
         "personal",
         "plus",
@@ -25,7 +25,7 @@
       "image": "extensions-json/sections/icons/woocommerce.png",
       "excerpt": "Sync the user registration form and processes with WooCommerce for seamless user data collection.",
       "category": "Integrations",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-woocommerce/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-woocommerce/",
       "plan": [
         "personal",
         "plus",
@@ -43,7 +43,7 @@
       "image": "extensions-json/sections/icons/advanced_fields.png",
       "excerpt": "Allow repeating fields for dynamic data input (e.g., multiple addresses or phone numbers).",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-repeater-fields/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-repeater-fields/",
       "plan": [
         "plus",
         "professional",
@@ -60,7 +60,7 @@
       "image": "extensions-json/sections/icons/customize_my_account.png",
       "excerpt": "Personalize the frontend \"My Account\" dashboard by adding tabs and designs.",
       "category": "Design",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-customize-my-account/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-customize-my-account/",
       "plan": [
         "plus",
         "professional",
@@ -77,7 +77,7 @@
       "image": "extensions-json/sections/icons/file_upload.png",
       "excerpt": "Allow users to upload files during registration (e.g., documents, images).",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-file-upload/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-file-upload/",
       "plan": [
         "personal",
         "plus",
@@ -95,7 +95,7 @@
       "image": "extensions-json/sections/icons/email_templates.png",
       "excerpt": "Customize the style of registration and login forms to match your website's branding.",
       "category": "Design",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-style-customizer/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-style-customizer/",
       "plan": [
         "plus",
         "professional",
@@ -112,7 +112,7 @@
       "image": "extensions-json/sections/icons/conditional_logic.png",
       "excerpt": "Build dynamic forms with conditions (e.g., fields shown/hidden based on user inputs).",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-conditional-logic/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-conditional-logic/",
       "plan": [
         "plus",
         "professional",
@@ -129,7 +129,7 @@
       "image": "extensions-json/sections/icons/multi_step_forms.png",
       "excerpt": "Divide forms into multiple steps to enhance the user experience for longer forms.",
       "category": "Design",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-multi-part/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-multi-part/",
       "plan": [
         "plus",
         "professional",
@@ -146,7 +146,7 @@
       "image": "extensions-json/sections/icons/field_visibility.png",
       "excerpt": "Control the visibility of specific fields depending on user input from other fields.",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-field-visibility/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-field-visibility/",
       "plan": [
         "plus",
         "professional",
@@ -163,7 +163,7 @@
       "image": "extensions-json/sections/icons/email_templates.png",
       "excerpt": "Customize the registration-related email templates for a more personalized experience.",
       "category": "Design",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-email-templates/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-email-templates/",
       "plan": [
         "plus",
         "professional",
@@ -180,7 +180,7 @@
       "image": "extensions-json/sections/icons/social_connect.png",
       "excerpt": "Allow users to log in or register using social media accounts (Facebook, Twitter, LinkedIn).",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-social-connect/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-social-connect/",
       "plan": [
         "personal",
         "plus",
@@ -198,7 +198,7 @@
       "image": "extensions-json/sections/icons/profile_connect.png",
       "excerpt": "Link users' existing accounts with the User Registration form.",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-profile-connect/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-profile-connect/",
       "plan": [
         "personal",
         "plus",
@@ -216,7 +216,7 @@
       "image": "extensions-json/sections/icons/mailchimp.png",
       "excerpt": "Automatically send registration data to Mailchimp to create and manage email campaigns.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-mailchimp/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-mailchimp/",
       "plan": [
         "personal",
         "plus",
@@ -234,7 +234,7 @@
       "image": "extensions-json/sections/icons/invite_codes.png",
       "excerpt": "Allow users to register using an exclusive code.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-invite-codes/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-invite-codes/",
       "plan": [
         "plus",
         "professional",
@@ -251,7 +251,7 @@
       "image": "extensions-json/sections/icons/pdf_form_submission.png",
       "excerpt": "Export or send registration data as downloadable PDFs in Emails or from dashboards.",
       "category": "Others",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-pdf-form-submission/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-pdf-form-submission/",
       "plan": [
         "personal",
         "plus",
@@ -269,7 +269,7 @@
       "image": "extensions-json/sections/icons/two_factor_authentication.png",
       "excerpt": "Add an extra layer of security by requiring a second authentication factor.",
       "category": "Security",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-two-factor-authentication/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-two-factor-authentication/",
       "plan": [
         "personal",
         "plus",
@@ -287,7 +287,7 @@
       "image": "extensions-json/sections/icons/import_users.png",
       "excerpt": "Import user data in bulk from CSV or other formats.",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-import-users/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-import-users/",
       "plan": [
         "plus",
         "professional",
@@ -304,7 +304,7 @@
       "image": "extensions-json/sections/icons/geolocation.png",
       "excerpt": "Collect geolocation data from users, either through automatic detection or via Google Maps integration.",
       "category": "Others",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-geolocation/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-geolocation/",
       "plan": [
         "plus",
         "professional",
@@ -321,7 +321,7 @@
       "image": "extensions-json/sections/icons/learndash.png",
       "excerpt": "Automatically assign users to specific LearnDash courses based on their registration.",
       "category": "Integrations",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-learndash/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-learndash/",
       "plan": [
         "plus",
         "professional",
@@ -338,7 +338,7 @@
       "image": "extensions-json/sections/icons/profile_completeness.png",
       "excerpt": "Track and encourage users to complete their profiles with progress bars.",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-profile-completeness/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-profile-completeness/",
       "plan": [
         "personal",
         "plus",
@@ -356,7 +356,7 @@
       "image": "extensions-json/sections/icons/stripe.png",
       "excerpt": "Enable Stripe to process credit card payments securely.",
       "category": "E-Commerce",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-stripe/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-stripe/",
       "plan": [
         "plus",
         "professional",
@@ -373,7 +373,7 @@
       "image": "extensions-json/sections/icons/private_notes.png",
       "excerpt": "Allow administrators to add private notes for specific users for better management.",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-private-notes/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-private-notes/",
       "plan": [
         "plus",
         "professional",
@@ -390,7 +390,7 @@
       "image": "extensions-json/sections/icons/zapier.png",
       "excerpt": "Automate workflows and connect User Registration with hundreds of other apps via Zapier.",
       "category": "Integrations",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-zapier/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-zapier/",
       "plan": [
         "plus",
         "professional",
@@ -407,7 +407,7 @@
       "image": "extensions-json/sections/icons/save_and_continue.png",
       "excerpt": "Enable users to save progress on long forms and continue later.",
       "category": "Others",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-save-and-continue/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-save-and-continue/",
       "plan": [
         "plus",
         "professional",
@@ -424,7 +424,7 @@
       "image": "extensions-json/sections/icons/active_campaign.png",
       "excerpt": "Connect with ActiveCampaign to automate user engagement and marketing tasks.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-activecampaign/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-activecampaign/",
       "plan": [
         "plus",
         "professional",
@@ -441,7 +441,7 @@
       "image": "extensions-json/sections/icons/post_submission.png",
       "excerpt": "Allow users to create posts directly from the registration form while registering.",
       "category": "Others",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-post-submission/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-post-submission/",
       "plan": [
         "plus",
         "professional",
@@ -458,7 +458,7 @@
       "image": "extensions-json/sections/icons/mailerlite.png",
       "excerpt": "Sync user registration data to MailerLite for effective email marketing.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/mailerlite/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/mailerlite/",
       "plan": [
         "plus",
         "professional",
@@ -475,7 +475,7 @@
       "image": "extensions-json/sections/icons/conversational_forms.png",
       "excerpt": "Turn traditional forms into interactive, chat-like experiences for users.",
       "category": "Design",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-conversational-forms/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-conversational-forms/",
       "plan": [
         "plus",
         "professional",
@@ -492,7 +492,7 @@
       "image": "extensions-json/sections/icons/form_restriction.png",
       "excerpt": "Restrict access with custom conditions and optimize your website's user registration system.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-form-restriction/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-form-restriction/",
       "plan": [
         "plus",
         "professional",
@@ -509,7 +509,7 @@
       "image": "extensions-json/sections/icons/klaviyo.png",
       "excerpt": "Integrate Klaviyo to sync registration data for email marketing automation.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-klaviyo/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-klaviyo/",
       "plan": [
         "plus",
         "professional",
@@ -526,7 +526,7 @@
       "image": "extensions-json/sections/icons/convertkit.png",
       "excerpt": "Sync registration data with ConvertKit to manage email marketing and automate campaigns.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-convertkit/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-convertkit/",
       "plan": [
         "plus",
         "professional",
@@ -543,7 +543,7 @@
       "image": "extensions-json/sections/icons/google_sheets.png",
       "excerpt": "Export registration data to Google Sheets for easy management and analysis.",
       "category": "Integrations",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-google-sheets/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-google-sheets/",
       "plan": [
         "plus",
         "professional",
@@ -560,7 +560,7 @@
       "image": "extensions-json/sections/icons/cloud_storage.png",
       "excerpt": "Send file upload data to the Integrated Cloud after registration form submission.",
       "category": "Integrations",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-cloud-storage/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-cloud-storage/",
       "plan": [
         "personal",
         "plus",
@@ -578,7 +578,7 @@
       "image": "extensions-json/sections/icons/authorize_net.png",
       "excerpt": "Use Authorize.net to handle secure transactions and process payments.",
       "category": "E-Commerce",
-      "link": "https://docs.wpuserregistration.com/docs/authorize-net/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/authorize-net/",
       "plan": [
         "plus",
         "professional",
@@ -595,7 +595,7 @@
       "image": "extensions-json/sections/icons/mollie.png",
       "excerpt": "Integrate Mollie to accept payments from various gateways (credit cards, SEPA, etc.).",
       "category": "E-Commerce",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-mollie/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-mollie/",
       "plan": [
         "plus",
         "professional",
@@ -612,7 +612,7 @@
       "image": "extensions-json/sections/icons/mailpoet.png",
       "excerpt": "Manage newsletters and automate email communications with MailPoet.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-mailpoet/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-mailpoet/",
       "plan": [
         "plus",
         "professional",
@@ -629,7 +629,7 @@
       "image": "extensions-json/sections/icons/brevo.png",
       "excerpt": "Sync registration data to Sendinblue to manage email marketing, SMS campaigns, and automation.",
       "category": "Email Marketing",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-brevo-sendinblue/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-brevo-sendinblue/",
       "plan": [
         "plus",
         "professional",
@@ -646,7 +646,7 @@
       "image": "extensions-json/sections/icons/salesforce.png",
       "excerpt": "Integrate user registration with Salesforce to manage leads, contacts, and customer data.",
       "category": "Integrations",
-      "link": "https://docs.wpuserregistration.com/docs/salesforce/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/salesforce/",
       "plan": [
         "plus",
         "professional",
@@ -663,7 +663,7 @@
       "image": "extensions-json/sections/icons/membership.png",
       "excerpt": "Create custom membership plans and control website access for user registrations.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-membership/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-membership/",
       "plan": [
         "plus",
         "professional",
@@ -680,7 +680,7 @@
       "image": "extensions-json/sections/icons/content_restriction.png",
       "excerpt": "Restrict access to specific pages or content sections based on user data.",
       "category": "Membership",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-content-restriction/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-content-restriction/",
       "plan": [
         "plus",
         "personal",
@@ -698,7 +698,7 @@
       "image": "extensions-json/sections/icons/frontend_listing.png",
       "excerpt": "Display users registered on the site as a directory (for community sites or directories).",
       "category": "User Management",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-frontend-listing/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-frontend-listing/",
       "plan": [
         "plus",
         "professional",
@@ -714,7 +714,7 @@
       "image": "extensions-json/sections/icons/calculations.png",
       "excerpt": "Performs calculations based on user input during registration.",
       "category": "Smart Fields",
-      "link": "https://docs.wpuserregistration.com/docs/user-registration-calculations/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-calculations/",
       "plan": [
         "plus",
         "professional",

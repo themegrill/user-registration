@@ -213,7 +213,14 @@ class UR_Email_Confirmation {
 		if ( ! isset( $_GET['ur_token'] ) || empty( $_GET['ur_token'] ) ) {
 			return;
 		} else {
-			$ur_token     = str_split( sanitize_text_field( wp_unslash( $_GET['ur_token'] ) ), 50 );
+			$ur_token_raw = sanitize_text_field( wp_unslash( $_GET['ur_token'] ) );
+			$ur_token     = str_split( $ur_token_raw, 50 );
+
+			// A token of 50 characters or fewer has no second chunk, so there is nothing to decrypt.
+			if ( count( $ur_token ) < 2 ) {
+				return;
+			}
+
 			$token_string = $ur_token[1];
 
 			if ( 2 < count( $ur_token ) ) {
@@ -234,7 +241,7 @@ class UR_Email_Confirmation {
 			// Check if the token matches the token value stored in db.
 			$login_option = ur_get_user_login_option( $user_id );
 
-			if ( $user_token === $_GET['ur_token'] && ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) ) {
+			if ( hash_equals( (string) $user_token, $ur_token_raw ) && ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) ) {
 				$token_expiration_duration = 24 * 60 * 60;
 				/**
 				 * Filter hook to modify the token expiration duration.

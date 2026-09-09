@@ -57,7 +57,7 @@ $endpoint_label = isset( $args['endpoint_label'] ) ? $args['endpoint_label'] : '
 					<p class="existing-users">
 					<strong>Existing users:</strong> Your site has <span class="highlight"><?php echo $existing_non_urm_user; ?> users</span> registered before this plugin.
 					Want them to enjoy the new profile features too? Use the
-					<a class="addon-link" href="https://wpuserregistration.com/features/profile-connect/?utm_source=my-account&utm_medium=profile-connect-addon-link&utm_campaign=<?php echo UR()->utm_campaign; ?>" rel="noreferrer noopener" target="_blank">Profile Connect addon</a> to link these existing users to your new registration form.
+					<a class="addon-link" href="<?php echo esc_url( ur_utm_url( 'https://wpuserregistration.com/features/profile-connect/', array( 'source' => 'my-account', 'medium' => 'button', 'content' => 'profile-connect' ) ) ); ?>" rel="noreferrer noopener" target="_blank">Profile Connect addon</a> to link these existing users to your new registration form.
 					</p>
 				<?php endif; ?>
 			</div>

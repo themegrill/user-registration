@@ -495,6 +495,7 @@ class URCR_Admin_Assets {
 			),
 			'is_drip_content'                        => ur_check_module_activation( 'content-drip' ),
 			'is_masteriyo'                           => ur_check_module_activation( 'masteriyo-course-integration' ),
+			'utm_campaign'                           => UR()->utm_campaign,
 
 		);
 
