@@ -1010,8 +1010,8 @@ if ( ! class_exists( 'Admin' ) ) :
 		 * @return bool True when the evaluated user can manage the site's options.
 		 */
 		public function can_manage_membership_meta( $allowed = false, $meta_key = '', $object_id = 0, $user_id = 0, $cap = '', $caps = array() ) {
-			// Further restrict, never override: an earlier deny in the auth chain must stand.
-			return $allowed && user_can( $user_id, 'manage_options' );
+			// Check the user WordPress is evaluating, not the current request user, so the callback is correct when caps are tested for another user.
+			return user_can( $user_id, 'manage_options' );
 		}
 
 		/**

@@ -32,6 +32,78 @@ function ur_maybe_define_constant( $name, $value ) {
 	}
 }
 
+if ( ! function_exists( 'ur_utm_allowed_mediums' ) ) {
+	/**
+	 * Allowed utm_medium values for outbound marketing links.
+	 *
+	 * @since 5.2.8
+	 * @return string[]
+	 */
+	function ur_utm_allowed_mediums() {
+		return array( 'upgrade-link', 'button', 'popup', 'menu-link', 'notice' );
+	}
+}
+
+if ( ! function_exists( 'ur_utm_url' ) ) {
+	/**
+	 * Build a marketing URL with standardized UTM parameters.
+	 *
+	 * Order is always source → medium → campaign → content.
+	 * Campaign defaults to UR()->utm_campaign (lite-version / pro-version).
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param string $base_url Base URL without UTM params (fragments preserved).
+	 * @param array  $args {
+	 *     @type string $source   Required. Granular UI location (lowercase-hyphenated).
+	 *     @type string $medium   Required. One of ur_utm_allowed_mediums(); falls back to button.
+	 *     @type string $campaign Optional. Defaults to UR()->utm_campaign.
+	 *     @type string $content  Optional. What was clicked (addon/feature slug, etc.).
+	 * }
+	 * @return string
+	 */
+	function ur_utm_url( $base_url, $args = array() ) {
+		$args = wp_parse_args(
+			$args,
+			array(
+				'source'   => '',
+				'medium'   => 'button',
+				'campaign' => '',
+				'content'  => '',
+			)
+		);
+
+		$source = sanitize_title( (string) $args['source'] );
+		if ( '' === $source ) {
+			$source = 'wp-admin';
+		}
+
+		$medium = sanitize_title( (string) $args['medium'] );
+		if ( ! in_array( $medium, ur_utm_allowed_mediums(), true ) ) {
+			$medium = 'button';
+		}
+
+		$campaign = (string) $args['campaign'];
+		if ( '' === $campaign ) {
+			$campaign = ( function_exists( 'UR' ) && UR() ) ? (string) UR()->utm_campaign : 'lite-version';
+		}
+		$campaign = sanitize_title( $campaign );
+
+		$query = array(
+			'utm_source'   => $source,
+			'utm_medium'   => $medium,
+			'utm_campaign' => $campaign,
+		);
+
+		$content = sanitize_title( (string) $args['content'] );
+		if ( '' !== $content ) {
+			$query['utm_content'] = $content;
+		}
+
+		return add_query_arg( $query, esc_url_raw( trim( $base_url ) ) );
+	}
+}
+
 if ( ! function_exists( 'is_ur_endpoint_url' ) ) {
 
 	/**
@@ -456,7 +528,7 @@ function ur_render_premium_feature_gate_template( $args = array() ) {
 	}
 
 	if ( empty( $args['upgrade_url'] ) ) {
-		$args['upgrade_url'] = 'https://wpuserregistration.com/upgrade/?utm_source=' . esc_attr( $args['utm_source'] ) . '&utm_medium=upgrade-link&utm-campaign=lite-version';
+		$args['upgrade_url'] = ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => $args['utm_source'], 'medium' => 'upgrade-link' ) );
 	}
 
 	static $rendered_templates = array();
@@ -497,7 +569,7 @@ function ur_render_premium_feature_gate( $args = array() ) {
 		return;
 	}
 
-	$args['upgrade_url'] = 'https://wpuserregistration.com/upgrade/?utm_source=' . esc_attr( $args['utm_source'] ) . '&utm_medium=upgrade-link&utm-campaign=lite-version';
+	$args['upgrade_url'] = ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => $args['utm_source'], 'medium' => 'upgrade-link' ) );
 
 	if ( ! empty( $args['render_template'] ) ) {
 		ur_render_premium_feature_gate_template( $args );
@@ -1299,6 +1371,61 @@ function ur_get_default_admin_roles() {
 	 * @param array $all_roles An array of all available user roles.
 	 */
 	return apply_filters( 'user_registration_user_default_roles', $all_roles );
+}
+
+if ( ! function_exists( 'ur_registration_role_is_privileged' ) ) {
+	/**
+	 * Whether a role carries administrator-tier capabilities.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param string $role Role key.
+	 * @return bool True if the role must never be auto-assigned to an anonymous registration.
+	 */
+	function ur_registration_role_is_privileged( $role ) {
+		$wp_role = get_role( $role );
+
+		// Fail closed: an unrecognized role is never safe to auto-assign.
+		if ( ! $wp_role ) {
+			return true;
+		}
+
+		$default_restricted_caps = array(
+			'manage_options',
+			'edit_others_posts',
+			'edit_users',
+			'delete_users',
+			'create_users',
+			'promote_users',
+			'install_plugins',
+			'edit_plugins',
+			'delete_plugins',
+			'edit_theme_options',
+			'unfiltered_html',
+			'update_core',
+		);
+
+		/**
+		 * Filters the capabilities that mark a role too privileged to be
+		 * auto-assigned to an anonymous public registration.
+		 *
+		 * @param array $restricted_caps Capability keys.
+		 */
+		$restricted_caps = apply_filters( 'user_registration_restricted_registration_capabilities', $default_restricted_caps );
+
+		// Fail closed: an invalid filter return must not silently disable the check.
+		if ( ! is_array( $restricted_caps ) ) {
+			$restricted_caps = $default_restricted_caps;
+		}
+
+		foreach ( $restricted_caps as $cap ) {
+			if ( ! empty( $wp_role->capabilities[ $cap ] ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
 }
 
 
@@ -4479,7 +4606,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Choose from 6 ready-made email templates',
 							'Customize layout, colors, and content',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/email-templates/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/email-templates/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'email-templates' ) ),
 					),
 				),
 				'custom-email' => array(
@@ -4493,7 +4620,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Configure scheduled emails for members',
 							'Choose recipients and personalize email content',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/email-notifications/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/email-notifications/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'email-notifications' ) ),
 					),
 				),
 			),
@@ -4509,7 +4636,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Supports 5 major platforms, including Facebook and Google ',
 							'Configure each social platform individually',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/social-connect/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/social-connect/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'social-connect' ) ),
 					),
 				),
 				'profile-connect' => array(
@@ -4523,7 +4650,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Select which forms or sources to import users from',
 							'Map fields to keep user data consistent',
 						),
-						'feature_link' => ' https://wpuserregistration.com/features/profile-connect/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/profile-connect/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'profile-connect' ) ),
 					),
 				),
 				'invite-code'     => array(
@@ -4537,7 +4664,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Customize popup content and appearance',
 							'Customize layout, colors, and content',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/invite-codes/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/invite-codes/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'invite-codes' ) ),
 					),
 				),
 				'file-upload'     => array(
@@ -4552,7 +4679,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Support 10+ file types, including PDF and PNG',
 							'Set upload size limits for better control',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/file-upload/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/file-upload/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'file-upload' ) ),
 					),
 				),
 			),
@@ -4569,7 +4696,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Add custom links and account sections',
 							'Style individual dashboard elements',
 						),
-						'feature_link' => ' https://wpuserregistration.com/features/customize-my-account/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/customize-my-account/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'customize-my-account' ) ),
 					),
 				),
 			),
@@ -4588,7 +4715,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Automatically subscribe users to ActiveCampaign lists upon registration',
 									'Auto-update subscriber details when members edit their profiles',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/activecampaign/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/activecampaign/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'activecampaign' ) ),
 							),
 						),
 						'brevo'          => array(
@@ -4602,7 +4729,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Sync member data to Brevo contact lists automatically',
 									'Use conditional logic for targeted list segmentation',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/brevo/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/brevo/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'brevo' ) ),
 							),
 						),
 						'convertkit'     => array(
@@ -4616,7 +4743,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Map signup form fields to Kit custom fields',
 									'Subscribe users to specific Kit forms, tags, or sequences',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/kit/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/kit/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'kit' ) ),
 							),
 						),
 						'klaviyo'        => array(
@@ -4630,7 +4757,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Auto-sync member details when profiles are updated',
 									'Automatically unsubscribe deleted users from Klaviyo',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/klaviyo/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/klaviyo/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'klaviyo' ) ),
 							),
 						),
 						'mailchimp'      => array(
@@ -4644,7 +4771,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Add custom tags to segment your membership lists',
 									'Map User Registration fields to Mailchimp merge tags',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/mailchimp/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/mailchimp/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'mailchimp' ) ),
 							),
 
 						),
@@ -4659,7 +4786,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Auto-sync member profile updates to MailerLite',
 									'Create multiple connections for different campaigns',
 								),
-								'feature_link' => ' https://wpuserregistration.com/features/mailerlite/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/mailerlite/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'mailerlite' ) ),
 							),
 						),
 						'mailpoet'       => array(
@@ -4673,7 +4800,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Use conditional logic for targeted list building',
 									'Perfect for WordPress-native email marketing',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/mailpoet/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/mailpoet/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'mailpoet' ) ),
 							),
 						),
 						'zapier'         => array(
@@ -4688,7 +4815,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Trigger actions on user signup, profile update, or deletion',
 									'Create automated workflows without coding ',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/zapier/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/zapier/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'zapier' ) ),
 							),
 						),
 					),
@@ -4706,7 +4833,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Automatically attach PDF files to admin and user emails on form submission',
 							'Customize PDF templates with header logos and branding',
 						),
-						'feature_link' => ' https://wpuserregistration.com/features/pdf-form-submission/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/pdf-form-submission/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'pdf-form-submission' ) ),
 					),
 				),
 				'sms-integration' => array(
@@ -4720,7 +4847,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Connect with Twilio for SMS delivery',
 							'Enable OTP-based login and registration verification',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/sms-integration/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/sms-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'sms-integration' ) ),
 					),
 				),
 				'google-sheets'   => array(
@@ -4734,7 +4861,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Map User Registration fields to Google Sheets columns',
 							'Use conditional logic to filter which submissions sync',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/google-sheets/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/google-sheets/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'google-sheets' ) ),
 					),
 				),
 				'salesforce'      => array(
@@ -4748,7 +4875,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Map registration form fields to Salesforce fields',
 							'Support for multiple Salesforce account connections',
 						),
-						'feature_link' => ' https://wpuserregistration.com/features/salesforce/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/salesforce/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'salesforce' ) ),
 					),
 
 				),
@@ -4764,7 +4891,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Add Google Maps as address field in registration forms',
 							'Send geolocation data via smart tags in emails',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/geolocation/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/geolocation/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'geolocation' ) ),
 					),
 				),
 				'woocommerce'     => array(
@@ -4778,7 +4905,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'View and edit WooCommerce-related details in one place',
 							'Let users view their order history right from their account page.',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/woocommerce-integration/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/woocommerce-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'woocommerce-integration' ) ),
 					),
 				),
 				'popup'           => array(
@@ -4806,7 +4933,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Connect signup forms to Dropbox or Google Drive',
 									'Keep your WordPress server clean by offloading storage',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/cloud-storage-integration/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/cloud-storage-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'cloud-storage-integration' ) ),
 							),
 						),
 						'dropbox'      => array(
@@ -4820,7 +4947,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Connect signup forms to Dropbox or Google Drive',
 									'Keep your WordPress server clean by offloading storage',
 								),
-								'feature_link' => 'https://wpuserregistration.com/features/cloud-storage-integration/?utm_source=wp-admin&utm_medium=settings&utm_campaign=learn-more',
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/cloud-storage-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'cloud-storage-integration' ) ),
 							),
 						),
 					),
@@ -4840,7 +4967,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Send OTPs via email or SMS',
 							'Configure verification limits and rules',
 						),
-						'feature_link' => 'https://wpuserregistration.com/features/two-factor-authentication',
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/two-factor-authentication/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'two-factor-authentication' ) ),
 					),
 				),
 			),
@@ -6560,13 +6687,13 @@ if ( ! function_exists( 'ur_add_links_to_top_nav' ) ) {
 			)
 		);
 
-		$href = add_query_arg(
+		$href = ur_utm_url(
+			'https://docs.wpuserregistration.com/',
 			array(
-				'utm_medium'  => 'admin-bar',
-				'utm_source'  => 'WordPress',
-				'utm_content' => 'Documentation',
-			),
-			esc_url_raw( 'https://docs.wpuserregistration.com/' )
+				'source'  => 'admin-bar',
+				'medium'  => 'menu-link',
+				'content' => 'documentation',
+			)
 		);
 
 		$wp_admin_bar->add_menu(
