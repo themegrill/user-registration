@@ -365,23 +365,23 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 				} elseif ( false === $activate_results->success ) {
 					switch ( $activate_results->error ) {
 						case 'expired':
-							$error_msg = wp_kses_post( sprintf( __( 'The provided license key expired on %1$s. Please <a href="%2$s" rel="noreferrer noopener" target="_blank">renew your license key</a>.', 'user-registration' ), esc_html( date_i18n( get_option( 'date_format' ) ), esc_html( strtotime( $activate_results->expires, current_time( 'timestamp' ) ) ) ), esc_url( 'https://wpeverest.com/checkout/?edd_license_key=' . $license_key . '&utm_campaign=admin&utm_source=licenses&utm_medium=expired' ) ) ); // phpcs:ignore.
+							$error_msg = wp_kses_post( sprintf( __( 'The provided license key expired on %1$s. Please <a href="%2$s" rel="noreferrer noopener" target="_blank">renew your license key</a>.', 'user-registration' ), esc_html( date_i18n( get_option( 'date_format' ) ), esc_html( strtotime( $activate_results->expires, current_time( 'timestamp' ) ) ) ), esc_url( ur_utm_url( 'https://wpeverest.com/checkout/?edd_license_key=' . $license_key, array( 'source' => 'licenses', 'medium' => 'notice', 'content' => 'expired' ) ) ) ) ); // phpcs:ignore.
 							break;
 
 						case 'revoked':
 							/* translators: %s: Contact Support URL */
-							$error_msg = wp_kses_post( sprintf( __( 'The provided license key has been disabled. Please <a href="%s" rel="noreferrer noopener" target="_blank">contact support</a> for more information.', 'user-registration' ), 'https://wpeverest.com/contact?utm_campaign=admin&utm_source=licenses&utm_medium=revoked' ) );
+							$error_msg = wp_kses_post( sprintf( __( 'The provided license key has been disabled. Please <a href="%s" rel="noreferrer noopener" target="_blank">contact support</a> for more information.', 'user-registration' ), esc_url( ur_utm_url( 'https://wpeverest.com/contact', array( 'source' => 'licenses', 'medium' => 'notice', 'content' => 'revoked' ) ) ) ) );
 							break;
 
 						case 'missing':
 							/* translators: %s: Account Page URL */
-							$error_msg = wp_kses_post( sprintf( __( 'The provided license is invalid. Please <a href="%s" rel="noreferrer noopener" target="_blank">visit your account page</a> and verify it.', 'user-registration' ), 'https://wpeverest.com/my-account?utm_campaign=admin&utm_source=licenses&utm_medium=missing' ) );
+							$error_msg = wp_kses_post( sprintf( __( 'The provided license is invalid. Please <a href="%s" rel="noreferrer noopener" target="_blank">visit your account page</a> and verify it.', 'user-registration' ), esc_url( ur_utm_url( 'https://wpeverest.com/my-account', array( 'source' => 'licenses', 'medium' => 'notice', 'content' => 'missing' ) ) ) ) );
 							break;
 
 						case 'invalid':
 						case 'site_inactive':
 							/* translators: %s: Account Page URL */
-							$error_msg = wp_kses_post( sprintf( __( 'The provided license is not active for this URL. Please <a href="%s" rel="noreferrer noopener" target="_blank">visit your account page</a> to manage your license key URLs.', 'user-registration' ), 'https://wpeverest.com/my-account?utm_campaign=admin&utm_source=licenses&utm_medium=missing' ) );
+							$error_msg = wp_kses_post( sprintf( __( 'The provided license is not active for this URL. Please <a href="%s" rel="noreferrer noopener" target="_blank">visit your account page</a> to manage your license key URLs.', 'user-registration' ), esc_url( ur_utm_url( 'https://wpeverest.com/my-account', array( 'source' => 'licenses', 'medium' => 'notice', 'content' => 'missing' ) ) ) ) );
 							break;
 
 						case 'invalid_item_id':
@@ -447,10 +447,6 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 	 * Deactivate a license.
 	 */
 	public function deactivate_license() {
-		if ( get_transient( 'user_registration_pro_activated' ) ) {
-			return;
-		}
-
 		$reset = UR_Updater_Key_API::deactivate(
 			array(
 				'license' => $this->api_key,
@@ -539,7 +535,7 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 		} else {
 			$content .= sprintf( '<p class="extra-pad"><strong>%1$s</strong>, %2$s</p>', __( 'If you already have an active license key.', 'user-registration' ), __( 'please activate the key.', 'user-registration' ) );
 			$content .= sprintf( '<p class="extra-pad"><strong>%1$s</strong>, %2$s</p>', __( 'If you do not have active premium license of User Registration & Membership', 'user-registration' ), __( 'please purchase premium license. Going forward active premium license will be vital for smooth running of premium addons of User Registration that you are currently using.', 'user-registration' ) );
-			$link    .= '<li><a class="button button-primary" href="' . esc_url_raw( 'https://wpuserregistration.com/upgrade/?utm_source=user-dashboard&utm_medium=notice-3.0.0&utm_campaign=user-registration-pro-3.0.0' ) . '" rel="noreferrer noopener" target="_blank"><span class="dashicons dashicons-external"></span>' . __( 'Purchase Premium License', 'user-registration' ) . '</a></li>';
+			$link    .= '<li><a class="button button-primary" href="' . esc_url_raw( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'user-dashboard', 'medium' => 'notice', 'content' => 'pro-3-0-0' ) ) ) . '" rel="noreferrer noopener" target="_blank"><span class="dashicons dashicons-external"></span>' . __( 'Purchase Premium License', 'user-registration' ) . '</a></li>';
 			$link    .= '<li><a class="button button-secondary" href="' . esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=license' ) ) . '" rel="noreferrer noopener" target="_blank"><span class="dashicons dashicons-external"></span>' . __( 'Activate License Key', 'user-registration' ) . '</a></li>';
 		}
 

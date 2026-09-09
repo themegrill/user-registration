@@ -13,6 +13,7 @@ import {
 	isProAccess
 } from "./utils/localized-data";
 import apiFetch from "@wordpress/api-fetch";
+import { urUtmUrl } from "../utils/utm";
 
 /* global _URCR_DASHBOARD_ */
 const { adminURL, assetsURL } =
@@ -442,7 +443,13 @@ const ContentAccessRules = () => {
 										<a
 											className="ur-feature__btn"
 											target="_blank"
-											href="https://wpuserregistration.com/upgrade/?utm_source=ur-membership-create&utm_medium=upgrade-link&utm-campaign=lite-version"
+											href={urUtmUrl(
+												"https://wpuserregistration.com/upgrade/",
+												{
+													source: "ur-membership-create",
+													medium: "upgrade-link"
+												}
+											)}
 										>
 											<svg
 												xmlns="http://www.w3.org/2000/svg"

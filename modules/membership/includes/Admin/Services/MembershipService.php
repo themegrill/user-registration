@@ -99,6 +99,107 @@ class MembershipService {
 	}
 
 	/**
+	 * Whether a membership can be selected from the front end.
+	 *
+	 * Reuses the same active list the plan listings are built from, so a plan a site has hidden
+	 * through build_membership_list_frontend cannot be purchased either.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param int $membership_id Membership post ID.
+	 * @return bool True when the membership is published and active.
+	 */
+	public function is_membership_purchasable( $membership_id ) {
+		$membership_id = absint( $membership_id );
+
+		if ( ! $membership_id ) {
+			return false;
+		}
+
+		foreach ( $this->list_active_memberships() as $membership ) {
+			$id = isset( $membership['ID'] ) ? (int) $membership['ID'] : ( isset( $membership['id'] ) ? (int) $membership['id'] : 0 );
+
+			if ( $id === $membership_id ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Whether a payment method is one the membership actually accepts.
+	 *
+	 * Shared by the registration, additional-purchase and upgrade paths so the three cannot drift.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param array  $membership_meta Decoded plan meta.
+	 * @param string $payment_method  Submitted payment method.
+	 * @param array  $data            Submitted purchase data, used for the full-discount check.
+	 * @return bool True when the payment method is valid for this plan.
+	 */
+	public function is_valid_payment_method_for_membership( $membership_meta, $payment_method, $data = array() ) {
+		$membership_type = isset( $membership_meta['type'] ) ? $membership_meta['type'] : 'unknown';
+
+		if ( 'free' === $membership_type ) {
+			// A free plan has no gateway, so only an empty or 'free' method is legitimate. Rejecting a
+			// forged gateway value keeps a free plan off the paid, deferred-role order path.
+			return '' === $payment_method || 'free' === $payment_method;
+		}
+
+		// UR-4386: 'free' on a paid plan is only valid when a 100% coupon zeroes a one-time plan.
+		if ( 'free' === $payment_method ) {
+			return $this->is_full_discount_free_order( $membership_type, $membership_meta, $data );
+		}
+
+		$configured_gateways = array();
+
+		if ( ! empty( $membership_meta['payment_gateways'] ) && is_array( $membership_meta['payment_gateways'] ) ) {
+			foreach ( $membership_meta['payment_gateways'] as $gateway_key => $gateway_data ) {
+				if ( isset( $gateway_data['status'] ) && 'on' === $gateway_data['status'] ) {
+					$configured_gateways[] = $gateway_key;
+				}
+			}
+		}
+
+		// Gateways enabled site-wide under Settings > Payments count as configured too.
+		$global_gateways     = array_keys( urm_get_all_active_payment_gateways( $membership_type ) );
+		$configured_gateways = array_unique( array_merge( $configured_gateways, $global_gateways ) );
+
+		return empty( $configured_gateways ) || in_array( $payment_method, $configured_gateways, true );
+	}
+
+	/**
+	 * Whether a 100% coupon has zeroed a one-time paid plan, making a free order legitimate.
+	 *
+	 * @since 5.2.8
+	 *
+	 * @param string $membership_type Membership type (free|paid|subscription).
+	 * @param array  $membership_meta Decoded plan meta.
+	 * @param array  $data            Submitted purchase data.
+	 * @return bool True when the order genuinely totals zero.
+	 */
+	private function is_full_discount_free_order( $membership_type, $membership_meta, $data ) {
+		if ( 'paid' !== $membership_type || empty( $data['coupon'] ) || ! ur_check_module_activation( 'coupon' ) ) {
+			return false;
+		}
+
+		$coupon_details = ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
+
+		if ( empty( $coupon_details ) || empty( $coupon_details['coupon_status'] ) ) {
+			return false;
+		}
+
+		$plan_amount    = floatval( $membership_meta['amount'] ?? 0 );
+		$discount_type  = $coupon_details['coupon_discount_type'] ?? 'fixed';
+		$discount_value = floatval( $coupon_details['coupon_discount'] ?? 0 );
+		$discount       = ( 'percent' === $discount_type ) ? ( $plan_amount * $discount_value / 100 ) : $discount_value;
+
+		return ( $plan_amount > 0 ) && ( 0.0 === round( max( 0, $plan_amount - $discount ), 2 ) );
+	}
+
+	/**
 	 * Replace the old membership form shortcode with new registration form shortcode.
 	 *
 	 * @param int $form_id The form ID of the membership form which needs to be updated.
@@ -449,6 +550,23 @@ class MembershipService {
 		if ( isset( $data['post_meta_data']['type'] ) && 'subscription' === $data['post_meta_data']['type'] && ! UR_PRO_ACTIVE ) {
 			$result['status']  = false;
 			$result['message'] = esc_html__( 'Subscription type is a paid feature.', 'user-registration' );
+
+			return $result;
+		}
+
+		$role = isset( $data['post_meta_data']['role'] ) ? sanitize_key( $data['post_meta_data']['role'] ) : '';
+
+		if ( ! empty( $role ) && ! wp_roles()->is_role( $role ) ) {
+			$result['status']  = false;
+			$result['message'] = esc_html__( 'The selected membership role does not exist.', 'user-registration' );
+
+			return $result;
+		}
+
+		// A plan's role is granted automatically on purchase, so only someone who may assign roles can attach a privileged one.
+		if ( ! empty( $role ) && ur_membership_is_privileged_role( $role ) && ! current_user_can( 'promote_users' ) ) {
+			$result['status']  = false;
+			$result['message'] = esc_html__( 'Sorry, you are not allowed to assign that role to a membership.', 'user-registration' );
 
 			return $result;
 		}

@@ -236,10 +236,14 @@ class MembersService {
 		$user = new \WP_User( $new_user_id );
 		update_user_meta( $new_user_id, 'ur_registration_source', 'membership' );
 
+		$membership_id = ! empty( $data['membership_data']['membership'] ) ? absint( $data['membership_data']['membership'] ) : ( ! empty( $data['membership_data']['ID'] ) ? absint( $data['membership_data']['ID'] ) : 0 );
+
+		// Backstop: a plan authored by a role that cannot assign roles must not grant a privileged one.
+		$data['role'] = ur_membership_get_safe_role( isset( $data['role'] ) ? $data['role'] : '', $membership_id );
+
 		// UR-4573: Role handling on membership assignment.
 		// UR-4710: Paid memberships are still pending here — defer the role until payment is confirmed (maybe_grant_pending_role()).
 		if ( ! empty( $data['defer_role'] ) ) {
-			$membership_id = ! empty( $data['membership_data']['membership'] ) ? absint( $data['membership_data']['membership'] ) : ( ! empty( $data['membership_data']['ID'] ) ? absint( $data['membership_data']['ID'] ) : 0 );
 			update_user_meta(
 				$new_user_id,
 				'urm_pending_role',
@@ -277,6 +281,9 @@ class MembersService {
 		if ( empty( $pending ) || empty( $pending['role'] ) || empty( $pending['membership_id'] ) ) {
 			return;
 		}
+
+		// Re-check on read: the pending role may have been stored before this backstop existed.
+		$pending['role'] = ur_membership_get_safe_role( $pending['role'], $pending['membership_id'] );
 
 		$subscription_repository = new \WPEverest\URMembership\Admin\Repositories\MembersSubscriptionRepository();
 		$subscription            = $subscription_repository->get_subscription_data_by_member_and_membership_id( $user_id, $pending['membership_id'] );

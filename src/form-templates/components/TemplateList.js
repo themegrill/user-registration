@@ -32,6 +32,7 @@ import { __, sprintf } from "@wordpress/i18n";
 import { IoPlayOutline } from "react-icons/io5";
 import { FaRegHeart } from "react-icons/fa";
 import { MdOutlineRemoveRedEye } from "react-icons/md";
+import { urUtmUrl } from "../../utils/utm";
 
 const { security, siteURL } = ur_templates_script;
 
@@ -673,7 +674,13 @@ const TemplateList = ({ selectedCategory, templates }) => {
 							{__("OK", "user-registration")}
 						</Button>
 						<a
-							href="https://wpuserregistration.com/upgrade/?utm_source=form-template&utm_medium=premium-form-templates-popup&utm_campaign=lite-version"
+							href={urUtmUrl(
+								"https://wpuserregistration.com/upgrade/",
+								{
+									source: "form-template",
+									medium: "popup"
+								}
+							)}
 							target="_blank"
 							rel="noopener noreferrer"
 							style={{
