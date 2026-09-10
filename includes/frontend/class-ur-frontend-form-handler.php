@@ -93,13 +93,22 @@ class UR_Frontend_Form_Handler {
 		$user_pass = '';
 
 		/**
-		 * Get form field data by post_content array passed.
+		 * Filters the valid form data before the frontend handler proceeds.
 		 *
-		 * @param array $post_content_array Post Content Array.
+		 * Every callback (built-in or third-party) must return $valid_form_data,
+		 * possibly augmented, since WordPress feeds each callback's return value
+		 * into the next as the reference argument; returning nothing wipes it.
+		 *
+		 * @param array  $valid_form_data Valid form data, passed and returned by reference.
+		 * @param array  $form_field_data Form field data.
+		 * @param array  $form_data       Submitted form data.
+		 * @param int    $form_id         Form ID.
+		 * @param array  $response_array  Response array, passed by reference.
+		 * @param string $user_pass       Auto-generated user password, passed by reference.
 		 *
 		 * @return array
 		 */
-		do_action_ref_array(
+		apply_filters_ref_array(
 			'user_registration_validate_form_data',
 			array(
 				&self::$valid_form_data,
