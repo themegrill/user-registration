@@ -1,4 +1,4 @@
-= 5.2.8    - 09/09/2026 =
+= 5.2.8    - 10/09/2026 =
 * Fix      - Stop retrying deleted Stripe subscriptions.
 * Fix      - Content restriction bypassed via WordPress core REST API. Thanks Patchstack.
 * Fix      - Standardized outbound UTM parameters and invalid campaign keys.
