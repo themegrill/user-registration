@@ -117,7 +117,7 @@ class UR_Form_Validation extends UR_Validation {
 	 * @param [int]    $form_id Form Id.
 	 * @param [array]  $response_array UR_Frontend_Form_Handler::$response_array reference.
 	 * @param [string] $user_pass User Password reference.
-	 * @return void
+	 * @return array Valid form data, returned so a later callback on the same filter doesn't wipe it.
 	 */
 	public function validate_form( &$valid_form_data, $form_field_data, $form_data, $form_id, &$response_array, &$user_pass ) {
 		$this->valid_form_data = $valid_form_data;
@@ -157,6 +157,8 @@ class UR_Form_Validation extends UR_Validation {
 
 		// Modify UR_Frontend_Form_Handler::$valid_form_data variable.
 		$valid_form_data = $this->valid_form_data;
+
+		return $valid_form_data;
 	}
 
 
