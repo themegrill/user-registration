@@ -13,6 +13,7 @@
 * Fix      - Expired membership could be renewed by replaying an earlier Stripe payment. Thanks MYUNGYONG LEE.
 * Fix      - Deactivate License button did nothing when pro-activation transient was set.
 * Fix      - Membership/payment/autologin failed if another plugin hooked registration validation.
+* Fix      - Membership Renewal Reminder email sent to members who had already cancelled at period end.
 * Fix      - Registration forms not validating publish status or restricting assigned roles. Thanks Ananda Dhakal.
 * Fix      - Membership Renewal Reminder email sent to members who had already cancelled at period end.
 
