@@ -254,6 +254,7 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 
 = 5.2.8    - 10/09/2026 =
 * Fix      - Stop retrying deleted Stripe subscriptions.
+* Fix      - Show specific error for existing email/username.
 * Fix      - Content restriction bypassed via WordPress core REST API.
 * Fix      - Standardized outbound UTM parameters and invalid campaign keys.
 * Fix      - Users could be redirected to an outside website after logging in.
@@ -267,6 +268,7 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 * Fix      - Expired membership could be renewed by replaying an earlier Stripe payment.
 * Fix      - Deactivate License button did nothing when pro-activation transient was set.
 * Fix      - Registration forms not validating publish status or restricting assigned roles.
+* Fix      - Membership/payment/autologin failed if another plugin hooked registration validation.
 * Fix      - Membership Renewal Reminder email sent to members who had already cancelled at period end.
 
 = 5.2.7    - 11/08/2026 =

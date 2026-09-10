@@ -171,7 +171,10 @@ class UR_Form_Validation extends UR_Validation {
 	 * @param  array $form_data  Form data to validate.
 	 */
 	public function validate_form_data( $form_id, $form_field_data = array(), $form_data = array() ) {
-		$request_form_keys = wp_list_pluck( $form_data, 'field_name' );
+		// Submitted field data is client-supplied JSON, so an entry can arrive without field_name (e.g. a display-only field).
+		$request_form_keys = wp_list_pluck( array_filter( $form_data, function ( $field ) {
+			return isset( $field->field_name );
+		} ), 'field_name' );
 
 		/**
 		 * Filter the form field data.
@@ -262,7 +265,7 @@ class UR_Form_Validation extends UR_Validation {
 						}
 					}
 				}
-			} else {
+			} elseif ( isset( $data->field_name ) ) {
 				$this->run_field_validations_on_registration( $form_field_data, $data->field_name, $form_key_list );
 			}
 		}
@@ -344,7 +347,10 @@ class UR_Form_Validation extends UR_Validation {
 		$has_confirm_email   = false;
 		$email               = '';
 
-		$form_data_field = wp_list_pluck( $form_data, 'field_name' );
+		// Submitted field data is client-supplied JSON, so an entry can arrive without field_name (e.g. a display-only field).
+		$form_data_field = wp_list_pluck( array_filter( $form_data, function ( $field ) {
+			return isset( $field->field_name );
+		} ), 'field_name' );
 		$form_key_list   = wp_list_pluck( wp_list_pluck( $form_field_data, 'general_setting' ), 'field_name' );
 
 		// Check if a required field is missing.
@@ -356,6 +362,10 @@ class UR_Form_Validation extends UR_Validation {
 		}
 
 		foreach ( $form_data as $index => $single_data ) {
+
+			if ( ! isset( $single_data->field_name ) ) {
+				continue;
+			}
 
 			if ( 'user_confirm_email' == $single_data->field_name ) {
 				$confirm_email_value = $single_data->value;
@@ -390,7 +400,10 @@ class UR_Form_Validation extends UR_Validation {
 		$has_confirm_password = false;
 		$password             = '';
 
-		$form_data_field = wp_list_pluck( $form_data, 'field_name' );
+		// Submitted field data is client-supplied JSON, so an entry can arrive without field_name (e.g. a display-only field).
+		$form_data_field = wp_list_pluck( array_filter( $form_data, function ( $field ) {
+			return isset( $field->field_name );
+		} ), 'field_name' );
 		$form_key_list   = wp_list_pluck( wp_list_pluck( $form_field_data, 'general_setting' ), 'field_name' );
 
 		// Check if a required field is missing.
@@ -402,6 +415,10 @@ class UR_Form_Validation extends UR_Validation {
 		}
 
 		foreach ( $form_data as $index => $single_data ) {
+			if ( ! isset( $single_data->field_name ) ) {
+				continue;
+			}
+
 			if ( 'user_confirm_password' == $single_data->field_name ) {
 				$confirm_password     = $single_data->value;
 				$has_confirm_password = true;
