@@ -1742,21 +1742,20 @@
 		});
 
 		if ( setting_id === "stripe" ) {
-			var testPubKey = section_data["user_registration_stripe_test_publishable_key"] || "";
-			var livePubKey = section_data["user_registration_stripe_live_publishable_key"] || "";
+			// Only the keys of the mode currently in use are validated; the other mode's fields are hidden and unused.
+			// Checkboxes are collected via $item.is(":checked") above, so this is already a real boolean.
+			var isTestMode = Boolean( section_data["user_registration_stripe_test_mode"] );
+			var pubKey =
+				( isTestMode
+					? section_data["user_registration_stripe_test_publishable_key"]
+					: section_data["user_registration_stripe_live_publishable_key"] ) || "";
 
-			if ( testPubKey && testPubKey.indexOf( "pk_test_" ) !== 0 ) {
+			if ( pubKey && pubKey.indexOf( isTestMode ? "pk_test_" : "pk_live_" ) !== 0 ) {
 				$this.find( ".ur-spinner" ).remove();
 				show_failure_message(
-					user_registration_settings_params.i18n.invalid_stripe_test_publishable_key
-				);
-				return;
-			}
-
-			if ( livePubKey && livePubKey.indexOf( "pk_live_" ) !== 0 ) {
-				$this.find( ".ur-spinner" ).remove();
-				show_failure_message(
-					user_registration_settings_params.i18n.invalid_stripe_live_publishable_key
+					isTestMode
+						? user_registration_settings_params.i18n.invalid_stripe_test_publishable_key
+						: user_registration_settings_params.i18n.invalid_stripe_live_publishable_key
 				);
 				return;
 			}
