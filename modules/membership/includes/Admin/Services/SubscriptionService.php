@@ -270,7 +270,13 @@ class SubscriptionService {
 		}
 		$email_service = new EmailService();
 		foreach ( $subscriptions as $subscription ) {
-			$user_id      = $subscription['member_id'];
+			$user_id = $subscription['member_id'];
+
+			// Skip memberships already scheduled to cancel; they will not renew, so no renewal reminder.
+			if ( get_user_meta( $user_id, 'urm_pending_cancel_' . ( $subscription['subscription_id'] ?? '' ), true ) ) {
+				continue;
+			}
+
 			$checked_date = get_user_meta( $user_id, 'urm_billing_reminder_sent_for_date', true );
 			if ( $checked_date === $subscription['next_billing_date'] ) {
 				continue;
