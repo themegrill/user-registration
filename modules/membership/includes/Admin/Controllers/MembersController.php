@@ -78,6 +78,13 @@ class MembersController {
 		$members_data = $members_service->prepare_members_data( $data );
 		$member       = $this->members->create( $members_data ); // first create the member themselves.
 
+		if ( is_wp_error( $member ) ) {
+			return array(
+				'status'  => false,
+				'message' => $member->get_error_message(),
+			);
+		}
+
 		if ( $member->ID ) {
 
 			$data = array(
@@ -107,6 +114,16 @@ class MembersController {
 				$members_data = $members_service->prepare_members_data( $data, 'frontend' );
 
 				$member = $this->members->create( $members_data ); // first create the member themselves.
+
+				if ( is_wp_error( $member ) ) {
+					$this->members->wpdb()->query( 'ROLLBACK' );
+
+					return array(
+						'status'  => false,
+						'message' => $member->get_error_message(),
+					);
+				}
+
 				if ( $member->ID ) {
 					$subscription_service = new SubscriptionService();
 					$subscription_data    = $subscription_service->prepare_subscription_data( $members_data, $member );

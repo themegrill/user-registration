@@ -27,10 +27,16 @@ class MembersRepository extends BaseRepository implements MembersInterface {
 	 *
 	 * @param $data
 	 *
-	 * @return false|\WP_User
+	 * @return false|\WP_Error|\WP_User
 	 */
 	public function create( $data ) {
 		$new_user_id = wp_insert_user( $data['user_data'] );
+
+		// A WP_Error is truthy, so return it before it becomes a WP_User with ID 0.
+		if ( is_wp_error( $new_user_id ) ) {
+			return $new_user_id;
+		}
+
 		if ( $new_user_id ) {
 			$user = new \WP_User( $new_user_id );
 			update_user_meta( $new_user_id, 'ur_registration_source', 'membership' );

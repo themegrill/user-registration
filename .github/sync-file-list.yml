@@ -1,4 +1,4 @@
-themegrill/user-registration-pro@develop:
+themegrill/user-registration-pro@release/v6.2.8:
     - source: assets
       exclude: |
         js/divi-vb-modules.js

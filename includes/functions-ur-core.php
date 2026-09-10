@@ -7,7 +7,6 @@
  * @package UserRegistration/Functions
  * @version 1.0.0
  */
-
 use WPEverest\URMembership\Admin\Repositories\MembershipRepository;
 use WPEverest\URMembership\Admin\Repositories\MembersOrderRepository;
 use WPEverest\URMembership\Admin\Services\MembershipService;
@@ -4743,7 +4742,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Map signup form fields to Kit custom fields',
 									'Subscribe users to specific Kit forms, tags, or sequences',
 								),
-								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/kit/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'kit' ) ),
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/integrations/#email-marketing', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'kit' ) ),
 							),
 						),
 						'klaviyo'        => array(
@@ -4847,7 +4846,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Connect with Twilio for SMS delivery',
 							'Enable OTP-based login and registration verification',
 						),
-						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/sms-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'sms-integration' ) ),
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/security-and-compliance/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'sms-integration' ) ),
 					),
 				),
 				'google-sheets'   => array(
@@ -6917,6 +6916,11 @@ if ( ! function_exists( 'user_registration_validate_form_field_data' ) ) {
 	 * @param array  $valid_form_data Valid Form Data..
 	 */
 	function user_registration_validate_form_field_data( $data, $form_data, $form_id, $response_array, $form_field_data, $valid_form_data ) {
+		// Submitted field data is client-supplied JSON, so this entry can arrive without field_name (e.g. a display-only field).
+		if ( empty( $data->field_name ) ) {
+			return array( $response_array, $valid_form_data );
+		}
+
 		$form_key_list  = wp_list_pluck( wp_list_pluck( $form_field_data, 'general_setting' ), 'field_name' );
 		$form_validator = new UR_Form_Validation();
 
@@ -6926,6 +6930,9 @@ if ( ! function_exists( 'user_registration_validate_form_field_data' ) ) {
 			);
 
 			foreach ( $form_data as $state ) {
+				if ( empty( $state->field_name ) ) {
+					continue;
+				}
 				switch ( $state->field_name ) {
 					case $data->field_name . '_state':
 						$field_data['state'] = ! empty( $state->value ) ? $state->value : '';
@@ -7085,6 +7092,11 @@ if ( ! function_exists( 'user_registration_validate_edit_profile_form_field_data
 	 * @param int    $user_id User ID.
 	 */
 	function user_registration_validate_edit_profile_form_field_data( $data, $form_data, $form_id, $form_field_data, $form_fields, $user_id ) {
+		// Submitted field data is client-supplied JSON, so this entry can arrive without field_name (e.g. a display-only field).
+		if ( empty( $data->field_name ) ) {
+			return;
+		}
+
 		$form_validator   = new UR_Form_Validation();
 		$skippable_fields = $form_validator->get_update_profile_validation_skippable_fields( $form_field_data );
 		$form_key_list    = wp_list_pluck( wp_list_pluck( $form_field_data, 'general_setting' ), 'field_name' );
