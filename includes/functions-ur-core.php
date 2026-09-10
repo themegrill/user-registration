@@ -3758,10 +3758,11 @@ if ( ! function_exists( 'ur_delete_user_files_on_user_delete' ) ) {
 		}
 
 		// Delete user uploaded file when user is deleted.
-		if ( class_exists( 'URFU_Uploaded_Data' ) ) {
-			$post = get_post( ur_get_form_id_by_userid( $user_id ) );
+		$form_post = class_exists( 'URFU_Uploaded_Data' ) ? get_post( ur_get_form_id_by_userid( $user_id ) ) : null;
 
-			$form_data_object = json_decode( $post->post_content );
+		// Users not registered through a form have no form post, so no uploaded files to clean up.
+		if ( $form_post instanceof WP_Post ) {
+			$form_data_object = json_decode( $form_post->post_content );
 
 			$file_fields = URFU_Uploaded_Data::get_file_field( $form_data_object );
 
