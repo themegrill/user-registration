@@ -85,7 +85,7 @@ if ( ! function_exists( 'ur_membership_verify_nonce' ) ) {
 	 * @throws WP_Error If the nonce is invalid.
 	 */
 	function ur_membership_verify_nonce( $nonce ) {
-		if ( ! check_ajax_referer( $nonce, 'security' ) ) {
+		if ( ! check_ajax_referer( $nonce, 'security', false ) ) {
 			wp_send_json_error(
 				array(
 					'message' => __( 'Nonce error please reload.', 'user-registration' ),
