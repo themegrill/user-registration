@@ -4742,7 +4742,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 									'Map signup form fields to Kit custom fields',
 									'Subscribe users to specific Kit forms, tags, or sequences',
 								),
-								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/kit/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'kit' ) ),
+								'feature_link' => ur_utm_url( 'https://wpuserregistration.com/integrations/#email-marketing', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'kit' ) ),
 							),
 						),
 						'klaviyo'        => array(
@@ -4846,7 +4846,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Connect with Twilio for SMS delivery',
 							'Enable OTP-based login and registration verification',
 						),
-						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/sms-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'sms-integration' ) ),
+						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/security-and-compliance/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'sms-integration' ) ),
 					),
 				),
 				'google-sheets'   => array(
