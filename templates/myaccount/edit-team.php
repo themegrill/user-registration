@@ -70,7 +70,7 @@ $ordered_emails = array_merge( $ordered_emails, $other_emails );
 		<form class="user-registration-EditTeam ur-edit-team-form" method="post" action="">
 			<div class="ur-form-row" style="display: block;">
 				<div class="ur-form-grid">
-					<?php wp_nonce_field( 'ur_edit_team_nonce', 'ur_edit_team_nonce' ); ?>
+					<?php wp_nonce_field( 'ur_edit_team_' . $team_id, 'ur_edit_team_nonce' ); ?>
 					<input type="hidden" name="team_id" value="<?php esc_attr_e( $team_id ); ?>" required>
 					<input type="hidden" name="invited_member_emails">
 					<input type="hidden" name="existing_member_emails" value="<?php esc_attr_e( implode( ',', $members ) ); ?>">

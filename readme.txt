@@ -252,7 +252,9 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 
 == Changelog ==
 
-= 5.2.8    - 09/09/2026 =
+= 5.2.8    - 10/09/2026 =
+* Fix      - Stop retrying deleted Stripe subscriptions.
+* Fix      - Show specific error for existing email/username.
 * Fix      - Content restriction bypassed via WordPress core REST API.
 * Fix      - Standardized outbound UTM parameters and invalid campaign keys.
 * Fix      - Users could be redirected to an outside website after logging in.
@@ -261,10 +263,13 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 * Fix      - Use timing-safe comparison for email confirmation and approval tokens.
 * Fix      - Stripe payment could be replayed to renew a membership without paying.
 * Fix      - Privilege escalation via membership role and open redirect after login.
+* Fix      - PayPal-paid membership role stayed pending until the member's next login.
 * Add      - `{{force_logout_url}}` smart tag for Pro's prevent concurrent login email.
 * Fix      - Expired membership could be renewed by replaying an earlier Stripe payment.
 * Fix      - Deactivate License button did nothing when pro-activation transient was set.
 * Fix      - Registration forms not validating publish status or restricting assigned roles.
+* Fix      - Membership/payment/autologin failed if another plugin hooked registration validation.
+* Fix      - Membership Renewal Reminder email sent to members who had already cancelled at period end.
 
 = 5.2.7    - 11/08/2026 =
 * Fix      - Payment related issues for tax & others
