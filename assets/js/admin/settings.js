@@ -1743,16 +1743,8 @@
 
 		if ( setting_id === "stripe" ) {
 			// Only the keys of the mode currently in use are validated; the other mode's fields are hidden and unused.
-			var testModeValue = section_data["user_registration_stripe_test_mode"];
-			var isTestMode =
-				"undefined" === typeof testModeValue
-					? true
-					: !(
-							false === testModeValue ||
-							"false" === testModeValue ||
-							"0" === testModeValue ||
-							"" === testModeValue
-					  );
+			// Checkboxes are collected via $item.is(":checked") above, so this is already a real boolean.
+			var isTestMode = Boolean( section_data["user_registration_stripe_test_mode"] );
 			var pubKey =
 				( isTestMode
 					? section_data["user_registration_stripe_test_publishable_key"]
