@@ -82,13 +82,11 @@ class UR_Frontend {
 			return $profile;
 		}
 
-		if ( ! ur_option_checked( 'user_registration_ajax_form_submission_on_edit_profile', false ) ) {
-			if ( isset( $_POST['profile_pic_url'] ) || isset( $_POST['profile-pic-url'] ) ) {
-				$value = isset( $_POST['profile_pic_url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile_pic_url'] ) ) : ( isset( $_POST['profile-pic-url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile-pic-url'] ) ) : '' );
-				if ( ! is_array( $value ) && ! ur_is_valid_url( $value ) ) {
-					$valid_form_data['profile_pic_url']        = new stdClass();
-					$valid_form_data['profile_pic_url']->value = $value;
-				}
+		if ( isset( $_POST['profile_pic_url'] ) || isset( $_POST['profile-pic-url'] ) ) {
+			$value = isset( $_POST['profile_pic_url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile_pic_url'] ) ) : ( isset( $_POST['profile-pic-url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile-pic-url'] ) ) : '' );
+			if ( ! is_array( $value ) && ! ur_is_valid_url( $value ) ) {
+				$valid_form_data['profile_pic_url']        = new stdClass();
+				$valid_form_data['profile_pic_url']->value = $value;
 			}
 		} elseif ( isset( $_POST['form_data'] ) ) {
 				$form_data = json_decode( wp_unslash( $_POST['form_data'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
