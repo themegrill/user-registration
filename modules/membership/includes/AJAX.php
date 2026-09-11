@@ -1818,6 +1818,16 @@ class AJAX {
 			);
 		}
 
+		// Only a plan the site currently offers may be selected.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by ur_membership_verify_nonce() at the top of this handler.
+		if ( ! ( new MembershipService() )->is_membership_purchasable( absint( $_POST['selected_membership_id'] ) ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Invalid membership selected.', 'user-registration' ),
+				)
+			);
+		}
+
 		if ( isset( $_POST['form_data'] ) && ! empty( $_POST['form_data'] ) ) {
 			$single_field = array();
 			$form_data    = json_decode( wp_unslash( $_POST['form_data'] ) );
@@ -2075,6 +2085,16 @@ class AJAX {
 			);
 		}
 
+		// Only a plan the site currently offers may be selected.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by ur_membership_verify_nonce() at the top of this handler.
+		if ( ! ( new MembershipService() )->is_membership_purchasable( absint( $_POST['selected_membership_id'] ) ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Invalid membership selected.', 'user-registration' ),
+				)
+			);
+		}
+
 		if ( isset( $_POST['form_data'] ) && ! empty( $_POST['form_data'] ) ) {
 			$single_field = array();
 			$form_data    = json_decode( wp_unslash( $_POST['form_data'] ) );
@@ -2204,6 +2224,15 @@ class AJAX {
 		$membership_data       = $membership_repository->get_single_membership_by_ID( $data['selected_membership_id'] );
 		$membership_meta       = json_decode( wp_unslash( $membership_data['meta_value'] ), true );
 		$membership_type       = $membership_meta['type'] ?? 'unknown'; // free, paid, or subscription
+
+		// Reject a payment method the plan does not accept: 'free' on a paid plan would grant the plan's role at once, unpaid.
+		if ( ! ( new MembershipService() )->is_valid_payment_method_for_membership( $membership_meta, $data['payment_method'], $data ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Invalid payment method for this membership.', 'user-registration' ),
+				)
+			);
+		}
 
 		$payment_gateway = $data['payment_method'] ?? 'unknown';
 		$member_id       = get_current_user_id();

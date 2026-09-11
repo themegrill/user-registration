@@ -30,7 +30,6 @@ class Frontend {
 	private function init_hooks() {
 		// add_action( 'wp_enqueue_scripts', array( $this, 'load_scripts' ), 10, 2 );
 	}
-
 	/**
 	 * Enqueue styles for the course portal page.
 	 *
@@ -160,6 +159,108 @@ class Frontend {
 		}
 
 		return $waiting;
+	}
+
+	/**
+	 * See if the given post is still waiting for its content drip to release.
+	 *
+	 * Decision only counterpart of apply_content_drip(), safe to call outside the
+	 * template rendering flow.
+	 *
+	 * @param object $target_post Post to check against.
+	 *
+	 * @return bool
+	 * @since 5.2.8
+	 */
+	public static function is_drip_pending( $target_post ) {
+		if ( ! is_object( $target_post ) || ! get_current_user_id() ) {
+			return false;
+		}
+
+		if ( ! class_exists( '\WPEverest\URMembership\Admin\Repositories\MembersRepository' ) ) {
+			return false;
+		}
+
+		// Cached per user because a REST collection calls this once for every item prepared.
+		static $memberships_by_user = array();
+
+		$user_id = get_current_user_id();
+
+		if ( ! isset( $memberships_by_user[ $user_id ] ) ) {
+			$members_repository              = new \WPEverest\URMembership\Admin\Repositories\MembersRepository();
+			$memberships_by_user[ $user_id ] = $members_repository->get_member_membership_by_id( $user_id );
+		}
+
+		$memberships = $memberships_by_user[ $user_id ];
+
+		if ( empty( $memberships ) ) {
+			return false;
+		}
+
+		$access_rule_posts = function_exists( 'urcr_get_published_access_rules' ) ? urcr_get_published_access_rules() : array();
+
+		foreach ( $access_rule_posts as $access_rule_post ) {
+			$access_rule = json_decode( $access_rule_post->post_content, true );
+
+			if ( ! function_exists( 'urcr_is_access_rule_evaluable' ) || ! urcr_is_access_rule_evaluable( $access_rule ) ) {
+				continue;
+			}
+
+			// Whole site targets without a drip configuration never delay a single post.
+			$target_contents = array_filter(
+				$access_rule['target_contents'],
+				function ( $target_content ) {
+					return ! isset( $target_content['type'] ) || 'whole_site' !== $target_content['type'] || empty( $target_content['drip'] );
+				}
+			);
+
+			if ( ! self::is_target_post( $target_contents, $target_post ) ) {
+				continue;
+			}
+
+			foreach ( $target_contents as $content ) {
+				if ( empty( $content['drip']['activeType'] ) || empty( $content['drip']['value'] ) ) {
+					continue;
+				}
+
+				$active_type             = $content['drip']['activeType'];
+				$value                   = $content['drip']['value'];
+				$earliest_drip_timestamp = null;
+
+				foreach ( $memberships as $membership ) {
+					$drip_timestamp = null;
+
+					if ( 'fixed_date' === $active_type ) {
+						$date = isset( $value['fixed_date']['date'] ) ? $value['fixed_date']['date'] : '';
+						$time = isset( $value['fixed_date']['time'] ) ? $value['fixed_date']['time'] : '';
+
+						if ( empty( $date ) || empty( $time ) ) {
+							continue;
+						}
+
+						$drip_timestamp = strtotime( $date . ' ' . $time );
+					} elseif ( 'days_after' === $active_type ) {
+						$days_after     = isset( $value['days_after']['days'] ) ? $value['days_after']['days'] : 0;
+						$drip_timestamp = strtotime( "+{$days_after} days", strtotime( $membership['start_date'] ) );
+					}
+
+					if ( null === $drip_timestamp ) {
+						continue;
+					}
+
+					if ( is_null( $earliest_drip_timestamp ) || $drip_timestamp < $earliest_drip_timestamp ) {
+						$earliest_drip_timestamp = $drip_timestamp;
+					}
+				}
+
+				// phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested -- Kept identical to apply_content_drip() so both paths release content at the same moment.
+				if ( ! is_null( $earliest_drip_timestamp ) && current_time( 'timestamp' ) < $earliest_drip_timestamp ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	public static function show_content_drip_message( $drip, &$target_post = null ) {

@@ -265,7 +265,7 @@ class UR_Admin_Settings {
 					'continue_to_dashboard_text'         => esc_html__( 'Continue to dashboard', 'user-registration' ),
 
 					'upgrade_plan'                       => esc_html__( 'Upgrade Plan', 'user-registration' ),
-					'upgrade_link'                       => esc_url( 'https://wpuserregistration.com/upgrade/?utm_source=integration-settings&utm_medium=premium-addon-popup&utm_campaign=' . urlencode( UR()->utm_campaign ) ),
+					'upgrade_link'                       => esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'integration-settings', 'medium' => 'popup' ) ) ),
 				),
 				'is_advanced_field_active'             => is_plugin_active( 'user-registration-advanced-fields/user-registration-advanced-fields.php' ),
 				'reset_keys_icon'                      => plugins_url( 'assets/images/users/reset-keys-red.svg', UR_PLUGIN_FILE ),
@@ -625,7 +625,7 @@ class UR_Admin_Settings {
 							$settings .= '<div class="ur-feature__title">';
 							$settings .= esc_html__( $section['title'] . ' payment feature only available in Pro.', 'user-registration' );
 							$settings .= '</div>';
-							$settings .= '<a target="_blank" class="ur-feature__btn" href="https://wpuserregistration.com/upgrade/?utm_source=ur-membership-create&utm_medium=upgrade-link&utm-campaign=lite-version">';
+							$settings .= '<a target="_blank" class="ur-feature__btn" href="' . esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'ur-membership-create', 'medium' => 'upgrade-link' ) ) ) . '">';
 							$settings .= '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"></path><path d="M5 21h14"></path></svg>';
 							$settings .= esc_html__( 'Upgrade to Pro', 'user-registration' );
 							$settings .= '</a>';

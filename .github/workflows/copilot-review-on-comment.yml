@@ -1,0 +1,13 @@
+name: Copilot review on comment
+
+on:
+  pull_request_target:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review:
+    uses: themegrill/.github/.github/workflows/copilot-review-on-comment.yml@master
+    secrets:
+      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}

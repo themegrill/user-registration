@@ -135,7 +135,14 @@ class UR_Modules {
 			} else {
 				$feature->status = 'inactive';
 			}
-			$feature->link = $feature->link . '&utm_campaign=' . UR()->utm_campaign;
+			$feature->link = ur_utm_url(
+				$feature->link,
+				array(
+					'source'  => 'dashboard-all-features',
+					'medium'  => 'button',
+					'content' => isset( $feature->slug ) ? $feature->slug : '',
+				)
+			);
 			$feature->type = 'feature';
 
 			if ( in_array( 'free', $feature->plan ) ) {
@@ -179,7 +186,14 @@ class UR_Modules {
 			} else {
 				$addon->required_plan = __( 'Professional', 'user-registration' );
 			}
-			$addon->link          = $addon->link . '&utm_campaign=' . UR()->utm_campaign;
+			$addon->link          = ur_utm_url(
+				$addon->link,
+				array(
+					'source'  => 'dashboard-all-features',
+					'medium'  => 'button',
+					'content' => isset( $addon->slug ) ? $addon->slug : '',
+				)
+			);
 			$addon->type          = 'addon';
 			$addons_lists[ $key ] = $addon;
 		}

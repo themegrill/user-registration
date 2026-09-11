@@ -182,7 +182,7 @@ class UR_Preview {
 			array(
 				'ajax_url'           => admin_url( 'admin-ajax.php' ),
 				'form_preview_nonce' => wp_create_nonce( 'ur_form_preview_nonce' ),
-				'pro_upgrade_link'   => esc_url( 'https://wpuserregistration.com/upgrade/?utm_source=form-preview&utm_medium=sidebar-upgrade-button&utm_campaign=' . UR()->utm_campaign ),
+				'pro_upgrade_link'   => esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'form-preview', 'medium' => 'button' ) ) ),
 			)
 		);
 
@@ -459,7 +459,7 @@ class UR_Preview {
 		if ( ! $is_pro_active ) {
 			$html .= '<div class="ur-form-preview-upgrade  id="ur-form-save" data-theme="default" ">';
 			$html .= '<img src="' . esc_url( UR()->plugin_url() . '/assets/images/upgrade-icon.svg' ) . '" alt="Save">';
-			$html .= '<div class="ur-form-preview-upgrade-title"><a target="_blank" href="https://wpuserregistration.com/upgrade/?utm_source=ur-membership-create&utm_medium=upgrade-link&utm-campaign=lite-version">' . esc_html__( 'Upgrade to Pro', 'user-registration' ) . '</a></div>';
+			$html .= '<div class="ur-form-preview-upgrade-title"><a target="_blank" href="' . esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'ur-membership-create', 'medium' => 'upgrade-link' ) ) ) . '">' . esc_html__( 'Upgrade to Pro', 'user-registration' ) . '</a></div>';
 			$html .= '</div>';
 		}
 

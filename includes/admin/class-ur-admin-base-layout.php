@@ -29,6 +29,8 @@ class UR_Base_Layout {
 	public static function render_layout( $table, $args = array() ) {
 		$defaults = array(
 			'page'           => '',
+			'tab'            => '',
+			'section'        => '',
 			'title'          => '',
 			'add_new_label'  => esc_html__( 'Add New', 'user-registration' ),
 			'add_new_action' => '',
@@ -99,8 +101,15 @@ class UR_Base_Layout {
 					</a>
 					<?php
 				elseif ( ! empty( $data['add_new_action'] ) ) :
+					$add_new_url = 'admin.php?page=' . $data['page'] . '&action=' . $data['add_new_action'];
+					if ( ! empty( $data['tab'] ) ) {
+						$add_new_url .= '&tab=' . $data['tab'];
+					}
+					if ( ! empty( $data['section'] ) ) {
+						$add_new_url .= '&section=' . $data['section'];
+					}
 					?>
-					<a href="<?php echo esc_url( admin_url( 'admin.php?page=' . $data['page'] . '&action=' . $data['add_new_action'] ) ); ?>" class="page-title-action <?php echo esc_attr( $external_class ); ?>" <?php echo wp_kses_post( $inline_attr ); ?>>
+					<a href="<?php echo esc_url( admin_url( $add_new_url ) ); ?>" class="page-title-action <?php echo esc_attr( $external_class ); ?>" <?php echo wp_kses_post( $inline_attr ); ?>>
 						<?php echo esc_html( $data['add_new_label'] ); ?>
 					</a>
 				<?php endif; ?>
@@ -123,6 +132,12 @@ class UR_Base_Layout {
 			</div>
 			<form id="<?php echo esc_attr( $data['form_id'] ); ?>" method="get" class="user-registration-base-list-table-form">
 				<input type="hidden" name="page" value="<?php echo esc_attr( $data['page'] ); ?>"/>
+				<?php if ( ! empty( $data['tab'] ) ) : ?>
+					<input type="hidden" name="tab" value="<?php echo esc_attr( $data['tab'] ); ?>"/>
+				<?php endif; ?>
+				<?php if ( ! empty( $data['section'] ) ) : ?>
+					<input type="hidden" name="section" value="<?php echo esc_attr( $data['section'] ); ?>"/>
+				<?php endif; ?>
 				<?php if ( $show_search ) : ?>
 					<div id="user-registration-base-list-filters-row">
 						<?php

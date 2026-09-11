@@ -49,7 +49,7 @@ class UR_Email_Approval {
 
 				$saved_token = get_user_meta( $user_id, 'ur_confirm_approval_token', true );
 
-			if ( $ur_approval_token_raw === $saved_token ) {
+			if ( hash_equals( (string) $saved_token, $ur_approval_token_raw ) ) {
 				$user_manager = new UR_Admin_User_Manager( $user_id );
 				$user_manager->save_status( UR_Admin_User_Manager::APPROVED, true );
 
@@ -94,7 +94,7 @@ class UR_Email_Approval {
 
 			$saved_token = get_user_meta( $user_id, 'ur_confirm_denial_token', true );
 
-			if ( $ur_denial_token_raw === $saved_token ) {
+			if ( hash_equals( (string) $saved_token, $ur_denial_token_raw ) ) {
 				$user_manager = new UR_Admin_User_Manager( $user_id );
 				$user_manager->save_status( UR_Admin_User_Manager::DENIED, true );
 

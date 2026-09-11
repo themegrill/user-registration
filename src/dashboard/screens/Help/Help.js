@@ -28,6 +28,7 @@ import x from "../../images/x.webp";
 import youtube from "../../images/youtube.webp";
 import ShortcodesLists from "./Lists/ShortcodesLists/ShortcodesLists";
 import SmartTagsLists from "./Lists/SmartTagsLists/SmartTagsLists";
+import { urUtmUrl } from "../../../utils/utm";
 
 const PRIMARY_COLOR = "#475bb2";
 const docURL = "https://docs.wpuserregistration.com/";
@@ -39,7 +40,7 @@ const ticketUrl = "https://wpuserregistration.com/support/";
 
 const Help = () => {
 	/* global _UR_DASHBOARD_ */
-	const { newFormURL, allFormsURL, utmCampaign } =
+	const { newFormURL, allFormsURL } =
 		typeof _UR_DASHBOARD_ !== "undefined" && _UR_DASHBOARD_;
 
 	const [isListViewerOpen, setIsListViewerOpen] = useState(false);
@@ -47,15 +48,24 @@ const Help = () => {
 
 	useEffect(() => {}, [isListViewerOpen]);
 
-	const supportURL =
-			"https://wpuserregistration.com/support/?utm_source=dashboard-help&utm_medium=help-button&utm_campaign=" +
-			utmCampaign,
-		helpURL =
-			"https://docs.wpuserregistration.com/?utm_source=dashboard-help&utm_medium=help-button&utm_campaign=" +
-			utmCampaign,
-		featureRequestURL =
-			"https://wpuserregistration.com/feature-requests/?utm_source=dashboard-help&utm_medium=sidebar-link&utm_campaign=" +
-			utmCampaign;
+	const supportURL = urUtmUrl("https://wpuserregistration.com/support/", {
+			source: "dashboard-help",
+			medium: "button",
+			content: "support"
+		}),
+		helpURL = urUtmUrl("https://docs.wpuserregistration.com/", {
+			source: "dashboard-help",
+			medium: "button",
+			content: "documentation"
+		}),
+		featureRequestURL = urUtmUrl(
+			"https://wpuserregistration.com/feature-requests/",
+			{
+				source: "dashboard-help",
+				medium: "menu-link",
+				content: "feature-requests"
+			}
+		);
 	return (
 		<Grid
 			my="8"

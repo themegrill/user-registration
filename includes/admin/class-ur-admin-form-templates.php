@@ -95,8 +95,9 @@ class UR_Admin_Form_Templates {
 			'ur-templates',
 			'ur_templates_script',
 			array(
-				'security' => wp_create_nonce( 'wp_rest' ),
-				'siteURL'  => esc_url( home_url( '/' ) ),
+				'security'     => wp_create_nonce( 'wp_rest' ),
+				'siteURL'      => esc_url( home_url( '/' ) ),
+				'utm_campaign' => UR()->utm_campaign,
 			)
 		);
 		wp_enqueue_script( 'ur-templates' );

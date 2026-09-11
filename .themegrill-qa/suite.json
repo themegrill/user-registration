@@ -1,0 +1,47 @@
+{
+  "runner": "playwright",
+  "package_manager": "pnpm",
+  "install": "pnpm install --frozen-lockfile",
+  "command": "pnpm exec playwright test",
+  "config": "playwright.config.ts",
+  "spec_dir": "tests/e2e/specs",
+  "spec_extension": ".spec.ts",
+  "json_report": "test-results/results.json",
+  "env": {
+    "base_url": "USER_REGISTRATION_BASE_URL",
+    "admin_user": "USER_REGISTRATION_ADMIN_USER",
+    "admin_pass": "USER_REGISTRATION_ADMIN_PASS"
+  },
+  "tiers": {
+    "fresh": "@fresh",
+    "demo": "@demo"
+  },
+  "area_paths": {
+    "admin": [
+      "includes/admin/class-ur-admin-menus.php",
+      "includes/admin/class-ur-admin-settings.php",
+      "includes/admin/settings/**",
+      "includes/admin/class-ur-admin-assets.php"
+    ],
+    "registration": [
+      "includes/class-ur-form-handler.php",
+      "includes/class-ur-shortcodes.php",
+      "includes/form/**",
+      "includes/frontend/**",
+      "templates/**",
+      "includes/class-ur-ajax.php",
+      "includes/class-ur-frontend-scripts.php"
+    ],
+    "my-account": [
+      "includes/shortcodes/class-ur-shortcode-my-account.php",
+      "includes/shortcodes/**",
+      "includes/functions-ur-template.php",
+      "includes/admin/settings/class-ur-settings-my-account.php",
+      "templates/myaccount/**"
+    ],
+    "security": [
+      "includes/admin/settings/class-ur-settings-security.php",
+      "includes/class-ur-install.php"
+    ]
+  }
+}

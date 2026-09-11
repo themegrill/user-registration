@@ -253,7 +253,14 @@ class UR_Admin_User_List_Manager {
 		$existing_non_urm_users = $users ? $users : 0;
 		if ( $existing_non_urm_users >= 5 && in_array( $current_screen->id, $ur_pages ) ) {
 			$utm_url = esc_url(
-				'https://wpuserregistration.com/features/profile-connect/?utm_source=admin-notices&utm_medium=profile-connect-addon-link&utm_campaign=' . UR()->utm_campaign
+				ur_utm_url(
+					'https://wpuserregistration.com/features/profile-connect/',
+					array(
+						'source'  => 'admin-notices',
+						'medium'  => 'button',
+						'content' => 'profile-connect',
+					)
+				)
 			);
 
 			?>

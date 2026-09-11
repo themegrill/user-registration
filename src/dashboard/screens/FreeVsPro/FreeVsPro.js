@@ -26,6 +26,7 @@ import check from "./images/check.webp";
 import close from "./images/close.webp";
 import { Lock } from "../../components/Icon/Icon";
 import { getAllModules } from "../Modules/components/modules-api";
+import { urUtmUrl } from "../../../utils/utm";
 
 const FreeVsPro = () => {
 	const [contentsLoaded, setContentsLoaded] = useState(false);
@@ -431,10 +432,13 @@ const FreeVsPro = () => {
 				<Button
 					as={Link}
 					colorScheme="primary"
-					href={
-						upgradeURL +
-						"&utm_source=dashboard-free-vs-pro&utm_medium=upgrade-button"
-					}
+					href={urUtmUrl(
+						upgradeURL || "https://wpuserregistration.com/upgrade/",
+						{
+							source: "dashboard-free-vs-pro",
+							medium: "button"
+						}
+					)}
 					color="white !important"
 					textDecor="none !important"
 					isExternal

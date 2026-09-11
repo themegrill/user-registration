@@ -20,6 +20,7 @@ import {
 	Plugin
 } from "chart.js";
 import { Button } from "./ui/button";
+import { urUtmUrl } from "../../utils/utm";
 import {
 	Select,
 	SelectTrigger,
@@ -535,7 +536,7 @@ const PRO_SUMMARY_OPTIONS = [
 // 			"Get powerful analytics with revenue tracking, member insights, recurring revenue analysis, and advanced visualizations.",
 // 			"user-registration"
 // 		)}</p>
-// 		<a href="https://wpuserregistration.com/upgrade/?utm_source=ur-analytics&utm_medium=upgrade-link&utm_campaign=lite-version">
+// 		<a href={urUtmUrl("https://wpuserregistration.com/upgrade/", { source: "ur-analytics", medium: "upgrade-link" })}>
 // 			<svg
 // 				xmlns="http://www.w3.org/2000/svg"
 // 				width="24"
@@ -832,7 +833,13 @@ export const AnalyticsContent = ({ overviewData }: AnalyticsContentProps) => {
 						>
 							<a
 								target="_blank"
-								href="https://wpuserregistration.com/upgrade/?utm_source=ur-analytics&utm_medium=upgrade-link&utm_campaign=lite-version"
+								href={urUtmUrl(
+									"https://wpuserregistration.com/upgrade/",
+									{
+										source: "ur-analytics",
+										medium: "upgrade-link"
+									}
+								)}
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"

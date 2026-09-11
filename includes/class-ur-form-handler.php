@@ -1042,7 +1042,7 @@ class UR_Form_Handler {
 				$the_post->post_content = str_replace( '"noopener"', "'noopener'", $the_post->post_content );
 
 				if ( isset( $args['publish'] ) ) {
-					if ( ( $args['publish'] && 'publish' === $the_post->post_type ) || ( ! $args['publish'] && 'publish' !== $the_post->post_type ) ) {
+					if ( ( $args['publish'] && 'publish' !== $the_post->post_status ) || ( ! $args['publish'] && 'publish' === $the_post->post_status ) ) {
 						return array();
 					}
 				}

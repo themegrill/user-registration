@@ -33,6 +33,7 @@ import announcement from "../../images/announcement.gif";
 import { ExternalLink, Logo } from "../Icon/Icon";
 import IntersectObserver from "../IntersectionObserver/IntersectionObserver";
 import Changelog from "../Changelog/Changelog";
+import { urUtmUrl } from "../../../utils/utm";
 
 const Header = () => {
 	const { isOpen, onOpen, onClose } = useDisclosure();
@@ -131,10 +132,14 @@ const Header = () => {
 									fontSize="12px"
 									height="18px"
 									w="85px"
-									href={
-										upgradeURL +
-										"&utm_source=dashboard-header&utm_medium=top-menu-link"
-									}
+									href={urUtmUrl(
+										upgradeURL ||
+											"https://wpuserregistration.com/upgrade/",
+										{
+											source: "dashboard-header",
+											medium: "menu-link"
+										}
+									)}
 									isExternal
 								>
 									{__("Upgrade To Pro", "user-registration")}

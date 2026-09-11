@@ -127,7 +127,7 @@ jobs:
           mkdir python-code
           cd python-code
           git init
-          git remote add origin git@github.com:wpeverest/UR-Automation.git
+          git remote add origin git@github.com:themegrill/UR-Automation.git
           git pull origin test-ur-free
           pip install -r requirements.txt
           chmod +x test_ur_free.sh

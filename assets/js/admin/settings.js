@@ -1429,7 +1429,53 @@
 		);
 
 		init_accordion_settings();
+		highlight_deep_linked_setting();
 	});
+
+	// Deep-link support: ?highlight=<field_id> scrolls to and flashes that setting row. Tab/section routing is the link's own job (e.g. &tab=advanced&section=others); this only handles the in-page scroll/flash once that page has loaded.
+	function highlight_deep_linked_setting() {
+		var params = new URLSearchParams(window.location.search);
+		var field_id = params.get("highlight");
+
+		if (!field_id) {
+			return;
+		}
+
+		var $field = $("#" + field_id);
+
+		if (!$field.length) {
+			return;
+		}
+
+		var $target = $field.closest(".user-registration-global-settings");
+		$target = $target.length ? $target : $field;
+
+		setTimeout(function () {
+			$target[0].scrollIntoView({ behavior: "smooth", block: "center" });
+
+			var original_outline = $target.css("outline");
+			var original_outline_offset = $target.css("outline-offset");
+			var original_border_radius = $target.css("border-radius");
+			$target.css({
+				transition: "outline-color 0.3s ease",
+				outline: "2px solid #475bb2",
+				"outline-offset": "8px",
+				"border-radius": "2px",
+			});
+
+			setTimeout(function () {
+				$target.css("outline-color", "transparent");
+
+				setTimeout(function () {
+					$target.css({
+						outline: original_outline,
+						"outline-offset": original_outline_offset,
+						"border-radius": original_border_radius,
+					});
+				}, 300);
+			}, 1800);
+		}, 300);
+	}
 
 	/**
 	 * Initialize accordion_settings elements.

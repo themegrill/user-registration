@@ -1041,6 +1041,25 @@ class StripeService {
 			return $response;
 		}
 
+		$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+		$member_order = is_array( $member_order ) ? $member_order : array();
+
+		// The verified PaymentIntent must own the order being confirmed, otherwise a settled intent from an earlier order completes whichever order is newest.
+		if ( empty( $member_order ) || (int) $latest_order['ID'] !== (int) $member_order['ID'] ) {
+			return $this->update_order_error(
+				$response,
+				__( 'Payment verification failed for this order.', 'user-registration' ),
+				'Payment confirmation rejected: PaymentIntent belongs to a different order',
+				array(
+					'error_code'        => 'TRANSACTION_ORDER_MISMATCH',
+					'member_id'         => $member_id,
+					'payment_intent_id' => $pi_id,
+					'intent_order_id'   => $latest_order['ID'],
+					'target_order_id'   => $member_order['ID'] ?? 0,
+				)
+			);
+		}
+
 		// Exclude the order that actually owns this transaction (already fetched above), not the
 		// client-supplied order_id which can arrive empty on the registration/first-purchase
 		// flow. Otherwise the order's own transaction is treated as a duplicate and the payment
@@ -1127,6 +1146,25 @@ class StripeService {
 			return $response;
 		} elseif ( 'succeeded' === $payment_status ) {
 			$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+
+			// The retrieved PaymentIntent must belong to the order being completed. Verification runs
+			// against the order that owns the transaction while completion applies to the member's newest
+			// order; without this guard a succeeded PaymentIntent from an earlier order can be replayed to
+			// complete a newer pending order, renewing/extending a membership with no new payment.
+			if ( empty( $member_order ) || (int) $latest_order['ID'] !== (int) $member_order['ID'] ) {
+				return $this->update_order_error(
+					$response,
+					__( 'Payment verification failed.', 'user-registration' ),
+					'Payment confirmation rejected: PaymentIntent does not belong to the order being completed',
+					array(
+						'error_code'        => 'PAYMENT_INTENT_ORDER_MISMATCH',
+						'member_id'         => $member_id,
+						'payment_intent_id' => $pi_id,
+						'verified_order_id' => $latest_order['ID'],
+						'target_order_id'   => $member_order['ID'] ?? 0,
+					)
+				);
+			}
 
 			if ( 'completed' === $member_order['status'] ) {
 				$response['message'] = $is_upgrading ? __( 'Membership upgraded successfully.', 'user-registration' ) : get_option( 'user_registration_successful_membership_creation_message', esc_html__( 'New member has been successfully created.', 'user-registration' ) );
@@ -3021,6 +3059,12 @@ class StripeService {
 			return $response;
 		}
 
+		if ( ! empty( $subscription['member_id'] ) && get_user_meta( absint( $subscription['member_id'] ), 'urm_retry_unrecoverable_' . $subscription['sub_id'], true ) ) {
+			$response['message'] = __( 'Subscription no longer exists at Stripe and will not be retried', 'user-registration' );
+
+			return $response;
+		}
+
 		PaymentGatewayLogging::log_general(
 			'stripe',
 			'Retrying Stripe subscription payment' . "\n" . wp_json_encode(
@@ -3160,11 +3204,23 @@ class StripeService {
 						'error_code'      => $e->getStripeCode(),
 						'error_message'   => $e->getMessage(),
 						'subscription_id' => $subscription['subscription_id'],
-						'user_id'         => $subscription['user_id'] ?? 'unknown',
+						'member_id'       => $subscription['member_id'] ?? 'unknown',
 					),
 					JSON_PRETTY_PRINT
 				)
 			);
+
+			// A missing subscription can never come back (deleted, or created under the other API mode),
+			// so stop the daily cron from retrying this row forever.
+			if ( 'resource_missing' === $e->getStripeCode() && ! empty( $subscription['member_id'] ) ) {
+				// The failure detail is already in the log entry above, so store only a timestamp:
+				// it is never empty, and keeps the gateway's message out of user meta.
+				update_user_meta(
+					absint( $subscription['member_id'] ),
+					'urm_retry_unrecoverable_' . $subscription['sub_id'],
+					current_time( 'mysql' )
+				);
+			}
 
 			$response['message'] = $e->getMessage();
 
