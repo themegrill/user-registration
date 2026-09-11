@@ -51,12 +51,55 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 		 * Filter to provide sections submenu for scaffold settings.
 		 */
 		public function get_sections_callback( $sections ) {
-			$sections['general']      = __( 'General', 'user-registration' );
-			$sections['to-admin']     = __( 'To Admin', 'user-registration' );
-			$sections['to-user']      = __( 'To User', 'user-registration' );
-			$sections['templates']    = __( 'Templates', 'user-registration' );
-			$sections['custom-email'] = __( 'Custom Email', 'user-registration' );
+			$sections['general']  = __( 'General', 'user-registration' );
+			$sections['to-admin'] = __( 'To Admin', 'user-registration' );
+			$sections['to-user']  = __( 'To User', 'user-registration' );
+
+			// Health Checkup works with no license at all, so don't bury it
+			// below Templates/Custom Email when those are locked behind an
+			// inactive or free license — put it ahead of them instead.
+			if ( self::has_active_email_premium_plan() ) {
+				$sections['templates']      = __( 'Templates', 'user-registration' );
+				$sections['custom-email']   = __( 'Custom Email', 'user-registration' );
+				$sections['health-checkup'] = __( 'Health Checkup', 'user-registration' );
+			} else {
+				$sections['health-checkup'] = __( 'Health Checkup', 'user-registration' );
+				$sections['templates']      = __( 'Templates', 'user-registration' );
+				$sections['custom-email']   = __( 'Custom Email', 'user-registration' );
+			}
+
 			return $sections;
+		}
+
+		/**
+		 * Whether the current license unlocks the premium email sections
+		 * (Templates, Custom Email) — mirrors the same check
+		 * UR_Settings_Page::output_sections() uses to decide whether to
+		 * show the premium lock icon next to those sections.
+		 *
+		 * @return bool
+		 */
+		private static function has_active_email_premium_plan() {
+			$premium_tabs = ur_premium_settings_tab();
+			$premium_tab  = isset( $premium_tabs['email']['templates'] ) ? $premium_tabs['email']['templates'] : array();
+
+			if ( empty( $premium_tab['plan'] ) ) {
+				return true;
+			}
+
+			$license_data = ur_get_license_plan();
+			$license_plan = ! empty( $license_data->item_plan ) ? $license_data->item_plan : false;
+			$license_plan = trim( str_replace( 'lifetime', '', strtolower( $license_plan ) ) );
+
+			if ( in_array( $license_plan, $premium_tab['plan'], true ) ) {
+				return true;
+			}
+
+			if ( ! empty( $premium_tab['plugin'] ) && file_exists( WP_PLUGIN_DIR . '/' . $premium_tab['plugin'] ) && is_plugin_active( $premium_tab['plugin'] . '/' . $premium_tab['plugin'] . '.php' ) ) {
+				return true;
+			}
+
+			return false;
 		}
 
 		/**
@@ -188,21 +231,34 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 									'autoload' => false,
 								),
 								array(
-									'title'    => __( '"From" name', 'user-registration' ),
-									'desc'     => __( 'How the sender name appears in outgoing user registration emails.', 'user-registration' ),
-									'id'       => 'user_registration_email_from_name',
-									'type'     => 'text',
-									'css'      => 'min-width:300px;',
-									'default'  => esc_attr( get_bloginfo( 'name', 'display' ) ),
-									'autoload' => false,
-									'desc_tip' => true,
+									'title'       => __( '"From" name', 'user-registration' ),
+									'desc'        => __( 'How the sender name appears in outgoing user registration emails. Leave blank to use the site title.', 'user-registration' ),
+									'id'          => 'user_registration_email_from_name',
+									'type'        => 'text',
+									// The description is a tooltip, so the placeholder is the
+									// only thing an admin reliably reads — it has to name the
+									// fallback rather than just show a value.
+									'placeholder' => sprintf(
+										/* translators: %s: site title */
+										__( 'Defaults to the site title (%s)', 'user-registration' ),
+										get_bloginfo( 'name', 'display' )
+									),
+									'css'         => 'min-width:300px;',
+									'default'     => esc_attr( get_bloginfo( 'name', 'display' ) ),
+									'autoload'    => false,
+									'desc_tip'    => true,
 								),
 
 								array(
 									'title'             => __( '"From" address', 'user-registration' ),
-									'desc'              => __( 'How the sender email appears in outgoing user registration emails.', 'user-registration' ),
+									'desc'              => __( 'How the sender email appears in outgoing user registration emails. Leave blank to use the site admin email.', 'user-registration' ),
 									'id'                => 'user_registration_email_from_address',
 									'type'              => 'email',
+									'placeholder'       => sprintf(
+										/* translators: %s: site admin email address */
+										__( 'Defaults to the site admin email (%s)', 'user-registration' ),
+										get_option( 'admin_email' )
+									),
 									'custom_attributes' => array(
 										'multiple' => 'multiple',
 									),
@@ -233,7 +289,12 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 										array(
 											'title' => __( 'Send Email', 'user-registration' ),
 											'href'  => '#',
-											'class' => 'button user_registration_send_email_test',
+											'class' => 'urm-btn-comp-v7 user_registration_send_email_test',
+										),
+										array(
+											'title' => __( 'Health Checkup', 'user-registration' ),
+											'href'  => esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=email&section=health-checkup' ) ),
+											'class' => 'urm-btn-comp-v7 user_registration_email_health_checkup',
 										),
 									),
 								),
@@ -448,6 +509,15 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 			}
 
 			switch ( $current_section ) {
+				case 'health-checkup':
+					// UR_Admin_Email_Checkup redirects this section to the full-screen
+					// run on admin_init. This is only reached if that could not fire.
+					printf(
+						'<p><a class="button button-primary" href="%1$s">%2$s</a></p>',
+						esc_url( UR_Admin_Email_Checkup::url() ),
+						esc_html__( 'Open the Email Delivery Checkup', 'user-registration' )
+					);
+					return;
 				case 'to-admin':
 					$settings = $this->get_to_admin_email_list_section();
 					break;

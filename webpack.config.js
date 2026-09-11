@@ -24,7 +24,8 @@ module.exports = {
 		form_templates: "./src/form-templates/index.js",
 		"divi-builder": "./src/widgets/divi-builder/index.js",
 		"content-access-rules": "./src/content-restriction/index.js",
-		analytics: "./src/analytics/main.tsx"
+		analytics: "./src/analytics/main.tsx",
+		"health-checkup": "./src/health-checkup/index.tsx"
 	},
 	plugins: [
 		...defaults.plugins.filter((plugin) => {

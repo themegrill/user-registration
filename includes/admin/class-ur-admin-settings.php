@@ -310,7 +310,7 @@ class UR_Admin_Settings {
 		$tabs = apply_filters( 'user_registration_settings_tabs_array', array() ); // phpcs:ignore
 
 		$GLOBALS['hide_save_button'] = false;
-		if ( 'import_export' === $current_tab ) {
+		if ( 'import_export' === $current_tab || ( 'email' === $current_tab && 'health-checkup' === $current_section ) ) {
 			$GLOBALS['hide_save_button'] = true;
 		}
 
@@ -1191,11 +1191,13 @@ class UR_Admin_Settings {
 									$settings .= '<div class="user-registration-global-settings--field"' . ( ! empty( $align_items ) ? 'style="align-items: end;"' : '' ) . '>';
 
 									if ( isset( $value['buttons'] ) && is_array( $value['buttons'] ) ) {
+										$settings .= '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
 										foreach ( $value['buttons'] as $button ) {
 											$settings .= '<a
 														href="' . esc_url( $button['href'] ) . '"
 														class="button ' . esc_attr( $button['class'] ) . '" style="' . esc_attr( $value['css'] ) . '">' . esc_html( $button['title'] ) . '</a>';
 										}
+										$settings .= '</div>';
 									}
 
 									$settings .= ( ! empty( $value['desc'] ) && isset( $value['desc_tip'] ) && true !== $value['desc_tip'] ) ? '<p class="description" >' . wp_kses_post( $value['desc'] ) . '</p>' : '';

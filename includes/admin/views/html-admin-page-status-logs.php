@@ -57,7 +57,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 		<div class="alignright">
 			<form action="<?php echo esc_url( admin_url( 'admin.php?page=user-registration-status' ) ); ?>" method="post">
-				<select name="log_file" style="max-width: 450px; vertical-align: inherit;">
+				<select name="log_file" style="vertical-align: inherit;">
 					<?php foreach ( $logs as $log_key => $log_file ) : ?>
 						<?php
 						$file_date = date_i18n(
@@ -78,6 +78,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	</div>
 
 	<style>
+		/* Log filenames are long enough to run over the dropdown arrow, which
+		   sits in the padding WordPress leaves on the right. */
+		#log-viewer-select select {
+			max-width: 450px;
+			padding-right: 30px;
+			text-overflow: ellipsis;
+		}
+
 		#log-viewer .log-level-info    { color: #2271b1; font-weight: bold; }
 		#log-viewer .log-level-notice  { color: #00a0d2; font-weight: bold; }
 		#log-viewer .log-level-warning { color: #f0b849; font-weight: bold; }

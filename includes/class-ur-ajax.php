@@ -60,6 +60,10 @@ class UR_AJAX {
 			'profile_pic_upload'                   => true,
 			'ajax_login_submit'                    => true,
 			'send_test_email'                      => false,
+			'email_health_scan'                    => false,
+			'email_health_confirm_delivery'         => false,
+			'email_health_install_smartsmtp'        => false,
+			'email_health_activate_smtp_plugin'    => false,
 			'create_form'                          => false,
 			'rated'                                => false,
 			'dashboard_widget'                     => false,
@@ -566,14 +570,14 @@ class UR_AJAX {
 		 * Filter to test mail from name.
 		 * Default value is get_option('user_registration_email_from_name').
 		 */
-		$from_name = apply_filters( 'wp_mail_from_name', get_option( 'user_registration_email_from_name', esc_attr( get_bloginfo( 'name', 'display' ) ) ) );
+		$from_name = apply_filters( 'wp_mail_from_name', UR_Emailer::ur_sender_name() );
 		do_action( 'user_registration_email_send_before' );
 
 		/**
 		 * Filter to test mail from address.
 		 * Default value is get_option('user_registration_email_from_address').
 		 */
-		$sender_email = apply_filters( 'wp_mail_from', get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) ) );
+		$sender_email = apply_filters( 'wp_mail_from', UR_Emailer::ur_sender_email() );
 		$email        = sanitize_email( isset( $_POST['email'] ) ? wp_unslash( $_POST['email'] ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification
 		/* translators: %s - WP mail from name */
 		$subject = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
@@ -596,8 +600,187 @@ class UR_AJAX {
 			wp_send_json_success( array( 'message' => __( 'Test email was sent successfully! Please check your inbox to make sure it is delivered.', 'user-registration' ) ) );
 		} else {
 			$error_message = apply_filters( 'user_registration_email_send_failed_message', '' );
-			wp_send_json_error( array( 'message' => sprintf( __( 'Test email was unsuccessful!. %s', 'user-registration' ), $error_message ) ) );
+			wp_send_json_error( array( 'message' => sprintf( __( 'Test email was unsuccessful. %s', 'user-registration' ), $error_message ) ) );
 		}
+	}
+
+	/**
+	 * Run the email health checkup scan and return the results.
+	 *
+	 * @since 6.x
+	 */
+	public static function email_health_scan() {
+		check_ajax_referer( 'email_health_scan_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to run this check.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		if ( ! class_exists( 'UR_Email_Health_Checker' ) ) {
+			require_once UR_ABSPATH . 'includes/class-ur-email-health-checker.php';
+		}
+
+		wp_send_json_success( UR_Email_Health_Checker::run_checks() );
+	}
+
+	/**
+	 * Record the admin's self-reported test-email delivery outcome.
+	 *
+	 * @since 6.x
+	 */
+	public static function email_health_confirm_delivery() {
+		check_ajax_referer( 'email_health_confirm_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to record this result.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		$result = isset( $_POST['result'] ) ? sanitize_key( wp_unslash( $_POST['result'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+
+		if ( ! in_array( $result, array( 'arrived', 'spam', 'none' ), true ) ) {
+			wp_send_json_error( array( 'message' => __( 'Invalid delivery result.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		update_option(
+			'user_registration_email_health_last_result',
+			array(
+				'result' => $result,
+				'time'   => time(),
+			),
+			false
+		);
+
+		wp_send_json_success();
+	}
+
+	/**
+	 * Install (if needed) and activate SmartSMTP, then hand back the URL
+	 * to its Primary Connection screen so the admin can pick Gmail there.
+	 *
+	 * @since 6.x
+	 */
+	public static function email_health_install_smartsmtp() {
+		check_ajax_referer( 'email_health_scan_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'install_plugins' ) || ! current_user_can( 'activate_plugins' ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to install plugins.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		$plugin_file = 'smart-smtp/smart-smtp.php';
+
+		if ( ! file_exists( WP_PLUGIN_DIR . '/' . $plugin_file ) ) {
+			require_once ABSPATH . 'wp-admin/includes/file.php';
+			require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+			require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+			require_once ABSPATH . 'wp-admin/includes/class-wp-ajax-upgrader-skin.php';
+
+			$api = plugins_api(
+				'plugin_information',
+				array(
+					'slug'   => 'smart-smtp',
+					'fields' => array( 'sections' => false ),
+				)
+			);
+
+			if ( is_wp_error( $api ) ) {
+				wp_send_json_error( array( 'message' => $api->get_error_message() ) );
+				wp_die( -1 );
+			}
+
+			$skin     = new WP_Ajax_Upgrader_Skin();
+			$upgrader = new Plugin_Upgrader( $skin );
+			$result   = $upgrader->install( $api->download_link );
+
+			if ( is_wp_error( $result ) || ! $result ) {
+				$error_messages = $skin->get_error_messages();
+				wp_send_json_error(
+					array(
+						'message' => $error_messages ? $error_messages : __( 'Could not install SmartSMTP. Please install it manually from Plugins → Add New.', 'user-registration' ),
+					)
+				);
+				wp_die( -1 );
+			}
+
+			$installed_file = $upgrader->plugin_info();
+			if ( $installed_file ) {
+				$plugin_file = $installed_file;
+			}
+		}
+
+		if ( ! is_plugin_active( $plugin_file ) ) {
+			$activated = activate_plugin( $plugin_file );
+
+			if ( is_wp_error( $activated ) ) {
+				wp_send_json_error( array( 'message' => $activated->get_error_message() ) );
+				wp_die( -1 );
+			}
+		}
+
+		wp_send_json_success(
+			array(
+				// Gmail preselected with its one-click setup, not the default
+				// provider — see UR_Admin_Email_Checkup::smartsmtp_gmail_url().
+				'redirect' => class_exists( 'UR_Admin_Email_Checkup' )
+					? UR_Admin_Email_Checkup::smartsmtp_gmail_url()
+					: admin_url( 'admin.php?page=smart-smtp#/primary-connection' ),
+			)
+		);
+	}
+
+	/**
+	 * Activate an already-installed SMTP plugin so the admin can resolve the
+	 * scan's SMTP finding without leaving the Health Checkup screen.
+	 *
+	 * @since 6.x
+	 */
+	public static function email_health_activate_smtp_plugin() {
+		check_ajax_referer( 'email_health_scan_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'activate_plugins' ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to activate plugins.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		$plugin = isset( $_POST['plugin'] ) ? sanitize_text_field( wp_unslash( $_POST['plugin'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+
+		if ( ! class_exists( 'UR_Email_Health_Checker' ) ) {
+			require_once UR_ABSPATH . 'includes/class-ur-email-health-checker.php';
+		}
+
+		// Only ever activate one of the SMTP plugins this feature knows about,
+		// never an arbitrary plugin file handed over in the request.
+		if ( ! UR_Email_Health_Checker::is_known_smtp_plugin( $plugin ) ) {
+			wp_send_json_error( array( 'message' => __( 'That plugin cannot be activated from here.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		if ( ! file_exists( WP_PLUGIN_DIR . '/' . $plugin ) ) {
+			wp_send_json_error( array( 'message' => __( 'That plugin is no longer installed. Please install it from Plugins → Add New.', 'user-registration' ) ) );
+			wp_die( -1 );
+		}
+
+		if ( ! function_exists( 'is_plugin_active' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+		}
+
+		if ( ! is_plugin_active( $plugin ) ) {
+			$activated = activate_plugin( $plugin );
+
+			if ( is_wp_error( $activated ) ) {
+				wp_send_json_error( array( 'message' => $activated->get_error_message() ) );
+				wp_die( -1 );
+			}
+		}
+
+		wp_send_json_success(
+			array(
+				'name' => UR_Email_Health_Checker::known_smtp_plugin_name( $plugin ),
+			)
+		);
 	}
 
 	/**

@@ -361,8 +361,8 @@ class UR_Form_Handler {
 	 */
 	public static function send_confirmation_email( $user, $new_email, $form_id ) {
 
-		$from_name    = apply_filters( 'wp_mail_from_name', get_option( 'user_registration_email_from_name', esc_attr( get_bloginfo( 'name', 'display' ) ) ) );
-		$sender_email = apply_filters( 'wp_mail_from', get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) ) );
+		$from_name    = apply_filters( 'wp_mail_from_name', UR_Emailer::ur_sender_name() );
+		$sender_email = apply_filters( 'wp_mail_from', UR_Emailer::ur_sender_email() );
 		$to           = $new_email;
 		$template_id  = ur_get_single_post_meta( $form_id, 'user_registration_select_email_template' );
 		$settings     = new UR_Settings_Confirm_Email_Address_Change_Email();

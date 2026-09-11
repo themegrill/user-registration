@@ -210,17 +210,33 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 							}}
 						/>
 					</FormControl>
-					<Button
-						colorScheme={"primary"}
-						rounded="base"
-						width={"fit-content"}
-						fontSize="14px"
-						onClick={handleSendTestEmail}
-						isLoading={isLoading}
-						loadingText={__("Sending...", "user-registration")}
-					>
-						{__("Send Test Email", "user-registration")}
-					</Button>
+					<HStack gap={3}>
+						<Button
+							colorScheme={"primary"}
+							rounded="base"
+							width={"fit-content"}
+							fontSize="14px"
+							onClick={handleSendTestEmail}
+							isLoading={isLoading}
+							loadingText={__("Sending...", "user-registration")}
+						>
+							{__("Send Test Email", "user-registration")}
+						</Button>
+						<Button
+							as="a"
+							href={`${
+								window._UR_DASHBOARD_?.adminURL ||
+								window.location.origin + "/wp-admin/"
+							}admin.php?page=user-registration-settings&tab=email&section=health-checkup`}
+							variant="outline"
+							colorScheme={"primary"}
+							rounded="base"
+							width={"fit-content"}
+							fontSize="14px"
+						>
+							{__("Health Checkup", "user-registration")}
+						</Button>
+					</HStack>
 				</Stack>
 			</Collapse>
 		</Stack>

@@ -1,6 +1,8 @@
 .user-registration,
 .ur-form-container {
-	button,
+	// Chakra buttons excluded: React screens style their own, and these rules
+	// otherwise render borderless variants like `variant="link"` as buttons.
+	button:not(.chakra-button),
 	.button {
 		transition: all 0.25s ease 0s;
 		box-shadow: 0 1px 3px transparentize($color_gray_three, 0.85);
