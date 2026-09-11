@@ -8,29 +8,49 @@
 # branch, and they committed it with the fix. By the time CI sees the PR the
 # regression is already a deterministic assertion.
 #
-# ONE job, on pull requests only. Nothing runs on a schedule: the team's model is
-# a local /claudegrill:verify-fix while the fix is being written, and the e2e
-# suite on the PR. No cron, no nightly, no WordPress-core watcher.
+# It runs once when a PR opens, and after that ON REQUEST. Pushing a commit does
+# NOT re-run it. To run it against the PR's current head, comment:
 #
-# `scope: changed` narrows a run to the areas the diff maps to. That is safe by
-# construction — a changed file matching no `area_paths` pattern in
-# .themegrill-qa/suite.json falls back to the full tier, so an unmapped change
-# costs runner time, never coverage.
+#     @claudegrill suite
+#
+# 👀 means it started; 🚀 or 😕 means it finished, and the result comment on the
+# PR is edited in place. Only owners, members and collaborators can trigger it,
+# and never on a PR from a fork: close and reopen that PR instead.
+#
+# A comment does nothing until THIS FILE IS ON THE DEFAULT BRANCH, because
+# GitHub reads `issue_comment` workflows from there and never from the PR.
+#
+# Do not make it a required check. A comment-triggered run is not attached to
+# the PR's head commit, so after a push the check would wait forever.
+#
+# Nothing runs on a schedule: the team's model is a local
+# /claudegrill:verify-fix while the fix is being written, and the e2e suite on
+# the PR. No cron, no nightly, no WordPress-core watcher.
+#
+# `scope: changed` narrows a run to the areas the diff maps to. A changed file
+# matching no `area_paths` pattern in .themegrill-qa/suite.json runs nothing,
+# and is listed in the run summary so the gap is visible.
 #
 # Worth knowing, since nothing else runs the suite now: a spec whose area is
 # never touched by any PR will not execute. Set `scope: full` below if you would
-# rather every PR run the whole @fresh tier.
+# rather every run cover the whole @fresh tier.
 
 name: QA suite
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    # No `synchronize`: a push does not spend runner minutes.
+    types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
   workflow_dispatch:
 
 jobs:
-  # The only check. Scoped, fast, runs on every PR including drafts.
   pr:
+    # Every comment on every issue and PR fires `issue_comment`. Anything that
+    # is not the command stops here and never starts the reusable workflow,
+    # which checks the command again and also who wrote it.
+    if: github.event_name != 'issue_comment' || startsWith(github.event.comment.body, '@claudegrill suite')
     uses: ThemeGrill/claudegrill/.github/workflows/suite.yml@main
     with:
       product_slug: user-registration
