@@ -1,7 +1,5 @@
 import {
-	Box,
 	Collapse,
-	Flex,
 	HStack,
 	Heading,
 	Icon,
@@ -136,42 +134,20 @@ const LegacyPaymentFields = ({ isOpen, onToggle, onSkipped, numbering }) => {
 				<Stack gap={5}>
 					<Text fontWeight={"light"} fontSize={"15px !important"}>
 						{__(
-							"One or more of your forms use payment fields that new forms can no longer add. They keep working here; use the membership field for new payment setups.",
+							"Some existing forms use payment fields new forms can no longer add. They will keep working as they are.",
 							"user-registration"
 						)}
 					</Text>
 
-					<Flex
-						bg="#f9fafc"
-						p="4"
-						borderRadius="md"
-						justify="space-between"
-						align="center"
+					<Link
+						color="primary.500"
+						textDecoration="underline"
+						onClick={handleViewForms}
+						cursor="pointer"
+						width="fit-content"
 					>
-						<Box>
-							<Text
-								fontSize={"15px !important"}
-								fontWeight="bold"
-								mb={1}
-							>
-								{__("Affected Forms", "user-registration")}
-							</Text>
-							<Text fontSize="14px" color="gray.600">
-								{__(
-									"Find which forms use single item, total, multiple choice, subscription plan, quantity, or the payment slider.",
-									"user-registration"
-								)}
-							</Text>
-						</Box>
-						<Link
-							color="primary.500"
-							textDecoration="underline"
-							onClick={handleViewForms}
-							cursor="pointer"
-						>
-							{__("View Forms", "user-registration")}
-						</Link>
-					</Flex>
+						{__("View Forms", "user-registration")}
+					</Link>
 
 					<HStack justifyContent="flex-end">
 						<Link
