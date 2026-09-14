@@ -420,37 +420,8 @@ class StripeService {
 	 * @return string
 	 */
 	private function get_synced_value( $member_id, $field ) {
-		$user = get_userdata( $member_id );
-
-		if ( ! $user ) {
-			return '';
-		}
-
-		$parts = array();
-
-		foreach ( (array) $field as $name ) {
-			$name = sanitize_text_field( $name );
-
-			if ( '' === $name ) {
-				continue;
-			}
-
-			$key   = ur_get_field_name_with_prefix_usermeta( $name );
-			$value = isset( $user->$key ) ? $user->$key : '';
-
-			// Checkbox/multi-select fields store an array; join it instead of dropping the value.
-			if ( is_array( $value ) ) {
-				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
-			}
-
-			if ( ! is_scalar( $value ) || '' === (string) $value ) {
-				continue;
-			}
-
-			$parts[] = (string) $value;
-		}
-
-		return trim( implode( ' ', $parts ) );
+		// Moved to ur_get_synced_field_value() in core so Mollie (a separate plugin) can reuse it instead of duplicating.
+		return ur_get_synced_field_value( $member_id, $field );
 	}
 
 	/**

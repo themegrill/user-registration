@@ -12065,6 +12065,43 @@ if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_synced_field_value' ) ) {
+	// Shared by every gateway's field-sync (Stripe, Mollie, ...): each lives in its own plugin, so this is the one place the resolution runs.
+	function ur_get_synced_field_value( $member_id, $field ) {
+		$user = get_userdata( $member_id );
+
+		if ( ! $user ) {
+			return '';
+		}
+
+		$parts = array();
+
+		foreach ( (array) $field as $name ) {
+			$name = sanitize_text_field( $name );
+
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$key   = ur_get_field_name_with_prefix_usermeta( $name );
+			$value = isset( $user->$key ) ? $user->$key : '';
+
+			// Checkbox/multi-select fields store an array; join it instead of dropping the value.
+			if ( is_array( $value ) ) {
+				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
+			}
+
+			if ( ! is_scalar( $value ) || '' === (string) $value ) {
+				continue;
+			}
+
+			$parts[] = (string) $value;
+		}
+
+		return trim( implode( ' ', $parts ) );
+	}
+}
+
 if ( ! function_exists( 'ur_should_show_subscriptions_menu' ) ) {
 	/**
 	 * Whether the Subscriptions submenu should be registered.
