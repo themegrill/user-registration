@@ -516,16 +516,8 @@ jQuery(function ($) {
 						? "integration-lists-settings"
 						: "";
 
-					if (
-						!$(el).hasClass("integration-lists-settings") &&
-						$(el).is('[data-field-group*="payments"]')
-					) {
-						if (
-							user_registration_form_builder_data.form_has_membership_field
-						) {
-							classToAdd += " disabled";
-						}
-					}
+					// ponytail: no longer disabled when a membership field is present — the settings array
+					// itself already reduces to only what a membership form can use (sync fields, overrides).
 					var divToAppend = "";
 
 					if ($(el).hasClass("integration-lists-settings")) {

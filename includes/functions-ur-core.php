@@ -11985,10 +11985,20 @@ if ( ! function_exists( 'ur_legacy_payment_fields_enabled' ) ) {
 	 * Deliberately does not consult ur_has_payment_entries(), which also counts
 	 * membership orders and would mark a membership-only site as legacy.
 	 *
+	 * Pass $form_id to check one form instead of the site: a legacy site's brand
+	 * new form is frozen exactly like a new site's, and only a form that already
+	 * carries a frozen field keeps it. $form_id = 0 (a form with no ID yet) is
+	 * always frozen; omit the argument entirely for the old site-wide check.
+	 *
+	 * @param int|null $form_id Optional. Check this form instead of the site.
 	 * @return bool
 	 * @since x.x.x
 	 */
-	function ur_legacy_payment_fields_enabled() {
+	function ur_legacy_payment_fields_enabled( $form_id = null ) {
+		if ( null !== $form_id ) {
+			return $form_id ? ur_form_has_legacy_payment_fields( $form_id ) : false;
+		}
+
 		$is_legacy = get_option( 'urm_is_legacy_payment_fields_user', null );
 
 		if ( null === $is_legacy ) {
@@ -12003,6 +12013,55 @@ if ( ! function_exists( 'ur_legacy_payment_fields_enabled' ) ) {
 		 * @since x.x.x
 		 */
 		return (bool) apply_filters( 'user_registration_legacy_payment_fields_enabled', (bool) $is_legacy );
+	}
+}
+
+if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
+	/**
+	 * Whether one specific form already carries a frozen payment field.
+	 *
+	 * @param int $form_id Form ID.
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_form_has_legacy_payment_fields( $form_id ) {
+		$form_id = absint( $form_id );
+
+		if ( ! $form_id ) {
+			return false;
+		}
+
+		static $cache = array();
+
+		if ( isset( $cache[ $form_id ] ) ) {
+			return $cache[ $form_id ];
+		}
+
+		$post         = get_post( $form_id );
+		$post_content = $post ? (string) $post->post_content : '';
+		$has_field    = false;
+
+		foreach ( array( 'single_item', 'total_field', 'multiple_choice', 'subscription_plan', 'quantity_field' ) as $field_key ) {
+			if ( false !== strpos( $post_content, '"field_key":"' . $field_key . '"' ) ) {
+				$has_field = true;
+				break;
+			}
+		}
+
+		if ( ! $has_field && false !== strpos( $post_content, 'enable_payment_slider' ) && function_exists( 'ur_get_form_fields' ) ) {
+			foreach ( (array) ur_get_form_fields( $form_id ) as $field ) {
+				if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
+					&& 'range' === $field->field_key
+					&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
+					$has_field = true;
+					break;
+				}
+			}
+		}
+
+		$cache[ $form_id ] = $has_field;
+
+		return $has_field;
 	}
 }
 
