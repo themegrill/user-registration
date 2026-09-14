@@ -438,6 +438,11 @@ class StripeService {
 			$key   = ur_get_field_name_with_prefix_usermeta( $name );
 			$value = isset( $user->$key ) ? $user->$key : '';
 
+			// Checkbox/multi-select fields store an array; join it instead of dropping the value.
+			if ( is_array( $value ) ) {
+				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
+			}
+
 			if ( ! is_scalar( $value ) || '' === (string) $value ) {
 				continue;
 			}
@@ -492,6 +497,12 @@ class StripeService {
 			foreach ( $address_keys as $address_key ) {
 				$mapped = ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_' . $prefix . $address_key, '' );
 				$value  = $mapped ? $this->get_synced_value( $member_id, $mapped ) : '';
+
+				// A country field stores {"country":"..","state":".."} as one meta value; pull the requested part out of it.
+				if ( in_array( $address_key, array( 'country', 'state' ), true ) && '' !== $value && '{' === $value[0] ) {
+					$decoded = json_decode( $value, true );
+					$value   = is_array( $decoded ) && isset( $decoded[ $address_key ] ) ? $decoded[ $address_key ] : '';
+				}
 
 				if ( '' !== $value ) {
 					$address[ $address_key ] = $value;
