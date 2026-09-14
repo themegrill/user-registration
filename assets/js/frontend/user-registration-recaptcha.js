@@ -186,6 +186,151 @@ var getSafeCaptchaObject = function(type) {
 	return null;
 };
 
+/**
+ * Refresh the captcha widget belonging to a single form.
+ *
+ * The server verifies the token before it validates the fields, so a submission
+ * rejected for a field error has already spent it and resending it is rejected
+ * as a duplicate. The type is read from the form's own node because the config
+ * globals are page wide while the captcha type is per form.
+ *
+ * @since 5.2.9
+ *
+ * @param {Object} $form jQuery object for the form to refresh.
+ */
+var ur_refresh_form_captcha = function ($form) {
+	if (!$form || !$form.length) {
+		return;
+	}
+
+	// The node id is hard coded in the template, so scope the lookup to this form.
+	var $node = $form.find("[id='ur-recaptcha-node']").children().first();
+
+	if (!$node.length) {
+		return;
+	}
+
+	var is_login = $form.hasClass("login"),
+		widget_id = $node.data("ur-widget-id"),
+		response_name = "",
+		captcha_reset = false;
+
+	if ($node.hasClass("cf-turnstile")) {
+		response_name = "cf-turnstile-response";
+
+		if ("undefined" === typeof widget_id) {
+			widget_id = is_login
+				? turnstile_login
+				: turnstile_user_registration;
+		}
+
+		var turnstileObj = getSafeCaptchaObject("turnstile");
+
+		// A Turnstile widget id is a string, so it must not be filtered out the
+		// way the hCaptcha and reCAPTCHA placeholder ids are.
+		if (widget_id && turnstileObj && turnstileObj.reset) {
+			try {
+				turnstileObj.reset(widget_id);
+			} catch (e) {}
+
+			// reset() clears the response synchronously and only logs when the
+			// id no longer resolves, so a token still sitting there means the
+			// call did nothing.
+			captcha_reset =
+				"" ===
+				($form.find('[name="' + response_name + '"]').val() || "");
+		}
+
+		// The widget could not be reset, so rebuild it from scratch.
+		if (!captcha_reset && turnstileObj && turnstileObj.render) {
+			try {
+				var render_params = $node.data("ur-render-params");
+
+				if (
+					"undefined" === typeof render_params &&
+					"undefined" !== typeof ur_cloudflare_recaptcha_code
+				) {
+					render_params = {
+						sitekey: ur_cloudflare_recaptcha_code.site_key,
+						theme: ur_cloudflare_recaptcha_code.theme_mode
+					};
+				}
+
+				if (render_params) {
+					if (widget_id && turnstileObj.remove) {
+						turnstileObj.remove(widget_id);
+					}
+
+					// Turnstile keys widgets by container element and refuses to
+					// build a second one for the same node, so swapping in a fresh
+					// container is the only way to guarantee a new widget once the
+					// stored id has stopped resolving.
+					var $fresh = jQuery("<div></div>")
+						.attr("id", $node.attr("id"))
+						.attr("class", $node.attr("class"))
+						.data("ur-render-params", render_params);
+
+					$node.replaceWith($fresh);
+					$node = $fresh;
+
+					widget_id = turnstileObj.render($node[0], render_params);
+					$node.data("ur-widget-id", widget_id);
+					captcha_reset = true;
+				}
+			} catch (e) {}
+		}
+	} else if ($node.hasClass("g-recaptcha-hcaptcha")) {
+		response_name = "h-captcha-response";
+
+		if ("undefined" === typeof widget_id) {
+			widget_id = is_login ? hcaptcha_login : hcaptcha_user_registration;
+		}
+
+		var hcaptchaObj = getSafeCaptchaObject("hcaptcha");
+
+		if (hcaptchaObj && hcaptchaObj.reset) {
+			hcaptchaObj.reset(widget_id);
+			captcha_reset = "string" !== typeof widget_id;
+		}
+	} else if ($node.hasClass("g-recaptcha-v3")) {
+		// v3 mints a token on request instead of holding a widget.
+		request_recaptcha_token();
+
+		return;
+	} else if ($node.hasClass("g-recaptcha")) {
+		response_name = "g-recaptcha-response";
+
+		if ("undefined" === typeof widget_id) {
+			widget_id = is_login
+				? google_recaptcha_login
+				: google_recaptcha_user_registration;
+		}
+
+		var grecaptchaObj = getSafeCaptchaObject("grecaptcha");
+
+		if (grecaptchaObj && grecaptchaObj.reset) {
+			grecaptchaObj.reset(widget_id);
+			captcha_reset = "string" !== typeof widget_id;
+		}
+
+		// Invisible reCAPTCHA mints its token through execute(), not on render.
+		if ("invisible" === $node.attr("data-size")) {
+			if (grecaptchaObj && grecaptchaObj.execute) {
+				grecaptchaObj.execute();
+			}
+
+			return;
+		}
+	}
+
+	// Only blank a spent token once the widget is known to be able to replace
+	// it. Blanking after a reset that silently failed would strand the visitor
+	// on a captcha error next to a widget that still reads as solved.
+	if (captcha_reset && response_name) {
+		$form.find('[name="' + response_name + '"]').val("");
+	}
+};
+
 // Create a simple fallback captcha that always works
 var createFallbackCaptcha = function(type) {
 	return {
@@ -469,46 +614,31 @@ setTimeout(protectGrecaptcha, 2000);
 						"1" == $registration_form.data("captcha-enabled") &&
 						active_recaptcha_code.site_key.length
 					) {
+						// Spent widgets are refreshed once the response comes back,
+						// so only the types that mint a token on demand act here.
 						if (active_recaptcha_code.version == "v3") {
 							var captchaResponse = $registration_form
 								.find('[name="g-recaptcha-response"]')
-								.val();
+								.val() || "";
 							request_recaptcha_token();
 						} else if (active_recaptcha_code.version == "hCaptcha") {
 							var captchaResponse = $registration_form
 								.find('[name="h-captcha-response"]')
-								.val();
-
-							var hcaptchaObj = getSafeCaptchaObject('hcaptcha');
-							if (hcaptchaObj && hcaptchaObj.reset) {
-								hcaptchaObj.reset(hcaptcha_user_registration);
-							}
+								.val() || "";
 						} else if (active_recaptcha_code.version == "cloudflare") {
 							var captchaResponse = $registration_form
 								.find('[name="cf-turnstile-response"]')
-								.val();
-
-							var turnstileObj = getSafeCaptchaObject('turnstile');
-							if (turnstileObj && turnstileObj.reset) {
-								turnstileObj.reset(turnstile_user_registration);
-							}
+								.val() || "";
 						} else {
 							var captchaResponse = $registration_form
 								.find('[name="g-recaptcha-response"]')
-								.val();
+								.val() || "";
 
-							var grecaptchaObj = getSafeCaptchaObject('grecaptcha');
-							if (grecaptchaObj && grecaptchaObj.reset) {
-							for (
-								var i = 0;
-								i <= google_recaptcha_user_registration;
-								i++
-							) {
-									grecaptchaObj.reset(i);
-								}
-								if (active_recaptcha_code.is_invisible && grecaptchaObj.execute) {
+							if (active_recaptcha_code.is_invisible) {
+								var grecaptchaObj = getSafeCaptchaObject('grecaptcha');
+								if (grecaptchaObj && grecaptchaObj.execute) {
 									grecaptchaObj.execute();
-							}
+								}
 							}
 						}
 
@@ -577,6 +707,36 @@ setTimeout(protectGrecaptcha, 2000);
 							}
 						}
 					}
+				}
+			}
+		);
+
+		/**
+		 * Replace the token a rejected submission already spent.
+		 *
+		 * This fires for every response, ahead of the modules that suppress the
+		 * later completion events, so it also covers a membership form whose
+		 * payment step fails after registration itself succeeded.
+		 *
+		 * @since 5.2.9
+		 */
+		$(document).on(
+			"user_registration_frontend_before_ajax_complete_success_message",
+			function (event, ajax_response, ajaxFlag, $registration_form) {
+				if ("1" != $registration_form.data("captcha-enabled")) {
+					return;
+				}
+
+				var succeeded = false;
+
+				try {
+					succeeded =
+						true ===
+						JSON.parse(ajax_response.responseText).success;
+				} catch (e) {}
+
+				if (!succeeded) {
+					ur_refresh_form_captcha($registration_form);
 				}
 			}
 		);
@@ -665,6 +825,7 @@ var onloadURHcaptchaCallbackHandler = function () {
 												style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
 											}
 										);
+										hcaptchaElement.data("ur-widget-id", hcaptcha_user_registration);
 									} catch (error) {
 										// Silent fail
 									}
@@ -699,6 +860,9 @@ var onloadURHcaptchaCallbackHandler = function () {
 										style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
 									}
 								);
+								ur_recaptcha_node
+									.find(".g-recaptcha-hcaptcha")
+									.data("ur-widget-id", hcaptcha_login);
 							}
 						}
 					}
@@ -791,6 +955,9 @@ var onloadURRecaptchaCallbackHandler = function () {
 									style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
 								}
 							);
+								$this
+									.find("#node_recaptcha_register_" + form_id)
+									.data("ur-widget-id", google_recaptcha_user_registration);
 
 								if (recaptcha_code.is_invisible && grecaptchaObj.execute) {
 									grecaptchaObj.execute(google_recaptcha_user_registration);
@@ -824,6 +991,9 @@ var onloadURRecaptchaCallbackHandler = function () {
 									style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
 								}
 							);
+								ur_recaptcha_node
+									.find(".g-recaptcha")
+									.data("ur-widget-id", google_recaptcha_login);
 								if (ur_recaptcha_code.is_invisible && grecaptchaObj.execute) {
 									grecaptchaObj.execute(google_recaptcha_login);
 								}
@@ -902,14 +1072,20 @@ var onloadURTurnstileCallbackHandler = function () {
 								.attr("id", "node_recaptcha_register_" + form_id);
 							var turnstileObj = getSafeCaptchaObject('turnstile');
 							if (turnstileObj && turnstileObj.render) {
+								// Kept on the node so a spent widget can be rebuilt after a failed submission.
+								var turnstile_params = {
+									sitekey: recaptcha_code.site_key,
+									theme: recaptcha_code.theme_mode,
+									style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
+								};
 								turnstile_user_registration = turnstileObj.render(
 									"#node_recaptcha_register_" + form_id,
-									{
-										sitekey: recaptcha_code.site_key,
-										theme: recaptcha_code.theme_mode,
-										style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
-									}
+									turnstile_params
 								);
+								$this
+									.find("#node_recaptcha_register_" + form_id)
+									.data("ur-widget-id", turnstile_user_registration)
+									.data("ur-render-params", turnstile_params);
 							}
 						}
 					}
@@ -930,16 +1106,21 @@ var onloadURTurnstileCallbackHandler = function () {
 						if ("cloudflare" === ur_cloudflare_recaptcha_code.version) {
 							var turnstileObj = getSafeCaptchaObject('turnstile');
 							if (turnstileObj && turnstileObj.render) {
+								var turnstile_login_params = {
+									sitekey: ur_cloudflare_recaptcha_code.site_key,
+									theme: ur_cloudflare_recaptcha_code.theme_mode,
+									style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
+								};
 								turnstile_login = turnstileObj.render(
 									"#" + ur_recaptcha_node
 										.find(".cf-turnstile")
 										.attr("id"),
-									{
-										sitekey: ur_cloudflare_recaptcha_code.site_key,
-										theme: ur_cloudflare_recaptcha_code.theme_mode,
-										style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
-									}
+									turnstile_login_params
 								);
+								ur_recaptcha_node
+									.find(".cf-turnstile")
+									.data("ur-widget-id", turnstile_login)
+									.data("ur-render-params", turnstile_login_params);
 							}
 						}
 					}
@@ -1017,7 +1198,6 @@ function request_recaptcha_token() {
 					action: "login",
 				})
 				.then(function (token) {
-					console.log(token)
 					jQuery("form.login")
 						.find("#g-recaptcha-response")
 						.text(token);
