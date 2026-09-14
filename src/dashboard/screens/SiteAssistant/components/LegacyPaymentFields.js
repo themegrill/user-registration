@@ -21,7 +21,10 @@ const LegacyPaymentFields = ({ isOpen, onToggle, onSkipped, numbering }) => {
 		const adminURL =
 			window._UR_DASHBOARD_?.adminURL ||
 			`${window.location.origin}/wp-admin/`;
-		window.open(`${adminURL}admin.php?page=user-registration`, "_blank");
+		const formsURL =
+			window._UR_DASHBOARD_?.site_assistant_data?.legacy_payment_fields_url ||
+			`${adminURL}admin.php?page=user-registration`;
+		window.open(formsURL, "_blank");
 	};
 
 	const handleSkip = async () => {

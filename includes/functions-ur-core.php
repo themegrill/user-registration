@@ -10960,6 +10960,12 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 		$has_legacy_payment_fields      = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
 		$legacy_payment_fields_handled  = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
 
+		// Single-form sites without multiple registration go straight to that form, same as the builder's own redirect; everyone else lands on the forms list.
+		$legacy_payment_fields_forms   = ur_get_all_user_registration_form();
+		$legacy_payment_fields_url     = ( ! empty( $legacy_payment_fields_forms ) && count( $legacy_payment_fields_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
+			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $legacy_payment_fields_forms ) )
+			: admin_url( 'admin.php?page=user-registration' );
+
 		$site_assistant_data = array(
 			'users_can_register'                => ur_users_can_register(),
 			'has_default_form'                  => ! empty( $default_form_post ),
@@ -10974,6 +10980,7 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'membership_field_handled'          => $membership_field_handled,
 			'has_membership_plans'              => $has_membership_plans,
 			'legacy_payment_fields_handled'      => $legacy_payment_fields_handled,
+			'legacy_payment_fields_url'          => $legacy_payment_fields_url,
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
