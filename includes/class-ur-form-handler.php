@@ -1143,6 +1143,37 @@ class UR_Form_Handler {
 			);
 		}
 
+		// A remote template can carry payment fields the builder no longer offers. Keep the site on the legacy path instead of dropping its fields.
+		if ( function_exists( 'ur_legacy_payment_fields_enabled' ) && ! ur_legacy_payment_fields_enabled() && ! empty( $form_data->form_post->post_content ) ) {
+			$template_has_payment_field = false;
+
+			foreach ( array( 'single_item', 'multiple_choice', 'subscription_plan' ) as $charging_key ) {
+				if ( false !== strpos( $form_data->form_post->post_content, '"field_key":"' . $charging_key . '"' ) ) {
+					$template_has_payment_field = true;
+					break;
+				}
+			}
+
+			if ( ! $template_has_payment_field && false !== strpos( $form_data->form_post->post_content, 'enable_payment_slider' ) ) {
+				foreach ( (array) json_decode( $form_data->form_post->post_content ) as $row ) {
+					foreach ( (array) $row as $grid ) {
+						foreach ( (array) $grid as $field ) {
+							if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
+								&& 'range' === $field->field_key
+								&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
+								$template_has_payment_field = true;
+								break 3;
+							}
+						}
+					}
+				}
+			}
+
+			if ( $template_has_payment_field ) {
+				update_option( 'urm_is_legacy_payment_fields_user', 1 );
+			}
+		}
+
 		$form_id = wp_insert_post( $form_data->form_post );
 
 		// Check for any error while inserting.
