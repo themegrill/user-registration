@@ -10957,6 +10957,9 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 
 		$membership_field_handled = ( ! $membership_enabled ) || $default_form_has_membership || $membership_field_skipped;
 
+		$has_legacy_payment_fields      = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
+		$legacy_payment_fields_handled  = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
+
 		$site_assistant_data = array(
 			'users_can_register'                => ur_users_can_register(),
 			'has_default_form'                  => ! empty( $default_form_post ),
@@ -10970,6 +10973,7 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'default_form_has_membership_field' => $default_form_has_membership,
 			'membership_field_handled'          => $membership_field_handled,
 			'has_membership_plans'              => $has_membership_plans,
+			'legacy_payment_fields_handled'      => $legacy_payment_fields_handled,
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
@@ -11205,6 +11209,7 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 			|| ! $site_assistant_data['test_email_sent']
 			|| ! $site_assistant_data['spam_protection_handled']
 			|| ! $site_assistant_data['payment_setup_handled']
+			|| ! $site_assistant_data['legacy_payment_fields_handled']
 		);
 	}
 
@@ -11228,6 +11233,7 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 			! $site_assistant_data['test_email_sent'],
 			! $site_assistant_data['spam_protection_handled'],
 			! $site_assistant_data['payment_setup_handled'],
+			! $site_assistant_data['legacy_payment_fields_handled'],
 		);
 
 		$count = count( array_filter( $checks ) );
@@ -11888,6 +11894,46 @@ if ( ! function_exists( 'ur_has_payment_enabled_form' ) ) {
 		}
 
 		return $has_form;
+	}
+}
+
+if ( ! function_exists( 'ur_has_forms_with_legacy_payment_fields' ) ) {
+	/**
+	 * Whether a published form still uses a payment field the builder no longer offers.
+	 *
+	 * Only meaningful on a legacy site; `total_field` and `quantity_field` are checked
+	 * here on top of ur_has_payment_enabled_form()'s charging-key set since they still
+	 * count as frozen fields even though they never trigger a gateway alone.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_has_forms_with_legacy_payment_fields() {
+		if ( ! ur_legacy_payment_fields_enabled() ) {
+			return false;
+		}
+
+		if ( ur_has_payment_enabled_form() ) {
+			return true;
+		}
+
+		global $wpdb;
+
+		foreach ( array( 'total_field', 'quantity_field' ) as $field_key ) {
+			$pattern = '%' . $wpdb->esc_like( '"field_key":"' . $field_key . '"' ) . '%';
+			$found   = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'user_registration' AND post_status = 'publish' AND post_content LIKE %s LIMIT 1",
+					$pattern
+				)
+			); // phpcs:ignore
+
+			if ( $found ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }
 

@@ -2702,6 +2702,15 @@ class UR_AJAX {
 				);
 				break;
 
+			case 'legacy_payment_fields':
+				update_option( 'user_registration_legacy_payment_fields_notice_dismissed', true );
+				wp_send_json_success(
+					array(
+						'message' => __( 'Legacy payment fields notice dismissed.', 'user-registration' ),
+					)
+				);
+				break;
+
 			default:
 				wp_send_json_error( array( 'message' => __( 'Invalid section specified.', 'user-registration' ) ) );
 				break;
