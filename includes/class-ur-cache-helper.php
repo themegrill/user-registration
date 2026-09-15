@@ -127,20 +127,24 @@ class UR_Cache_Helper {
 	/**
 	 * Prevent caching for dynamic User Registration pages.
 	 *
-	 * This handles cases like the lost-password form, etc.
+	 * This handles cases like the lost-password and reset-password forms, which
+	 * embed a user-specific reset key/login and must never be served from cache.
 	 */
 	public static function maybe_disable_cache_for_dynamic_pages() {
 		global $wp_query;
 
-		// Detect UR routes that should never be cached.
-		$is_ur_lost_password_page = false;
-		$lost_pw_id               = get_option( 'user_registration_lost_password_page_id' );
-
-		if ( isset( $wp_query->post ) && (int) $wp_query->post->ID === (int) $lost_pw_id ) {
-			$is_ur_lost_password_page = true;
+		if ( ! isset( $wp_query->post->ID ) ) {
+			return;
 		}
 
-		if ( ! $is_ur_lost_password_page ) {
+		$dynamic_page_ids = array_filter(
+			array(
+				(int) get_option( 'user_registration_lost_password_page_id' ),
+				(int) get_option( 'user_registration_reset_password_page_id' ),
+			)
+		);
+
+		if ( ! in_array( (int) $wp_query->post->ID, $dynamic_page_ids, true ) ) {
 			return;
 		}
 
