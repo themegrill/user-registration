@@ -36,9 +36,6 @@ class UR_Shortcode_Login {
 	public static function output( $atts ) {
 		global $wp, $post;
 
-		// Neither branch below is safe in a shared page cache: one shows a logged in notice, the other embeds a login nonce.
-		UR_Cache_Helper::disable_page_cache( 'login' );
-
 		$redirect_url = isset( $atts['redirect_url'] ) ? trim( $atts['redirect_url'] ) : '';
 		$redirect_url = UR_Shortcodes::check_is_valid_redirect_url( $redirect_url );
 

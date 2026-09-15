@@ -141,6 +141,7 @@ class UR_Cache_Helper {
 			'user_registration_lost_password_page_id',
 			'user_registration_reset_password_page_id',
 			'user_registration_thank_you_page_id',
+			'user_registration_membership_pricing_page_id',
 		);
 	}
 
@@ -161,6 +162,7 @@ class UR_Cache_Helper {
 			'user-registration/membership-listing',
 			'user-registration/membership-buy-now',
 			'user-registration/thank-you',
+			'user-registration/login-logout-menu',
 			'user-registration/form-selector',
 		);
 	}
