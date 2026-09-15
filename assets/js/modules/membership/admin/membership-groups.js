@@ -1243,6 +1243,12 @@
 				var upgrade_path = $(
 					'input[name="ur_membership_upgrade_path"]'
 				).val();
+
+				// Sortable UI is high → low; path builder expects low → high.
+				if ("sort" === type && Array.isArray(membership_ids)) {
+					membership_ids = membership_ids.slice().reverse();
+				}
+
 				var upgrade_order =
 					"sort" === type
 						? membership_ids
@@ -1280,7 +1286,10 @@
 				}
 
 				if (mergedUpgradeOrder.length > 0) {
-					if (JSON.stringify(membership_ids) === upgrade_order) {
+					if (
+						"sort" !== type &&
+						JSON.stringify(membership_ids) === upgrade_order
+					) {
 						$(document)
 							.find(".ur-membership-upgrade-container")
 							.show();
@@ -1310,11 +1319,18 @@
 										JSON.stringify(upgrade_order)
 									);
 
-									var $sanitized = $("<div>").html(upgrade_paths_order);
-									$sanitized.find("script").remove();
-									$(".ur-sortable-list").html(
-										$sanitized.contents()
-									);
+									// Keep the dragged DOM order on sort. Replacing
+									// the list HTML re-applies reverse rendering and
+									// snaps the UI back.
+									if ("sort" !== type) {
+										var $sanitized = $("<div>").html(
+											upgrade_paths_order
+										);
+										$sanitized.find("script").remove();
+										$(".ur-sortable-list").html(
+											$sanitized.contents()
+										);
+									}
 								} else {
 									$(
 										'input[name="ur_membership_upgrade_path"]'
