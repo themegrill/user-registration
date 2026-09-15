@@ -1407,7 +1407,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 				);
 
 				$actions['delete'] = sprintf(
-					'<a class="urm-deny user-registration-member-action-delete" href="%s" data-wp-delete-url="%s">%s<span>%s</span></a>',
+					'<a class="urm-deny" href="%s" data-wp-delete-url="%s">%s<span>%s</span></a>',
 					esc_url( $delete_link ),
 					esc_url_raw( $wp_delete_url ),
 					'<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none">
