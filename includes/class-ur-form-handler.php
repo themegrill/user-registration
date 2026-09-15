@@ -1144,10 +1144,12 @@ class UR_Form_Handler {
 		}
 
 		// A remote template can carry payment fields the builder no longer offers. Keep the site on the legacy path instead of dropping its fields.
-		if ( function_exists( 'ur_legacy_payment_fields_enabled' ) && ! ur_legacy_payment_fields_enabled() && ! empty( $form_data->form_post->post_content ) ) {
-			$template_has_payment_field = false;
+		$template_has_payment_field = false;
 
-			foreach ( array( 'single_item', 'multiple_choice', 'subscription_plan' ) as $charging_key ) {
+		if ( function_exists( 'ur_legacy_payment_fields_enabled' ) && ! ur_legacy_payment_fields_enabled() && ! empty( $form_data->form_post->post_content ) ) {
+			$charging_keys = apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) );
+
+			foreach ( (array) $charging_keys as $charging_key ) {
 				if ( false !== strpos( $form_data->form_post->post_content, '"field_key":"' . $charging_key . '"' ) ) {
 					$template_has_payment_field = true;
 					break;
@@ -1168,10 +1170,6 @@ class UR_Form_Handler {
 					}
 				}
 			}
-
-			if ( $template_has_payment_field ) {
-				update_option( 'urm_is_legacy_payment_fields_user', 1 );
-			}
 		}
 
 		$form_id = wp_insert_post( $form_data->form_post );
@@ -1179,6 +1177,11 @@ class UR_Form_Handler {
 		// Check for any error while inserting.
 		if ( is_wp_error( $form_id ) ) {
 			return $form_id;
+		}
+
+		// Only flip the site-wide flag once the template's form has actually been inserted.
+		if ( $template_has_payment_field ) {
+			update_option( 'urm_is_legacy_payment_fields_user', 1 );
 		}
 		if ( $form_id ) {
 			add_post_meta( $form_id, 'user_registration_imported_form_template_slug', $template );

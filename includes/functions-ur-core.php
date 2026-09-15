@@ -12041,7 +12041,14 @@ if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
 		$post_content = $post ? (string) $post->post_content : '';
 		$has_field    = false;
 
-		foreach ( array( 'single_item', 'total_field', 'multiple_choice', 'subscription_plan', 'quantity_field' ) as $field_key ) {
+		// Same charging keys ur_has_payment_enabled_form() filters on, plus total/quantity - fields that never
+		// trigger a gateway on their own, but still need to keep working on a form that already has them.
+		$field_keys = array_merge(
+			apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) ),
+			array( 'total_field', 'quantity_field' )
+		);
+
+		foreach ( $field_keys as $field_key ) {
 			if ( false !== strpos( $post_content, '"field_key":"' . $field_key . '"' ) ) {
 				$has_field = true;
 				break;

@@ -197,10 +197,6 @@ class UR_Admin_Import_Export_Forms {
 									}
 								}
 
-								if ( $form_has_payment_field ) {
-									update_option( 'urm_is_legacy_payment_fields_user', 1 );
-									$imported_legacy_payment_field = true;
-								}
 							}
 
 							$post_id = wp_insert_post( $form_data->form_post );
@@ -210,6 +206,12 @@ class UR_Admin_Import_Export_Forms {
 								return $post_id;
 							}
 							array_push( $post_ids, $post_id );
+
+							// Only flip the site-wide flag once the form carrying the payment field has actually been inserted.
+							if ( $form_has_payment_field ) {
+								update_option( 'urm_is_legacy_payment_fields_user', 1 );
+								$imported_legacy_payment_field = true;
+							}
 
 							if ( $post_id ) {
 
