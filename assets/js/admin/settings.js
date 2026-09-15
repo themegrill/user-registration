@@ -1787,7 +1787,7 @@
 			section_data[name] = value;
 		});
 
-		if ( setting_id === "stripe" ) {
+		if ( setting_id === "stripe" && section_data["user_registration_stripe_enabled"] ) {
 			var testPubKey = section_data["user_registration_stripe_test_publishable_key"] || "";
 			var livePubKey = section_data["user_registration_stripe_live_publishable_key"] || "";
 
