@@ -4382,6 +4382,7 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 	 *
 	 * @param [array] $valid_form_data Valid Form Data.
 	 * @param [int]   $user_id User Id.
+	 * @return bool True when the picture was saved or cleared, false on failure.
 	 */
 	function ur_upload_profile_pic( $valid_form_data, $user_id ) {
 		$attachment_id = array();
@@ -4415,59 +4416,81 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 			}
 		}
 
+		if ( '' === $upload_file ) {
+			update_user_meta( $user_id, 'user_registration_profile_pic_url', '' );
+			return true;
+		}
+
 		if ( ! is_numeric( $upload_file ) ) {
 			$upload = ur_maybe_unserialize( crypt_the_string( $upload_file, 'd' ) );
+			$logger = ur_get_logger();
+
+			if ( ! isset( $upload['file_name'], $upload['file_path'], $upload['file_extension'] ) || ! file_exists( $upload['file_path'] ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: the uploaded file is no longer available.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
 			if ( function_exists( 'mime_content_type' ) ) {
-				$upload_file_type = isset( $upload['file_path'] ) ? mime_content_type( $upload['file_path'] ) : '';
+				$upload_file_type = mime_content_type( $upload['file_path'] );
 			} else {
-				$upload_file_info = isset( $upload['file_path'] ) ? wp_check_filetype( $upload['file_path'] ) : '';
+				$upload_file_info = wp_check_filetype( $upload['file_path'] );
 				$upload_file_type = ! empty( $upload_file_info ) ? $upload_file_info['type'] : '';
 			}
 
-			if ( isset( $upload['file_name'] ) && isset( $upload['file_path'] ) && isset( $upload['file_extension'] ) && in_array( $upload_file_type, $valid_extensions ) && in_array( $upload['file_extension'], $valid_ext ) ) {
-				$upload_path = $upload_path . '/';
-				$file_name   = wp_unique_filename( $upload_path, $upload['file_name'] );
-				$file_path   = $upload_path . sanitize_file_name( $file_name );
-				// Check the type of file. We'll use this as the 'post_mime_type'.
-				$filetype = wp_check_filetype( basename( $file_name ), null );
-				$moved    = '';
-
-				if ( basename( $upload['file_path'] ) === $upload['file_name'] ) {
-					$moved = rename( $upload['file_path'], $file_path );
-				}
-
-				if ( $moved ) {
-					$attachment_id = wp_insert_attachment(
-						array(
-							'guid'           => $file_path,
-							'post_mime_type' => $filetype['type'],
-							'post_title'     => preg_replace( '/\.[^.]+$/', '', sanitize_file_name( $file_name ) ),
-							'post_content'   => '',
-							'post_status'    => 'inherit',
-						),
-						$file_path
-					);
-
-					if ( ! is_wp_error( $attachment_id ) ) {
-						include_once ABSPATH . 'wp-admin/includes/image.php';
-
-						// Generate and save the attachment metas into the database.
-						wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $file_path ) );
-					}
-				}
+			if ( ! in_array( $upload_file_type, $valid_extensions, true ) || ! in_array( $upload['file_extension'], $valid_ext, true ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: unsupported file type.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
 			}
+
+			if ( basename( $upload['file_path'] ) !== $upload['file_name'] ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: unexpected upload path.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
+			$upload_path = $upload_path . '/';
+			$file_name   = wp_unique_filename( $upload_path, $upload['file_name'] );
+			$file_path   = $upload_path . sanitize_file_name( $file_name );
+			$filetype    = wp_check_filetype( basename( $file_name ), null );
+
+			if ( ! rename( $upload['file_path'], $file_path ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: could not move the file into %s.', $user_id, $upload_path ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
+			$attachment_id = wp_insert_attachment(
+				array(
+					'guid'           => $file_path,
+					'post_mime_type' => $filetype['type'],
+					'post_title'     => preg_replace( '/\.[^.]+$/', '', sanitize_file_name( $file_name ) ),
+					'post_content'   => '',
+					'post_status'    => 'inherit',
+				),
+				$file_path
+			);
+
+			if ( is_wp_error( $attachment_id ) || empty( $attachment_id ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: the attachment could not be created.', $user_id ), array( 'source' => 'user-registration' ) );
+				// The file was already moved into the uploads directory; remove it so it isn't left orphaned.
+				unlink( $file_path );
+				return false;
+			}
+
+			include_once ABSPATH . 'wp-admin/includes/image.php';
+			wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $file_path ) );
 		} else {
 			// A numeric value is sent when the user keeps their existing profile picture
 			// (the template pre-populates the hidden field with the stored attachment ID).
 			// Only allow it if the attachment actually belongs to this user; a bare numeric
 			// ID referencing another user's media must be rejected.
 			if ( (int) get_post_field( 'post_author', $upload_file ) !== (int) $user_id ) {
-				return;
+				return false;
 			}
 			$attachment_id = $upload_file;
 		}
-		$attachment_id = ! empty( $attachment_id ) ? $attachment_id : '';
+
 		update_user_meta( $user_id, 'user_registration_profile_pic_url', $attachment_id );
+
+		return true;
 	}
 }
 
