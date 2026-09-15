@@ -129,6 +129,11 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					}
 				}
 
+				// Stripe is core now; an active module means the real field class loads on demand, so this stale addon-upsell should not show.
+				if ( 'user_registration_stripe_gateway' === $field['id'] && function_exists( 'ur_check_module_activation' ) && ur_check_module_activation( 'stripe' ) ) {
+					continue;
+				}
+
 				if ( ! class_exists( $field['field_class'] ) ) {
 					$this->render_upgradable_field( $field );
 				}
@@ -417,6 +422,11 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 
 			foreach ( $field_sections as $section ) {
 				$class_to_check = $section['fields_parent_class'];
+
+				// Payment fields are frozen, so new sites are not upsold them either.
+				if ( 'User_Registration_Payments_Admin' === $class_to_check && ! ur_legacy_payment_fields_enabled() ) {
+					continue;
+				}
 
 				if ( ! class_exists( $class_to_check ) ) {
 					$fields       = $section['fields'];

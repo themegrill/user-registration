@@ -166,6 +166,20 @@ class UR_Install {
 			add_option( 'urm_is_legacy_paypal_user', $has_legacy_paypal_data ? 1 : 0 );
 		}
 
+		if ( null === get_option( 'urm_is_legacy_payment_fields_user', null ) ) {
+			add_option( 'urm_is_legacy_payment_fields_user', ur_has_payment_enabled_form() ? 1 : 0 );
+		}
+
+		if ( null === get_option( 'urm_is_legacy_ecommerce_addons_user', null ) ) {
+			if ( ! function_exists( 'is_plugin_active' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			}
+			$has_legacy_ecommerce_addons = ur_check_module_activation( 'stripe' )
+				|| ur_check_module_activation( 'payments' )
+				|| is_plugin_active( 'user-registration-stripe/user-registration-stripe.php' );
+			add_option( 'urm_is_legacy_ecommerce_addons_user', $has_legacy_ecommerce_addons ? 1 : 0 );
+		}
+
 		self::create_files();
 		self::update_ur_version();
 		self::maybe_update_db_version();

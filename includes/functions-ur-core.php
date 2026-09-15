@@ -10957,6 +10957,15 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 
 		$membership_field_handled = ( ! $membership_enabled ) || $default_form_has_membership || $membership_field_skipped;
 
+		$has_legacy_payment_fields      = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
+		$legacy_payment_fields_handled  = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
+
+		// Single-form sites without multiple registration go straight to that form, same as the builder's own redirect; everyone else lands on the forms list.
+		$legacy_payment_fields_forms   = ur_get_all_user_registration_form();
+		$legacy_payment_fields_url     = ( ! empty( $legacy_payment_fields_forms ) && count( $legacy_payment_fields_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
+			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $legacy_payment_fields_forms ) )
+			: admin_url( 'admin.php?page=user-registration' );
+
 		$site_assistant_data = array(
 			'users_can_register'                => ur_users_can_register(),
 			'has_default_form'                  => ! empty( $default_form_post ),
@@ -10970,6 +10979,8 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'default_form_has_membership_field' => $default_form_has_membership,
 			'membership_field_handled'          => $membership_field_handled,
 			'has_membership_plans'              => $has_membership_plans,
+			'legacy_payment_fields_handled'      => $legacy_payment_fields_handled,
+			'legacy_payment_fields_url'          => $legacy_payment_fields_url,
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
@@ -11205,6 +11216,7 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 			|| ! $site_assistant_data['test_email_sent']
 			|| ! $site_assistant_data['spam_protection_handled']
 			|| ! $site_assistant_data['payment_setup_handled']
+			|| ! $site_assistant_data['legacy_payment_fields_handled']
 		);
 	}
 
@@ -11228,6 +11240,7 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 			! $site_assistant_data['test_email_sent'],
 			! $site_assistant_data['spam_protection_handled'],
 			! $site_assistant_data['payment_setup_handled'],
+			! $site_assistant_data['legacy_payment_fields_handled'],
 		);
 
 		$count = count( array_filter( $checks ) );
@@ -11891,6 +11904,46 @@ if ( ! function_exists( 'ur_has_payment_enabled_form' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_has_forms_with_legacy_payment_fields' ) ) {
+	/**
+	 * Whether a published form still uses a payment field the builder no longer offers.
+	 *
+	 * Only meaningful on a legacy site; `total_field` and `quantity_field` are checked
+	 * here on top of ur_has_payment_enabled_form()'s charging-key set since they still
+	 * count as frozen fields even though they never trigger a gateway alone.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_has_forms_with_legacy_payment_fields() {
+		if ( ! ur_legacy_payment_fields_enabled() ) {
+			return false;
+		}
+
+		if ( ur_has_payment_enabled_form() ) {
+			return true;
+		}
+
+		global $wpdb;
+
+		foreach ( array( 'total_field', 'quantity_field' ) as $field_key ) {
+			$pattern = '%' . $wpdb->esc_like( '"field_key":"' . $field_key . '"' ) . '%';
+			$found   = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'user_registration' AND post_status = 'publish' AND post_content LIKE %s LIMIT 1",
+					$pattern
+				)
+			); // phpcs:ignore
+
+			if ( $found ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
 if ( ! function_exists( 'ur_should_show_payments_menu' ) ) {
 	/**
 	 * Whether the Payments submenu should be registered.
@@ -11917,6 +11970,162 @@ if ( ! function_exists( 'ur_should_show_payments_menu' ) ) {
 		 * @since x.x.x
 		 */
 		return (bool) apply_filters( 'user_registration_show_payments_menu', $show );
+	}
+}
+
+if ( ! function_exists( 'ur_legacy_payment_fields_enabled' ) ) {
+	/**
+	 * Whether the legacy form payment fields stay available on this site.
+	 *
+	 * Payment fields are frozen: sites that already charge through them keep them,
+	 * new sites take payments through the membership field only. The verdict is
+	 * recorded once by UR_Install::install(); the live check is only a fallback for
+	 * the request that runs before the option lands.
+	 *
+	 * Deliberately does not consult ur_has_payment_entries(), which also counts
+	 * membership orders and would mark a membership-only site as legacy.
+	 *
+	 * Pass $form_id to check one form instead of the site: a legacy site's brand
+	 * new form is frozen exactly like a new site's, and only a form that already
+	 * carries a frozen field keeps it. $form_id = 0 (a form with no ID yet) is
+	 * always frozen; omit the argument entirely for the old site-wide check.
+	 *
+	 * @param int|null $form_id Optional. Check this form instead of the site.
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_legacy_payment_fields_enabled( $form_id = null ) {
+		if ( null !== $form_id ) {
+			return $form_id ? ur_form_has_legacy_payment_fields( $form_id ) : false;
+		}
+
+		$is_legacy = get_option( 'urm_is_legacy_payment_fields_user', null );
+
+		if ( null === $is_legacy ) {
+			$is_legacy = ur_has_payment_enabled_form();
+		}
+
+		/**
+		 * Filters whether the legacy form payment fields stay available.
+		 *
+		 * @param bool $is_legacy Whether payment fields remain available.
+		 *
+		 * @since x.x.x
+		 */
+		return (bool) apply_filters( 'user_registration_legacy_payment_fields_enabled', (bool) $is_legacy );
+	}
+}
+
+if ( ! function_exists( 'ur_legacy_ecommerce_addons_enabled' ) ) {
+	/**
+	 * Whether the standalone PayPal Payment / Stripe addon tiles stay visible on the Addons screen.
+	 *
+	 * Stripe now ships built into core and PayPal's form-level path is frozen along with the
+	 * rest of legacy payment fields, so a new site has no use for either tile. A site that
+	 * already had one of them enabled keeps seeing both, unaffected. The verdict is recorded
+	 * once by UR_Install::install(), same as the other legacy flags.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_legacy_ecommerce_addons_enabled() {
+		return (bool) apply_filters(
+			'user_registration_legacy_ecommerce_addons_enabled',
+			ur_string_to_bool( get_option( 'urm_is_legacy_ecommerce_addons_user', false ) )
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
+	/**
+	 * Whether one specific form already carries a frozen payment field.
+	 *
+	 * @param int $form_id Form ID.
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_form_has_legacy_payment_fields( $form_id ) {
+		$form_id = absint( $form_id );
+
+		if ( ! $form_id ) {
+			return false;
+		}
+
+		static $cache = array();
+
+		if ( isset( $cache[ $form_id ] ) ) {
+			return $cache[ $form_id ];
+		}
+
+		$post         = get_post( $form_id );
+		$post_content = $post ? (string) $post->post_content : '';
+		$has_field    = false;
+
+		// Same charging keys ur_has_payment_enabled_form() filters on, plus total/quantity - fields that never
+		// trigger a gateway on their own, but still need to keep working on a form that already has them.
+		$field_keys = array_merge(
+			apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) ),
+			array( 'total_field', 'quantity_field' )
+		);
+
+		foreach ( $field_keys as $field_key ) {
+			if ( false !== strpos( $post_content, '"field_key":"' . $field_key . '"' ) ) {
+				$has_field = true;
+				break;
+			}
+		}
+
+		if ( ! $has_field && false !== strpos( $post_content, 'enable_payment_slider' ) && function_exists( 'ur_get_form_fields' ) ) {
+			foreach ( (array) ur_get_form_fields( $form_id ) as $field ) {
+				if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
+					&& 'range' === $field->field_key
+					&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
+					$has_field = true;
+					break;
+				}
+			}
+		}
+
+		$cache[ $form_id ] = $has_field;
+
+		return $has_field;
+	}
+}
+
+if ( ! function_exists( 'ur_get_synced_field_value' ) ) {
+	// Shared by every gateway's field-sync (Stripe, Mollie, ...): each lives in its own plugin, so this is the one place the resolution runs.
+	function ur_get_synced_field_value( $member_id, $field ) {
+		$user = get_userdata( $member_id );
+
+		if ( ! $user ) {
+			return '';
+		}
+
+		$parts = array();
+
+		foreach ( (array) $field as $name ) {
+			$name = sanitize_text_field( $name );
+
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$key   = ur_get_field_name_with_prefix_usermeta( $name );
+			$value = isset( $user->$key ) ? $user->$key : '';
+
+			// Checkbox/multi-select fields store an array; join it instead of dropping the value.
+			if ( is_array( $value ) ) {
+				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
+			}
+
+			if ( ! is_scalar( $value ) || '' === (string) $value ) {
+				continue;
+			}
+
+			$parts[] = (string) $value;
+		}
+
+		return trim( implode( ' ', $parts ) );
 	}
 }
 

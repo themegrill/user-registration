@@ -2176,7 +2176,7 @@ class UR_Admin_Settings {
 					$modules[] = 'class-ur-payment-settings.php';
 					$modules[] = 'paypal/class-ur-paypal-module.php';
 				}
-				if ( is_plugin_active( 'user-registration-stripe/user-registration-stripe.php' ) ) {
+				if ( ur_check_module_activation( 'stripe' ) || is_plugin_active( 'user-registration-stripe/user-registration-stripe.php' ) ) {
 					$modules[] = 'class-ur-payment-settings.php';
 					$modules[] = 'stripe/class-ur-stripe-module.php';
 				}
