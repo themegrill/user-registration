@@ -57,6 +57,10 @@ class UR_Shortcode_My_Account {
 	public static function output( $atts ) {
 
 		global $wp, $post;
+
+		// The account screen and the login form it falls back to are both user specific.
+		UR_Cache_Helper::disable_page_cache( 'my-account' );
+
 		wp_enqueue_script( 'tooltipster' );
 		wp_enqueue_script( 'user-registration' );
 		wp_enqueue_script( 'ur-common' );
