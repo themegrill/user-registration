@@ -109,17 +109,20 @@ class UR_Frontend {
 				(array) json_decode( sanitize_text_field( wp_unslash( $_POST['ur_removed_profile_pic'] ) ) ) :
 				array();
 
-			if ( ! empty( $previous_attachment_id ) && ! empty( $removed_attachment_id ) && ! empty( $previous_attachment_id[0] ) ) {
-				if ( in_array( $previous_attachment_id[0], $removed_attachment_id ) ) {
-					// Verify the attachment belongs to this user before deleting.
-					if ( (int) get_post_field( 'post_author', $previous_attachment_id[0] ) !== (int) $user_id ) {
-						return $profile;
-					}
-					unlink( get_attached_file( $previous_attachment_id[0] ) );
-					wp_delete_attachment( $previous_attachment_id[0], true );
+			$remove_previous_attachment = ! empty( $previous_attachment_id ) && ! empty( $removed_attachment_id ) && ! empty( $previous_attachment_id[0] ) && in_array( $previous_attachment_id[0], $removed_attachment_id );
+
+			if ( $remove_previous_attachment ) {
+				// Verify the attachment belongs to this user before deleting.
+				if ( (int) get_post_field( 'post_author', $previous_attachment_id[0] ) !== (int) $user_id ) {
+					return $profile;
 				}
 			}
-			ur_upload_profile_pic( $valid_form_data, $user_id );
+
+			// Only delete the previous picture once the new one is confirmed saved, so a failed upload never leaves the meta pointing at a deleted file.
+			if ( ur_upload_profile_pic( $valid_form_data, $user_id ) && $remove_previous_attachment ) {
+				unlink( get_attached_file( $previous_attachment_id[0] ) );
+				wp_delete_attachment( $previous_attachment_id[0], true );
+			}
 		}
 		if ( isset( $profile['user_registration_profile_pic_url'] ) ) {
 			unset( $profile['user_registration_profile_pic_url'] );
