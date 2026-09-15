@@ -188,6 +188,9 @@ class UR_Cache_Helper {
 			'user_registration_edit_password',
 			'user_registration_popup',
 			'user_registration_view_profile_details',
+			'user_registration_groups',
+			'user_registration_membership_listing',
+			'user_registration_membership_thank_you',
 		);
 
 		$tags = array();
@@ -213,14 +216,32 @@ class UR_Cache_Helper {
 	 * @return bool
 	 */
 	protected static function is_dynamic_ur_page( $post_id ) {
+		$page_ids = array();
+
 		foreach ( self::get_dynamic_page_options() as $option ) {
 			$page_id = absint( get_option( $option, 0 ) );
 
-			if ( 1 > $page_id ) {
-				continue;
+			if ( 0 < $page_id ) {
+				$page_ids[] = $page_id;
 			}
+		}
 
-			if ( $post_id === $page_id || absint( ur_get_translated_page_id( $page_id ) ) === $post_id ) {
+		if ( in_array( $post_id, $page_ids, true ) ) {
+			return true;
+		}
+
+		// Resolving translations costs two queries per page ID under WPML, so only reach for it when
+		// a multilingual plugin is active and the request could actually be a translated UR page.
+		if ( ! function_exists( 'pll_current_language' ) && ! class_exists( 'SitePress', false ) ) {
+			return false;
+		}
+
+		if ( 'page' !== get_post_type( $post_id ) ) {
+			return false;
+		}
+
+		foreach ( $page_ids as $page_id ) {
+			if ( absint( ur_get_translated_page_id( $page_id ) ) === $post_id ) {
 				return true;
 			}
 		}
@@ -305,8 +326,9 @@ class UR_Cache_Helper {
 	 *
 	 * @since 5.2.9
 	 *
-	 * @param string $context Where the request was flagged. One of 'page', 'login', 'my-account'
-	 *                        or 'registration'.
+	 * @param string $context Where the request was flagged. Currently 'page', 'shortcode',
+	 *                        'registration' or 'membership'. Treat it as an open set: callers may
+	 *                        pass their own string.
 	 * @return bool Whether caching was disabled for this response.
 	 */
 	public static function disable_page_cache( $context = 'page' ) {
