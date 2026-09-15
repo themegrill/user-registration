@@ -12016,6 +12016,26 @@ if ( ! function_exists( 'ur_legacy_payment_fields_enabled' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_legacy_ecommerce_addons_enabled' ) ) {
+	/**
+	 * Whether the standalone PayPal Payment / Stripe addon tiles stay visible on the Addons screen.
+	 *
+	 * Stripe now ships built into core and PayPal's form-level path is frozen along with the
+	 * rest of legacy payment fields, so a new site has no use for either tile. A site that
+	 * already had one of them enabled keeps seeing both, unaffected. The verdict is recorded
+	 * once by UR_Install::install(), same as the other legacy flags.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_legacy_ecommerce_addons_enabled() {
+		return (bool) apply_filters(
+			'user_registration_legacy_ecommerce_addons_enabled',
+			ur_string_to_bool( get_option( 'urm_is_legacy_ecommerce_addons_user', false ) )
+		);
+	}
+}
+
 if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
 	/**
 	 * Whether one specific form already carries a frozen payment field.
