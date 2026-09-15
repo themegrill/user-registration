@@ -329,12 +329,16 @@ if ( ! empty( $membership_group['post_content'] ) ) {
 												?>
 												</p>
 											<div class="ur-field ur-d-flex" style="flex-wrap:nowrap;">
-												<div class="ur-sortable-box" style="flex:50%;" >
-													<ul class="ur-sortable-list">
-														<?php
-														echo $upgrade_order_html;
-														?>
-													</ul>
+												<div style="flex:50%;">
+													<span class="ur-upgrade-path-anchor"><?php esc_html_e( '↑ Lowest tier', 'user-registration' ); ?></span>
+													<div class="ur-sortable-box">
+														<ul class="ur-sortable-list">
+															<?php
+															echo $upgrade_order_html;
+															?>
+														</ul>
+													</div>
+													<span class="ur-upgrade-path-anchor"><?php esc_html_e( '↓ Highest tier', 'user-registration' ); ?></span>
 												</div>
 											</div>
 										</div>
