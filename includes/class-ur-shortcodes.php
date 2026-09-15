@@ -62,6 +62,9 @@ class UR_Shortcodes {
 			'after'  => null,
 		)
 	) {
+		// Every shortcode routed through here renders differently per user, so none of it is cacheable.
+		UR_Cache_Helper::disable_page_cache( 'shortcode' );
+
 		ob_start();
 		include_once UR_ABSPATH . 'includes/functions-ur-notice.php';
 		$wrap_before = empty( $wrapper['before'] ) ? '<div id="user-registration" class="' . esc_attr( $wrapper['class'] ) . '">' : $wrapper['before'];
@@ -265,6 +268,9 @@ class UR_Shortcodes {
 	 * @param mixed $atts Extra attributes.
 	 */
 	public static function form( $atts ) {
+		// Several branches below return before the form template runs, so the template action is not enough.
+		UR_Cache_Helper::disable_page_cache( 'registration' );
+
 		$check_user_state = isset( $atts['userState'] ) && 'logged_in' === $atts['userState'];
 
 		if ( ! is_user_logged_in() && ! $check_user_state && ! ur_users_can_register() ) {
