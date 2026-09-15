@@ -178,8 +178,7 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	 * @return array|object|stdClass[]
 	 */
 	public function get_about_to_expire_subscriptions( $check_date ) {
-		$usermeta_table = $this->wpdb()->usermeta;
-		$sql            = sprintf(
+		$sql = sprintf(
 			"
 						SELECT wu.user_email,
 						       wu.user_login as username,
@@ -194,18 +193,25 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 					    LEFT JOIN $this->posts_table wp ON wums.item_id = wp.ID
 						WHERE NOT wums.status = 'canceled'
 						AND DATE(wums.next_billing_date) = DATE('%s')
-						AND NOT EXISTS (
-							SELECT 1 FROM $usermeta_table um
-							WHERE um.user_id = wums.user_id
-							AND um.meta_key = CONCAT('urm_pending_cancel_', wums.ID)
-						)
 						",
 			$check_date
 		);
 
 		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
 
-		return ! $result ? array() : $result;
+		if ( ! $result ) {
+			return array();
+		}
+
+		// PHP filter, not a SQL join - the per-subscription usermeta key can't be indexed and forces a full table scan.
+		return array_values(
+			array_filter(
+				$result,
+				function ( $subscription ) {
+					return ! get_user_meta( $subscription['member_id'], 'urm_pending_cancel_' . $subscription['subscription_id'], true );
+				}
+			)
+		);
 	}
 
 	/**
