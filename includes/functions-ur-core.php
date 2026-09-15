@@ -418,6 +418,9 @@ function ur_get_template( $template_name, $args = array(), $template_path = '', 
 		if ( ! empty( $ur_template_args ) && is_array( $ur_template_args ) ) {
 			extract( $ur_template_args, EXTR_SKIP ); // phpcs:ignore WordPress.PHP.DontExtract.extract_extract
 		}
+		if ( ! isset( $args ) ) {
+			$args = $ur_template_args; // Back-compat for template overrides copied before 5.2.0.
+		}
 		include $ur_template_file; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
 	} )( $located, $args );
 
