@@ -325,12 +325,12 @@ if ( ! empty( $membership_group['post_content'] ) ) {
 										<div class="ur-input-type-select ur-admin-template" style="width: 100%" >
 											<p class="ur-membership-upgrade-paths-info"  >
 												<?php
-												esc_html_e( 'Arrange memberships from lowest to highest tier. Users can upgrade from any membership to higher tiers in this sequence.', 'user-registration' );
+												esc_html_e( 'Drag to arrange memberships, highest tier at the top and lowest tier at the bottom. Users can upgrade from any membership to higher tiers in this sequence.', 'user-registration' );
 												?>
 												</p>
 											<div class="ur-field ur-d-flex" style="flex-wrap:nowrap;">
 												<div style="flex:50%;">
-													<span class="ur-upgrade-path-anchor"><?php esc_html_e( '↑ Lowest tier', 'user-registration' ); ?></span>
+													<span class="ur-upgrade-path-anchor"><?php esc_html_e( '↑ Highest tier', 'user-registration' ); ?></span>
 													<div class="ur-sortable-box">
 														<ul class="ur-sortable-list">
 															<?php
@@ -338,7 +338,7 @@ if ( ! empty( $membership_group['post_content'] ) ) {
 															?>
 														</ul>
 													</div>
-													<span class="ur-upgrade-path-anchor"><?php esc_html_e( '↓ Highest tier', 'user-registration' ); ?></span>
+													<span class="ur-upgrade-path-anchor"><?php esc_html_e( '↓ Lowest tier', 'user-registration' ); ?></span>
 												</div>
 											</div>
 										</div>
