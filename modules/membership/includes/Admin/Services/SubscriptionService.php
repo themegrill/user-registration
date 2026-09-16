@@ -1295,6 +1295,25 @@ class SubscriptionService {
 				( new NewPaypalService() )->cancel_suspended_subscription( $subscription['gateway_subscription_id'] );
 			}
 			delete_user_meta( $user_id, 'urm_pending_cancel_' . $subscription_id );
+
+			// The gateway may still be dunning a failed renewal; don't lock the member out while it's still collecting.
+			if ( ! $pending_cancel_meta && 'stripe' === ( $order['payment_method'] ?? '' ) && ! empty( $subscription['gateway_subscription_id'] ) ) {
+				$gateway_status = ( new StripeService() )->get_subscription_status( $subscription['gateway_subscription_id'] );
+
+				if ( ! is_wp_error( $gateway_status ) && in_array( $gateway_status, array( 'past_due', 'unpaid' ), true ) ) {
+					ur_get_logger()->notice(
+						sprintf(
+							'[Member ID #%d] Expiration held - Stripe subscription %s is still %s',
+							$user_id,
+							$subscription['gateway_subscription_id'],
+							$gateway_status
+						),
+						array( 'source' => 'urm-membership-expiration' )
+					);
+					continue;
+				}
+			}
+
 			// A pending-cancel subscription reaching its date is a cancellation, not a natural expiry.
 			$new_status    = $pending_cancel_meta ? 'canceled' : 'expired';
 			$update_result = $this->members_subscription_repository->update( $subscription_id, array( 'status' => $new_status ) );
