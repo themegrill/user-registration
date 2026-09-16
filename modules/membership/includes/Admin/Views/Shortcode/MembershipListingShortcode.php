@@ -126,8 +126,8 @@ class MembershipListingShortcode {
 		$user_membership_ids = array();
 
 		if ( $current_user_id ) {
-			$user_memberships            = $membership_repository->get_member_membership_by_id( $current_user_id );
-			$user_membership_ids         = array_filter(
+			$user_memberships    = $membership_repository->get_member_membership_by_id( $current_user_id );
+			$user_membership_ids = array_filter(
 				array_map(
 					function ( $user_memberships ) {
 						return $user_memberships['post_id'];
@@ -135,9 +135,6 @@ class MembershipListingShortcode {
 					$user_memberships
 				)
 			);
-			$membership_checkout_page_id = ur_get_translated_page_id( get_option( 'user_registration_member_registration_page_id', false ) );
-
-			$redirect_page_url = get_permalink( $membership_checkout_page_id );
 		}
 
 		$column_number    = isset( $attributes['column_number'] ) ? $attributes['column_number'] : 0;
