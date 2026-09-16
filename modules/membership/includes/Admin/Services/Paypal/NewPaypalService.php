@@ -23,11 +23,13 @@ use WPEverest\URMembership\Admin\Repositories\OrdersRepository;
 use WPEverest\URMembership\Admin\Repositories\SubscriptionRepository;
 use WPEverest\URMembership\Admin\Services\CouponService;
 use WPEverest\URMembership\Admin\Services\EmailService;
+use WPEverest\URMembership\Admin\Services\MembershipService;
 use WPEverest\URMembership\Admin\Services\MembersService;
 use WPEverest\URMembership\Admin\Services\OrderService;
 use WPEverest\URMembership\Admin\Services\PaymentGatewayLogging;
 use WPEverest\URMembership\Admin\Services\SubscriptionService;
 use WPEverest\URMembership\Local_Currency\Admin\CoreFunctions;
+use WPEverest\URMembership\TableList;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -3837,7 +3839,13 @@ class NewPaypalService {
 				continue;
 			}
 
+			// Find local subscription by PayPal subscription ID up front — every branch
+			// below may need it to reconcile the subscription against this payment.
+			$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $paypal_subscription_id );
+
 			// If an order for this transaction exists, sync its status with PayPal live.
+			// Also reconciles a subscription left un-reactivated by an earlier backfill run
+			// (from before subscription reactivation existed here) against this same order.
 			$existing_payment = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 			if ( ! empty( $existing_payment ) ) {
 				$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
@@ -3864,12 +3872,14 @@ class NewPaypalService {
 					),
 					'success'
 				);
+
+				if ( ! empty( $membership_subscription ) && 'completed' === $live_status ) {
+					$this->reactivate_subscription_after_backfilled_payment( $membership_subscription, $existing_payment['ID'], $transaction_id, $created_at );
+				}
+
 				++$count_updated;
 				continue;
 			}
-
-			// Find local subscription by PayPal subscription ID.
-			$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $paypal_subscription_id );
 
 			if ( empty( $membership_subscription ) ) {
 				$logger->info(
@@ -3916,7 +3926,7 @@ class NewPaypalService {
 				'pending' === ( $existing_pending['status'] ?? '' ) &&
 				'' === (string) ( $existing_pending['transaction_id'] ?? '' )
 			) {
-				$this->orders_repository->update(
+				$order_updated = $this->orders_repository->update(
 					$existing_pending['ID'],
 					array(
 						'status'         => 'completed',
@@ -3941,6 +3951,9 @@ class NewPaypalService {
 					),
 					'success'
 				);
+				if ( false !== $order_updated ) {
+					$this->reactivate_subscription_after_backfilled_payment( $membership_subscription, $existing_pending['ID'], $transaction_id, $created_at );
+				}
 				++$count_updated;
 				continue;
 			}
@@ -3969,7 +3982,7 @@ class NewPaypalService {
 				),
 			);
 
-			$this->orders_repository->create( $order_data );
+			$created_order = $this->orders_repository->create( $order_data );
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[Backfill][PayPal][Subscription][Payments] New order created for missed payment.' . "\n" . wp_json_encode(
@@ -3987,6 +4000,9 @@ class NewPaypalService {
 				),
 				'success'
 			);
+			if ( ! empty( $created_order['ID'] ) ) {
+				$this->reactivate_subscription_after_backfilled_payment( $membership_subscription, $created_order['ID'], $transaction_id, $created_at );
+			}
 			++$count_created;
 		}
 
@@ -4006,6 +4022,132 @@ class NewPaypalService {
 		);
 
 		$logger->info( '[Backfill][PayPal][Subscription][Payments] ======= ENDED =======', array( 'source' => 'urm-missed-payment-backfill' ) );
+	}
+
+	/**
+	 * Resolve the billing period/interval to advance a subscription by.
+	 *
+	 * Team subscriptions store their own custom interval in the team post's
+	 * urm_team_data meta (linked to the order via urm_team_id ordermeta) rather
+	 * than on the base membership plan, so that takes precedence when present.
+	 *
+	 * @param array    $membership_subscription Local subscription row.
+	 * @param int|null $order_id                Order the payment was recorded against.
+	 * @return array{0:string,1:int} [ duration, value ]
+	 */
+	private function resolve_billing_interval( $membership_subscription, $order_id ) {
+		if ( ! empty( $order_id ) ) {
+			$team_id = $this->orders_repository->wpdb()->get_var(
+				$this->orders_repository->wpdb()->prepare(
+					'SELECT meta_value FROM ' . TableList::order_meta_table() . ' WHERE meta_key = %s AND order_id = %d LIMIT 1',
+					'urm_team_id',
+					$order_id
+				)
+			);
+
+			if ( ! empty( $team_id ) ) {
+				$team_data = get_post_meta( $team_id, 'urm_team_data', true );
+				if ( ! empty( $team_data['team_duration_period'] ) && ! empty( $team_data['team_duration_value'] ) ) {
+					return array( $team_data['team_duration_period'], max( 1, absint( $team_data['team_duration_value'] ) ) );
+				}
+			}
+		}
+
+		$membership_meta = ( new MembershipService() )->get_membership_details( $membership_subscription['item_id'] );
+		if ( ! empty( $membership_meta['subscription']['duration'] ) ) {
+			return array( $membership_meta['subscription']['duration'], max( 1, absint( $membership_meta['subscription']['value'] ?? 1 ) ) );
+		}
+
+		return array( $membership_subscription['billing_cycle'] ?? '', 1 );
+	}
+
+	/**
+	 * Activate a subscription and push its billing cycle forward after a
+	 * missed webhook's payment has been backfilled as a completed order.
+	 * Mirrors the manual reactivation path (AJAX::reactivate_membership())
+	 * so downstream hooks (emails, etc.) stay consistent.
+	 *
+	 * @param array    $membership_subscription Local subscription row.
+	 * @param int|null $order_id                Order the payment was recorded against.
+	 * @param string   $transaction_id          PayPal transaction ID, for logging.
+	 * @param string   $created_at              The payment's own creation time (Y-m-d H:i:s).
+	 * @return void
+	 */
+	private function reactivate_subscription_after_backfilled_payment( $membership_subscription, $order_id, $transaction_id, $created_at ) {
+		$status_from = $membership_subscription['status'] ?? '';
+
+		if ( 'canceled' === $status_from ) {
+			return;
+		}
+
+		list( $duration, $value ) = $this->resolve_billing_interval( $membership_subscription, $order_id );
+
+		$new_expiry = $membership_subscription['expiry_date'] ?? '';
+		if ( ! empty( $duration ) ) {
+			$reference_time = strtotime( $created_at );
+			$candidate       = ! empty( $membership_subscription['expiry_date'] ) ? $membership_subscription['expiry_date'] : $created_at;
+			$iterations      = 0;
+
+			// A stale expiry_date (multiple missed cycles, or a backfill run long after
+			// the payment) can still land in the past after a single interval — keep
+			// advancing until the subscription is genuinely current, same as a normal
+			// on-schedule renewal would be.
+			do {
+				$candidate = SubscriptionService::get_expiry_date( $candidate, $duration, $value );
+				++$iterations;
+			} while ( $candidate && strtotime( $candidate ) <= $reference_time && $iterations < 60 );
+
+			$new_expiry = $candidate ?: $new_expiry;
+		}
+
+		$update_data = array( 'status' => 'active' );
+		if ( ! empty( $new_expiry ) ) {
+			$update_data['expiry_date']       = $new_expiry;
+			$update_data['next_billing_date'] = $new_expiry;
+		}
+
+		$updated = $this->members_subscription_repository->update( $membership_subscription['ID'], $update_data );
+
+		if ( false === $updated ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[Backfill][PayPal][Subscription][Payments] Failed to reactivate subscription after backfilled payment.' . "\n" . wp_json_encode(
+					array(
+						'event_type'      => 'subscription_reactivation_failed',
+						'subscription_id' => $membership_subscription['ID'],
+						'order_id'        => $order_id,
+						'transaction_id'  => $transaction_id,
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return;
+		}
+
+		do_action(
+			'ur_membership_subscription_event_triggered',
+			array(
+				'subscription_id' => $membership_subscription['ID'],
+				'member_id'       => $membership_subscription['user_id'],
+				'event_type'      => 'reactivated',
+			)
+		);
+
+		PaymentGatewayLogging::log_general(
+			'paypal',
+			'[Backfill][PayPal][Subscription][Payments] Subscription reactivated after backfilled payment.' . "\n" . wp_json_encode(
+				array(
+					'event_type'      => 'subscription_reactivated',
+					'subscription_id' => $membership_subscription['ID'],
+					'order_id'        => $order_id,
+					'transaction_id'  => $transaction_id,
+					'status_from'     => $status_from,
+					'expiry_date'     => $new_expiry,
+				),
+				JSON_PRETTY_PRINT
+			),
+			'success'
+		);
 	}
 
 	/**
