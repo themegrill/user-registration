@@ -1105,7 +1105,11 @@ class URCR_Frontend {
 						if ( ( true === $should_allow_access && 'access' === $access_control ) || ( false == $should_allow_access && 'restrict' === $access_control ) ) {
 							$access_granted = true;
 						} elseif ( ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control ) ) {
-							$restriction_rule = $access_rule;
+							// restrict_whole_site() applies a whole-site restriction; avoid doing it twice.
+							$is_whole_site_rule = in_array( 'whole_site', wp_list_pluck( $access_rule['target_contents'], 'type' ), true );
+							if ( ! $is_whole_site_rule ) {
+								$restriction_rule = $access_rule;
+							}
 						}
 					}
 				}

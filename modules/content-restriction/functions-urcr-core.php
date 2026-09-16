@@ -190,7 +190,7 @@ function urcr_is_target_post( $targets = array(), $target_post = null ) {
 
 	if ( is_array( $targets ) ) {
 		foreach ( $targets as $target ) {
-			// A whole-site target has nothing to hold a 'value', so it never carries one.
+			// A migrated or auto-created whole-site target has no 'value', so match on type alone.
 			if ( isset( $target['type'] ) && ( 'whole_site' === $target['type'] || ! empty( $target['value'] ) ) ) {
 
 				$result = apply_filters(
