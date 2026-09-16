@@ -463,6 +463,16 @@ class StripeService {
 		}
 
 		foreach ( array( 'address' => '', 'shipping' => 'shipping_' ) as $group => $prefix ) {
+			// Each group has its own enable toggle in the form settings; turning it off must stop
+			// sending that group's mapped values, not just hide the fields.
+			$enable_option = 'shipping' === $group
+				? 'user_registration_enable_sync_shipping_address_with_stripe'
+				: 'user_registration_enable_sync_address_with_stripe';
+
+			if ( ! ur_string_to_bool( ur_get_single_post_meta( $form_id, $enable_option, false ) ) ) {
+				continue;
+			}
+
 			$address = array();
 
 			foreach ( $address_keys as $address_key ) {
@@ -492,6 +502,13 @@ class StripeService {
 					'name'    => $shipping_name,
 					'address' => $address,
 				);
+
+				$shipping_phone = $this->get_synced_value( $member_id, ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_shipping_phone', '' ) );
+
+				if ( '' !== $shipping_phone ) {
+					$payload['shipping']['phone'] = $shipping_phone;
+				}
+
 				continue;
 			}
 
