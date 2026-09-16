@@ -4541,10 +4541,12 @@ if ( ! function_exists( 'ur_captcha_type_has_keys' ) ) {
 	 */
 	function ur_captcha_type_has_keys( $type ) {
 		if ( 'v2' === $type ) {
-			$has_visible   = get_option( 'user_registration_captcha_setting_recaptcha_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret' );
-			$has_invisible = get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_secret' );
+			// Match the pair the invisible toggle actually selects at runtime, not either pair.
+			if ( ur_option_checked( 'user_registration_captcha_setting_invisible_recaptcha_v2', false ) ) {
+				return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_secret' ) );
+			}
 
-			return (bool) ( $has_visible || $has_invisible );
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret' ) );
 		} elseif ( 'v3' === $type ) {
 			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_v3' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_v3' ) );
 		} elseif ( 'hCaptcha' === $type ) {
@@ -5308,6 +5310,11 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 			$recaptcha_type      = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
 			$recaptcha_type      = get_option( 'user_registration_login_options_configured_captcha_type', $recaptcha_type );
 			$invisible_recaptcha = ur_option_checked( 'user_registration_captcha_setting_invisible_recaptcha_v2', false );
+
+			// An empty or stale login type falls back to the site-wide default rather than matching no type at all.
+			if ( ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+				$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
+			}
 
 			$login_data = array(
 				'user_password' => isset( $post['password'] ) ? $post['password'] : '', //phpcs:ignore.
