@@ -2324,6 +2324,11 @@ function ur_get_recaptcha_node( $context, $recaptcha_enabled = false, $form_id =
 
 	}
 
+	// An empty or stale per-form/per-login type falls back to the site-wide default rather than matching no type at all.
+	if ( 'test_captcha' !== $context && ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+		$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
+	}
+
 	if ( 'v2' === $recaptcha_type && ! $invisible_recaptcha ) {
 		$recaptcha_site_key    = get_option( 'user_registration_captcha_setting_recaptcha_site_key' );
 		$recaptcha_site_secret = get_option( 'user_registration_captcha_setting_recaptcha_site_secret' );
@@ -4526,6 +4531,32 @@ if ( ! function_exists( 'ur_option_checked' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_captcha_type_has_keys' ) ) {
+	/**
+	 * Check whether site-wide keys are configured for a captcha type.
+	 *
+	 * @param string $type Captcha type: v2, v3, hCaptcha or cloudflare.
+	 *
+	 * @return bool
+	 */
+	function ur_captcha_type_has_keys( $type ) {
+		if ( 'v2' === $type ) {
+			$has_visible   = get_option( 'user_registration_captcha_setting_recaptcha_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret' );
+			$has_invisible = get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_secret' );
+
+			return (bool) ( $has_visible || $has_invisible );
+		} elseif ( 'v3' === $type ) {
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_v3' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_v3' ) );
+		} elseif ( 'hCaptcha' === $type ) {
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_hcaptcha' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_hcaptcha' ) );
+		} elseif ( 'cloudflare' === $type ) {
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_cloudflare' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_cloudflare' ) );
+		}
+
+		return false;
+	}
+}
+
 if ( ! function_exists( 'ur_check_captch_keys' ) ) {
 	/**
 	 * Check the site key and secret key for the selected captcha type, are valid or not.
@@ -4550,6 +4581,11 @@ if ( ! function_exists( 'ur_check_captch_keys' ) ) {
 			} else {
 				$recaptcha_type = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_configured_captcha_type', $recaptcha_type );
 			}
+		}
+
+		// An empty or stale per-form/per-login type falls back to the site-wide default rather than matching no type at all.
+		if ( ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+			$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
 		}
 
 		$site_key   = '';
@@ -5669,6 +5705,14 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 		$recaptcha_type      = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
 		$recaptcha_type      = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_configured_captcha_type', $recaptcha_type );
 		$invisible_recaptcha = ur_option_checked( 'user_registration_captcha_setting_invisible_recaptcha_v2', false );
+
+		// An empty or stale per-form type falls back to the site-wide default rather than matching no type at all.
+		if ( ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+			$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
+		}
+
+		$site_key   = '';
+		$secret_key = '';
 
 		if ( 'v2' === $recaptcha_type && ! $invisible_recaptcha ) {
 			$site_key   = get_option( 'user_registration_captcha_setting_recaptcha_site_key' );
