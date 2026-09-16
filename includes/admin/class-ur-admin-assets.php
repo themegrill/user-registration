@@ -347,7 +347,7 @@ class UR_Admin_Assets {
 			$ur_enabled_captchas = array();
 			$ur_captchas         = ur_get_captcha_integrations();
 			foreach ( $ur_captchas as $key => $value ) {
-				if ( get_option( 'user_registration_captcha_setting_recaptcha_enable_' . $key, false ) ) {
+				if ( get_option( 'user_registration_captcha_setting_recaptcha_enable_' . $key, false ) || ur_captcha_type_has_keys( $key ) ) {
 					$ur_enabled_captchas[ $key ] = $value;
 				}
 			}
