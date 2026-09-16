@@ -544,11 +544,7 @@ class EmailService {
 	 * @since 1.0.0
 	 */
 	public static function is_membership_email_enabled( $option ) {
-		if ( ! ur_string_to_bool( get_option( 'user_registration_enable_membership_cancellation_admin_email', true ) ) ) {
-			return false;
-		}
-
-		return true;
+		return ur_string_to_bool( get_option( $option, true ) );
 	}
 
 	/**
