@@ -228,8 +228,16 @@ class UR_Frontend {
 				ur_get_logger()->info( sprintf( 'Invalid page ID %s set for after login redirection.', $page_id ), array( 'source' => 'user-registration' ) );
 			}
 		} elseif ( 'previous-page' === $redirect_option ) {
-			if ( wp_get_referer() ) {
-				$redirect = wp_get_referer();
+			$referer = ! empty( $_REQUEST['previous_page'] ) ? esc_url_raw( wp_unslash( $_REQUEST['previous_page'] ) ) : wp_get_referer();
+			$referer = $referer ? wp_validate_redirect( $referer, '' ) : '';
+
+			if ( $referer ) {
+				$login_page_id = absint( get_option( 'user_registration_login_page_id' ) );
+				if ( $login_page_id && $login_page_id === url_to_postid( $referer ) ) {
+					$redirect = ur_get_my_account_url();
+				} else {
+					$redirect = $referer;
+				}
 			}
 		}
 		return apply_filters( 'user_registration_login_redirect_url', $redirect, $user, $redirect_option );
