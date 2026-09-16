@@ -267,7 +267,15 @@ class UR_Cache_Helper {
 			return false;
 		}
 
+		// has_block() matches raw markup, so a block left behind by a deactivated module would
+		// otherwise keep the page out of the cache forever. Blocks register on init, before this runs.
+		$block_registry = WP_Block_Type_Registry::get_instance();
+
 		foreach ( self::get_dynamic_block_names() as $block_name ) {
+			if ( ! $block_registry->is_registered( $block_name ) ) {
+				continue;
+			}
+
 			if ( has_block( $block_name, $post->post_content ) ) {
 				return true;
 			}
