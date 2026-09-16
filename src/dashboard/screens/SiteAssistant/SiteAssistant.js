@@ -17,6 +17,7 @@ import * as URIcon from "../../components/Icon/Icon";
 import {
 	DefaultFormMissing,
 	DisabledEmails,
+	LegacyPaymentFields,
 	MembershipField,
 	PaymentSetup,
 	RegistrationDisabled,
@@ -43,7 +44,8 @@ const SiteAssistant = () => {
 		disabledEmails: false,
 		sendTestEmail: false,
 		spamProtection: false,
-		membershipField: false
+		membershipField: false,
+		legacyPaymentFields: false
 	});
 
 	// Check if the WordPress "Anyone can register" option allows registration
@@ -121,6 +123,16 @@ const SiteAssistant = () => {
 		initialPaymentSetupHandled
 	);
 
+	// Check if the legacy payment fields notice was already handled (no forms use them, or dismissed)
+	const initialLegacyPaymentFieldsHandled =
+		typeof _UR_DASHBOARD_ === "undefined" ||
+		!_UR_DASHBOARD_.site_assistant_data ||
+		_UR_DASHBOARD_.site_assistant_data.legacy_payment_fields_handled !== false;
+
+	// State to track if the legacy payment fields notice was handled during this session
+	const [legacyPaymentFieldsHandled, setLegacyPaymentFieldsHandled] = useState(
+		initialLegacyPaymentFieldsHandled
+	);
 
 	const membershipEnabled =
 		typeof _UR_DASHBOARD_ !== "undefined" &&
@@ -178,6 +190,10 @@ const SiteAssistant = () => {
 		setMembershipFieldHandled(true);
 	}, []);
 
+	const handleLegacyPaymentFieldsHandled = useCallback(() => {
+		setLegacyPaymentFieldsHandled(true);
+	}, []);
+
 	const toggleOpen = useCallback(
 		(id) => {
 			if (typeof id === "undefined") {
@@ -189,7 +205,8 @@ const SiteAssistant = () => {
 					paymentSetupHandled,
 					disabledEmailsHandled,
 					testEmailSent,
-					spamProtectionHandled
+					spamProtectionHandled,
+					legacyPaymentFieldsHandled
 				];
 
 				const openKeys = [
@@ -200,7 +217,8 @@ const SiteAssistant = () => {
 					"paymentSetup",
 					"disabledEmails",
 					"sendTestEmail",
-					"spamProtection"
+					"spamProtection",
+					"legacyPaymentFields"
 				];
 
 				const firstFalseIndex = site_config_array.findIndex(
@@ -228,7 +246,8 @@ const SiteAssistant = () => {
 			paymentSetupHandled,
 			disabledEmailsHandled,
 			testEmailSent,
-			spamProtectionHandled
+			spamProtectionHandled,
+			legacyPaymentFieldsHandled
 		]
 	);
 
@@ -243,7 +262,8 @@ const SiteAssistant = () => {
 			disabledEmailsHandled &&
 			testEmailSent &&
 			spamProtectionHandled &&
-			paymentSetupHandled;
+			paymentSetupHandled &&
+			legacyPaymentFieldsHandled;
 
 		// If all components are handled, show completion message and redirect
 		if (allComponentsHandled && !allCompleted) {
@@ -264,7 +284,8 @@ const SiteAssistant = () => {
 			disabledEmailsHandled,
 			testEmailSent,
 			spamProtectionHandled,
-			paymentSetupHandled
+			paymentSetupHandled,
+			legacyPaymentFieldsHandled
 		];
 
 		const site_config_count =
@@ -307,6 +328,7 @@ const SiteAssistant = () => {
 		testEmailSent,
 		spamProtectionHandled,
 		paymentSetupHandled,
+		legacyPaymentFieldsHandled,
 		allCompleted
 	]);
 
@@ -396,6 +418,16 @@ const SiteAssistant = () => {
 								isOpen={open.paymentSetup}
 								onToggle={() => toggleOpen("paymentSetup")}
 								onSkipped={handlePaymentSetupHandled}
+								numbering={++config_number}
+							/>
+						)}
+
+						{/* Legacy Payment Fields - only show while a form still uses one and it hasn't been dismissed */}
+						{!legacyPaymentFieldsHandled && (
+							<LegacyPaymentFields
+								isOpen={open.legacyPaymentFields}
+								onToggle={() => toggleOpen("legacyPaymentFields")}
+								onSkipped={handleLegacyPaymentFieldsHandled}
 								numbering={++config_number}
 							/>
 						)}

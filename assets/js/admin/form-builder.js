@@ -3722,7 +3722,9 @@
 										);
 									}
 								});
-								$("#ur-draggabled .draggable")
+								// Several lists share the ur-draggabled id, and an id selector would
+								// only match the first, leaving later lists uninitialised.
+								$("ul.ur-registered-list .draggable")
 									.draggable({
 										connectToSortable: ".ur-grid-list-item",
 										containment: ".ur-registered-from",
