@@ -15,6 +15,8 @@ namespace WPEverest\URMembership\Admin\Services;
 use UR_Settings_Admin_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Cancellation_User_Email;
 use WPEverest\URMembership\Emails\Admin\UR_Settings_Membership_Cancellation_Admin_Email;
+use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Downgraded_Free_User_Email;
+use WPEverest\URMembership\Emails\Admin\UR_Settings_Membership_Downgraded_Free_Admin_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Ended_User_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Expiring_Soon_User_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Renewal_Reminder_User_Email;
@@ -68,6 +70,10 @@ class EmailService {
 				return self::send_membership_expiring_soon_email( $data );
 			case 'membership_ended': // membership_ended
 				return self::send_membership_ended_email( $data );
+			case 'membership_downgraded_free_user': // membership downgraded to free plan, email to member.
+				return self::send_membership_downgraded_free_email_user( $data );
+			case 'membership_downgraded_free_admin': // membership downgraded to free plan, email to admin.
+				return self::send_membership_downgraded_free_email_admin( $data );
 			default:
 				break;
 		}
@@ -592,6 +598,75 @@ class EmailService {
 		$message = apply_filters( 'user_registration_process_smart_tags', get_option( 'user_registration_membership_cancellation_admin_email', $settings->user_registration_get_membership_cancellation_admin_email() ), $values, $form_id );
 
 		$message     = apply_filters( 'ur_membership_membership_cancellation_email_custom_template', $message, $subject );
+		$template_id = ur_get_single_post_meta( $form_id, 'user_registration_select_email_template' );
+		$subject     = \UR_Emailer::parse_smart_tags( $subject, $values );
+		$headers     = \UR_Emailer::ur_get_header();
+
+		return \UR_Emailer::user_registration_process_and_send_email( get_option( 'admin_email' ), $subject, $message, $headers, array(), $template_id );
+	}
+
+	/**
+	 * Send membership downgraded to free plan email to the member.
+	 *
+	 * @param $data
+	 *
+	 * @return bool|mixed|void
+	 */
+	public function send_membership_downgraded_free_email_user( $data ) {
+		if ( empty( $data['member_id'] ) || empty( $data['membership'] ) || ! ur_string_to_bool( get_option( 'user_registration_enable_membership_downgraded_free_user_email', true ) ) ) {
+			return false;
+		}
+
+		$user                 = get_userdata( $data['member_id'] );
+		$form_id              = ur_get_form_id_by_userid( $data['member_id'] );
+		$settings             = new UR_Settings_Membership_Downgraded_Free_User_Email();
+		$subscription_service = new SubscriptionService();
+		$membership_tags      = $subscription_service->get_membership_plan_details( $data );
+
+		$membership_tags['previous_membership_plan_name'] = ! empty( $data['current_membership_id'] ) ? get_the_title( $data['current_membership_id'] ) : '';
+
+		$values  = array(
+			'membership_tags' => $membership_tags,
+		);
+		$values  = $data + $values;
+		$subject = get_option( 'user_registration_membership_downgraded_free_user_email_subject', esc_html__( 'Your membership has changed to {{membership_plan_name}}', 'user-registration' ) );
+		$message = apply_filters( 'user_registration_process_smart_tags', get_option( 'user_registration_membership_downgraded_free_user_email', $settings->user_registration_get_membership_downgraded_free_user_email() ), $values, $form_id );
+
+		$message     = apply_filters( 'ur_membership_membership_downgraded_free_email_custom_template', $message, $subject );
+		$template_id = ur_get_single_post_meta( $form_id, 'user_registration_select_email_template' );
+		$subject     = \UR_Emailer::parse_smart_tags( $subject, $values );
+		$headers     = \UR_Emailer::ur_get_header();
+
+		return \UR_Emailer::user_registration_process_and_send_email( $user->user_email, $subject, $message, $headers, array(), $template_id );
+	}
+
+	/**
+	 * Send membership downgraded to free plan email to admin.
+	 *
+	 * @param $data
+	 *
+	 * @return bool|mixed|void
+	 */
+	public function send_membership_downgraded_free_email_admin( $data ) {
+		if ( empty( $data['member_id'] ) || empty( $data['membership'] ) || ! ur_string_to_bool( get_option( 'user_registration_enable_membership_downgraded_free_admin_email', true ) ) ) {
+			return false;
+		}
+
+		$form_id              = ur_get_form_id_by_userid( $data['member_id'] );
+		$settings             = new UR_Settings_Membership_Downgraded_Free_Admin_Email();
+		$subscription_service = new SubscriptionService();
+		$membership_tags      = $subscription_service->get_membership_plan_details( $data );
+
+		$membership_tags['previous_membership_plan_name'] = ! empty( $data['current_membership_id'] ) ? get_the_title( $data['current_membership_id'] ) : '';
+
+		$values  = array(
+			'membership_tags' => $membership_tags,
+		);
+		$values  = $data + $values;
+		$subject = get_option( 'user_registration_membership_downgraded_free_admin_email_subject', esc_html__( 'Membership Downgraded to Free: {{username}}', 'user-registration' ) );
+		$message = apply_filters( 'user_registration_process_smart_tags', get_option( 'user_registration_membership_downgraded_free_admin_email', $settings->user_registration_get_membership_downgraded_free_admin_email() ), $values, $form_id );
+
+		$message     = apply_filters( 'ur_membership_membership_downgraded_free_email_custom_template', $message, $subject );
 		$template_id = ur_get_single_post_meta( $form_id, 'user_registration_select_email_template' );
 		$subject     = \UR_Emailer::parse_smart_tags( $subject, $values );
 		$headers     = \UR_Emailer::ur_get_header();
