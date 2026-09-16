@@ -1143,7 +1143,7 @@ class UR_Form_Handler {
 			);
 		}
 
-		$form_id = wp_insert_post( $form_data->form_post );
+		$form_id = wp_insert_post( $form_data->form_post, true );
 
 		// Check for any error while inserting.
 		if ( is_wp_error( $form_id ) ) {

@@ -166,11 +166,15 @@ class UR_Admin_Import_Export_Forms {
 								}
 							}
 							$form_data->form_post->post_title = sanitize_text_field($form_data->form_post->post_title);
-							$post_id = wp_insert_post( $form_data->form_post );
+							$post_id = wp_insert_post( $form_data->form_post, true );
 
 							// Check for any error while inserting.
 							if ( is_wp_error( $post_id ) ) {
-								return $post_id;
+								wp_send_json_error(
+									array(
+										'message' => $post_id->get_error_message(),
+									)
+								);
 							}
 							array_push( $post_ids, $post_id );
 							if ( $post_id ) {
