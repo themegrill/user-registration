@@ -1381,8 +1381,16 @@ class SubscriptionService {
 	 * Payment retry callback for a failed attempt.
 	 */
 	public function failed_payment_retry_callback( $subscription ) {
+		$retry_count     = (int) get_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', true );
+		$max_retry_count = (int) get_option( 'user_registration_payment_retry_count', 3 );
+
+		// Retries already exhausted for this subscription - stop retrying and cancel it instead.
+		if ( $retry_count >= $max_retry_count ) {
+			$this->cancel_subscription_after_retries_exhausted( $subscription );
+			return;
+		}
+
 		// update the counter for failed payment retry.
-		$retry_count = (int) get_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', true );
 		update_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', $retry_count + 1 );
 		switch ( $subscription['payment_method'] ) {
 			case 'paypal':
@@ -1397,6 +1405,55 @@ class SubscriptionService {
 				do_action( 'urm_handle_failed_payment_retry', $subscription );
 				break;
 		}
+	}
+
+	/**
+	 * Cancel a subscription once its configured payment retry attempts are
+	 * exhausted, and notify the member with the "Payment Retry - Final
+	 * Notice" email.
+	 *
+	 * @param array $subscription Row from MembersSubscriptionRepository::get_subscriptions_to_retry().
+	 * @return void
+	 */
+	private function cancel_subscription_after_retries_exhausted( $subscription ) {
+		$subscription_id = $subscription['subscription_id'];
+		$member_id       = $subscription['member_id'];
+
+		$cancel_result = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false );
+
+		if ( empty( $cancel_result['status'] ) ) {
+			// Leave the retry counter as-is so the next daily run retries the cancellation itself.
+			ur_get_logger()->error(
+				sprintf(
+					'[Payment Retry] Retries exhausted for subscription #%d, but cancellation failed: %s.',
+					$subscription_id,
+					$cancel_result['message'] ?? 'unknown error'
+				),
+				array( 'source' => 'urm-payment-retry' )
+			);
+			return;
+		}
+
+		ur_get_logger()->info(
+			sprintf( '[Payment Retry] Retries exhausted for subscription #%d - cancelled.', $subscription_id ),
+			array( 'source' => 'urm-payment-retry' )
+		);
+
+		delete_user_meta( $member_id, 'urm_is_payment_retrying' );
+
+		$latest_order     = $this->orders_repository->get_order_by_subscription( $subscription_id );
+		$membership_id    = $subscription['membership'] ?? ( $latest_order['item_id'] ?? 0 );
+		$membership       = $this->membership_repository->get_single_membership_by_ID( $membership_id );
+		$membership_metas = ! empty( $membership['meta_value'] ) ? wp_unslash( json_decode( $membership['meta_value'], true ) ) : array();
+
+		$email_data = array(
+			'subscription'     => $this->members_subscription_repository->retrieve( $subscription_id ),
+			'order'            => $latest_order,
+			'membership_metas' => $membership_metas,
+			'member_id'        => $member_id,
+		);
+
+		( new EmailService() )->send_email( $email_data, 'payment_retry_cancel' );
 	}
 
 	/**
