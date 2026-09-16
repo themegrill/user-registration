@@ -150,6 +150,11 @@ class UR_Form_Templates {
 			}
 		}
 
+		// New sites never see CDN templates that still carry form-level payment fields.
+		if ( isset( $template_data->templates ) && function_exists( 'ur_exclude_legacy_payment_form_templates' ) ) {
+			$template_data->templates = ur_exclude_legacy_payment_form_templates( $template_data->templates );
+		}
+
 		return rest_ensure_response( $template_data );
 	}
 
@@ -180,6 +185,15 @@ class UR_Form_Templates {
 				'invalid_template_slug',
 				__( 'The template slug is required and cannot be empty.', 'user-registration' ),
 				array( 'status' => 400 )
+			);
+		}
+
+		if ( function_exists( 'ur_get_legacy_payment_form_template_slugs' )
+			&& in_array( $slug, ur_get_legacy_payment_form_template_slugs(), true ) ) {
+			return new WP_Error(
+				'legacy_payment_template_unavailable',
+				__( 'This template is no longer available. Use a membership form to collect payments instead.', 'user-registration' ),
+				array( 'status' => 403 )
 			);
 		}
 

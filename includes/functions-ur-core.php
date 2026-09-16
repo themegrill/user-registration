@@ -12016,6 +12016,77 @@ if ( ! function_exists( 'ur_legacy_payment_fields_enabled' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_legacy_payment_form_template_slugs' ) ) {
+	/**
+	 * Remote form-template slugs that still ship legacy payment fields.
+	 *
+	 * These stay off the Add New library for every site — including legacy payment
+	 * sites. Existing forms that already carry payment fields keep working; new
+	 * forms cannot pick up those fields through a CDN template.
+	 *
+	 * @return string[]
+	 * @since x.x.x
+	 */
+	function ur_get_legacy_payment_form_template_slugs() {
+		/**
+		 * Filters which remote form templates are treated as legacy payment templates.
+		 *
+		 * @param string[] $slugs Template slugs.
+		 *
+		 * @since x.x.x
+		 */
+		return (array) apply_filters(
+			'user_registration_legacy_payment_form_template_slugs',
+			array(
+				'pre-order-form',
+				'e-learning-registration-form',
+				'course-registration-form',
+				'donation-form',
+				'paypal-event-registration-form',
+				'conference-registration-form',
+				'car-race-registration-form',
+			)
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_exclude_legacy_payment_form_templates' ) ) {
+	/**
+	 * Strip legacy payment templates from the Add New library.
+	 *
+	 * Always removed: a new form is never a legacy form, even on a site that still
+	 * has other forms with frozen payment fields.
+	 *
+	 * @param array $sections Template section data from templates1.json.
+	 * @return array
+	 * @since x.x.x
+	 */
+	function ur_exclude_legacy_payment_form_templates( $sections ) {
+		if ( empty( $sections ) || ! is_array( $sections ) ) {
+			return $sections;
+		}
+
+		$slugs = ur_get_legacy_payment_form_template_slugs();
+
+		foreach ( $sections as $section ) {
+			if ( empty( $section->templates ) || ! is_array( $section->templates ) ) {
+				continue;
+			}
+
+			$section->templates = array_values(
+				array_filter(
+					$section->templates,
+					static function ( $template ) use ( $slugs ) {
+						return empty( $template->slug ) || ! in_array( $template->slug, $slugs, true );
+					}
+				)
+			);
+		}
+
+		return $sections;
+	}
+}
+
 if ( ! function_exists( 'ur_legacy_ecommerce_addons_enabled' ) ) {
 	/**
 	 * Whether the standalone PayPal Payment / Stripe addon tiles stay visible on the Addons screen.
