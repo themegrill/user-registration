@@ -421,6 +421,15 @@ class NewPaypalService {
 			&& ! empty( $coupon_details )
 			&& 0.0 === (float) $final_amount;
 
+		// UR-4600: proration upgrade to a subscription plan. The prorated amount is billed as a
+		// priced first cycle, never as a setup fee — a setup fee stacks on top of the first REGULAR
+		// cycle and charges the member twice at activation.
+		$context['is_proration_upgrade'] = $context['is_subscription']
+			&& $is_upgrading
+			&& ! empty( $response_data['chargeable_amount'] )
+			&& empty( $context['is_full_discount_sub'] )
+			&& ( empty( $data['trial_status'] ) || 'on' !== $data['trial_status'] );
+
 		if (
 			$context['is_subscription'] &&
 			$context['is_upgrading'] &&
@@ -763,19 +772,69 @@ class NewPaypalService {
 			$plan_override = $this->build_subscription_plan_override( $context );
 		}
 
-		// For proration subscription upgrades: charge the prorated amount as a PayPal setup fee.
-		// The plan itself is at the full regular price; the setup fee covers the billing difference.
-		if ( $context['is_upgrading'] && ! empty( $context['response_data']['chargeable_amount'] ) ) {
-			$setup_fee_value = number_format( (float) $context['pre_tax_amount'], 2, '.', '' );
-			if ( ! isset( $plan_override['payment_preferences'] ) ) {
-				$plan_override['payment_preferences'] = array();
-			}
-			$plan_override['payment_preferences']['setup_fee']                = array(
-				'value'         => $setup_fee_value,
-				'currency_code' => $context['currency'],
+		// UR-4600: proration upgrade — bill the prorated amount as the first cycle, then the full
+		// plan price on every cycle after. A setup fee would be charged *in addition to* the first
+		// REGULAR cycle at activation, i.e. the member pays twice on day one.
+		$frequency_spec = $this->build_frequency_spec( $context );
+
+		if ( $context['is_proration_upgrade'] && ! empty( $frequency_spec ) ) {
+			$plan_override['billing_cycles'] = array(
+				array(
+					'frequency'      => $frequency_spec,
+					'tenure_type'    => 'TRIAL',
+					'sequence'       => 1,
+					'total_cycles'   => 1,
+					'pricing_scheme' => array(
+						'fixed_price' => array(
+							'currency_code' => $context['currency'],
+							'value'         => number_format( (float) $context['pre_tax_amount'], 2, '.', '' ),
+						),
+					),
+				),
+				array(
+					'frequency'      => $frequency_spec,
+					'tenure_type'    => 'REGULAR',
+					'sequence'       => 2,
+					'total_cycles'   => 0,
+					'pricing_scheme' => array(
+						'fixed_price' => array(
+							'currency_code' => $context['currency'],
+							'value'         => $context['regular_amount'],
+						),
+					),
+				),
 			);
-			$plan_override['payment_preferences']['setup_fee_failure_action'] = 'CANCEL';
-			$plan_override['payment_preferences']['auto_bill_outstanding']    = true;
+		} elseif ( $has_trial && ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) && ! empty( $frequency_spec ) ) {
+			// UR-4600: coupon on a plan that has a trial. The free trial (sequence 1) stays free and the
+			// coupon discounts the first *paid* cycle (sequence 2), after which the plan bills at full
+			// price. The whole override used to be skipped on trial plans, so the discount was silently
+			// dropped from every cycle and the member paid full price once the trial ended.
+			$plan_override['billing_cycles'] = array(
+				array(
+					'frequency'      => $frequency_spec,
+					'tenure_type'    => 'TRIAL',
+					'sequence'       => 2,
+					'total_cycles'   => 1,
+					'pricing_scheme' => array(
+						'fixed_price' => array(
+							'currency_code' => $context['currency'],
+							'value'         => ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'],
+						),
+					),
+				),
+				array(
+					'frequency'      => $frequency_spec,
+					'tenure_type'    => 'REGULAR',
+					'sequence'       => 3,
+					'total_cycles'   => 0,
+					'pricing_scheme' => array(
+						'fixed_price' => array(
+							'currency_code' => $context['currency'],
+							'value'         => $context['regular_amount'],
+						),
+					),
+				),
+			);
 		}
 
 		if ( ! empty( $plan_override ) ) {
@@ -1012,6 +1071,41 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Billing frequency of the plan's regular cycle, or empty when the membership has no usable duration.
+	 *
+	 * @param array $context
+	 *
+	 * @return array
+	 */
+	private function build_frequency_spec( $context ) {
+		$subscription_data = ! empty( $context['has_team'] )
+			? array(
+				'duration' => isset( $context['data']['team_data']['team_duration_period'] ) ? $context['data']['team_data']['team_duration_period'] : '',
+				'value'    => isset( $context['data']['team_data']['team_duration_value'] ) ? $context['data']['team_data']['team_duration_value'] : 1,
+			)
+			: ( isset( $context['data']['subscription'] ) ? $context['data']['subscription'] : array() );
+
+		$duration = strtoupper( substr( (string) ( isset( $subscription_data['duration'] ) ? $subscription_data['duration'] : '' ), 0, 1 ) );
+		$value    = max( 1, (int) ( isset( $subscription_data['value'] ) ? $subscription_data['value'] : 1 ) );
+
+		$interval_unit_map = array(
+			'D' => 'DAY',
+			'W' => 'WEEK',
+			'M' => 'MONTH',
+			'Y' => 'YEAR',
+		);
+
+		if ( ! isset( $interval_unit_map[ $duration ] ) ) {
+			return array();
+		}
+
+		return array(
+			'interval_unit'  => $interval_unit_map[ $duration ],
+			'interval_count' => $value,
+		);
+	}
+
+	/**
 	 * Build custom id.
 	 *
 	 * @param array $context
@@ -1178,6 +1272,18 @@ class NewPaypalService {
 		$member_subscription    = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $member_order['subscription_id'] );
 		$is_renewing            = ! empty( $membership_process['renew'] ) && in_array( $member_order['item_id'], $membership_process['renew'], true );
 		$is_upgrading           = ! empty( $membership_process['upgrade'] ) && isset( $membership_process['upgrade'][ $url_params['current_membership_id'] ?? '' ] );
+
+		// UR-4827: that guard is transient user meta. An abandoned or retried attempt can clear it, and
+		// the member then pays and is never moved to the new plan. A pending upgrade payload, or an order
+		// flagged as an upgrade, says so regardless of the guard.
+		if ( ! $is_upgrading ) {
+			$is_upgrading = ! empty( get_user_meta( $member_id, 'urm_next_subscription_data', true ) );
+		}
+
+		if ( ! $is_upgrading && ! empty( $member_order['ID'] ) ) {
+			$upgrade_order_meta = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $member_order['ID'], 'is_proration_upgrade' );
+			$is_upgrading       = ! empty( $upgrade_order_meta['meta_value'] );
+		}
 		// Also treat as one-time if PayPal returned a token with no subscription_id (proration upgrade).
 		$is_rest_one_time_payment = ( 'paid' === $member_order['order_type'] || 'one-time' === $membership_type )
 			|| ( ! empty( $order_token ) && empty( $paypal_subscription_id ) );
@@ -1606,6 +1712,42 @@ class NewPaypalService {
 	 *
 	 * @return void
 	 */
+	/**
+	 * Finish an upgrade from the webhook when the member never came back to the site.
+	 *
+	 * Upgrade completion — cancelling the old gateway subscription above all — used to hang off the
+	 * browser redirect handler alone. A member who closed the tab after paying kept the old PayPal
+	 * subscription billing alongside the new one.
+	 *
+	 * @param int $member_id
+	 * @param int $local_sub_id
+	 *
+	 * @return void
+	 */
+	private function maybe_finalize_upgrade_from_webhook( $member_id, $local_sub_id ) {
+		if ( empty( $member_id ) || empty( $local_sub_id ) ) {
+			return;
+		}
+
+		if ( empty( get_user_meta( $member_id, 'urm_next_subscription_data', true ) ) ) {
+			return;
+		}
+
+		PaymentGatewayLogging::log_general(
+			'paypal',
+			'[PAYMENT.SALE.COMPLETED] Finalizing pending upgrade from webhook.' . "\n" . wp_json_encode(
+				array(
+					'member_id'       => $member_id,
+					'subscription_id' => $local_sub_id,
+				),
+				JSON_PRETTY_PRINT
+			),
+			'notice'
+		);
+
+		$this->handle_upgrade_for_paypal( $member_id, $local_sub_id );
+	}
+
 	public function handle_upgrade_for_paypal( $member_id, $subscription_id ) {
 		$get_user_old_subscription = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
 		$get_user_old_order        = json_decode( get_user_meta( $member_id, 'urm_previous_order_data', true ), true );
@@ -1660,7 +1802,7 @@ class NewPaypalService {
 		}
 
 		$membership_process = urm_get_membership_process( $member_id );
-		if ( ! empty( $membership_process ) && isset( $membership_process['upgrade'][ $get_user_old_subscription['item_id'] ] ) ) {
+		if ( ! empty( $membership_process ) && ! empty( $get_user_old_subscription['item_id'] ) && isset( $membership_process['upgrade'][ $get_user_old_subscription['item_id'] ] ) ) {
 			unset( $membership_process['upgrade'][ $get_user_old_subscription['item_id'] ] );
 			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 		}
@@ -2112,6 +2254,11 @@ class NewPaypalService {
 		);
 
 		if ( 'active' === $new_status ) {
+			// Activation is the only signal an upgrade onto a plan with a free trial ever gets — its
+			// first sale is a whole trial period away, and until the old subscription is cancelled the
+			// member pays for both plans.
+			$this->maybe_finalize_upgrade_from_webhook( $member_id, $member_subscription['ID'] );
+
 			$member_order         = $this->members_orders_repository->get_member_orders( $member_id );
 			$current_order_status = isset( $member_order['status'] ) ? $member_order['status'] : '';
 
@@ -2298,6 +2445,7 @@ class NewPaypalService {
 				),
 				'success'
 			);
+			$this->maybe_finalize_upgrade_from_webhook( $user_id, $local_sub_id );
 			return true;
 		}
 
@@ -2328,6 +2476,7 @@ class NewPaypalService {
 				),
 				'success'
 			);
+			$this->maybe_finalize_upgrade_from_webhook( $user_id, $local_sub_id );
 			return true;
 		}
 
@@ -3138,14 +3287,16 @@ class NewPaypalService {
 				),
 			),
 		);
-		// Coupon: plan must define a TRIAL cycle so the subscription override can set a discounted
-		// first-cycle price. Skipped for full-discount subs (UR-4386) — they use a plain REGULAR plan
-		// + future start_time instead.
-		if (
+		// Coupon or proration upgrade: plan must define a TRIAL cycle so the subscription override can
+		// set a discounted/prorated first-cycle price. Skipped for full-discount subs (UR-4386) — they
+		// use a plain REGULAR plan + future start_time instead.
+		$needs_first_cycle_override = ! empty( $context['is_proration_upgrade'] ) || (
 			! empty( $context['coupon_details'] ) &&
 			empty( $context['is_full_discount_sub'] ) &&
 			( empty( $context['data']['trial_status'] ) || 'on' !== $context['data']['trial_status'] )
-		) {
+		);
+
+		if ( $needs_first_cycle_override ) {
 			$billing_cycles = array(
 				array(
 					'frequency'      => array(
@@ -3215,6 +3366,45 @@ class NewPaypalService {
 					),
 				),
 			);
+
+			// UR-4600: with a coupon, the plan needs a second (paid) TRIAL cycle for the subscription
+			// override to discount — PayPal allows at most two trial cycles, so: free trial, discounted
+			// first paid cycle, then REGULAR at full price.
+			if ( ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) ) {
+				$billing_cycles = array(
+					$billing_cycles[0],
+					array(
+						'frequency'      => array(
+							'interval_unit'  => $interval_unit,
+							'interval_count' => $value,
+						),
+						'tenure_type'    => 'TRIAL',
+						'sequence'       => 2,
+						'total_cycles'   => 1,
+						'pricing_scheme' => array(
+							'fixed_price' => array(
+								'currency_code' => $context['currency'],
+								'value'         => $context['regular_amount'],
+							),
+						),
+					),
+					array(
+						'frequency'      => array(
+							'interval_unit'  => $interval_unit,
+							'interval_count' => $value,
+						),
+						'tenure_type'    => 'REGULAR',
+						'sequence'       => 3,
+						'total_cycles'   => 0,
+						'pricing_scheme' => array(
+							'fixed_price' => array(
+								'currency_code' => $context['currency'],
+								'value'         => $context['regular_amount'],
+							),
+						),
+					),
+				);
+			}
 		}
 
 		$payload = array(
@@ -3269,7 +3459,11 @@ class NewPaypalService {
 				'trial_status'     => isset( $context['data']['trial_status'] ) ? $context['data']['trial_status'] : '',
 				'trial_data'       => isset( $context['data']['trial_data'] ) ? $context['data']['trial_data'] : array(),
 				'tax_rate'         => isset( $context['tax_rate'] ) ? $context['tax_rate'] : 0,
-				'has_coupon_cycle' => ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) && ( empty( $context['data']['trial_status'] ) || 'on' !== $context['data']['trial_status'] ),
+				// Trial plans now also grow an extra paid TRIAL cycle when a coupon applies, so the key
+				// must separate them from trial plans without one.
+				'has_coupon_cycle' => ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ),
+				// Upgrade plans carry an extra TRIAL cycle — must not reuse the plain plan's cached id.
+				'has_upgrade_cycle' => ! empty( $context['is_proration_upgrade'] ),
 			)
 		);
 	}
@@ -3404,6 +3598,33 @@ class NewPaypalService {
 		return $this->paypal_rest_request(
 			'GET',
 			'/v2/checkout/orders/' . rawurlencode( $order_id ),
+			null,
+			$paypal_options
+		);
+	}
+
+	/**
+	 * Fetch one webhook event from PayPal by its event ID.
+	 *
+	 * Used when signature verification fails. PayPal refuses to verify a signature once the delivery
+	 * is old, so a retried event can never pass, and every genuine payment behind it is lost. Asking
+	 * PayPal for its own copy of the event settles authenticity just as well.
+	 *
+	 * @param string $event_id       PayPal webhook event ID.
+	 * @param array  $paypal_options Credentials.
+	 * @return array|WP_Error PayPal's copy of the event, or WP_Error when it could not be retrieved.
+	 */
+	public function fetch_webhook_event( $event_id, $paypal_options ) {
+		if ( empty( $event_id ) ) {
+			return new WP_Error(
+				'paypal_missing_event_id',
+				__( 'No PayPal event ID to look up.', 'user-registration' )
+			);
+		}
+
+		return $this->paypal_rest_request(
+			'GET',
+			'/v1/notifications/webhooks-events/' . rawurlencode( $event_id ),
 			null,
 			$paypal_options
 		);
@@ -3812,6 +4033,14 @@ class NewPaypalService {
 		$count_errors  = 0;
 
 		foreach ( $events as $event ) {
+			// PayPal drops the event_type filter on paginated pages, so events of other types come
+			// back too. A SALE.DENIED/REFUNDED resource carries the same fields as a completed sale
+			// and would otherwise be written as a completed order.
+			if ( 'PAYMENT.SALE.COMPLETED' !== ( $event['event_type'] ?? '' ) ) {
+				++$count_skipped;
+				continue;
+			}
+
 			$resource               = isset( $event['resource'] ) ? $event['resource'] : array();
 			$transaction_id         = isset( $resource['id'] ) ? $resource['id'] : '';
 			$paypal_subscription_id = isset( $resource['billing_agreement_id'] ) ? $resource['billing_agreement_id'] : '';
@@ -3891,22 +4120,33 @@ class NewPaypalService {
 			$local_sub_id = $membership_subscription['ID'];
 			$user_id      = $membership_subscription['user_id'];
 
-			// Replace placeholder order (transaction_id = PayPal subscription ID) if one exists.
+			// Placeholder order (transaction_id = PayPal subscription ID): stamp the real sale ID on it,
+			// same as the webhook path. Deleting and recreating it loses the order's meta (tax, coupon,
+			// local currency, proration flag), its note and its creator.
 			$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
 			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
+				$this->orders_repository->update(
+					$placeholder['ID'],
+					array(
+						'status'         => 'completed',
+						'transaction_id' => $transaction_id,
+					)
+				);
 				$logger->info(
-					'[Backfill][PayPal][Subscription][Payments] Deleting placeholder order.' . "\n" . wp_json_encode(
+					'[Backfill][PayPal][Subscription][Payments] Placeholder order updated with real transaction ID.' . "\n" . wp_json_encode(
 						array(
-							'event_type'             => 'placeholder_deleted',
+							'event_type'             => 'placeholder_updated',
 							'local_sub_id'           => $local_sub_id,
-							'placeholder_order_id'   => $placeholder['ID'],
+							'order_id'               => $placeholder['ID'],
 							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
 						),
 						JSON_PRETTY_PRINT
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
-				$this->orders_repository->delete( $placeholder['ID'] );
+				++$count_updated;
+				continue;
 			}
 
 			// Update a pending order in place rather than creating a duplicate.
@@ -3942,6 +4182,39 @@ class NewPaypalService {
 					'success'
 				);
 				++$count_updated;
+				continue;
+			}
+
+			// A second sale landing on a subscription within the hour is not a renewal — it means the
+			// member was charged twice. Record the order (the money did move) but make it loud.
+			if (
+				! empty( $existing_pending['ID'] ) &&
+				'completed' === ( $existing_pending['status'] ?? '' ) &&
+				$transaction_id !== ( $existing_pending['transaction_id'] ?? '' ) &&
+				! empty( $existing_pending['created_at'] ) &&
+				abs( strtotime( $created_at ) - strtotime( $existing_pending['created_at'] ) ) < HOUR_IN_SECONDS
+			) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[Backfill][PayPal][Subscription][Payments] Possible duplicate charge — second sale on this subscription within the hour.' . "\n" . wp_json_encode(
+						array(
+							'event_type'              => 'possible_duplicate_charge',
+							'member_id'               => $user_id,
+							'subscription_id'         => $local_sub_id,
+							'existing_order_id'       => $existing_pending['ID'],
+							'existing_transaction_id' => $existing_pending['transaction_id'] ?? '',
+							'new_transaction_id'      => $transaction_id,
+							'amount'                  => $gross_amount,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+			}
+
+			// Re-check immediately before insert: the webhook handler may have recorded this same sale
+			// while the loop was making API calls, and transaction_id has no unique index.
+			if ( ! empty( $this->orders_repository->get_order_by_transaction_id( $transaction_id ) ) ) {
+				++$count_skipped;
 				continue;
 			}
 
@@ -4074,6 +4347,12 @@ class NewPaypalService {
 		}
 
 		foreach ( $events as $event ) {
+			// Paginated pages come back unfiltered — a DENIED capture must not complete an order.
+			if ( 'PAYMENT.CAPTURE.COMPLETED' !== ( $event['event_type'] ?? '' ) ) {
+				++$count_skipped;
+				continue;
+			}
+
 			$resource   = isset( $event['resource'] ) ? $event['resource'] : array();
 			$capture_id = isset( $resource['id'] ) ? $resource['id'] : '';
 			$custom_id  = isset( $resource['custom_id'] ) ? $resource['custom_id'] : '';
@@ -4339,8 +4618,12 @@ class NewPaypalService {
 						break;
 					}
 				}
-			} else {
+			} elseif ( 'PAYMENT.SALE.REFUNDED' === $event_type ) {
 				$transaction_id = isset( $resource['sale_id'] ) ? $resource['sale_id'] : null;
+			} else {
+				// Paginated pages come back unfiltered — never treat a foreign event as a refund.
+				++$total_skipped;
+				continue;
 			}
 
 			if ( empty( $transaction_id ) ) {

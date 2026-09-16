@@ -2,6 +2,7 @@
 
 namespace WPEverest\URMembership\Admin\Services;
 
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WPEverest\URMembership\Admin\Services\Paypal\NewPaypalService;
@@ -22,6 +23,14 @@ class PaymentGatewaysWebhookActions {
 	 * @var PaypalService
 	 */
 	protected $legacy_paypal_service;
+
+	/**
+	 * PayPal's own copy of the event, set when the signature could not be verified but PayPal
+	 * confirmed the event through its API. Processed in place of the posted body.
+	 *
+	 * @var array
+	 */
+	protected $paypal_authoritative_event = array();
 
 	/**
 	 * Constructor.
@@ -327,11 +336,63 @@ class PaymentGatewaysWebhookActions {
 		);
 
 		if ( ! $verified ) {
-			PaymentGatewayLogging::log_error(
+			// UR-4827: PayPal will not verify a signature once the delivery is old, so an event that
+			// fails its first attempt can never pass on retry and the payment behind it is lost while
+			// PayPal retries for days. Ask PayPal for its own copy instead, and process that copy so a
+			// forged body carrying a genuine event ID gains nothing.
+			$event    = json_decode( $request->get_body(), true );
+			$event_id = is_array( $event ) && ! empty( $event['id'] ) ? sanitize_text_field( $event['id'] ) : '';
+
+			$confirmed = $this->paypal_service->fetch_webhook_event( $event_id, $paypal_options );
+
+			if ( is_wp_error( $confirmed ) ) {
+				// Undetermined: could be a network blip or an expired token. Reject so PayPal retries.
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'PayPal webhook signature verification failed and the event could not be confirmed — request rejected.' . "\n" . wp_json_encode(
+						array(
+							'event_id' => $event_id ?: null,
+							'error'    => $confirmed->get_error_message(),
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				return false;
+			}
+
+			if ( empty( $confirmed['id'] ) || ! hash_equals( (string) $event_id, (string) $confirmed['id'] ) ) {
+				// PayPal has no such event. Acknowledge with 200 so it is not retried for days, and do
+				// not process anything.
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'PayPal webhook rejected: signature invalid and PayPal does not recognise the event.' . "\n" . wp_json_encode(
+						array( 'event_id' => $event_id ?: null ),
+						JSON_PRETTY_PRINT
+					)
+				);
+
+				return new WP_Error(
+					'urm_paypal_webhook_unverified',
+					__( 'PayPal webhook could not be authenticated.', 'user-registration' ),
+					array( 'status' => 200 )
+				);
+			}
+
+			$this->paypal_authoritative_event = $confirmed;
+
+			PaymentGatewayLogging::log_general(
 				'paypal',
-				'PayPal webhook signature verification failed — request rejected.'
+				'PayPal webhook signature failed but PayPal confirmed the event through its API — processing PayPal\'s copy.' . "\n" . wp_json_encode(
+					array(
+						'event_id'   => $event_id,
+						'event_type' => isset( $confirmed['event_type'] ) ? $confirmed['event_type'] : '',
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
 			);
-			return false;
+
+			return true;
 		}
 
 		PaymentGatewayLogging::log_general(
@@ -350,6 +411,19 @@ class PaymentGatewaysWebhookActions {
 	 * @return WP_REST_Response
 	 */
 	public function handle_paypal_webhook( WP_REST_Request $request ) {
+		// Signature failed but PayPal vouched for the event: act on PayPal's copy, never the posted body.
+		if ( ! empty( $this->paypal_authoritative_event ) ) {
+			$event                            = $this->paypal_authoritative_event;
+			$this->paypal_authoritative_event = array();
+
+			$result = $this->paypal_service->handle_webhook_event( $event );
+
+			return new WP_REST_Response(
+				array( 'success' => (bool) $result ),
+				200
+			);
+		}
+
 		$body = $request->get_body();
 
 		if ( empty( $body ) ) {

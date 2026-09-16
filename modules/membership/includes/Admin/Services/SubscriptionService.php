@@ -639,7 +639,9 @@ class SubscriptionService {
 		$member_service = new MembersService();
 		$member_service->update_user_meta( $members_data, $user->ID );
 
-		if ( isset( $data['upgrade'] ) && $data['upgrade'] && 'subscription' === $current_membership_details['type'] && 'bank' !== $payment_method && 'off' === $selected_membership_details['trial_status'] && ! isset( $upgrade_details['delayed_until'] ) ) {
+		// calculate_membership_upgrade_cost() always returns a delayed_until key, so isset() here was
+		// always true and this whole branch never ran — the old gateway subscription kept billing.
+		if ( isset( $data['upgrade'] ) && $data['upgrade'] && 'subscription' === $current_membership_details['type'] && 'bank' !== $payment_method && 'off' === $selected_membership_details['trial_status'] && empty( $upgrade_details['delayed_until'] ) ) {
 
 			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false );
 
@@ -777,6 +779,13 @@ class SubscriptionService {
 
 		if ( ! $result['status'] ) {
 			return $result;
+		}
+
+		// UR-4600: when the destination plan carries its own trial, nothing is due today — the first
+		// charge lands when the trial ends. Without this the member pays the proration (the full plan
+		// price on a free->subscription upgrade) up front and still gets a "free" trial afterwards.
+		if ( $new_plan_has_trial ) {
+			$result['chargeable_amount'] = 0;
 		}
 
 		return array(
