@@ -617,13 +617,14 @@ class EmailService {
 			return false;
 		}
 
-		$user                 = get_userdata( $data['member_id'] );
-		$form_id              = ur_get_form_id_by_userid( $data['member_id'] );
-		$settings             = new UR_Settings_Membership_Downgraded_Free_User_Email();
-		$subscription_service = new SubscriptionService();
-		$membership_tags      = $subscription_service->get_membership_plan_details( $data );
+		$user                          = get_userdata( $data['member_id'] );
+		$form_id                       = ur_get_form_id_by_userid( $data['member_id'] );
+		$settings                      = new UR_Settings_Membership_Downgraded_Free_User_Email();
+		$subscription_service          = new SubscriptionService();
+		$membership_tags               = $subscription_service->get_membership_plan_details( $data );
+		$previous_membership_plan_name = ! empty( $data['current_membership_id'] ) ? get_the_title( $data['current_membership_id'] ) : '';
 
-		$membership_tags['previous_membership_plan_name'] = ! empty( $data['current_membership_id'] ) ? get_the_title( $data['current_membership_id'] ) : '';
+		$membership_tags['previous_membership_plan_name'] = $previous_membership_plan_name;
 
 		$values  = array(
 			'membership_tags' => $membership_tags,
@@ -635,7 +636,10 @@ class EmailService {
 		$message     = apply_filters( 'ur_membership_membership_downgraded_free_email_custom_template', $message, $subject );
 		$template_id = ur_get_single_post_meta( $form_id, 'user_registration_select_email_template' );
 		$subject     = \UR_Emailer::parse_smart_tags( $subject, $values );
-		$headers     = \UR_Emailer::ur_get_header();
+		// Not a recognized tag in UR_Smart_Tags's whitelist, so replace it directly here.
+		$subject = str_replace( '{{previous_membership_plan_name}}', $previous_membership_plan_name, $subject );
+		$message = str_replace( '{{previous_membership_plan_name}}', $previous_membership_plan_name, $message );
+		$headers = \UR_Emailer::ur_get_header();
 
 		return \UR_Emailer::user_registration_process_and_send_email( $user->user_email, $subject, $message, $headers, array(), $template_id );
 	}
@@ -652,12 +656,13 @@ class EmailService {
 			return false;
 		}
 
-		$form_id              = ur_get_form_id_by_userid( $data['member_id'] );
-		$settings             = new UR_Settings_Membership_Downgraded_Free_Admin_Email();
-		$subscription_service = new SubscriptionService();
-		$membership_tags      = $subscription_service->get_membership_plan_details( $data );
+		$form_id                       = ur_get_form_id_by_userid( $data['member_id'] );
+		$settings                      = new UR_Settings_Membership_Downgraded_Free_Admin_Email();
+		$subscription_service          = new SubscriptionService();
+		$membership_tags               = $subscription_service->get_membership_plan_details( $data );
+		$previous_membership_plan_name = ! empty( $data['current_membership_id'] ) ? get_the_title( $data['current_membership_id'] ) : '';
 
-		$membership_tags['previous_membership_plan_name'] = ! empty( $data['current_membership_id'] ) ? get_the_title( $data['current_membership_id'] ) : '';
+		$membership_tags['previous_membership_plan_name'] = $previous_membership_plan_name;
 
 		$values  = array(
 			'membership_tags' => $membership_tags,
@@ -669,7 +674,10 @@ class EmailService {
 		$message     = apply_filters( 'ur_membership_membership_downgraded_free_email_custom_template', $message, $subject );
 		$template_id = ur_get_single_post_meta( $form_id, 'user_registration_select_email_template' );
 		$subject     = \UR_Emailer::parse_smart_tags( $subject, $values );
-		$headers     = \UR_Emailer::ur_get_header();
+		// Not a recognized tag in UR_Smart_Tags's whitelist, so replace it directly here.
+		$subject = str_replace( '{{previous_membership_plan_name}}', $previous_membership_plan_name, $subject );
+		$message = str_replace( '{{previous_membership_plan_name}}', $previous_membership_plan_name, $message );
+		$headers = \UR_Emailer::ur_get_header();
 
 		return \UR_Emailer::user_registration_process_and_send_email( get_option( 'admin_email' ), $subject, $message, $headers, array(), $template_id );
 	}

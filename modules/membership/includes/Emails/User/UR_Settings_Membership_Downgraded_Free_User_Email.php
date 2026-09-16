@@ -104,7 +104,7 @@ class UR_Settings_Membership_Downgraded_Free_User_Email {
 			'<p style="margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;">
 				Hi {{username}},</p>
 				<p style="margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;">
-				Your membership has changed from {{previous_membership_plan_name}} to {{membership_plan_name}}.
+				Your membership has changed from <strong>{{previous_membership_plan_name}}</strong> to <strong>{{membership_plan_name}}</strong>.
 				</p>
 				<p style="margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;">
 				You can review your current plan and benefits anytime from your account dashboard.

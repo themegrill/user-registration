@@ -117,10 +117,10 @@ class UR_Settings_Membership_Downgraded_Free_Admin_Email {
 					<strong>Email</strong>: {{email}}
 				</li>
 				<li style="margin-bottom: 10px;">
-					<strong>Previous Plan</strong>: {{previous_membership_plan_name}}
+					<strong>Previous Plan</strong>: <strong>{{previous_membership_plan_name}}</strong>
 				</li>
 				<li style="margin-bottom: 10px;">
-					<strong>New Plan</strong>: {{membership_plan_name}}
+					<strong>New Plan</strong>: <strong>{{membership_plan_name}}</strong>
 				</li>
 				</ul>
 			</p>
