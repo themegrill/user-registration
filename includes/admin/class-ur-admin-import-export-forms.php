@@ -199,11 +199,16 @@ class UR_Admin_Import_Export_Forms {
 
 							}
 
-							$post_id = wp_insert_post( $form_data->form_post );
+							// $wp_error = true, or a failed insert returns 0 - not a WP_Error - and the check below never fires.
+							$post_id = wp_insert_post( $form_data->form_post, true );
 
 							// Check for any error while inserting.
 							if ( is_wp_error( $post_id ) ) {
-								return $post_id;
+								wp_send_json_error(
+									array(
+										'message' => $post_id->get_error_message(),
+									)
+								);
 							}
 							array_push( $post_ids, $post_id );
 
