@@ -114,20 +114,26 @@ class PaymentService {
 			case 'bank':
 				return $this->build_direct_bank_response( $payment_data, $response_data['subscription_id'], $response_data['member_id'] );
 			default:
-				return $this->build_free_upgrade_response();
+				return $this->build_free_upgrade_response( $response_data );
 		}
 	}
 
 	/**
 	 * Build Free upgrade Response
 	 *
-	 * @param $data
-	 * @param $subscription_id
-	 * @param $member_id
+	 * @param array $response_data
 	 *
 	 * @return array
 	 */
-	public function build_free_upgrade_response() {
+	public function build_free_upgrade_response( $response_data = array() ) {
+		$is_plan_change = ! empty( $response_data['upgrade'] ) && ! empty( $response_data['current_membership_id'] )
+			&& absint( $response_data['current_membership_id'] ) !== absint( $response_data['membership'] ?? 0 );
+
+		if ( $is_plan_change ) {
+			$email_service = new EmailService();
+			$email_service->send_email( $response_data, 'membership_downgraded_free_user' );
+			$email_service->send_email( $response_data, 'membership_downgraded_free_admin' );
+		}
 
 		return array(
 			'thank_you_page_url' => urm_get_thank_you_page(),
