@@ -2919,6 +2919,22 @@ class StripeService {
 	}
 
 	/**
+	 * Reads the live Stripe subscription status without triggering a retry.
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription ID.
+	 * @return string|\WP_Error Stripe subscription status, or WP_Error if it could not be read.
+	 */
+	public function get_subscription_status( $stripe_subscription_id ) {
+		try {
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+
+			return $stripe_subscription ? $stripe_subscription->status : new \WP_Error( 'urm_stripe_subscription_not_found', __( 'Subscription not found in Stripe', 'user-registration' ) );
+		} catch ( \Exception $e ) {
+			return new \WP_Error( 'urm_stripe_status_check_failed', $e->getMessage() );
+		}
+	}
+
+	/**
 	 * Retries subscription for Stripe subscription payments.
 	 *
 	 * @param array $subscription Subscription data.
@@ -3019,16 +3035,23 @@ class StripeService {
 					$response['status']  = true;
 					$response['message'] = __( 'Subscription payment retried successfully', 'user-registration' );
 				} else {
-					PaymentGatewayLogging::log_error(
-						'stripe',
-						'Subscription payment retry - Unexpected status' . "\n" . wp_json_encode(
-							array(
-								'subscription_id' => $subscription['sub_id'],
-								'status'          => $updated_subscription->status,
-							),
-							JSON_PRETTY_PRINT
-						)
+					$log_message = in_array( $updated_subscription->status, array( 'past_due', 'unpaid' ), true )
+						? 'Subscription payment retry - still awaiting payment, gateway dunning in progress'
+						: 'Subscription payment retry - unexpected status';
+
+					$log_context = wp_json_encode(
+						array(
+							'subscription_id' => $subscription['sub_id'],
+							'status'          => $updated_subscription->status,
+						),
+						JSON_PRETTY_PRINT
 					);
+
+					if ( in_array( $updated_subscription->status, array( 'past_due', 'unpaid' ), true ) ) {
+						PaymentGatewayLogging::log_general( 'stripe', $log_message . "\n" . $log_context, 'notice' );
+					} else {
+						PaymentGatewayLogging::log_error( 'stripe', $log_message . "\n" . $log_context );
+					}
 
 					// Notify user via email about a failed retry attempt.
 					$current_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
