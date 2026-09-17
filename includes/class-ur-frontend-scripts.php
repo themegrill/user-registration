@@ -583,6 +583,7 @@ class UR_Frontend_Scripts {
 						'user_under_approval'         => get_option( 'user_registration_successful_form_submission_message_admin_approval', esc_html__( 'User registered. Wait until admin approves your registration.', 'user-registration' ) ),
 						'user_email_pending'          => get_option( 'user_registration_successful_form_submission_message_email_confirmation', esc_html__( 'User registered. Verify your email by clicking on the link sent to your email.', 'user-registration' ) ),
 						'captcha_error'               => get_option( 'user_registration_form_submission_error_message_recaptcha', esc_html__( 'Captcha code error, please try again.', 'user-registration' ) ),
+						'captcha_pending'             => esc_html__( 'Verifying you are human. Please try again in a moment.', 'user-registration' ),
 						'hide_password_title'         => esc_html__( 'Hide Password', 'user-registration' ),
 						'show_password_title'         => esc_html__( 'Show Password', 'user-registration' ),
 						'i18n_total_field_value_zero' => esc_html__( 'Total field value should be greater than zero.', 'user-registration' ),

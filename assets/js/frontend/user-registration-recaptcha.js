@@ -187,6 +187,92 @@ var getSafeCaptchaObject = function(type) {
 };
 
 /**
+ * Hold a form's submission until its captcha hands back a replacement token.
+ *
+ * reset() clears the response field synchronously while the widget re-issues
+ * asynchronously, so without the hold the form stays submittable for a second
+ * or two with nothing to post and the visitor is shown a captcha error they
+ * did nothing to cause.
+ *
+ * @since 5.2.9
+ *
+ * @param {Object} $form jQuery object for the form to hold.
+ */
+var ur_hold_form_for_captcha = function ($form) {
+	var apply_hold = function () {
+		if (!$form.data("ur-captcha-pending")) {
+			return;
+		}
+
+		$form
+			.find(".ur-submit-button")
+			.prop("disabled", true)
+			.find("span")
+			.addClass("ur-front-spinner");
+	};
+
+	$form.data("ur-captcha-pending", true);
+	apply_hold();
+
+	// The submit handler re-enables the button after this event, so re-apply the
+	// hold once it has finished with it.
+	window.setTimeout(apply_hold, 0);
+
+	// Never strand the visitor behind a widget that never comes back.
+	window.clearTimeout($form.data("ur-captcha-timer"));
+	$form.data(
+		"ur-captcha-timer",
+		window.setTimeout(function () {
+			ur_release_form_for_captcha($form);
+		}, 15000)
+	);
+};
+
+/**
+ * Release a form held by ur_hold_form_for_captcha().
+ *
+ * @since 5.2.9
+ *
+ * @param {Object} $form jQuery object for the form to release.
+ */
+var ur_release_form_for_captcha = function ($form) {
+	if (!$form || !$form.length || !$form.data("ur-captcha-pending")) {
+		return;
+	}
+
+	window.clearTimeout($form.data("ur-captcha-timer"));
+	$form.removeData("ur-captcha-pending").removeData("ur-captcha-timer");
+	$form
+		.find(".ur-submit-button")
+		.prop("disabled", false)
+		.find("span")
+		.removeClass("ur-front-spinner");
+};
+
+/**
+ * Build the Turnstile render parameters for a form.
+ *
+ * The callback is what releases the hold, so every render and rebuild has to go
+ * through here rather than pass a bare object.
+ *
+ * @since 5.2.9
+ *
+ * @param {Object} config Localised captcha config with site_key and theme_mode.
+ * @param {Object} $form  jQuery object for the form the widget belongs to.
+ * @return {Object} Parameters for turnstile.render().
+ */
+var ur_get_turnstile_params = function (config, $form) {
+	return {
+		sitekey: config.site_key,
+		theme: config.theme_mode,
+		style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
+		callback: function () {
+			ur_release_form_for_captcha($form);
+		}
+	};
+};
+
+/**
  * Refresh the captcha widget belonging to a single form.
  *
  * The server verifies the token before it validates the fields, so a submission
@@ -217,6 +303,10 @@ var ur_refresh_form_captcha = function ($form) {
 
 	if ($node.hasClass("cf-turnstile")) {
 		response_name = "cf-turnstile-response";
+
+		// Turnstile is the only widget here that re-issues without the visitor
+		// touching it, so it is the only one worth holding the form for.
+		ur_hold_form_for_captcha($form);
 
 		if ("undefined" === typeof widget_id) {
 			widget_id = is_login
@@ -250,10 +340,10 @@ var ur_refresh_form_captcha = function ($form) {
 					"undefined" === typeof render_params &&
 					"undefined" !== typeof ur_cloudflare_recaptcha_code
 				) {
-					render_params = {
-						sitekey: ur_cloudflare_recaptcha_code.site_key,
-						theme: ur_cloudflare_recaptcha_code.theme_mode
-					};
+					render_params = ur_get_turnstile_params(
+						ur_cloudflare_recaptcha_code,
+						$form
+					);
 				}
 
 				if (render_params) {
@@ -328,6 +418,8 @@ var ur_refresh_form_captcha = function ($form) {
 	// on a captcha error next to a widget that still reads as solved.
 	if (captcha_reset && response_name) {
 		$form.find('[name="' + response_name + '"]').val("");
+	} else {
+		ur_release_form_for_captcha($form);
 	}
 };
 
@@ -643,7 +735,14 @@ setTimeout(protectGrecaptcha, 2000);
 						}
 
 						if (0 === captchaResponse.length) {
-							$error_message["message"] = ursL10n.captcha_error;
+							// An empty field while the widget is still minting is
+							// not something the visitor got wrong, so it must not
+							// read as a captcha failure.
+							$error_message["message"] =
+								$registration_form.data("ur-captcha-pending") &&
+								ursL10n.captcha_pending
+									? ursL10n.captcha_pending
+									: ursL10n.captcha_error;
 						}
 					}
 				}
@@ -1073,11 +1172,10 @@ var onloadURTurnstileCallbackHandler = function () {
 							var turnstileObj = getSafeCaptchaObject('turnstile');
 							if (turnstileObj && turnstileObj.render) {
 								// Kept on the node so a spent widget can be rebuilt after a failed submission.
-								var turnstile_params = {
-									sitekey: recaptcha_code.site_key,
-									theme: recaptcha_code.theme_mode,
-									style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
-								};
+								var turnstile_params = ur_get_turnstile_params(
+									recaptcha_code,
+									jQuery(this)
+								);
 								turnstile_user_registration = turnstileObj.render(
 									"#node_recaptcha_register_" + form_id,
 									turnstile_params
@@ -1106,11 +1204,10 @@ var onloadURTurnstileCallbackHandler = function () {
 						if ("cloudflare" === ur_cloudflare_recaptcha_code.version) {
 							var turnstileObj = getSafeCaptchaObject('turnstile');
 							if (turnstileObj && turnstileObj.render) {
-								var turnstile_login_params = {
-									sitekey: ur_cloudflare_recaptcha_code.site_key,
-									theme: ur_cloudflare_recaptcha_code.theme_mode,
-									style: "transform:scale(0.77);-webkit-transform:scale(0.77);transform-origin:0 0;-webkit-transform-origin:0 0;",
-								};
+								var turnstile_login_params = ur_get_turnstile_params(
+									ur_cloudflare_recaptcha_code,
+									jQuery(this)
+								);
 								turnstile_login = turnstileObj.render(
 									"#" + ur_recaptcha_node
 										.find(".cf-turnstile")
