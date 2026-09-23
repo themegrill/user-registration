@@ -67,6 +67,10 @@ class CouponService {
 			return $this->set_coupon_response( false, 422, 'Coupon is Inactive' );
 		}
 
+		if ( function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( $coupon_details ) ) {
+			return $this->set_coupon_response( false, 422, 'This coupon has reached its usage limit.' );
+		}
+
 		$current_date = current_time( 'timestamp' );
 		$end_date     = ! empty( $coupon_details['coupon_end_date'] ) ? strtotime( $coupon_details['coupon_end_date'] ) : 'never';
 
