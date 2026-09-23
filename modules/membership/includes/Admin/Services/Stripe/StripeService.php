@@ -3035,7 +3035,8 @@ class StripeService {
 					$response['status']  = true;
 					$response['message'] = __( 'Subscription payment retried successfully', 'user-registration' );
 				} else {
-					$log_message = in_array( $updated_subscription->status, array( 'past_due', 'unpaid' ), true )
+					// 'past_due' means Stripe is still actively dunning; 'unpaid' means Stripe has already exhausted its own retries.
+					$log_message = 'past_due' === $updated_subscription->status
 						? 'Subscription payment retry - still awaiting payment, gateway dunning in progress'
 						: 'Subscription payment retry - unexpected status';
 
@@ -3047,7 +3048,7 @@ class StripeService {
 						JSON_PRETTY_PRINT
 					);
 
-					if ( in_array( $updated_subscription->status, array( 'past_due', 'unpaid' ), true ) ) {
+					if ( 'past_due' === $updated_subscription->status ) {
 						PaymentGatewayLogging::log_general( 'stripe', $log_message . "\n" . $log_context, 'notice' );
 					} else {
 						PaymentGatewayLogging::log_error( 'stripe', $log_message . "\n" . $log_context );

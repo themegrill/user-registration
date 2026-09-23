@@ -1300,7 +1300,7 @@ class SubscriptionService {
 			if ( ! $pending_cancel_meta && 'stripe' === ( $order['payment_method'] ?? '' ) && ! empty( $subscription['gateway_subscription_id'] ) ) {
 				$gateway_status = ( new StripeService() )->get_subscription_status( $subscription['gateway_subscription_id'] );
 
-				if ( ! is_wp_error( $gateway_status ) && in_array( $gateway_status, array( 'past_due', 'unpaid' ), true ) ) {
+				if ( ! is_wp_error( $gateway_status ) && 'past_due' === $gateway_status ) {
 					ur_get_logger()->notice(
 						sprintf(
 							'[Member ID #%d] Expiration held - Stripe subscription %s is still %s',
