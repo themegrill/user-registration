@@ -1,9 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { loginAsAdmin, newVisitor, restNonce } from "../support/wp";
-import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "../support/env";
+import { BASE_URL, uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "../support/env";
 
 /**
- * Content Restriction has no Playwright coverage yet, so this is the first
+ * Content Restriction has no other Playwright coverage, so this is the first
  * spec for the area. It seeds pages, access rules and a member user directly
  * over the REST API (the admin rule-builder UI is a separate, unasserted
  * surface here) and only drives the browser for the actual front-end
@@ -12,114 +12,126 @@ import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "../support/env";
 
 const stamp = () => Date.now().toString(36);
 
-async function createPage(page: Page, title: string, content: string): Promise<number> {
-  const nonce = await restNonce(page);
-  return await page.evaluate(
-    async ({ title, content, nonce }) => {
-      const res = await fetch("/wp-json/wp/v2/pages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-WP-Nonce": nonce },
-        credentials: "same-origin",
-        body: JSON.stringify({ title, content, status: "publish" }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(`page create failed: ${res.status} ${JSON.stringify(json).slice(0, 200)}`);
-      return json.id as number;
-    },
-    { title, content, nonce },
-  );
-}
+type Condition = { type: "user_state"; value: "logged-in" | "logged-out" } | { type: "roles"; value: string[] };
 
-async function deletePage(page: Page, id: number): Promise<void> {
-  const nonce = await restNonce(page);
-  await page.evaluate(
-    async ({ id, nonce }) => {
-      await fetch(`/wp-json/wp/v2/pages/${id}?force=true`, {
-        method: "DELETE",
-        headers: { "X-WP-Nonce": nonce },
-        credentials: "same-origin",
-      });
-    },
-    { id, nonce },
-  ).catch(() => {});
-}
+type RestPage = { status: number; rendered: string; isProtected: boolean };
 
-/** access_rule_data shape matches the admin rule-builder's own serializer. */
-async function createAccessRule(
-  page: Page,
-  title: string,
-  targetContents: unknown,
-  userState: "logged-in" | "logged-out",
-  message: string,
-): Promise<number> {
-  const nonce = await restNonce(page);
-  const access_rule_data = {
-    enabled: true,
-    target_contents: targetContents,
-    logic_map: {
-      type: "group",
-      logic_gate: "AND",
-      conditions: [{ type: "user_state", value: userState }],
-    },
-    actions: [
-      {
-        type: "message",
-        label: "Show Message",
-        message,
-        redirect_url: "",
-        access_control: "access",
-        local_page: "",
-        ur_form: "",
-        shortcode: { tag: "", args: "" },
+/**
+ * Everything a test creates, recorded the moment it exists so a failure part
+ * way through seeding still gets cleaned up.
+ */
+class Seed {
+  private rules: number[] = [];
+  private pages: number[] = [];
+  private users: number[] = [];
+  private contexts: BrowserContext[] = [];
+
+  constructor(private readonly admin: Page) {}
+
+  async page(title: string, content: string): Promise<number> {
+    const id = await adminFetch<{ id: number }>(this.admin, "POST", "/wp-json/wp/v2/pages", { title, content, status: "publish" });
+    this.pages.push(id.id);
+    return id.id;
+  }
+
+  /** access_rule_data in the shape the admin rule-builder saves: a whole-site target carries no 'value'. */
+  async rule(
+    title: string,
+    targetContents: unknown,
+    condition: Condition,
+    message: string,
+    accessControl: "access" | "restrict" = "access",
+  ): Promise<number> {
+    const json = await adminFetch<{ rule: { id: number } }>(this.admin, "POST", "/wp-json/user-registration/v1/content-access-rules", {
+      title,
+      access_rule_data: {
+        enabled: true,
+        target_contents: targetContents,
+        logic_map: { type: "group", logic_gate: "AND", conditions: [condition] },
+        actions: [
+          {
+            type: "message",
+            label: "Show Message",
+            message,
+            redirect_url: "",
+            access_control: accessControl,
+            local_page: "",
+            ur_form: "",
+            shortcode: { tag: "", args: "" },
+          },
+        ],
       },
-    ],
-  };
-  return await page.evaluate(
-    async ({ title, access_rule_data, nonce }) => {
-      const res = await fetch("/wp-json/user-registration/v1/content-access-rules", {
-        method: "POST",
+    });
+    this.rules.push(json.rule.id);
+    return json.rule.id;
+  }
+
+  async member(): Promise<string> {
+    const username = uniqueUsername("qacrmember");
+    const json = await adminFetch<{ id: number }>(this.admin, "POST", "/wp-json/wp/v2/users", {
+      username,
+      email: uniqueEmail("qacrmember"),
+      password: STRONG_PASSWORD,
+      roles: ["subscriber"],
+    });
+    this.users.push(json.id);
+    return username;
+  }
+
+  track(context: BrowserContext): BrowserContext {
+    this.contexts.push(context);
+    return context;
+  }
+
+  /** Rules go first, so a leftover Whole Site rule can never lock other specs out of the site. */
+  async cleanUp(): Promise<void> {
+    await Promise.allSettled(this.contexts.map((context) => context.close()));
+    const deletions = [
+      ...this.rules.map((id) => `/wp-json/user-registration/v1/content-access-rules/${id}?force=true`),
+      ...this.pages.map((id) => `/wp-json/wp/v2/pages/${id}?force=true`),
+      ...this.users.map((id) => `/wp-json/wp/v2/users/${id}?force=true&reassign=1`),
+    ];
+    const failures: string[] = [];
+    for (const path of deletions) {
+      await adminFetch(this.admin, "DELETE", path).catch((error: Error) => failures.push(error.message));
+    }
+    if (failures.length) throw new Error(`cleanup left data behind:\n${failures.join("\n")}`);
+  }
+}
+
+async function adminFetch<T = unknown>(admin: Page, method: string, path: string, body?: unknown): Promise<T> {
+  const nonce = await restNonce(admin);
+  return await admin.evaluate(
+    async ({ method, path, body, nonce }) => {
+      const res = await fetch(path, {
+        method,
         headers: { "Content-Type": "application/json", "X-WP-Nonce": nonce },
         credentials: "same-origin",
-        body: JSON.stringify({ title, access_rule_data }),
+        body: body === undefined ? undefined : JSON.stringify(body),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(`rule create failed: ${res.status} ${JSON.stringify(json).slice(0, 300)}`);
-      return json.rule.id as number;
+      const text = await res.text();
+      if (!res.ok) throw new Error(`${method} ${path} failed: ${res.status} ${text.slice(0, 200)}`);
+      return (text ? JSON.parse(text) : null) as T;
     },
-    { title, access_rule_data, nonce },
+    { method, path, body, nonce },
   );
 }
 
-async function deleteAccessRule(page: Page, id: number): Promise<void> {
-  const nonce = await restNonce(page);
-  await page.evaluate(
-    async ({ id, nonce }) => {
-      await fetch(`/wp-json/user-registration/v1/content-access-rules/${id}?force=true`, {
-        method: "DELETE",
-        headers: { "X-WP-Nonce": nonce },
-        credentials: "same-origin",
-      });
-    },
-    { id, nonce },
-  ).catch(() => {});
-}
-
-async function createMember(page: Page, username: string, email: string): Promise<number> {
-  const nonce = await restNonce(page);
-  return await page.evaluate(
-    async ({ username, email, password, nonce }) => {
-      const res = await fetch("/wp-json/wp/v2/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-WP-Nonce": nonce },
-        credentials: "same-origin",
-        body: JSON.stringify({ username, email, password, roles: ["subscriber"] }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(`user create failed: ${res.status} ${JSON.stringify(json).slice(0, 200)}`);
-      return json.id as number;
-    },
-    { username, email, password: STRONG_PASSWORD, nonce },
-  );
+/** Runs a test body with a Seed, then always cleans up without hiding the body's own failure. */
+async function withSeed(admin: Page, body: (seed: Seed) => Promise<void>): Promise<void> {
+  const seed = new Seed(admin);
+  let bodyError: unknown = null;
+  try {
+    await body(seed);
+  } catch (error) {
+    bodyError = error;
+  }
+  try {
+    await seed.cleanUp();
+  } catch (cleanupError) {
+    if (!bodyError) throw cleanupError;
+  }
+  if (bodyError) throw bodyError;
 }
 
 /**
@@ -128,26 +140,51 @@ async function createMember(page: Page, username: string, email: string): Promis
  * question from the one this spec asks. Log in and wait for the redirect
  * away from wp-login.php instead.
  */
-async function loginAsMember(page: Page, user: string, pass: string): Promise<void> {
+async function loginAsMember(browser: Browser, seed: Seed, user: string): Promise<BrowserContext> {
+  const context = seed.track(await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true }));
+  const page = await context.newPage();
   await page.goto("/wp-login.php");
   await page.fill("#user_login", user);
-  await page.fill("#user_pass", pass);
+  await page.fill("#user_pass", STRONG_PASSWORD);
   await page.click("#wp-submit");
   await page.waitForURL((url) => !url.pathname.includes("wp-login.php"));
+  await page.close();
+  return context;
 }
 
-async function deleteUser(page: Page, id: number): Promise<void> {
-  const nonce = await restNonce(page);
-  await page.evaluate(
-    async ({ id, nonce }) => {
-      await fetch(`/wp-json/wp/v2/users/${id}?force=true&reassign=1`, {
-        method: "DELETE",
-        headers: { "X-WP-Nonce": nonce },
-        credentials: "same-origin",
-      });
-    },
-    { id, nonce },
-  ).catch(() => {});
+async function bodyOf(context: BrowserContext, pageId: number): Promise<string> {
+  const page = await context.newPage();
+  await page.goto(`/?page_id=${pageId}`, { waitUntil: "domcontentloaded" });
+  const text = await page.locator("body").innerText();
+  await page.close();
+  return text;
+}
+
+/**
+ * The page as the logged-in member gets it from the core REST API, which
+ * enforces the same rules through urcr_is_content_access_granted(). restNonce()
+ * reads the nonce from a screen a subscriber cannot open, so use core's
+ * rest-nonce action instead.
+ */
+async function restPageAsMember(context: BrowserContext, pageId: number): Promise<RestPage> {
+  const page = await context.newPage();
+  await page.goto("/");
+  const result = await page.evaluate(async (pageId) => {
+    const nonceRes = await fetch("/wp-admin/admin-ajax.php?action=rest-nonce", { credentials: "same-origin" });
+    if (!nonceRes.ok) throw new Error(`rest-nonce failed: ${nonceRes.status}`);
+    const res = await fetch(`/wp-json/wp/v2/pages/${pageId}`, {
+      headers: { "X-WP-Nonce": await nonceRes.text() },
+      credentials: "same-origin",
+    });
+    const json = await res.json();
+    return {
+      status: res.status,
+      rendered: (json?.content?.rendered ?? "") as string,
+      isProtected: json?.content?.protected === true,
+    };
+  }, pageId);
+  await page.close();
+  return result;
 }
 
 test.describe("content restriction access rules @fresh", () => {
@@ -155,76 +192,154 @@ test.describe("content restriction access rules @fresh", () => {
    * @area    content-restriction
    * @tier    fresh
    * @guards  1412
-   * @source  verify-fix 2026-09-16
-   * @why     urcr_is_target_post() required a target's 'value' to be
-   *          non-empty, which a migrated or auto-created membership rule's
-   *          whole-site target never has, so a page-specific rule could
-   *          outrank a whole-site grant for that one page. Uses that
-   *          value-less shape deliberately: a manually-built whole-site rule
-   *          sets value:'whole_site' and never hit this bug. Does not assert
-   *          the rule-builder UI itself, or 3+ overlapping rules.
+   * @source  verify-fix 2026-09-23
+   * @why     A rule targeting specific content is resolved separately from a
+   *          Whole Site rule, and a restriction from either wins, so a Whole
+   *          Site grant for logged-in users must not let a member past a
+   *          guests-only page rule. This is the behaviour issue 1412's customer
+   *          found surprising; it is deliberate, and the render path and
+   *          urcr_is_content_access_granted() must agree on it. Does not assert
+   *          the rule-builder UI.
    */
-  test("a whole-site rule still grants a member access to a page a guest-only rule also covers @fresh @content-restriction", async ({
+  test("a guests-only page rule keeps members out even when a Whole Site rule lets them in @fresh @content-restriction", async ({
     page,
     browser,
   }) => {
     await loginAsAdmin(page);
+    await withSeed(page, async (seed) => {
+      const secret = `QA CR secret ${stamp()}`;
+      const wholeSiteMarker = `QA CR whole-site marker ${stamp()}`;
+      const pageRuleMarker = `QA CR guests-only marker ${stamp()}`;
 
-    const secret = `QA CR secret ${stamp()}`;
-    const wholeSiteMarker = `QA CR whole-site marker ${stamp()}`;
-    const pageRuleMarker = `QA CR page-rule marker ${stamp()}`;
+      const targetPageId = await seed.page(`QA CR guests page ${stamp()}`, secret);
+      const otherPageId = await seed.page(`QA CR other page ${stamp()}`, secret);
+      await seed.rule("QA CR whole site logged-in", [{ type: "whole_site" }], { type: "user_state", value: "logged-in" }, wholeSiteMarker);
+      await seed.rule("QA CR page guests only", [{ type: "wp_pages", value: [String(targetPageId)] }], { type: "user_state", value: "logged-out" }, pageRuleMarker);
+      const username = await seed.member();
 
-    const targetPageId = await createPage(page, `QA CR target page ${stamp()}`, secret);
-    const otherPageId = await createPage(page, `QA CR other page ${stamp()}`, secret);
+      const guest = seed.track(await newVisitor(browser));
+      expect(await bodyOf(guest, targetPageId)).toContain(secret);
+      expect(await bodyOf(guest, otherPageId)).toContain(wholeSiteMarker);
 
-    const wholeSiteRuleId = await createAccessRule(
-      page,
-      "QA CR whole site logged-in only",
-      [{ type: "whole_site" }],
-      "logged-in",
-      wholeSiteMarker,
-    );
-    const pageRuleId = await createAccessRule(
-      page,
-      "QA CR target page guests allowed",
-      [{ type: "wp_pages", value: [String(targetPageId)] }],
-      "logged-out",
-      pageRuleMarker,
-    );
+      const member = await loginAsMember(browser, seed, username);
+      const memberOnTarget = await bodyOf(member, targetPageId);
+      expect(memberOnTarget).toContain(pageRuleMarker);
+      expect(memberOnTarget).not.toContain(secret);
+      const rest = await restPageAsMember(member, targetPageId);
+      expect(rest.status).toBe(200);
+      expect(rest.isProtected).toBe(true);
+      expect(rest.rendered).not.toContain(secret);
+      expect(await bodyOf(member, otherPageId)).toContain(secret);
+    });
+  });
 
-    const username = uniqueUsername("qacrmember");
-    const email = uniqueEmail("qacrmember");
-    const memberId = await createMember(page, username, email);
+  /**
+   * @area    content-restriction
+   * @tier    fresh
+   * @guards  1412
+   * @source  verify-fix 2026-09-23
+   * @why     Letting a Whole Site grant override a page rule (the first attempt
+   *          at 1412) exposed a page restricted to one role to every logged-in
+   *          user. Guards that leak on both the rendered page and the REST
+   *          API. Does not cover membership conditions, which resolve through
+   *          the same code path.
+   */
+  test("a Whole Site rule does not unlock a page restricted to another role @fresh @content-restriction", async ({
+    page,
+    browser,
+  }) => {
+    await loginAsAdmin(page);
+    await withSeed(page, async (seed) => {
+      const secret = `QA CR editors secret ${stamp()}`;
+      const pageRuleMarker = `QA CR editors-only marker ${stamp()}`;
 
-    try {
-      // A guest is explicitly allowed on the target page by the page rule...
-      const guestCtx = await newVisitor(browser);
-      const guestPage = await guestCtx.newPage();
-      await guestPage.goto(`/?page_id=${targetPageId}`, { waitUntil: "domcontentloaded" });
-      await expect(guestPage.locator("body")).toContainText(secret);
-      // ...but the whole-site rule still restricts every other page for them.
-      await guestPage.goto(`/?page_id=${otherPageId}`, { waitUntil: "domcontentloaded" });
-      await expect(guestPage.locator("body")).toContainText(wholeSiteMarker);
-      await guestCtx.close();
+      const editorsPageId = await seed.page(`QA CR editors page ${stamp()}`, secret);
+      await seed.rule("QA CR whole site logged-in", [{ type: "whole_site" }], { type: "user_state", value: "logged-in" }, `QA CR whole-site marker ${stamp()}`);
+      await seed.rule("QA CR page editors only", [{ type: "wp_pages", value: [String(editorsPageId)] }], { type: "roles", value: ["editor"] }, pageRuleMarker);
+      const username = await seed.member();
 
-      // The regression: a logged-in member satisfies the whole-site grant, so
-      // the page rule's guest-only restriction must not apply to them here.
-      const memberCtx = await browser.newContext({ ignoreHTTPSErrors: true });
-      const memberPage = await memberCtx.newPage();
-      await loginAsMember(memberPage, username, STRONG_PASSWORD);
-      await memberPage.goto(`/?page_id=${targetPageId}`, { waitUntil: "domcontentloaded" });
-      await expect(memberPage.locator("body")).toContainText(secret);
-      await expect(memberPage.locator("body")).not.toContainText(pageRuleMarker);
-      // And the whole-site rule still grants them every other page too.
-      await memberPage.goto(`/?page_id=${otherPageId}`, { waitUntil: "domcontentloaded" });
-      await expect(memberPage.locator("body")).toContainText(secret);
-      await memberCtx.close();
-    } finally {
-      await deleteAccessRule(page, wholeSiteRuleId);
-      await deleteAccessRule(page, pageRuleId);
-      await deletePage(page, targetPageId);
-      await deletePage(page, otherPageId);
-      await deleteUser(page, memberId);
-    }
+      const member = await loginAsMember(browser, seed, username);
+      const memberOnPage = await bodyOf(member, editorsPageId);
+      expect(memberOnPage).toContain(pageRuleMarker);
+      expect(memberOnPage).not.toContain(secret);
+      const rest = await restPageAsMember(member, editorsPageId);
+      expect(rest.status).toBe(200);
+      expect(rest.isProtected).toBe(true);
+      expect(rest.rendered).not.toContain(secret);
+    });
+  });
+
+  /**
+   * @area    content-restriction
+   * @tier    fresh
+   * @guards  1412
+   * @source  verify-fix 2026-09-23
+   * @why     The supported way to open one page to guests without locking
+   *          members out, and the one the rule editor's hint points to: a
+   *          second rule for the same page. Within the page pass a grant wins
+   *          over a restriction. Does not assert the hint text itself.
+   */
+  test("a second rule for the same page lets members in alongside guests @fresh @content-restriction", async ({
+    page,
+    browser,
+  }) => {
+    await loginAsAdmin(page);
+    await withSeed(page, async (seed) => {
+      const secret = `QA CR shared secret ${stamp()}`;
+
+      const sharedPageId = await seed.page(`QA CR shared page ${stamp()}`, secret);
+      await seed.rule("QA CR whole site logged-in", [{ type: "whole_site" }], { type: "user_state", value: "logged-in" }, `QA CR whole-site marker ${stamp()}`);
+      await seed.rule("QA CR page guests", [{ type: "wp_pages", value: [String(sharedPageId)] }], { type: "user_state", value: "logged-out" }, `QA CR guests marker ${stamp()}`);
+      await seed.rule("QA CR page members", [{ type: "wp_pages", value: [String(sharedPageId)] }], { type: "user_state", value: "logged-in" }, `QA CR members marker ${stamp()}`);
+      const username = await seed.member();
+
+      const guest = seed.track(await newVisitor(browser));
+      expect(await bodyOf(guest, sharedPageId)).toContain(secret);
+
+      const member = await loginAsMember(browser, seed, username);
+      expect(await bodyOf(member, sharedPageId)).toContain(secret);
+      const rest = await restPageAsMember(member, sharedPageId);
+      expect(rest.status).toBe(200);
+      expect(rest.isProtected).toBe(false);
+      expect(rest.rendered).toContain(secret);
+    });
+  });
+
+  /**
+   * @area    content-restriction
+   * @tier    fresh
+   * @guards  1412
+   * @source  verify-fix 2026-09-23
+   * @why     Backs the rule editor's hint for a Restrict rule on a page: a
+   *          Whole Site grant does not lift it, but another rule for the same
+   *          page that grants access does. Does not assert the hint text.
+   */
+  test("a Restrict page rule holds against a Whole Site grant until another rule for the page allows access @fresh @content-restriction", async ({
+    page,
+    browser,
+  }) => {
+    await loginAsAdmin(page);
+    await withSeed(page, async (seed) => {
+      const secret = `QA CR restricted secret ${stamp()}`;
+      const restrictMarker = `QA CR restrict marker ${stamp()}`;
+
+      const restrictedPageId = await seed.page(`QA CR restricted page ${stamp()}`, secret);
+      await seed.rule("QA CR whole site logged-in", [{ type: "whole_site" }], { type: "user_state", value: "logged-in" }, `QA CR whole-site marker ${stamp()}`);
+      await seed.rule("QA CR page restrict logged-in", [{ type: "wp_pages", value: [String(restrictedPageId)] }], { type: "user_state", value: "logged-in" }, restrictMarker, "restrict");
+      const username = await seed.member();
+
+      const member = await loginAsMember(browser, seed, username);
+      const blocked = await bodyOf(member, restrictedPageId);
+      expect(blocked).toContain(restrictMarker);
+      expect(blocked).not.toContain(secret);
+      expect((await restPageAsMember(member, restrictedPageId)).isProtected).toBe(true);
+
+      await seed.rule("QA CR page subscribers", [{ type: "wp_pages", value: [String(restrictedPageId)] }], { type: "roles", value: ["subscriber"] }, `QA CR subscribers marker ${stamp()}`);
+      expect(await bodyOf(member, restrictedPageId)).toContain(secret);
+      const rest = await restPageAsMember(member, restrictedPageId);
+      expect(rest.status).toBe(200);
+      expect(rest.isProtected).toBe(false);
+      expect(rest.rendered).toContain(secret);
+    });
   });
 });
