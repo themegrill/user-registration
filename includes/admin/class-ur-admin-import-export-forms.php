@@ -173,7 +173,12 @@ class UR_Admin_Import_Export_Forms {
 							$form_has_payment_field = false;
 
 							if ( ! ur_legacy_payment_fields_enabled() ) {
-								$charging_keys = apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) );
+								// Same charging keys ur_form_has_legacy_payment_fields() checks, plus total/quantity - fields
+								// that never trigger a gateway on their own but are still part of the frozen set.
+								$charging_keys = array_merge(
+									apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) ),
+									array( 'total_field', 'quantity_field' )
+								);
 
 								foreach ( (array) $charging_keys as $charging_key ) {
 									if ( false !== strpos( $form_data->form_post->post_content, '"field_key":"' . $charging_key . '"' ) ) {

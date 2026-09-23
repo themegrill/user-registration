@@ -321,6 +321,29 @@ function ur_update_162_meta_key() {
 	delete_option( 'user_registration_general_setting_redirect_options' );
 }
 
+/**
+ * Snapshot the legacy-payment-fields flag for a site upgrading from before it existed.
+ *
+ * The fresh-install path (UR_Install::install()) only runs on activation, so a site
+ * updating from an earlier version never gets this option set and falls back to a
+ * live form scan on every check. Initialize it here the same way, once, on update.
+ *
+ * @since 5.2.9
+ *
+ * @return void.
+ */
+function ur_update_529_legacy_payment_fields_flag() {
+	if ( null === get_option( 'urm_is_legacy_payment_fields_user', null ) ) {
+		add_option( 'urm_is_legacy_payment_fields_user', ur_site_has_any_frozen_payment_field() ? 1 : 0 );
+	}
+}
+
+/**
+ * Update DB Version.
+ */
+function ur_update_529_db_version() {
+	UR_Install::update_db_version( '5.2.9' );
+}
 
 /**
  * Set Redirect after Registration option in form settings.

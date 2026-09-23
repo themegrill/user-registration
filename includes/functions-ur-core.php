@@ -11904,6 +11904,42 @@ if ( ! function_exists( 'ur_has_payment_enabled_form' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_site_has_any_frozen_payment_field' ) ) {
+	/**
+	 * Whether any published form uses any of the five frozen payment fields, or the
+	 * range field's payment slider - the full frozen set, checked without going
+	 * through ur_legacy_payment_fields_enabled(). Used only to snapshot the initial
+	 * value of that flag itself (fresh install and version migration), where the
+	 * flag does not exist yet and gating on it would always come back false.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_site_has_any_frozen_payment_field() {
+		if ( ur_has_payment_enabled_form() ) {
+			return true;
+		}
+
+		global $wpdb;
+
+		foreach ( array( 'total_field', 'quantity_field' ) as $field_key ) {
+			$pattern = '%' . $wpdb->esc_like( '"field_key":"' . $field_key . '"' ) . '%';
+			$found   = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'user_registration' AND post_status = 'publish' AND post_content LIKE %s LIMIT 1",
+					$pattern
+				)
+			); // phpcs:ignore
+
+			if ( $found ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
 if ( ! function_exists( 'ur_has_forms_with_legacy_payment_fields' ) ) {
 	/**
 	 * Whether a published form still uses a payment field the builder no longer offers.

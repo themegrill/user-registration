@@ -55,6 +55,10 @@ class UR_Install {
 			'ur_update_162_db_version',
 			'ur_update_162_meta_key',
 		),
+		'5.2.9'   => array(
+			'ur_update_529_legacy_payment_fields_flag',
+			'ur_update_529_db_version',
+		),
 	);
 
 	/**
@@ -167,7 +171,7 @@ class UR_Install {
 		}
 
 		if ( null === get_option( 'urm_is_legacy_payment_fields_user', null ) ) {
-			add_option( 'urm_is_legacy_payment_fields_user', ur_has_payment_enabled_form() ? 1 : 0 );
+			add_option( 'urm_is_legacy_payment_fields_user', ur_site_has_any_frozen_payment_field() ? 1 : 0 );
 		}
 
 		if ( null === get_option( 'urm_is_legacy_ecommerce_addons_user', null ) ) {

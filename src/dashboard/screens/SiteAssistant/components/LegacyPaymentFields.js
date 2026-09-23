@@ -33,7 +33,7 @@ const LegacyPaymentFields = ({ isOpen, onToggle, onSkipped, numbering }) => {
 		try {
 			const adminURL =
 				window._UR_DASHBOARD_?.adminURL ||
-				window.location.origin + "/wp-admin";
+				`${window.location.origin}/wp-admin/`;
 			const response = await fetch(`${adminURL}admin-ajax.php`, {
 				method: "POST",
 				headers: {
