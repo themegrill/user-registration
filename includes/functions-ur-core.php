@@ -7692,6 +7692,68 @@ if ( ! function_exists( 'ur_get_coupon_details' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_coupon_has_remaining_uses' ) ) {
+	/**
+	 * Whether a coupon still has redemptions left.
+	 *
+	 * A usage limit of 0 (or missing) means unlimited.
+	 *
+	 * @param array $coupon_details Coupon meta from ur_get_coupon_details().
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_coupon_has_remaining_uses( $coupon_details ) {
+		if ( empty( $coupon_details ) || ! is_array( $coupon_details ) ) {
+			return false;
+		}
+
+		$limit = isset( $coupon_details['coupon_usage_limit'] ) ? absint( $coupon_details['coupon_usage_limit'] ) : 0;
+
+		if ( $limit <= 0 ) {
+			return true;
+		}
+
+		$count = isset( $coupon_details['coupon_usage_count'] ) ? absint( $coupon_details['coupon_usage_count'] ) : 0;
+
+		return $count < $limit;
+	}
+}
+
+if ( ! function_exists( 'ur_increment_coupon_usage' ) ) {
+	/**
+	 * Bump a coupon's redemption counter after a successful payment/registration.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_increment_coupon_usage( $coupon_code ) {
+		$coupon_code = sanitize_text_field( $coupon_code );
+
+		if ( '' === $coupon_code ) {
+			return false;
+		}
+
+		$coupon_details = ur_get_coupon_details( $coupon_code );
+
+		if ( empty( $coupon_details['coupon_id'] ) ) {
+			return false;
+		}
+
+		$coupon_id = absint( $coupon_details['coupon_id'] );
+		$meta_raw  = get_post_meta( $coupon_id, 'ur_coupon_meta', true );
+		$meta      = json_decode( $meta_raw, true );
+
+		if ( ! is_array( $meta ) ) {
+			return false;
+		}
+
+		$meta['coupon_usage_count'] = isset( $meta['coupon_usage_count'] ) ? absint( $meta['coupon_usage_count'] ) + 1 : 1;
+
+		return (bool) update_post_meta( $coupon_id, 'ur_coupon_meta', wp_json_encode( $meta ) );
+	}
+}
+
 if ( ! function_exists( 'ur_get_registration_field_value_by_field_name' ) ) {
 
 	/**
