@@ -520,6 +520,9 @@ class SubscriptionService {
 			);
 		}
 
+		// Always derive the current membership from the verified subscription, not the client-submitted value.
+		$data['current_membership_id'] = (int) $subscription['item_id'];
+
 		$user                                      = get_userdata( $subscription['user_id'] );
 		$payment_method                            = $data['selected_pg'];
 		$membership                                = $this->membership_repository->get_single_membership_by_ID( $subscription['item_id'] );
@@ -963,6 +966,14 @@ class SubscriptionService {
 				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
 				$subscription_data['status']       = 'active';
 				$this->subscription_repository->update( $subscription_id, $subscription_data );
+
+				$payment_service = new PaymentService( '', $decoded_data['membership'] ?? 0, $user->user_email );
+				if ( ! empty( $decoded_data['current_membership_id'] ) && $payment_service->is_paid_to_free_change( $decoded_data['current_membership_id'], $decoded_data['membership'] ?? 0 ) ) {
+					$email_service = new EmailService();
+					$email_service->send_email( $decoded_data, 'membership_downgraded_free_user' );
+					$email_service->send_email( $decoded_data, 'membership_downgraded_free_admin' );
+				}
+
 				$last_order = $this->members_orders_repository->get_member_orders( $user->ID );
 				$this->orders_repository->delete_order_meta(
 					array(
