@@ -193,6 +193,52 @@ const AccessControlSection = ({
 
 	const isMembershipRule = ruleType === "membership";
 
+	/**
+	 * Explain how this rule combines with other rules, since a Whole Site rule
+	 * never lifts a restriction from a page or post rule. Only covers the target
+	 * types this has been verified for; others are enforced by separate paths.
+	 *
+	 * @return {string} Hint text, or an empty string when no hint applies.
+	 */
+	const getAccessControlHint = () => {
+		const targetTypes = contentTargets.map((target) => target.type);
+		const isRestrict = !isMembershipRule && accessControl === "restrict";
+
+		if (targetTypes.includes("whole_site")) {
+			return isRestrict
+				? __(
+						"Users who match these conditions are restricted from the site, unless another rule allows them.",
+						"user-registration"
+					)
+				: __(
+						"Only users who match these conditions can view the site, unless another rule allows them.",
+						"user-registration"
+					);
+		}
+
+		const onlyPagesOrPosts =
+			targetTypes.length > 0 &&
+			targetTypes.every((type) =>
+				["wp_pages", "wp_posts", "pages", "posts"].includes(type)
+			);
+
+		if (!onlyPagesOrPosts) {
+			return "";
+		}
+
+		return isRestrict
+			? __(
+					"Users who match these conditions are restricted from this content, unless another rule for the same content allows them. A Whole Site rule does not override this.",
+					"user-registration"
+				)
+			: __(
+					"Only users who match these conditions can view this content, unless another rule for the same content allows them. A Whole Site rule does not override this.",
+					"user-registration"
+				);
+	};
+
+	const accessControlHint = getAccessControlHint();
+
 	return (
 		<div className="urcr-target-selection-section ur-d-flex ur-align-items-start">
 			{/* Access/Restrict Section */}
@@ -323,6 +369,15 @@ const AccessControlSection = ({
 						/>
 					)}
 				/>
+
+				{accessControlHint && (
+					<p
+						className="description urcr-access-control-hint"
+						style={{ padding: "0 24px", margin: "12px 0 0" }}
+					>
+						{accessControlHint}
+					</p>
+				)}
 			</div>
 		</div>
 	);
