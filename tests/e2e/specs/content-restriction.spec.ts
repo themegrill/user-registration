@@ -41,6 +41,7 @@ class Seed {
     condition: Condition,
     message: string,
     accessControl: "access" | "restrict" = "access",
+    redirectUrl = "",
   ): Promise<number> {
     const json = await adminFetch<{ rule: { id: number } }>(this.admin, "POST", "/wp-json/user-registration/v1/content-access-rules", {
       title,
@@ -50,10 +51,10 @@ class Seed {
         logic_map: { type: "group", logic_gate: "AND", conditions: [condition] },
         actions: [
           {
-            type: "message",
-            label: "Show Message",
+            type: redirectUrl ? "redirect" : "message",
+            label: redirectUrl ? "Redirect" : "Show Message",
             message,
-            redirect_url: "",
+            redirect_url: redirectUrl,
             access_control: accessControl,
             local_page: "",
             ur_form: "",
@@ -147,7 +148,9 @@ async function loginAsMember(browser: Browser, seed: Seed, user: string): Promis
   await page.fill("#user_login", user);
   await page.fill("#user_pass", STRONG_PASSWORD);
   await page.click("#wp-submit");
-  await page.waitForURL((url) => !url.pathname.includes("wp-login.php"));
+  // The auth cookie is set on the redirect itself; the page it lands on is not under test.
+  await page.waitForURL((url) => !url.pathname.includes("wp-login.php"), { waitUntil: "commit" });
+  expect((await context.cookies()).some((cookie) => cookie.name.startsWith("wordpress_logged_in_"))).toBe(true);
   await page.close();
   return context;
 }
@@ -340,6 +343,73 @@ test.describe("content restriction access rules @fresh", () => {
       expect(rest.status).toBe(200);
       expect(rest.isProtected).toBe(false);
       expect(rest.rendered).toContain(secret);
+    });
+  });
+
+  /**
+   * @area    content-restriction
+   * @tier    fresh
+   * @guards  1412
+   * @source  verify-fix 2026-09-24
+   * @why     When a page rule and the Whole Site rule both restrict a visitor,
+   *          only the page rule's action applies. restrict_whole_site() used to
+   *          apply its own restriction on top, overwriting the page rule's
+   *          message and firing the restriction hooks twice. Does not count
+   *          hook calls or cover archive views.
+   */
+  test("a page rule's message is kept when the Whole Site rule also restricts the visitor @fresh @content-restriction", async ({
+    page,
+    browser,
+  }) => {
+    await loginAsAdmin(page);
+    await withSeed(page, async (seed) => {
+      const secret = `QA CR double secret ${stamp()}`;
+      const pageMarker = `QA CR page-rule message ${stamp()}`;
+      const wholeSiteMarker = `QA CR whole-site message ${stamp()}`;
+
+      const pageId = await seed.page(`QA CR double message page ${stamp()}`, secret);
+      await seed.rule("QA CR whole site logged-in message", [{ type: "whole_site" }], { type: "user_state", value: "logged-in" }, wholeSiteMarker);
+      await seed.rule("QA CR page editors message", [{ type: "wp_pages", value: [String(pageId)] }], { type: "roles", value: ["editor"] }, pageMarker);
+
+      const guest = seed.track(await newVisitor(browser));
+      const body = await bodyOf(guest, pageId);
+      expect(body).toContain(pageMarker);
+      expect(body).not.toContain(wholeSiteMarker);
+      expect(body).not.toContain(secret);
+    });
+  });
+
+  /**
+   * @area    content-restriction
+   * @tier    fresh
+   * @guards  1412
+   * @source  verify-fix 2026-09-24
+   * @why     Same precedence with a redirecting Whole Site rule: the visitor
+   *          stays on the page and gets the page rule's message instead of
+   *          being redirected over it. The redirect target is wp-login.php, a
+   *          non-content URL, so it can never be restricted into a loop.
+   */
+  test("a page rule's message is kept over a redirecting Whole Site rule @fresh @content-restriction", async ({
+    page,
+    browser,
+  }) => {
+    await loginAsAdmin(page);
+    await withSeed(page, async (seed) => {
+      const secret = `QA CR redirect secret ${stamp()}`;
+      const pageMarker = `QA CR page-rule message ${stamp()}`;
+
+      const pageId = await seed.page(`QA CR double redirect page ${stamp()}`, secret);
+      await seed.rule("QA CR whole site logged-in redirect", [{ type: "whole_site" }], { type: "user_state", value: "logged-in" }, "", "access", `${BASE_URL}/wp-login.php?qa_cr_redirected=1`);
+      await seed.rule("QA CR page editors message", [{ type: "wp_pages", value: [String(pageId)] }], { type: "roles", value: ["editor"] }, pageMarker);
+
+      const guest = seed.track(await newVisitor(browser));
+      const visit = await guest.newPage();
+      await visit.goto(`/?page_id=${pageId}`, { waitUntil: "domcontentloaded" });
+      expect(visit.url()).not.toContain("qa_cr_redirected");
+      const body = await visit.locator("body").innerText();
+      expect(body).toContain(pageMarker);
+      expect(body).not.toContain(secret);
+      await visit.close();
     });
   });
 });
