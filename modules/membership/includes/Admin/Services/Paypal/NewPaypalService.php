@@ -2082,8 +2082,8 @@ class NewPaypalService {
 	 * only ACTIVATE the row before the redirect stores its ID: PayPal sends CREATED before approval, so an
 	 * abandoned checkout must not touch the row, and after a switch to another gateway the user meta still
 	 * names the old PayPal subscription. A row that is no longer recurring (moved to a one-time or free plan)
-	 * keeps the old PayPal ID but is billed by no PayPal subscription, so only ACTIVATED (a free-to-paid
-	 * upgrade) may change it.
+	 * keeps the old PayPal ID but is billed by no PayPal subscription, so only the ACTIVATED of a new
+	 * subscription (a free-to-paid upgrade) may change it, never an event of the subscription it replaced.
 	 *
 	 * @param array  $member_subscription    Local subscription row named by the event's custom_id.
 	 * @param int    $member_id              Member the row belongs to.
@@ -2093,18 +2093,17 @@ class NewPaypalService {
 	 * @return bool
 	 */
 	private function is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) {
-		if ( ! $this->is_recurring_row( $member_subscription ) && 'BILLING.SUBSCRIPTION.ACTIVATED' !== $event_type ) {
-			return false;
-		}
-
-		$row_paypal_id = (string) ( $member_subscription['subscription_id'] ?? '' );
-
-		if ( '' === $row_paypal_id || $paypal_subscription_id === $row_paypal_id ) {
-			return true;
-		}
-
-		return 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type
+		$row_paypal_id  = (string) ( $member_subscription['subscription_id'] ?? '' );
+		$is_new_and_live = 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type
+			&& $paypal_subscription_id !== $row_paypal_id
 			&& get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true ) === $paypal_subscription_id;
+
+		// The ID still on a one-time/free row is the subscription it replaced, which must never change it again.
+		if ( ! $this->is_recurring_row( $member_subscription ) ) {
+			return $is_new_and_live;
+		}
+
+		return '' === $row_paypal_id || $paypal_subscription_id === $row_paypal_id || $is_new_and_live;
 	}
 
 	/**
@@ -3709,8 +3708,8 @@ class NewPaypalService {
 				continue;
 			}
 
-			// A row moved to a one-time or free plan keeps the old PayPal ID; that subscription must not end it.
-			if ( 'active' !== $paypal_status && ! $this->is_recurring_row( $subscription ) ) {
+			// A row moved to a one-time or free plan keeps the old PayPal ID; that subscription must not change it.
+			if ( ! $this->is_recurring_row( $subscription ) ) {
 				$logger->info(
 					'[Backfill][Paypal][Subscription][Status] Skipped — subscription no longer bills this member.' . "
 " . wp_json_encode(
