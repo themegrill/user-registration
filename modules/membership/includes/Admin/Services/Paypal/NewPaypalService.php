@@ -28,6 +28,7 @@ use WPEverest\URMembership\Admin\Services\OrderService;
 use WPEverest\URMembership\Admin\Services\PaymentGatewayLogging;
 use WPEverest\URMembership\Admin\Services\SubscriptionService;
 use WPEverest\URMembership\Local_Currency\Admin\CoreFunctions;
+use WPEverest\URMembership\TableList;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -37,6 +38,11 @@ class NewPaypalService {
 	 * Seconds to wait for another request recording the same PayPal sale before giving up.
 	 */
 	const SALE_LOCK_TIMEOUT = 10;
+
+	/**
+	 * Billing cycles PayPal must have completed before a sale counts as a renewal; the first belongs to the checkout.
+	 */
+	const RENEWAL_MIN_COMPLETED_CYCLES = 2;
 
 	/**
 	 * @var MembersOrderRepository
@@ -2442,15 +2448,22 @@ class NewPaypalService {
 	 *
 	 * Takes PayPal's own next_billing_time rather than adding an interval locally, so replaying a sale
 	 * (webhook retry, backfill re-scan) can never extend access twice. Dates only move forward, and a
-	 * locally canceled subscription is left alone.
+	 * locally canceled subscription is left alone. Nothing happens until PayPal has billed a second cycle:
+	 * the first payment's dates belong to the checkout, whose redirect adds its own period.
 	 *
 	 * @param string $paypal_subscription_id PayPal subscription ID (billing agreement ID).
 	 *
 	 * @return bool False only when PayPal or the database could not be reached, so the caller can retry.
 	 */
 	private function sync_subscription_from_paypal( $paypal_subscription_id ) {
+		$wpdb                    = $this->members_subscription_repository->wpdb();
 		$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $paypal_subscription_id );
-		if ( empty( $membership_subscription ) || 'canceled' === ( $membership_subscription['status'] ?? '' ) ) {
+		if ( empty( $membership_subscription ) ) {
+			// A failed query also comes back empty; report it so PayPal retries instead of dropping the sale.
+			return '' === $wpdb->last_error;
+		}
+
+		if ( 'canceled' === ( $membership_subscription['status'] ?? '' ) ) {
 			return true;
 		}
 
@@ -2469,20 +2482,23 @@ class NewPaypalService {
 			return false;
 		}
 
-		if ( 'ACTIVE' !== ( $remote['status'] ?? '' ) || empty( $remote['billing_info']['next_billing_time'] ) ) {
+		if ( 'ACTIVE' !== ( $remote['status'] ?? '' ) || empty( $remote['billing_info']['next_billing_time'] ) || $this->count_completed_cycles( $remote ) < self::RENEWAL_MIN_COMPLETED_CYCLES ) {
 			return true;
 		}
 
-		$paypal_next   = gmdate( 'Y-m-d H:i:s', strtotime( $remote['billing_info']['next_billing_time'] ) );
-		$local_expiry  = (string) ( $membership_subscription['expiry_date'] ?? '' );
-		$expiry_date   = $this->later_date( $local_expiry, $paypal_next );
-		$next_billing  = $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next );
-		$update_result = $this->members_subscription_repository->update(
-			$membership_subscription['ID'],
-			array(
-				'status'            => 'active',
-				'expiry_date'       => $expiry_date,
-				'next_billing_date' => $next_billing,
+		$paypal_next  = gmdate( 'Y-m-d H:i:s', strtotime( $remote['billing_info']['next_billing_time'] ) );
+		$local_expiry = (string) ( $membership_subscription['expiry_date'] ?? '' );
+		$expiry_date  = $this->later_date( $local_expiry, $paypal_next );
+		$next_billing = $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next );
+		$table        = TableList::subscriptions_table();
+
+		// Conditional on status so a cancellation saved while PayPal was being asked is not overwritten.
+		$update_result = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET status = 'active', expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$expiry_date,
+				$next_billing,
+				$membership_subscription['ID']
 			)
 		);
 
@@ -2529,6 +2545,19 @@ class NewPaypalService {
 	 */
 	private function later_date( $local_date, $remote_date ) {
 		return strtotime( $local_date ) > strtotime( $remote_date ) ? $local_date : $remote_date;
+	}
+
+	/**
+	 * Number of billing cycles PayPal has completed for a subscription, trial cycles included.
+	 *
+	 * @param array $remote PayPal subscription resource (GET /v1/billing/subscriptions/{id}).
+	 *
+	 * @return int
+	 */
+	private function count_completed_cycles( $remote ) {
+		$executions = $remote['billing_info']['cycle_executions'] ?? array();
+
+		return (int) array_sum( array_column( is_array( $executions ) ? $executions : array(), 'cycles_completed' ) );
 	}
 
 	/**
