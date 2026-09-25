@@ -1519,7 +1519,11 @@ class SubscriptionService {
 							// PayPal keeps its own sync time, advanced only when every fetch succeeded, so a failed
 							// window is searched again without holding the other gateways back.
 							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
-							$paypal_last_synced = $paypal_last_synced > 0 ? $paypal_last_synced : $last_synced;
+							if ( $paypal_last_synced <= 0 ) {
+								// First run: store the starting point so a failed run cannot fall back to an advanced shared time.
+								$paypal_last_synced = $last_synced;
+								update_option( 'urm_last_paypal_backfill_sync_time', $paypal_last_synced );
+							}
 							$paypal_service     = new NewPaypalService();
 							if ( ! $paypal_service->has_rest_credentials() ) {
 								ur_get_logger()->info(
