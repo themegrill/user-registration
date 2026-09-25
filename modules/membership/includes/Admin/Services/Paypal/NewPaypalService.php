@@ -2458,7 +2458,7 @@ class NewPaypalService {
 	 *
 	 * Takes PayPal's own next_billing_time rather than adding an interval locally, so replaying a sale
 	 * (webhook retry, backfill re-scan) can never extend access twice. Dates only move forward, and a
-	 * locally canceled subscription is left alone. Nothing happens until PayPal has billed a second cycle:
+	 * locally canceled or non-recurring subscription is left alone. Nothing happens until PayPal has billed a second cycle:
 	 * the first payment's dates belong to the checkout, whose redirect adds its own period. A subscription
 	 * whose billing started later (100% coupon) was not charged at checkout, so its first sale counts.
 	 *
@@ -2474,7 +2474,8 @@ class NewPaypalService {
 			return '' === $wpdb->last_error;
 		}
 
-		if ( 'canceled' === ( $membership_subscription['status'] ?? '' ) ) {
+		// A row moved to a one-time or free plan has no billing dates; an old PayPal subscription must not add some.
+		if ( 'canceled' === ( $membership_subscription['status'] ?? '' ) || empty( $membership_subscription['billing_cycle'] ) ) {
 			return true;
 		}
 
