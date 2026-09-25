@@ -161,8 +161,8 @@ class NewPaypalService {
 			return $this->revise_paypal_subscription_for_upgrade( $context );
 		}
 
-		// Proration upgrade to a subscription plan: create a new subscription with the prorated amount as a setup fee,
-		// so the member pays the proration now and the full plan price on each subsequent billing cycle.
+		// Upgrade to a subscription plan: new subscription whose first cycle is the prorated amount and every
+		// later cycle the full plan price (scheduled downgrades start at delayed_until instead).
 		if ( $context['is_upgrading'] && ! empty( $context['response_data']['chargeable_amount'] ) && $context['is_subscription'] ) {
 			return $this->create_paypal_subscription_order( $context );
 		}
@@ -420,6 +420,14 @@ class NewPaypalService {
 			&& ! $is_upgrading
 			&& ! empty( $coupon_details )
 			&& 0.0 === (float) $final_amount;
+
+		// Prorated upgrade: the prorated amount is billed as a priced first cycle, then the plan price.
+		// Excludes scheduled downgrades (billing starts at delayed_until) and plans with their own trial.
+		$context['is_proration_upgrade'] = $context['is_subscription']
+			&& $is_upgrading
+			&& ! empty( $response_data['chargeable_amount'] )
+			&& empty( $response_data['delayed_until'] )
+			&& ( empty( $data['trial_status'] ) || 'on' !== $data['trial_status'] );
 
 		if (
 			$context['is_subscription'] &&
@@ -763,21 +771,6 @@ class NewPaypalService {
 			$plan_override = $this->build_subscription_plan_override( $context );
 		}
 
-		// For proration subscription upgrades: charge the prorated amount as a PayPal setup fee.
-		// The plan itself is at the full regular price; the setup fee covers the billing difference.
-		if ( $context['is_upgrading'] && ! empty( $context['response_data']['chargeable_amount'] ) ) {
-			$setup_fee_value = number_format( (float) $context['pre_tax_amount'], 2, '.', '' );
-			if ( ! isset( $plan_override['payment_preferences'] ) ) {
-				$plan_override['payment_preferences'] = array();
-			}
-			$plan_override['payment_preferences']['setup_fee']                = array(
-				'value'         => $setup_fee_value,
-				'currency_code' => $context['currency'],
-			);
-			$plan_override['payment_preferences']['setup_fee_failure_action'] = 'CANCEL';
-			$plan_override['payment_preferences']['auto_bill_outstanding']    = true;
-		}
-
 		if ( ! empty( $plan_override ) ) {
 			$payload['plan'] = $plan_override;
 		}
@@ -794,6 +787,9 @@ class NewPaypalService {
 			$value    = max( 1, (int) ( $sub_data['value'] ?? 1 ) );
 			$duration = strtolower( (string) ( $sub_data['duration'] ?? 'month' ) );
 			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', strtotime( "+{$value} {$duration}" ) );
+		} elseif ( $context['is_upgrading'] && ! empty( $context['response_data']['delayed_until'] ) ) {
+			// Scheduled downgrade: the current plan is paid through delayed_until, so billing starts then.
+			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', max( time() + 60, (int) strtotime( $context['response_data']['delayed_until'] ) ) );
 		} else {
 			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', time() + 60 );
 		}
@@ -934,8 +930,9 @@ class NewPaypalService {
 			);
 		}
 
-		// Price override when coupon/local currency changes effective amount.
-		$needs_custom_price = ! empty( $context['coupon_details'] ) || ! empty( $context['response_data']['switched_currency'] );
+		// Price override when coupon/proration/local currency changes effective amount.
+		$has_priced_first_cycle = $this->has_priced_first_cycle( $context );
+		$needs_custom_price     = $has_priced_first_cycle || ! empty( $context['response_data']['switched_currency'] );
 
 		if ( $needs_custom_price ) {
 			$subscription_data = ! empty( $context['has_team'] ) ? array(
@@ -959,8 +956,8 @@ class NewPaypalService {
 					'interval_count' => $value,
 				);
 
-				if ( ! empty( $context['coupon_details'] ) ) {
-					// Coupon applied: first cycle at discounted price, all subsequent cycles at regular price.
+				if ( $has_priced_first_cycle ) {
+					// Coupon or proration: first cycle at the effective price, all subsequent cycles at regular price.
 					$discounted_price           = ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'];
 					$override['billing_cycles'] = array(
 						array(
@@ -3138,14 +3135,9 @@ class NewPaypalService {
 				),
 			),
 		);
-		// Coupon: plan must define a TRIAL cycle so the subscription override can set a discounted
-		// first-cycle price. Skipped for full-discount subs (UR-4386) — they use a plain REGULAR plan
-		// + future start_time instead.
-		if (
-			! empty( $context['coupon_details'] ) &&
-			empty( $context['is_full_discount_sub'] ) &&
-			( empty( $context['data']['trial_status'] ) || 'on' !== $context['data']['trial_status'] )
-		) {
+		// Coupon or proration upgrade: plan must define a TRIAL cycle so the subscription override can
+		// set the first-cycle price — PayPal rejects overrides that add cycles the plan lacks.
+		if ( $this->has_priced_first_cycle( $context ) ) {
 			$billing_cycles = array(
 				array(
 					'frequency'      => array(
@@ -3269,9 +3261,28 @@ class NewPaypalService {
 				'trial_status'     => isset( $context['data']['trial_status'] ) ? $context['data']['trial_status'] : '',
 				'trial_data'       => isset( $context['data']['trial_data'] ) ? $context['data']['trial_data'] : array(),
 				'tax_rate'         => isset( $context['tax_rate'] ) ? $context['tax_rate'] : 0,
-				'has_coupon_cycle' => ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) && ( empty( $context['data']['trial_status'] ) || 'on' !== $context['data']['trial_status'] ),
+				// Key name kept so existing cached plan ids stay valid; proration reuses the same plan shape.
+				'has_coupon_cycle' => $this->has_priced_first_cycle( $context ),
 			)
 		);
+	}
+
+	/**
+	 * Whether the PayPal plan needs a priced TRIAL first cycle (coupon discount or upgrade proration).
+	 *
+	 * Full-discount subscriptions (UR-4386) and plans with their own free trial use other cycle shapes.
+	 *
+	 * @param array $context Normalized PayPal payment context.
+	 *
+	 * @return bool
+	 */
+	private function has_priced_first_cycle( $context ) {
+		if ( ! empty( $context['data']['trial_status'] ) && 'on' === $context['data']['trial_status'] ) {
+			return false;
+		}
+
+		return ! empty( $context['is_proration_upgrade'] )
+			|| ( ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) );
 	}
 
 	/**
