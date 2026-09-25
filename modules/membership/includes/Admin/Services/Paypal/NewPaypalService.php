@@ -3879,6 +3879,12 @@ class NewPaypalService {
 			$user_id      = $subscription['user_id'];
 			$local_status = $subscription['status'];
 
+			// The overlap re-reads events already applied; an old ACTIVATED must not undo a newer local cancellation.
+			if ( 'canceled' === $local_status && 'active' === $paypal_status ) {
+				++$count_skipped;
+				continue;
+			}
+
 			if ( $paypal_status === $local_status ) {
 				$logger->info(
 					'[Backfill][Paypal][Subscription][Status] Skipped — status unchanged.' . "\n" . wp_json_encode(
@@ -3893,12 +3899,6 @@ class NewPaypalService {
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
-				++$count_skipped;
-				continue;
-			}
-
-			// The overlap re-reads events already applied; an old ACTIVATED must not undo a newer local cancellation.
-			if ( 'canceled' === $local_status && 'active' === $paypal_status ) {
 				++$count_skipped;
 				continue;
 			}
