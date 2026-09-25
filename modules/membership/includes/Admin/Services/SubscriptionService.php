@@ -1516,11 +1516,23 @@ class SubscriptionService {
 						break;
 					case 'paypal':
 						try {
-							$paypal_service = new NewPaypalService();
-							$paypal_service->run_missed_subscription_backfill( $last_synced, $now );
-							$paypal_service->run_missed_payment_backfill( $last_synced, $now );
-							$paypal_service->run_missed_onetime_payment_backfill( $last_synced, $now );
-							$paypal_service->run_missed_refund_backfill( $last_synced, $now );
+							// PayPal keeps its own sync time, advanced only when every fetch succeeded, so a failed
+							// window is searched again without holding the other gateways back.
+							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
+							$paypal_last_synced = $paypal_last_synced > 0 ? $paypal_last_synced : $last_synced;
+							$paypal_service     = new NewPaypalService();
+							$paypal_service->run_missed_subscription_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_payment_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_onetime_payment_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_refund_backfill( $paypal_last_synced, $now );
+							if ( $paypal_service->has_backfill_failure() ) {
+								ur_get_logger()->warning(
+									'[Backfill][PayPal] Events could not be fetched; the PayPal sync time is kept and this window is searched again next run.',
+									array( 'source' => 'urm-missed-payment-backfill' )
+								);
+							} else {
+								update_option( 'urm_last_paypal_backfill_sync_time', $now );
+							}
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(

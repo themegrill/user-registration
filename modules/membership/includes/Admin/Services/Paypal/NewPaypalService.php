@@ -45,6 +45,19 @@ class NewPaypalService {
 	const RENEWAL_MIN_COMPLETED_CYCLES = 2;
 
 	/**
+	 * How far each backfill re-reads before the last sync time: PayPal lists a new event only some time after
+	 * delivering it, so a window ending "now" can miss a sale that it never looks at again.
+	 */
+	const BACKFILL_WINDOW_OVERLAP = 2 * HOUR_IN_SECONDS;
+
+	/**
+	 * Set when a missed-payment backfill could not fetch events from PayPal during this request.
+	 *
+	 * @var bool
+	 */
+	private $backfill_failed = false;
+
+	/**
 	 * @var MembersOrderRepository
 	 */
 	protected $members_orders_repository;
@@ -2561,6 +2574,31 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Start of a missed-payment backfill window: the last sync time minus an overlap, at most 30 days back.
+	 *
+	 * @param int $last_synced Last successful sync timestamp (0 when never synced).
+	 * @param int $now         Current timestamp.
+	 *
+	 * @return int
+	 */
+	private function backfill_window_start( $last_synced, $now ) {
+		$from = ! empty( $last_synced ) ? (int) $last_synced - self::BACKFILL_WINDOW_OVERLAP : $now - DAY_IN_SECONDS;
+
+		return max( $now - ( 30 * DAY_IN_SECONDS ), $from );
+	}
+
+	/**
+	 * Whether a missed-payment backfill in this request failed to fetch events from PayPal.
+	 *
+	 * The scheduler keeps the last sync time when this is true, so the window is searched again next run.
+	 *
+	 * @return bool
+	 */
+	public function has_backfill_failure() {
+		return $this->backfill_failed;
+	}
+
+	/**
 	 * Parse custom id format: membership-member_id-current_membership_id-subscription_id
 	 *
 	 * @param string $custom_id
@@ -3697,7 +3735,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $now - ( 30 * DAY_IN_SECONDS ), ! empty( $last_synced ) ? $last_synced : $now - DAY_IN_SECONDS );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -3728,6 +3766,7 @@ class NewPaypalService {
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
+				$this->backfill_failed = true;
 				++$count_errors;
 				continue;
 			}
@@ -3858,6 +3897,12 @@ class NewPaypalService {
 				continue;
 			}
 
+			// The overlap re-reads events already applied; an old ACTIVATED must not undo a newer local cancellation.
+			if ( 'canceled' === $local_status && 'active' === $paypal_status ) {
+				++$count_skipped;
+				continue;
+			}
+
 			$update_data       = array( 'status' => $paypal_status );
 			$next_billing_time = isset( $resource['billing_info']['next_billing_time'] ) ? $resource['billing_info']['next_billing_time'] : null;
 
@@ -3982,7 +4027,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $now - ( 30 * DAY_IN_SECONDS ), ! empty( $last_synced ) ? $last_synced : $now - DAY_IN_SECONDS );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4014,6 +4059,7 @@ class NewPaypalService {
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);
 			$logger->info( '[Backfill][PayPal][Subscription][Payments] ======= ENDED =======', array( 'source' => 'urm-missed-payment-backfill' ) );
+			$this->backfill_failed = true;
 			return;
 		}
 
@@ -4110,22 +4156,34 @@ class NewPaypalService {
 			$local_sub_id = $membership_subscription['ID'];
 			$user_id      = $membership_subscription['user_id'];
 
-			// Replace placeholder order (transaction_id = PayPal subscription ID) if one exists.
+			// Placeholder order (transaction_id = PayPal subscription ID): complete it in place, as the webhook
+			// does, so its order meta (tax, coupon, currency, proration) survives.
 			$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
 			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
+				$this->orders_repository->update(
+					$placeholder['ID'],
+					array(
+						'status'         => 'completed',
+						'transaction_id' => $transaction_id,
+						'total_amount'   => $gross_amount,
+					)
+				);
+				$subscriptions_to_sync[ $paypal_subscription_id ] = true;
 				$logger->info(
-					'[Backfill][PayPal][Subscription][Payments] Deleting placeholder order.' . "\n" . wp_json_encode(
+					'[Backfill][PayPal][Subscription][Payments] Placeholder order completed with real transaction ID.' . "\n" . wp_json_encode(
 						array(
-							'event_type'             => 'placeholder_deleted',
+							'event_type'             => 'placeholder_completed',
 							'local_sub_id'           => $local_sub_id,
-							'placeholder_order_id'   => $placeholder['ID'],
+							'order_id'               => $placeholder['ID'],
 							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
 						),
 						JSON_PRETTY_PRINT
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
-				$this->orders_repository->delete( $placeholder['ID'] );
+				++$count_updated;
+				continue;
 			}
 
 			// Update a pending order in place rather than creating a duplicate.
@@ -4265,7 +4323,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $last_synced, $now - ( 30 * DAY_IN_SECONDS ) );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4296,7 +4354,8 @@ class NewPaypalService {
 				),
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);
-			$events = array();
+			$this->backfill_failed = true;
+			$events                = array();
 		}
 
 		foreach ( $events as $event ) {
@@ -4509,7 +4568,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $last_synced, $now - ( 30 * DAY_IN_SECONDS ) );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4538,6 +4597,7 @@ class NewPaypalService {
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
+				$this->backfill_failed = true;
 			} else {
 				$all_events = array_merge( $all_events, $events );
 			}
