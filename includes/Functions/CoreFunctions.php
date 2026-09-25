@@ -872,6 +872,64 @@ if ( ! function_exists( 'urm_get_all_active_payment_gateways' ) ) {
 	}
 }
 
+if ( ! function_exists( 'urm_is_payment_gateway_enabled' ) ) {
+	/**
+	 * Whether a payment gateway's Enable toggle is on.
+	 *
+	 * Matches the enable/disable half of urm_is_payment_gateway_configured() so Field Sync
+	 * and other UI can hide a gateway that is switched off without also requiring API keys.
+	 *
+	 * @param string $gateway_key Payment gateway key (e.g. 'stripe', 'paypal', 'mollie', 'authorize').
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function urm_is_payment_gateway_enabled( $gateway_key ) {
+		$is_new_installation = ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) );
+		$enabled_option      = '';
+
+		switch ( $gateway_key ) {
+			case 'paypal':
+				$enabled_option = get_option( 'user_registration_paypal_enabled', '' );
+				break;
+			case 'stripe':
+				$enabled_option = get_option( 'user_registration_stripe_enabled', '' );
+				break;
+			case 'authorize':
+			case 'authorize-net':
+				$enabled_option = get_option( 'user_registration_authorize-net_enabled', '' );
+				break;
+			case 'mollie':
+				$enabled_option = get_option( 'user_registration_mollie_enabled', '' );
+				break;
+			case 'bank':
+				$enabled_option = get_option( 'user_registration_bank_enabled', '' );
+				break;
+			default:
+				/**
+				 * Filters whether an unknown gateway key is treated as enabled.
+				 *
+				 * @param bool   $enabled     Default false.
+				 * @param string $gateway_key Gateway key.
+				 */
+				return (bool) apply_filters( 'urm_is_payment_gateway_enabled', false, $gateway_key );
+		}
+
+		if ( '' === $enabled_option || null === $enabled_option ) {
+			$is_enabled = ! $is_new_installation;
+		} else {
+			$is_enabled = ur_string_to_bool( $enabled_option );
+		}
+
+		/**
+		 * Filters whether a payment gateway Enable toggle is on.
+		 *
+		 * @param bool   $is_enabled  Whether the gateway is enabled.
+		 * @param string $gateway_key Gateway key.
+		 */
+		return (bool) apply_filters( 'urm_is_payment_gateway_enabled', $is_enabled, $gateway_key );
+	}
+}
+
 if ( ! function_exists( 'urm_is_payment_gateway_configured' ) ) {
 	/**
 	 * Check if a payment gateway is configured (has settings).
@@ -885,36 +943,10 @@ if ( ! function_exists( 'urm_is_payment_gateway_configured' ) ) {
 	 * @return bool True if gateway is configured, false otherwise.
 	 */
 	function urm_is_payment_gateway_configured( $gateway_key, $membership_type = 'paid' ) {
-		$is_configured       = false;
-		$is_new_installation = ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) );
+		$is_configured = false;
 
 		// First check if the gateway is enabled
-		$enabled_option = '';
-		switch ( $gateway_key ) {
-			case 'paypal':
-				$enabled_option = get_option( 'user_registration_paypal_enabled', '' );
-				break;
-			case 'stripe':
-				$enabled_option = get_option( 'user_registration_stripe_enabled', '' );
-				break;
-			case 'authorize':
-				$enabled_option = get_option( 'user_registration_authorize-net_enabled', '' );
-				break;
-			case 'mollie':
-				$enabled_option = get_option( 'user_registration_mollie_enabled', '' );
-				break;
-			case 'bank':
-				$enabled_option = get_option( 'user_registration_bank_enabled', '' );
-				break;
-		}
-
-		if ( empty( $enabled_option ) ) {
-			$is_enabled = ! $is_new_installation;
-		} else {
-			$is_enabled = ur_string_to_bool( $enabled_option );
-		}
-
-		if ( ! $is_enabled ) {
+		if ( ! urm_is_payment_gateway_enabled( $gateway_key ) ) {
 			return false;
 		}
 

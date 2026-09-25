@@ -1076,7 +1076,7 @@ class UR_Form_Handler {
 	 * @param  string $template Form template.
 	 * @param  array  $args     Form Arguments.
 	 * @param  array  $data     Additional data.
-	 * @return int|bool Form ID on successful creation else false.
+	 * @return int|false|\WP_Error Form ID on success, false when title is empty, WP_Error when insert fails.
 	 */
 	public function create( $title = '', $template = 'blank', $args = array(), $data = array() ) {
 		if ( empty( $title ) ) {
@@ -1143,11 +1143,54 @@ class UR_Form_Handler {
 			);
 		}
 
-		$form_id = wp_insert_post( $form_data->form_post );
+		// A remote template can carry payment fields the builder no longer offers. Keep the site on the legacy path instead of dropping its fields.
+		$template_has_payment_field = false;
+
+		if ( function_exists( 'ur_legacy_payment_fields_enabled' ) && ! ur_legacy_payment_fields_enabled() && ! empty( $form_data->form_post->post_content ) ) {
+			$charging_keys = apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) );
+
+			foreach ( (array) $charging_keys as $charging_key ) {
+				if ( false !== strpos( $form_data->form_post->post_content, '"field_key":"' . $charging_key . '"' ) ) {
+					$template_has_payment_field = true;
+					break;
+				}
+			}
+
+			if ( ! $template_has_payment_field && false !== strpos( $form_data->form_post->post_content, 'enable_payment_slider' ) ) {
+				foreach ( (array) json_decode( $form_data->form_post->post_content ) as $row ) {
+					foreach ( (array) $row as $grid ) {
+						foreach ( (array) $grid as $field ) {
+							if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
+								&& 'range' === $field->field_key
+								&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
+								$template_has_payment_field = true;
+								break 3;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Pass true so a failed insert returns WP_Error (callers must check is_wp_error()).
+		$form_id = wp_insert_post( $form_data->form_post, true );
 
 		// Check for any error while inserting.
 		if ( is_wp_error( $form_id ) ) {
+			// Restore removed content filters before returning — same as the success path.
+			if ( $has_kses ) {
+				kses_init_filters();
+			}
+			if ( $has_targeted_link_rel_filters ) {
+				wp_init_targeted_link_rel_filters();
+			}
+
 			return $form_id;
+		}
+
+		// Only flip the site-wide flag once the template's form has actually been inserted.
+		if ( $template_has_payment_field ) {
+			update_option( 'urm_is_legacy_payment_fields_user', 1 );
 		}
 		if ( $form_id ) {
 			add_post_meta( $form_id, 'user_registration_imported_form_template_slug', $template );

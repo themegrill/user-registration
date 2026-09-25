@@ -156,6 +156,8 @@ class UR_Admin_Import_Export_Forms {
 							$form_datas = $form_datas_obj;
 						}
 						// If Form Title already exist concat it with imported tag.
+						$imported_legacy_payment_field = false;
+
 						foreach ( $form_datas->forms as $key => $form_data ) {
 							$args  = array( 'post_type' => 'user_registration' );
 							$forms = get_posts( $args );
@@ -166,13 +168,61 @@ class UR_Admin_Import_Export_Forms {
 								}
 							}
 							$form_data->form_post->post_title = sanitize_text_field($form_data->form_post->post_title);
-							$post_id = wp_insert_post( $form_data->form_post );
+
+							// An imported form can carry payment fields the builder no longer offers. Keep the site on the legacy path instead of dropping its fields. Checked before insert so the scan can't see the form we are about to add.
+							$form_has_payment_field = false;
+
+							if ( ! ur_legacy_payment_fields_enabled() ) {
+								// Same charging keys ur_form_has_legacy_payment_fields() checks, plus total/quantity - fields
+								// that never trigger a gateway on their own but are still part of the frozen set.
+								$charging_keys = array_merge(
+									apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) ),
+									array( 'total_field', 'quantity_field' )
+								);
+
+								foreach ( (array) $charging_keys as $charging_key ) {
+									if ( false !== strpos( $form_data->form_post->post_content, '"field_key":"' . $charging_key . '"' ) ) {
+										$form_has_payment_field = true;
+										break;
+									}
+								}
+
+								if ( ! $form_has_payment_field && false !== strpos( $form_data->form_post->post_content, 'enable_payment_slider' ) ) {
+									foreach ( (array) json_decode( $form_data->form_post->post_content ) as $row ) {
+										foreach ( (array) $row as $grid ) {
+											foreach ( (array) $grid as $field ) {
+												if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
+													&& 'range' === $field->field_key
+													&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
+													$form_has_payment_field = true;
+													break 3;
+												}
+											}
+										}
+									}
+								}
+
+							}
+
+							// $wp_error = true, or a failed insert returns 0 - not a WP_Error - and the check below never fires.
+							$post_id = wp_insert_post( $form_data->form_post, true );
 
 							// Check for any error while inserting.
 							if ( is_wp_error( $post_id ) ) {
-								return $post_id;
+								wp_send_json_error(
+									array(
+										'message' => $post_id->get_error_message(),
+									)
+								);
 							}
 							array_push( $post_ids, $post_id );
+
+							// Only flip the site-wide flag once the form carrying the payment field has actually been inserted.
+							if ( $form_has_payment_field ) {
+								update_option( 'urm_is_legacy_payment_fields_user', 1 );
+								$imported_legacy_payment_field = true;
+							}
+
 							if ( $post_id ) {
 
 								// check for non empty post_meta array.
@@ -195,16 +245,20 @@ class UR_Admin_Import_Export_Forms {
 								}
 							}
 						}
+						$legacy_payment_field_notice = $imported_legacy_payment_field
+							? ' ' . esc_html__( 'This import used payment fields new forms can no longer add, so this site keeps them available.', 'user-registration' )
+							: '';
+
 						if ( 1 === count( $post_ids ) ) {
 							wp_send_json_success(
 								array(
-									'message' => sprintf( "%s <a href='%s'>%s</a>", esc_html__( 'Imported Successfully.', 'user-registration' ), esc_url( admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $post_id ) ), esc_html__( 'View Form', 'user-registration' ) ),
+									'message' => sprintf( "%s <a href='%s'>%s</a>", esc_html__( 'Imported Successfully.', 'user-registration' ), esc_url( admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $post_id ) ), esc_html__( 'View Form', 'user-registration' ) ) . $legacy_payment_field_notice,
 								)
 							);
 						} else {
 							wp_send_json_success(
 								array(
-									'message' => __( 'Imported Successfully.', 'user-registration' ),
+									'message' => __( 'Imported Successfully.', 'user-registration' ) . $legacy_payment_field_notice,
 								)
 							);
 						}

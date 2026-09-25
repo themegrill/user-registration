@@ -1799,7 +1799,7 @@ class UR_AJAX {
 
 		$form_id = UR()->form->create( $title, $template );
 
-		if ( $form_id ) {
+		if ( $form_id && ! is_wp_error( $form_id ) ) {
 			$data = array(
 				'id'       => $form_id,
 				'redirect' => add_query_arg(
@@ -2698,6 +2698,15 @@ class UR_AJAX {
 				wp_send_json_success(
 					array(
 						'message' => __( 'Membership field step has been skipped.', 'user-registration' ),
+					)
+				);
+				break;
+
+			case 'legacy_payment_fields':
+				update_option( 'user_registration_legacy_payment_fields_notice_dismissed', true );
+				wp_send_json_success(
+					array(
+						'message' => __( 'Legacy payment fields notice dismissed.', 'user-registration' ),
 					)
 				);
 				break;

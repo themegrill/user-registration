@@ -53,6 +53,28 @@
       ]
     },
     {
+      "title": "Stripe",
+      "slug": "user-registration-stripe",
+      "name": "User Registration Stripe",
+      "image": "extensions-json/sections/icons/stripe.png",
+      "excerpt": "Enable Stripe to process credit card payments securely.",
+      "category": "E-Commerce",
+      "link": "https://docs.wpuserregistration.com/docs/user-registration-stripe/?utm_source=dashboard-all-features&utm_medium=card-documentation-link",
+      "released_date": "16/07/2020",
+      "plan": [
+        "personal",
+        "plus",
+        "professional",
+        "themegrill agency"
+      ],
+      "setting_url": "admin.php?page=user-registration-settings&tab=payment&method=stripe",
+      "demo_video_url": "IhAuojzys8k",
+      "activation_requirements": [
+        "membership",
+        "pro"
+      ]
+    },
+    {
       "title": "Calculations",
       "slug": "user-registration-calculations",
       "name": "User Registration Calculations",
