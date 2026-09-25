@@ -341,7 +341,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 			 WHERE o.payment_method = 'paypal'
 			 AND o.order_type = 'paid'
 			 AND o.status = 'completed'
-			 AND s.status IN ('pending', 'expired', 'canceled')",
+			 AND s.status = 'pending'",
 			ARRAY_A
 		);
 
