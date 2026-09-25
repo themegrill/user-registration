@@ -34,6 +34,11 @@ defined( 'ABSPATH' ) || exit;
 class NewPaypalService {
 
 	/**
+	 * Seconds to wait for another request recording the same PayPal sale before giving up.
+	 */
+	const SALE_LOCK_TIMEOUT = 10;
+
+	/**
 	 * @var MembersOrderRepository
 	 */
 	protected $members_orders_repository;
@@ -2238,12 +2243,12 @@ class NewPaypalService {
 			return false;
 		}
 
-		// Already have an order for this exact sale — nothing to update.
+		// Already have an order for this exact sale (retry, or the backfill got there first) — only re-sync.
 		$existing = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 		if ( ! empty( $existing ) ) {
 			PaymentGatewayLogging::log_general(
 				'paypal',
-				'[PAYMENT.SALE.COMPLETED] Order already exists for this transaction — skipped.' . "\n" . wp_json_encode(
+				'[PAYMENT.SALE.COMPLETED] Order already exists for this transaction — re-syncing subscription.' . "\n" . wp_json_encode(
 					array(
 						'transaction_id' => $transaction_id,
 						'order_id'       => $existing['ID'],
@@ -2252,7 +2257,7 @@ class NewPaypalService {
 				),
 				'info'
 			);
-			return true;
+			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
 		// Find local subscription record by PayPal subscription ID.
@@ -2328,23 +2333,202 @@ class NewPaypalService {
 				),
 				'success'
 			);
+			// First payment: the signup/upgrade/renewal redirect sets the dates; syncing here too would add a period twice.
 			return true;
 		}
 
-		// No matching order found — likely a renewal payment handled by the backfill job.
+		// No order is waiting for this sale, so it is a renewal: record it, then extend the subscription.
+		$time_string = isset( $resource['create_time'] ) ? $resource['create_time'] : '';
+		$order       = $this->record_subscription_sale_once(
+			$membership_subscription,
+			$transaction_id,
+			(float) ( $resource['amount']['total'] ?? 0 ),
+			! empty( $time_string ) ? gmdate( 'Y-m-d H:i:s', strtotime( $time_string ) ) : gmdate( 'Y-m-d H:i:s' ),
+			'PayPal subscription renewal payment'
+		);
+
+		if ( false === $order ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[PAYMENT.SALE.COMPLETED] Renewal order could not be recorded — PayPal will retry.' . "\n" . wp_json_encode(
+					array(
+						'member_id'              => $user_id,
+						'paypal_subscription_id' => $paypal_subscription_id,
+						'transaction_id'         => $transaction_id,
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return false;
+		}
+
 		PaymentGatewayLogging::log_general(
 			'paypal',
-			'[PAYMENT.SALE.COMPLETED] No matching order found for transaction — skipped (backfill will handle renewals).' . "\n" . wp_json_encode(
+			'[PAYMENT.SALE.COMPLETED] Renewal payment recorded.' . "\n" . wp_json_encode(
 				array(
+					'order_id'               => $order['ID'] ?? null,
+					'member_id'              => $user_id,
 					'paypal_subscription_id' => $paypal_subscription_id,
 					'transaction_id'         => $transaction_id,
 				),
 				JSON_PRETTY_PRINT
 			),
-			'info'
+			'success'
+		);
+
+		return $this->sync_subscription_from_paypal( $paypal_subscription_id );
+	}
+
+	/**
+	 * Record a completed PayPal subscription sale as an order, at most once per sale.
+	 *
+	 * The renewal webhook and the missed-payment backfill can see the same sale at the same time, and
+	 * `transaction_id` has no unique index, so a MySQL named lock covers the existence check and insert.
+	 *
+	 * @param array  $membership_subscription Local subscription row the sale belongs to.
+	 * @param string $transaction_id          PayPal sale ID.
+	 * @param float  $gross_amount            Amount PayPal charged.
+	 * @param string $created_at              Sale time in UTC, `Y-m-d H:i:s`.
+	 * @param string $note                    Order note.
+	 *
+	 * @return array|null|false The new order, null when the sale was already recorded, false on failure.
+	 */
+	private function record_subscription_sale_once( $membership_subscription, $transaction_id, $gross_amount, $created_at, $note ) {
+		$wpdb      = $this->orders_repository->wpdb();
+		$lock_name = 'urm_paypal_sale_' . md5( $transaction_id );
+
+		if ( 1 !== (int) $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $lock_name, self::SALE_LOCK_TIMEOUT ) ) ) {
+			return false;
+		}
+
+		try {
+			if ( ! empty( $this->orders_repository->get_order_by_transaction_id( $transaction_id ) ) ) {
+				return null;
+			}
+
+			$order = $this->orders_repository->create(
+				array(
+					'orders_data'      => array(
+						'user_id'         => absint( $membership_subscription['user_id'] ),
+						'item_id'         => $membership_subscription['item_id'],
+						'subscription_id' => $membership_subscription['ID'],
+						'created_by'      => $membership_subscription['user_id'],
+						'transaction_id'  => $transaction_id,
+						'payment_method'  => 'paypal',
+						'total_amount'    => $gross_amount,
+						'status'          => 'completed',
+						'order_type'      => 'subscription',
+						'trial_status'    => 'off',
+						'notes'           => $note,
+						'created_at'      => $created_at,
+					),
+					'orders_meta_data' => array(
+						array(
+							'meta_key'   => 'is_admin_created',
+							'meta_value' => false,
+						),
+					),
+				)
+			);
+
+			return empty( $order ) ? false : $order;
+		} finally {
+			$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $lock_name ) );
+		}
+	}
+
+	/**
+	 * Bring a local subscription's status and billing dates in line with PayPal after a sale.
+	 *
+	 * Takes PayPal's own next_billing_time rather than adding an interval locally, so replaying a sale
+	 * (webhook retry, backfill re-scan) can never extend access twice. Dates only move forward, and a
+	 * locally canceled subscription is left alone.
+	 *
+	 * @param string $paypal_subscription_id PayPal subscription ID (billing agreement ID).
+	 *
+	 * @return bool False only when PayPal or the database could not be reached, so the caller can retry.
+	 */
+	private function sync_subscription_from_paypal( $paypal_subscription_id ) {
+		$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $paypal_subscription_id );
+		if ( empty( $membership_subscription ) || 'canceled' === ( $membership_subscription['status'] ?? '' ) ) {
+			return true;
+		}
+
+		$remote = $this->get_paypal_subscription( $paypal_subscription_id, $this->get_paypal_rest_credentials() );
+		if ( is_wp_error( $remote ) ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[Subscription sync] Could not fetch PayPal subscription.' . "\n" . wp_json_encode(
+					array(
+						'paypal_subscription_id' => $paypal_subscription_id,
+						'error'                  => $remote->get_error_message(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return false;
+		}
+
+		if ( 'ACTIVE' !== ( $remote['status'] ?? '' ) || empty( $remote['billing_info']['next_billing_time'] ) ) {
+			return true;
+		}
+
+		$paypal_next   = gmdate( 'Y-m-d H:i:s', strtotime( $remote['billing_info']['next_billing_time'] ) );
+		$local_expiry  = (string) ( $membership_subscription['expiry_date'] ?? '' );
+		$expiry_date   = $this->later_date( $local_expiry, $paypal_next );
+		$next_billing  = $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next );
+		$update_result = $this->members_subscription_repository->update(
+			$membership_subscription['ID'],
+			array(
+				'status'            => 'active',
+				'expiry_date'       => $expiry_date,
+				'next_billing_date' => $next_billing,
+			)
+		);
+
+		if ( false === $update_result ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[Subscription sync] Local subscription update failed.' . "\n" . wp_json_encode(
+					array(
+						'subscription_id'        => $membership_subscription['ID'],
+						'paypal_subscription_id' => $paypal_subscription_id,
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return false;
+		}
+
+		PaymentGatewayLogging::log_general(
+			'paypal',
+			'[Subscription sync] Local subscription synced from PayPal.' . "\n" . wp_json_encode(
+				array(
+					'subscription_id'        => $membership_subscription['ID'],
+					'paypal_subscription_id' => $paypal_subscription_id,
+					'status_from'            => $membership_subscription['status'] ?? '',
+					'expiry_from'            => $local_expiry,
+					'expiry_to'              => $expiry_date,
+					'next_billing_date'      => $next_billing,
+				),
+				JSON_PRETTY_PRINT
+			),
+			'success'
 		);
 
 		return true;
+	}
+
+	/**
+	 * Return whichever of two `Y-m-d H:i:s` dates is later; an empty or zero local date loses.
+	 *
+	 * @param string $local_date  Date currently stored on the subscription row.
+	 * @param string $remote_date Date derived from PayPal.
+	 *
+	 * @return string
+	 */
+	private function later_date( $local_date, $remote_date ) {
+		return strtotime( $local_date ) > strtotime( $remote_date ) ? $local_date : $remote_date;
 	}
 
 	/**
@@ -3811,6 +3995,9 @@ class NewPaypalService {
 		$count_skipped = 0;
 		$count_errors  = 0;
 
+		// PayPal subscriptions with a completed sale in this window, synced once each after the loop.
+		$subscriptions_to_sync = array();
+
 		foreach ( $events as $event ) {
 			$resource               = isset( $event['resource'] ) ? $event['resource'] : array();
 			$transaction_id         = isset( $resource['id'] ) ? $resource['id'] : '';
@@ -3864,6 +4051,9 @@ class NewPaypalService {
 					),
 					'success'
 				);
+				if ( 'completed' === $live_status ) {
+					$subscriptions_to_sync[ $paypal_subscription_id ] = true;
+				}
 				++$count_updated;
 				continue;
 			}
@@ -3945,31 +4135,32 @@ class NewPaypalService {
 				continue;
 			}
 
-			// Create a new completed order for this payment event.
-			$order_data = array(
-				'orders_data'      => array(
-					'user_id'         => absint( $membership_subscription['user_id'] ),
-					'item_id'         => $membership_subscription['item_id'],
-					'subscription_id' => $membership_subscription['ID'],
-					'created_by'      => $membership_subscription['user_id'],
-					'transaction_id'  => $transaction_id,
-					'payment_method'  => 'paypal',
-					'total_amount'    => $gross_amount,
-					'status'          => 'completed',
-					'order_type'      => 'subscription',
-					'trial_status'    => 'off',
-					'notes'           => 'Backfilled order for missed PayPal payment event',
-					'created_at'      => $created_at,
-				),
-				'orders_meta_data' => array(
-					array(
-						'meta_key'   => 'is_admin_created',
-						'meta_value' => false,
-					),
-				),
-			);
+			// Create a new completed order for this payment event (the renewal webhook may race us).
+			$order = $this->record_subscription_sale_once( $membership_subscription, $transaction_id, $gross_amount, $created_at, 'Backfilled order for missed PayPal payment event' );
 
-			$this->orders_repository->create( $order_data );
+			if ( false === $order ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[Backfill][PayPal][Subscription][Payments] Order for missed payment could not be recorded.' . "\n" . wp_json_encode(
+						array(
+							'member_id'       => $user_id,
+							'subscription_id' => $local_sub_id,
+							'transaction_id'  => $transaction_id,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				++$count_errors;
+				continue;
+			}
+
+			$subscriptions_to_sync[ $paypal_subscription_id ] = true;
+
+			if ( null === $order ) {
+				++$count_skipped;
+				continue;
+			}
+
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[Backfill][PayPal][Subscription][Payments] New order created for missed payment.' . "\n" . wp_json_encode(
@@ -3988,6 +4179,12 @@ class NewPaypalService {
 				'success'
 			);
 			++$count_created;
+		}
+
+		foreach ( array_keys( $subscriptions_to_sync ) as $synced_paypal_subscription_id ) {
+			if ( ! $this->sync_subscription_from_paypal( $synced_paypal_subscription_id ) ) {
+				++$count_errors;
+			}
 		}
 
 		$logger->info(
