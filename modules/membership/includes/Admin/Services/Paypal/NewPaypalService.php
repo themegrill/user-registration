@@ -2061,14 +2061,29 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether a local subscription row is billed on a recurring cycle.
+	 *
+	 * `billing_cycle` holds the period for subscription plans and team subscription tiers, and is empty for
+	 * one-time and free plans — including after an upgrade or downgrade onto one.
+	 *
+	 * @param array $member_subscription Local subscription row.
+	 *
+	 * @return bool
+	 */
+	private function is_recurring_row( $member_subscription ) {
+		return '' !== (string) ( $member_subscription['billing_cycle'] ?? '' );
+	}
+
+	/**
 	 * Whether a BILLING.SUBSCRIPTION.* event belongs to the PayPal subscription this row now uses.
 	 *
 	 * An upgrade reuses the local row, so events from the PayPal subscription it replaced (its CANCELLED
 	 * above all) still carry this row in `custom_id`. The newest subscription created for the member may
 	 * only ACTIVATE the row before the redirect stores its ID: PayPal sends CREATED before approval, so an
 	 * abandoned checkout must not touch the row, and after a switch to another gateway the user meta still
-	 * names the old PayPal subscription. A row now on a one-time or free plan keeps the old PayPal ID but is
-	 * billed by no PayPal subscription, so only ACTIVATED (a free-to-paid upgrade) may change it.
+	 * names the old PayPal subscription. A row that is no longer recurring (moved to a one-time or free plan)
+	 * keeps the old PayPal ID but is billed by no PayPal subscription, so only ACTIVATED (a free-to-paid
+	 * upgrade) may change it.
 	 *
 	 * @param array  $member_subscription    Local subscription row named by the event's custom_id.
 	 * @param int    $member_id              Member the row belongs to.
@@ -2078,10 +2093,7 @@ class NewPaypalService {
 	 * @return bool
 	 */
 	private function is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) {
-		$membership = $this->membership_repository->get_single_membership_by_ID( $member_subscription['item_id'] ?? 0 );
-		$plan_metas = ! empty( $membership['meta_value'] ) ? json_decode( $membership['meta_value'], true ) : array();
-
-		if ( 'subscription' !== ( $plan_metas['type'] ?? '' ) && 'BILLING.SUBSCRIPTION.ACTIVATED' !== $event_type ) {
+		if ( ! $this->is_recurring_row( $member_subscription ) && 'BILLING.SUBSCRIPTION.ACTIVATED' !== $event_type ) {
 			return false;
 		}
 
@@ -3688,6 +3700,26 @@ class NewPaypalService {
 							'local_sub_id'           => $local_sub_id,
 							'paypal_subscription_id' => $paypal_subscription_id,
 							'status'                 => $local_status,
+						),
+						JSON_PRETTY_PRINT
+					),
+					array( 'source' => 'urm-missed-payment-backfill' )
+				);
+				++$count_skipped;
+				continue;
+			}
+
+			// A row moved to a one-time or free plan keeps the old PayPal ID; that subscription must not end it.
+			if ( 'active' !== $paypal_status && ! $this->is_recurring_row( $subscription ) ) {
+				$logger->info(
+					'[Backfill][Paypal][Subscription][Status] Skipped — subscription no longer bills this member.' . "
+" . wp_json_encode(
+						array(
+							'event_type'             => 'skip',
+							'reason'                 => 'row_not_recurring',
+							'local_sub_id'           => $local_sub_id,
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'paypal_status'          => $paypal_status,
 						),
 						JSON_PRETTY_PRINT
 					),
