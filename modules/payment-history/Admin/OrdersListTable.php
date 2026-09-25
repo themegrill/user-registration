@@ -186,7 +186,7 @@ class OrdersListTable extends \UR_List_Table {
 					'display_name'   => $user->user_login,
 					'user_email'     => $user->user_email,
 					'transaction_id' => $meta_value[0]['invoice_no'] ?? '',
-					'post_title'     => $meta_value[0]['invoice_plan'] ?? '',
+					'post_title'     => $this->get_invoice_product_label( $meta_value[0] ?? array() ),
 					'status'         => get_user_meta( $user->ID, 'ur_payment_status', true ),
 					'created_at'     => $meta_value[0]['invoice_date'] ?? '',
 					'type'           => get_user_meta( $user->ID, 'ur_payment_type', true ),
@@ -243,6 +243,53 @@ class OrdersListTable extends \UR_List_Table {
 	 *
 	 * @return array
 	 */
+
+	/**
+	 * Product name for a payment record.
+	 *
+	 * Only Stripe subscriptions set invoice_plan; PayPal, Mollie and one-time
+	 * payments do not, so fall back to the labels stored in the cart items.
+	 *
+	 * @param array $invoice First entry of ur_payment_invoices.
+	 * @return string
+	 */
+	private function get_invoice_product_label( $invoice ) {
+		if ( ! empty( $invoice['invoice_plan'] ) ) {
+			return $invoice['invoice_plan'];
+		}
+
+		$items = isset( $invoice['invoice_item'] ) ? $invoice['invoice_item'] : '';
+
+		// ur_cart_items is read without the single flag, so it arrives wrapped in an array.
+		if ( is_array( $items ) ) {
+			$items = reset( $items );
+		}
+
+		if ( is_string( $items ) ) {
+			$items = json_decode( $items );
+		}
+
+		if ( empty( $items ) || ! is_array( $items ) ) {
+			return '';
+		}
+
+		$labels = array();
+
+		foreach ( $items as $item ) {
+			// Choice based fields store the selection as label => amount.
+			if ( isset( $item->value ) && ( is_array( $item->value ) || is_object( $item->value ) ) ) {
+				$labels = array_merge( $labels, array_keys( (array) $item->value ) );
+				continue;
+			}
+
+			if ( ! empty( $item->label ) ) {
+				$labels[] = $item->label;
+			}
+		}
+
+		return implode( ', ', array_unique( array_filter( $labels ) ) );
+	}
+
 	public function get_columns() {
 		return array(
 			'cb'              => '<input type="checkbox" />',
