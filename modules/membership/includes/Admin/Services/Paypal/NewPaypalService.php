@@ -2309,7 +2309,7 @@ class NewPaypalService {
 				),
 				'success'
 			);
-			return true;
+			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
 		// Update a pending order that has no transaction_id yet.
@@ -2339,8 +2339,8 @@ class NewPaypalService {
 				),
 				'success'
 			);
-			// First payment: the signup/upgrade/renewal redirect sets the dates; syncing here too would add a period twice.
-			return true;
+			// A manual renewal's pending order can meet a recurring sale; a genuine first payment stays a no-op in the sync.
+			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
 		// No order is waiting for this sale, so it is a renewal: record it, then extend the subscription.
@@ -2410,6 +2410,11 @@ class NewPaypalService {
 		try {
 			if ( ! empty( $this->orders_repository->get_order_by_transaction_id( $transaction_id ) ) ) {
 				return null;
+			}
+
+			// A failed lookup also comes back empty; inserting then could record the sale twice.
+			if ( '' !== $wpdb->last_error ) {
+				return false;
 			}
 
 			$order = $this->orders_repository->create(
@@ -4160,6 +4165,7 @@ class NewPaypalService {
 					),
 					'success'
 				);
+				$subscriptions_to_sync[ $paypal_subscription_id ] = true;
 				++$count_updated;
 				continue;
 			}
