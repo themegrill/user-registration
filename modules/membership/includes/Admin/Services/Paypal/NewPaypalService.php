@@ -2061,6 +2061,41 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether a BILLING.SUBSCRIPTION.* event belongs to the PayPal subscription this row now uses.
+	 *
+	 * An upgrade reuses the local row, so events from the PayPal subscription it replaced (its CANCELLED
+	 * above all) still carry this row in `custom_id`. The newest subscription created for the member may
+	 * only ACTIVATE the row before the redirect stores its ID: PayPal sends CREATED before approval, so an
+	 * abandoned checkout must not touch the row, and after a switch to another gateway the user meta still
+	 * names the old PayPal subscription. A row now on a one-time or free plan keeps the old PayPal ID but is
+	 * billed by no PayPal subscription, so only ACTIVATED (a free-to-paid upgrade) may change it.
+	 *
+	 * @param array  $member_subscription    Local subscription row named by the event's custom_id.
+	 * @param int    $member_id              Member the row belongs to.
+	 * @param string $paypal_subscription_id PayPal subscription ID the event is about.
+	 * @param string $event_type             PayPal webhook event type.
+	 *
+	 * @return bool
+	 */
+	private function is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) {
+		$membership = $this->membership_repository->get_single_membership_by_ID( $member_subscription['item_id'] ?? 0 );
+		$plan_metas = ! empty( $membership['meta_value'] ) ? json_decode( $membership['meta_value'], true ) : array();
+
+		if ( 'subscription' !== ( $plan_metas['type'] ?? '' ) && 'BILLING.SUBSCRIPTION.ACTIVATED' !== $event_type ) {
+			return false;
+		}
+
+		$row_paypal_id = (string) ( $member_subscription['subscription_id'] ?? '' );
+
+		if ( '' === $row_paypal_id || $paypal_subscription_id === $row_paypal_id ) {
+			return true;
+		}
+
+		return 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type
+			&& get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true ) === $paypal_subscription_id;
+	}
+
+	/**
 	 * Handle subscription-related REST webhook.
 	 *
 	 * @param string $event_type
@@ -2083,6 +2118,23 @@ class NewPaypalService {
 		$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_row_id );
 		if ( empty( $member_subscription ) ) {
 			return false;
+		}
+
+		if ( ! $this->is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) ) {
+			PaymentGatewayLogging::log_general(
+				'paypal',
+				sprintf( '[Member ID #%s] Subscription webhook ignored: event is for a PayPal subscription this member no longer uses.', $member_id ) . "\n" . wp_json_encode(
+					array(
+						'event_type'                     => $event_type,
+						'event_paypal_subscription_id'   => $paypal_subscription_id,
+						'current_paypal_subscription_id' => $member_subscription['subscription_id'] ?? '',
+						'subscription_id'                => $member_subscription['ID'],
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+			return true;
 		}
 
 		$status_map = array(
