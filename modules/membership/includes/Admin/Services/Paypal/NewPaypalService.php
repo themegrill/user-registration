@@ -4160,7 +4160,7 @@ class NewPaypalService {
 			// does, so its order meta (tax, coupon, currency, proration) survives.
 			$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
 			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
-				$this->orders_repository->update(
+				$placeholder_updated = $this->orders_repository->update(
 					$placeholder['ID'],
 					array(
 						'status'         => 'completed',
@@ -4168,6 +4168,11 @@ class NewPaypalService {
 						'total_amount'   => $gross_amount,
 					)
 				);
+				if ( false === $placeholder_updated ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
 				$subscriptions_to_sync[ $paypal_subscription_id ] = true;
 				$logger->info(
 					'[Backfill][PayPal][Subscription][Payments] Placeholder order completed with real transaction ID.' . "\n" . wp_json_encode(
@@ -4237,6 +4242,7 @@ class NewPaypalService {
 						JSON_PRETTY_PRINT
 					)
 				);
+				$this->backfill_failed = true;
 				++$count_errors;
 				continue;
 			}
@@ -4270,6 +4276,7 @@ class NewPaypalService {
 
 		foreach ( array_keys( $subscriptions_to_sync ) as $synced_paypal_subscription_id ) {
 			if ( ! $this->sync_subscription_from_paypal( $synced_paypal_subscription_id ) ) {
+				$this->backfill_failed = true;
 				++$count_errors;
 			}
 		}

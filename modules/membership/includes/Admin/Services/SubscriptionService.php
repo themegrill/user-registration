@@ -1521,13 +1521,20 @@ class SubscriptionService {
 							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
 							$paypal_last_synced = $paypal_last_synced > 0 ? $paypal_last_synced : $last_synced;
 							$paypal_service     = new NewPaypalService();
+							if ( ! $paypal_service->has_rest_credentials() ) {
+								ur_get_logger()->info(
+									'[Backfill][PayPal] Skipped — no REST credentials; the PayPal sync time is kept.',
+									array( 'source' => 'urm-missed-payment-backfill' )
+								);
+								break;
+							}
 							$paypal_service->run_missed_subscription_backfill( $paypal_last_synced, $now );
 							$paypal_service->run_missed_payment_backfill( $paypal_last_synced, $now );
 							$paypal_service->run_missed_onetime_payment_backfill( $paypal_last_synced, $now );
 							$paypal_service->run_missed_refund_backfill( $paypal_last_synced, $now );
 							if ( $paypal_service->has_backfill_failure() ) {
 								ur_get_logger()->warning(
-									'[Backfill][PayPal] Events could not be fetched; the PayPal sync time is kept and this window is searched again next run.',
+									'[Backfill][PayPal] A fetch or update failed; the PayPal sync time is kept and this window is searched again next run.',
 									array( 'source' => 'urm-missed-payment-backfill' )
 								);
 							} else {
