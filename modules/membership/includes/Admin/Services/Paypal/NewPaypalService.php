@@ -2075,6 +2075,22 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether the row's latest order is a PayPal checkout still waiting for payment.
+	 *
+	 * The member's "newest created PayPal subscription" meta outlives a later switch to another gateway, so
+	 * it only counts while a PayPal checkout for this row is actually in progress.
+	 *
+	 * @param array $member_subscription Local subscription row.
+	 *
+	 * @return bool
+	 */
+	private function has_pending_paypal_checkout( $member_subscription ) {
+		$latest_order = $this->orders_repository->get_order_by_subscription( $member_subscription['ID'] ?? 0 );
+
+		return 'paypal' === ( $latest_order['payment_method'] ?? '' ) && 'pending' === ( $latest_order['status'] ?? '' );
+	}
+
+	/**
 	 * Whether a BILLING.SUBSCRIPTION.* event belongs to the PayPal subscription this row now uses.
 	 *
 	 * An upgrade reuses the local row, so events from the PayPal subscription it replaced (its CANCELLED
@@ -2096,7 +2112,8 @@ class NewPaypalService {
 		$row_paypal_id  = (string) ( $member_subscription['subscription_id'] ?? '' );
 		$is_new_and_live = 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type
 			&& $paypal_subscription_id !== $row_paypal_id
-			&& get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true ) === $paypal_subscription_id;
+			&& get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true ) === $paypal_subscription_id
+			&& $this->has_pending_paypal_checkout( $member_subscription );
 
 		// The ID still on a one-time/free row is the subscription it replaced, which must never change it again.
 		if ( ! $this->is_recurring_row( $member_subscription ) ) {
