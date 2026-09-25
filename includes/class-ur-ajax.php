@@ -1799,7 +1799,7 @@ class UR_AJAX {
 
 		$form_id = UR()->form->create( $title, $template );
 
-		if ( $form_id ) {
+		if ( $form_id && ! is_wp_error( $form_id ) ) {
 			$data = array(
 				'id'       => $form_id,
 				'redirect' => add_query_arg(

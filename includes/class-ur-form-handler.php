@@ -1076,7 +1076,7 @@ class UR_Form_Handler {
 	 * @param  string $template Form template.
 	 * @param  array  $args     Form Arguments.
 	 * @param  array  $data     Additional data.
-	 * @return int|bool Form ID on successful creation else false.
+	 * @return int|false|\WP_Error Form ID on success, false when title is empty, WP_Error when insert fails.
 	 */
 	public function create( $title = '', $template = 'blank', $args = array(), $data = array() ) {
 		if ( empty( $title ) ) {
@@ -1172,11 +1172,19 @@ class UR_Form_Handler {
 			}
 		}
 
-		// $wp_error = true, or a failed insert returns 0 - not a WP_Error - and the check below never fires.
+		// Pass true so a failed insert returns WP_Error (callers must check is_wp_error()).
 		$form_id = wp_insert_post( $form_data->form_post, true );
 
 		// Check for any error while inserting.
 		if ( is_wp_error( $form_id ) ) {
+			// Restore removed content filters before returning — same as the success path.
+			if ( $has_kses ) {
+				kses_init_filters();
+			}
+			if ( $has_targeted_link_rel_filters ) {
+				wp_init_targeted_link_rel_filters();
+			}
+
 			return $form_id;
 		}
 
