@@ -45,6 +45,11 @@ class NewPaypalService {
 	const RENEWAL_MIN_COMPLETED_CYCLES = 2;
 
 	/**
+	 * Seconds between a PayPal subscription's creation and its billing start beyond which checkout charged nothing (100% coupon).
+	 */
+	const DEFERRED_START_THRESHOLD = HOUR_IN_SECONDS;
+
+	/**
 	 * How far each backfill re-reads before the last sync time: PayPal lists a new event only some time after
 	 * delivering it, so a window ending "now" can miss a sale that it never looks at again.
 	 */
@@ -2467,7 +2472,8 @@ class NewPaypalService {
 	 * Takes PayPal's own next_billing_time rather than adding an interval locally, so replaying a sale
 	 * (webhook retry, backfill re-scan) can never extend access twice. Dates only move forward, and a
 	 * locally canceled subscription is left alone. Nothing happens until PayPal has billed a second cycle:
-	 * the first payment's dates belong to the checkout, whose redirect adds its own period.
+	 * the first payment's dates belong to the checkout, whose redirect adds its own period. A subscription
+	 * whose billing started later (100% coupon) was not charged at checkout, so its first sale counts.
 	 *
 	 * @param string $paypal_subscription_id PayPal subscription ID (billing agreement ID).
 	 *
@@ -2500,7 +2506,7 @@ class NewPaypalService {
 			return false;
 		}
 
-		if ( 'ACTIVE' !== ( $remote['status'] ?? '' ) || empty( $remote['billing_info']['next_billing_time'] ) || $this->count_completed_cycles( $remote ) < self::RENEWAL_MIN_COMPLETED_CYCLES ) {
+		if ( 'ACTIVE' !== ( $remote['status'] ?? '' ) || empty( $remote['billing_info']['next_billing_time'] ) || $this->count_completed_cycles( $remote ) < $this->renewal_min_completed_cycles( $remote ) ) {
 			return true;
 		}
 
@@ -2563,6 +2569,21 @@ class NewPaypalService {
 	 */
 	private function later_date( $local_date, $remote_date ) {
 		return strtotime( $local_date ) > strtotime( $remote_date ) ? $local_date : $remote_date;
+	}
+
+	/**
+	 * Completed cycles after which a sale is a renewal: one fewer when checkout charged nothing (billing started later).
+	 *
+	 * @param array $remote PayPal subscription resource (GET /v1/billing/subscriptions/{id}).
+	 *
+	 * @return int
+	 */
+	private function renewal_min_completed_cycles( $remote ) {
+		$created = strtotime( (string) ( $remote['create_time'] ?? '' ) );
+		$started = strtotime( (string) ( $remote['start_time'] ?? '' ) );
+		$charged_at_checkout = ! $created || ! $started || $started - $created <= self::DEFERRED_START_THRESHOLD;
+
+		return $charged_at_checkout ? self::RENEWAL_MIN_COMPLETED_CYCLES : self::RENEWAL_MIN_COMPLETED_CYCLES - 1;
 	}
 
 	/**
