@@ -3711,8 +3711,7 @@ class NewPaypalService {
 			// A row moved to a one-time or free plan keeps the old PayPal ID; that subscription must not change it.
 			if ( ! $this->is_recurring_row( $subscription ) ) {
 				$logger->info(
-					'[Backfill][Paypal][Subscription][Status] Skipped — subscription no longer bills this member.' . "
-" . wp_json_encode(
+					'[Backfill][Paypal][Subscription][Status] Skipped — subscription no longer bills this member.' . "\n" . wp_json_encode(
 						array(
 							'event_type'             => 'skip',
 							'reason'                 => 'row_not_recurring',
