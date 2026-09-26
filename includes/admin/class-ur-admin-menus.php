@@ -756,69 +756,24 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 * Add status menu item.
 		 */
 		public function status_menu() {
-			add_submenu_page(
-				'user-registration',
-				__( 'User Registration Tools', 'user-registration' ),
-				__( 'Tools', 'user-registration' ),
-				'manage_user_registration',
-				'user-registration-status',
-				array(
-					$this,
-					'status_page',
-				)
-			);
+			// Tools (Logs, System Info) moved into the Settings rail
+			// (see UR_Settings_Tools); only the Setup Wizard sidebar link,
+			// unrelated to Tools, is still registered from here.
+			$is_new_installation = ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) );
 
-			if ( isset( $_GET['page'] ) && in_array(
-					$_GET['page'],
-					array(
-						'user-registration-status',
-						'user-registration-status&tab=logs',
-						'user-registration-status&tab=system_info',
-					)
-				) ) {
-
+			if ( $is_new_installation ) {
 				add_submenu_page(
 					'user-registration',
-					__( 'Logs', 'user-registration' ),
-					'↳ ' . __( 'Logs', 'user-registration' ),
+					__( 'Setup Wizard', 'user-registration' ),
+					'↳ ' . __( 'Setup Wizard', 'user-registration' ),
 					'manage_user_registration',
-					'user-registration-status&tab=logs',
+					'user-registration-welcome&tab=setup-wizard',
 					array(
 						$this,
 						'status_page',
 					),
-					76
+					78
 				);
-
-				add_submenu_page(
-					'user-registration',
-					__( 'System Info', 'user-registration' ),
-					'↳ ' . __( 'System Info', 'user-registration' ),
-					'manage_user_registration',
-					'user-registration-status&tab=system_info',
-					array(
-						$this,
-						'status_page',
-					),
-					77
-				);
-
-				$is_new_installation = ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) );
-
-				if ( $is_new_installation ) {
-					add_submenu_page(
-						'user-registration',
-						__( 'Setup Wizard', 'user-registration' ),
-						'↳ ' . __( 'Setup Wizard', 'user-registration' ),
-						'manage_user_registration',
-						'user-registration-welcome&tab=setup-wizard',
-						array(
-							$this,
-							'status_page',
-						),
-						78
-					);
-				}
 			}
 		}
 
