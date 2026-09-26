@@ -40,6 +40,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			add_action( 'admin_menu', array( $this, 'add_registration_menu' ), 8 );
 			add_action( 'admin_menu', array( $this, 'status_menu' ), 75 );
 			add_action( 'admin_menu', array( $this, 'dashboard_menu' ), 3 );
+			add_action( 'admin_init', array( $this, 'redirect_legacy_tools_page' ) );
 			// add_action('admin_head', array($this, 'remove_duplicate_menu_items'));
 
 			if ( is_plugin_active( 'user-registration-pro/user-registration.php' ) && empty( get_option( 'user-registration_license_key', '' ) ) ) {
@@ -750,6 +751,48 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					'settings_page',
 				)
 			);
+		}
+
+		/**
+		 * Redirect every legacy `?page=user-registration-status` URL (the old
+		 * standalone Tools page) into its new location inside Settings, so
+		 * old bookmarks, support links and the log delete-action redirects
+		 * keep working after Tools moved into the Settings rail.
+		 */
+		public function redirect_legacy_tools_page() {
+			if ( empty( $_GET['page'] ) || 'user-registration-status' !== sanitize_text_field( wp_unslash( $_GET['page'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+				return;
+			}
+
+			if ( ! current_user_can( 'manage_user_registration' ) ) {
+				return;
+			}
+
+			$tab = empty( $_GET['tab'] ) ? 'logs' : sanitize_title( wp_unslash( $_GET['tab'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+
+			if ( 'setup_wizard' === $tab ) {
+				wp_safe_redirect( admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' ) );
+				exit;
+			}
+
+			$section = in_array( $tab, array( 'logs', 'system_info' ), true ) ? $tab : 'logs';
+
+			$query_args = array(
+				'page'    => 'user-registration-settings',
+				'tab'     => 'tools',
+				'section' => $section,
+			);
+
+			// Preserve the specific query args the Logs view and its delete
+			// actions rely on; nothing else from the old URL is forwarded.
+			foreach ( array( 'log_file', 'handle', 'handle_all', '_wpnonce' ) as $key ) {
+				if ( isset( $_GET[ $key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+					$query_args[ $key ] = sanitize_text_field( wp_unslash( $_GET[ $key ] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+				}
+			}
+
+			wp_safe_redirect( add_query_arg( $query_args, admin_url( 'admin.php' ) ) );
+			exit;
 		}
 
 		/**
