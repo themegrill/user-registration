@@ -292,6 +292,11 @@ foreach ( ur_setting_keys() as $ur_product => $ur_product_settings ) {
 		padding-top: 0;
 	}
 
+	.user-registration-system-info-setting .ur-si-table tr:last-child td,
+	.user-registration-system-info-setting .ur-si-table tr:last-child th {
+		padding-bottom: 0;
+	}
+
 	.user-registration-system-info-setting .ur-si-table tr:hover,
 	.user-registration-system-info-setting .ur-si-table tr:hover th {
 		background: transparent;
