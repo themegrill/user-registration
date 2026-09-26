@@ -40,7 +40,11 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			add_action( 'admin_menu', array( $this, 'add_registration_menu' ), 8 );
 			add_action( 'admin_menu', array( $this, 'status_menu' ), 75 );
 			add_action( 'admin_menu', array( $this, 'dashboard_menu' ), 3 );
-			add_action( 'admin_init', array( $this, 'redirect_legacy_tools_page' ) );
+			// Fires right where WP core is about to wp_die() an unregistered
+			// admin page (wp-admin/includes/menu.php), before admin_init
+			// even runs — the old Tools page slug is unregistered now, so
+			// this is the earliest point that can still redirect it.
+			add_action( 'admin_page_access_denied', array( $this, 'redirect_legacy_tools_page' ) );
 			// add_action('admin_head', array($this, 'remove_duplicate_menu_items'));
 
 			if ( is_plugin_active( 'user-registration-pro/user-registration.php' ) && empty( get_option( 'user-registration_license_key', '' ) ) ) {
@@ -758,6 +762,12 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 * standalone Tools page) into its new location inside Settings, so
 		 * old bookmarks, support links and the log delete-action redirects
 		 * keep working after Tools moved into the Settings rail.
+		 *
+		 * Hooked to `admin_page_access_denied` rather than `admin_init`:
+		 * WP core's own wp-admin/includes/menu.php denies (and wp_die()s)
+		 * access to an unregistered admin page during menu building, which
+		 * happens before `admin_init` ever fires — so `admin_init` alone
+		 * can never catch this URL now that the page is gone.
 		 */
 		public function redirect_legacy_tools_page() {
 			if ( empty( $_GET['page'] ) || 'user-registration-status' !== sanitize_text_field( wp_unslash( $_GET['page'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification
