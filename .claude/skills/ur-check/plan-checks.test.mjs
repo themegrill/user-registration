@@ -1,7 +1,32 @@
 // Run with: node --test .claude/skills/ur-check/plan-checks.test.mjs
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { assertSafeRef, globToRegExp, listWithOverflow, planChecks } from "./plan-checks.mjs";
+
+/** `paths:` globs from a rule's frontmatter. */
+function ruleGlobs(ruleFile) {
+	const file = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "rules", ruleFile);
+	const frontmatter = fs.readFileSync(file, "utf8").split(/^---\s*$/m)[1] ?? "";
+	return [...frontmatter.matchAll(/^\s*-\s*"([^"]+)"/gm)].map((m) => m[1]);
+}
+
+test("every path the security-sensitive rules scope also triggers the reviewer note", () => {
+	for (const ruleFile of ["membership-payments.md", "content-restriction.md"]) {
+		const globs = ruleGlobs(ruleFile);
+		assert.ok(globs.length > 0, `no paths found in ${ruleFile}`);
+		for (const glob of globs) {
+			const sample = glob.replace("**", "probe.php");
+			assert.ok(planChecks([sample], {}).notes.some((n) => n.includes("ur-reviewer")), `${ruleFile}: ${glob} -> ${sample}`);
+		}
+	}
+});
+
+test("the registration handler under includes/frontend triggers the reviewer note", () => {
+	assert.ok(planChecks(["includes/frontend/class-ur-frontend-form-handler.php"], {}).notes.some((n) => n.includes("ur-reviewer")));
+});
 
 test("base ref: option-like and odd refs are rejected, normal refs pass", () => {
 	for (const bad of ["--output=/tmp/x", "-p", "a..b", "a b", "a;rm", "", "$(x)"]) {

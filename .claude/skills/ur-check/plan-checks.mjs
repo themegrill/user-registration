@@ -44,7 +44,7 @@ export function listWithOverflow(items) {
 }
 
 const REVIEW_PATHS =
-	/^(modules\/(membership|content-restriction|stripe|paypal)\/|includes\/(class-ur-ajax|class-ur-form-handler|class-ur-install|class-ur-email-|class-ur-user-approval|RestApi\/)|includes\/functions-ur-(core|update)\.php)/;
+	/^(modules\/(membership|content-restriction|content-drip|stripe|paypal|payment-history)\/|includes\/(class-ur-ajax|class-ur-form-handler|class-ur-install|class-ur-email-|class-ur-user-approval|frontend\/|RestApi\/)|includes\/functions-ur-(core|update)\.php)/;
 const CONTRACT_REMOVAL =
 	/^-.*\b(apply_filters|do_action|add_shortcode|register_rest_route|register_post_type|do_action_ref_array)\s*\(|^-.*['"]wp_ajax_(nopriv_)?[a-z_]+/m;
 

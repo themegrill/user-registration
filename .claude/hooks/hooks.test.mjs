@@ -1,14 +1,45 @@
 // Run with: node --test .claude/hooks/
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, toRelative } from "./guard-files.mjs";
+import { classify, decide, toRelative } from "./guard-files.mjs";
 import { extractJson, filterToChanged, parseChangedRanges } from "./phpcs-changed.mjs";
 import { projectRootFor } from "./project-root.mjs";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 const norm = (p) => path.resolve(p).toLowerCase();
+
+/** Make a temp project with vendor/autoload.php and a link `safe` -> vendor; null when links cannot be created. */
+function projectWithLinkedVendor() {
+	const base = fs.mkdtempSync(path.join(os.tmpdir(), "guard-link-"));
+	fs.mkdirSync(path.join(base, "vendor"));
+	fs.mkdirSync(path.join(base, "src"));
+	fs.writeFileSync(path.join(base, "vendor", "autoload.php"), "<?php\n");
+	try {
+		fs.symlinkSync(path.join(base, "vendor"), path.join(base, "safe"), "junction");
+	} catch {
+		return null;
+	}
+	return base;
+}
+
+test("guard: a link to a protected directory does not bypass it (existing and new files)", (t) => {
+	const base = projectWithLinkedVendor();
+	if (!base) return t.skip("symlinks/junctions cannot be created in this environment");
+	assert.equal(decide(path.join(base, "safe", "autoload.php"), base)?.decision, "deny");
+	assert.equal(decide(path.join(base, "safe", "brand-new.php"), base)?.decision, "deny");
+	assert.equal(decide(path.join(base, "src", "ok.php"), base), null);
+});
+
+test("guard: the stricter of the written path and the real path wins", (t) => {
+	const base = projectWithLinkedVendor();
+	if (!base) return t.skip("symlinks/junctions cannot be created in this environment");
+	fs.writeFileSync(path.join(base, "CHANGELOG.txt"), "x\n");
+	assert.equal(decide(path.join(base, "CHANGELOG.txt"), base)?.decision, "ask");
+	assert.equal(decide(path.join(base, "vendor", "autoload.php"), base)?.decision, "deny");
+});
 const repoRoot = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim();
 
 test("root: a file inside the repo resolves to the repo root, even if its directory does not exist yet", () => {
