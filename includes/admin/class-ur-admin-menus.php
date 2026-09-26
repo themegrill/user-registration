@@ -778,26 +778,28 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 				return;
 			}
 
-			$tab = empty( $_GET['tab'] ) ? 'logs' : sanitize_title( wp_unslash( $_GET['tab'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+			$tab = empty( $_REQUEST['tab'] ) ? 'logs' : sanitize_title( wp_unslash( $_REQUEST['tab'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 
 			if ( 'setup_wizard' === $tab ) {
 				wp_safe_redirect( admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' ) );
 				exit;
 			}
 
-			$section = in_array( $tab, array( 'logs', 'system_info' ), true ) ? $tab : 'logs';
-
+			// Any other tab — logs, system_info, or an add-on-registered
+			// slug (see UR_Settings_Tools::get_sections_callback()) — maps
+			// directly onto the matching Tools section by the same name.
 			$query_args = array(
 				'page'    => 'user-registration-settings',
 				'tab'     => 'tools',
-				'section' => $section,
+				'section' => $tab,
 			);
 
 			// Preserve the specific query args the Logs view and its delete
-			// actions rely on; nothing else from the old URL is forwarded.
+			// actions rely on (the "View" form submits log_file via POST;
+			// nothing else from the old URL is forwarded).
 			foreach ( array( 'log_file', 'handle', 'handle_all', '_wpnonce' ) as $key ) {
-				if ( isset( $_GET[ $key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-					$query_args[ $key ] = sanitize_text_field( wp_unslash( $_GET[ $key ] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+				if ( isset( $_REQUEST[ $key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+					$query_args[ $key ] = sanitize_text_field( wp_unslash( $_REQUEST[ $key ] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 				}
 			}
 
