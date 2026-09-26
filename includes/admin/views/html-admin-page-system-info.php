@@ -2,483 +2,475 @@
 /**
  * Admin View: Page - System info
  *
- * @since x.x.x
+ * One card per section (plugin, WordPress, PHP, web server, MySQL, required
+ * pages, plugin settings). The "Copy system info" button in the options
+ * header copies every card at once.
+ *
+ * @package UserRegistration
+ * @since   x.x.x
  */
 
 defined( 'ABSPATH' ) || exit;
+
 if ( ! class_exists( 'WP_Debug_Data' ) ) {
 	require_once ABSPATH . 'wp-admin/includes/class-wp-debug-data.php';
 }
-?>
 
-<div class="user-registration-system-info-setting">
-	<div class="user-registration-settings-header">
-		<div class="user-registration-options-header--top__left">
-	<span class="user-registration-options-header--top__left--icon">
-	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 18 18">
-	<path fill-rule="evenodd"
-		d="M1.667 4.167a2.5 2.5 0 0 1 2.5-2.5h11.666a2.5 2.5 0 0 1 2.5 2.5v11.666a2.5 2.5 0 0 1-2.5 2.5H4.167a2.5 2.5 0 0 1-2.5-2.5V4.167Zm2.5-.834a.833.833 0 0 0-.834.834v11.666c0 .46.373.834.834.834h11.666c.46 0 .834-.373.834-.834V4.167a.833.833 0 0 0-.834-.834H4.167Z"
-		clip-rule="evenodd"/>
-	<path fill-rule="evenodd"
-		d="M6.11 10.486c.268 0 .486.218.486.486v3.403a.486.486 0 1 1-.972 0v-3.403c0-.268.217-.486.486-.486Zm0-5.347c.268 0 .486.218.486.486v3.403a.486.486 0 0 1-.972 0V5.625c0-.268.217-.486.486-.486ZM10 9.514c.268 0 .486.218.486.486v4.375a.486.486 0 0 1-.972 0V10c0-.268.218-.486.486-.486Zm0-4.375c.268 0 .486.218.486.486v2.43a.486.486 0 0 1-.972 0v-2.43c0-.268.218-.486.486-.486Zm3.89 6.319c.269 0 .487.218.487.486v2.431a.486.486 0 0 1-.973 0v-2.43c0-.269.218-.487.486-.487Zm0-6.319c.269 0 .487.218.487.486V10a.486.486 0 0 1-.973 0V5.625c0-.268.218-.486.486-.486Z"
-		clip-rule="evenodd"/>
-	<path fill-rule="evenodd"
-		d="M4.654 10.972c0-.268.218-.486.486-.486h1.945a.486.486 0 1 1 0 .972H5.14a.486.486 0 0 1-.486-.486ZM8.54 8.056c0-.269.218-.487.486-.487h1.945a.486.486 0 1 1 0 .973H9.026a.486.486 0 0 1-.486-.486Zm3.89 3.888c0-.268.218-.486.487-.486h1.944a.486.486 0 0 1 0 .973h-1.944a.486.486 0 0 1-.486-.486Z"
-		clip-rule="evenodd"/>
-</svg>
-</span>
-			<h3><?php esc_html_e( 'System Info', 'user-registration' ); ?></h3>
+$ur_is_pro_active = is_plugin_active( 'user-registration-pro/user-registration.php' );
+$ur_plugin_file   = WP_PLUGIN_DIR . ( $ur_is_pro_active ? '/user-registration-pro/user-registration.php' : '/user-registration/user-registration.php' );
+$ur_plugin_data   = file_exists( $ur_plugin_file ) ? get_plugin_data( $ur_plugin_file ) : array();
+$ur_license_key   = get_option( 'user-registration_license_key' );
+$ur_license_data  = get_transient( 'ur_pro_license_plan' );
+$ur_is_licensed   = $ur_license_key && $ur_license_data;
+
+/**
+ * A row's value is pre-escaped HTML.
+ */
+$ur_sections = array();
+
+// Plugin.
+$ur_plugin_rows = array(
+	array( __( 'Version', 'user-registration' ), esc_html( isset( $ur_plugin_data['Version'] ) ? $ur_plugin_data['Version'] : '' ) ),
+);
+
+if ( $ur_is_pro_active ) {
+	$ur_plugin_title = $ur_is_licensed && isset( $ur_license_data->item_name ) ? $ur_license_data->item_name : __( 'User Registration & Membership PRO', 'user-registration' );
+	$ur_plugin_rows  = array_merge(
+		$ur_plugin_rows,
+		array(
+			array( __( 'Edition', 'user-registration' ), esc_html( $ur_is_licensed && isset( $ur_license_data->item_plan ) ? __( 'PRO', 'user-registration' ) : ( $ur_is_licensed ? '-' : __( 'Free', 'user-registration' ) ) ) ),
+			array( __( 'License', 'user-registration' ), esc_html( $ur_is_licensed ? ( isset( $ur_license_data->license ) ? __( 'Licensed', 'user-registration' ) : '-' ) : __( 'Unlicensed', 'user-registration' ) ) ),
+			array( __( 'License activated', 'user-registration' ), esc_html( $ur_is_licensed ? ( isset( $ur_license_data->success ) ? __( 'Yes', 'user-registration' ) : '-' ) : __( 'No', 'user-registration' ) ) ),
+			array( __( 'License expires', 'user-registration' ), esc_html( $ur_is_licensed && isset( $ur_license_data->expires ) ? $ur_license_data->expires : '-' ) ),
+		)
+	);
+} else {
+	$ur_plugin_title = __( 'User Registration & Membership', 'user-registration' );
+}
+
+$ur_sections[] = array(
+	'title' => $ur_plugin_title,
+	'rows'  => $ur_plugin_rows,
+);
+
+// WordPress.
+$ur_active_plugins = array();
+$ur_all_plugins    = get_plugins();
+
+foreach ( get_option( 'active_plugins', array() ) as $ur_plugin_basename ) {
+	if ( isset( $ur_all_plugins[ $ur_plugin_basename ] ) ) {
+		$ur_active_plugins[] = esc_html( $ur_all_plugins[ $ur_plugin_basename ]['Name'] . ' (' . $ur_all_plugins[ $ur_plugin_basename ]['Version'] . ')' );
+	}
+}
+
+$ur_theme = wp_get_theme();
+
+$ur_wp_min_version = $ur_is_pro_active && ! empty( $ur_plugin_data['RequiresWP'] ) ? ' ' . sprintf( /* translators: %s: minimum WordPress version */ __( '(min %s)', 'user-registration' ), $ur_plugin_data['RequiresWP'] ) : '';
+
+$ur_sections[] = array(
+	'title' => __( 'WordPress', 'user-registration' ),
+	'rows'  => array(
+		array( __( 'Version', 'user-registration' ), esc_html( get_bloginfo( 'version' ) . $ur_wp_min_version ) ),
+		array( __( 'Multisite', 'user-registration' ), esc_html( is_multisite() ? __( 'Yes', 'user-registration' ) : __( 'No', 'user-registration' ) ) ),
+		array( __( 'Home URL', 'user-registration' ), esc_html( home_url() ) ),
+		array( __( 'Site URL', 'user-registration' ), esc_html( site_url() ) ),
+		array( __( 'Theme', 'user-registration' ), isset( $ur_theme->name, $ur_theme->version ) ? esc_html( $ur_theme->name . ' (' . $ur_theme->version . ')' ) : '' ),
+		array( __( 'Plugins', 'user-registration' ), implode( '<br>', $ur_active_plugins ) ),
+		array( __( 'Max upload size', 'user-registration' ), esc_html( wp_max_upload_size() / 1024 / 1024 . ' MB' ) ),
+	),
+);
+
+// PHP.
+$ur_php_min_version = $ur_is_pro_active && ! empty( $ur_plugin_data['RequiresPHP'] ) ? ' ' . sprintf( /* translators: %s: minimum PHP version */ __( '(min %s)', 'user-registration' ), $ur_plugin_data['RequiresPHP'] ) : '';
+
+$ur_sections[] = array(
+	'title' => __( 'PHP', 'user-registration' ),
+	'rows'  => array(
+		array( __( 'Version', 'user-registration' ), esc_html( phpversion() . $ur_php_min_version ) ),
+		array( __( 'Default timezone', 'user-registration' ), esc_html( date_default_timezone_get() ) ),
+		array( __( 'Max execution time', 'user-registration' ), esc_html( ini_get( 'max_execution_time' ) ) ),
+		array( __( 'Memory limit', 'user-registration' ), esc_html( ini_get( 'memory_limit' ) ) ),
+		array( __( 'Max upload size', 'user-registration' ), esc_html( ini_get( 'upload_max_filesize' ) ) ),
+		array( __( 'Max input variables', 'user-registration' ), esc_html( ini_get( 'max_input_vars' ) ) ),
+		array( __( 'SMTP hostname', 'user-registration' ), esc_html( ini_get( 'SMTP' ) ) ),
+		array( __( 'SMTP port', 'user-registration' ), esc_html( ini_get( 'smtp_port' ) ) ),
+	),
+);
+
+// Web server.
+$ur_sections[] = array(
+	'title' => __( 'Web Server', 'user-registration' ),
+	'rows'  => array(
+		array( __( 'Name', 'user-registration' ), esc_html( isset( $_SERVER['SERVER_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_NAME'] ) ) : '' ) ),
+		array( __( 'IP', 'user-registration' ), esc_html( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' ) ),
+	),
+);
+
+// MySQL.
+global $wpdb;
+$ur_max_packet = WP_Debug_Data::get_mysql_var( 'max_allowed_packet' );
+
+$ur_sections[] = array(
+	'title' => __( 'MySQL', 'user-registration' ),
+	'rows'  => array(
+		array( __( 'Version', 'user-registration' ), esc_html( $wpdb->db_version() ) ),
+		array( __( 'Max allowed packet', 'user-registration' ), esc_html( '' !== (string) $ur_max_packet ? $ur_max_packet / 1024 / 1024 . ' MB' : '' ) ),
+	),
+);
+
+// Required pages.
+$ur_plugin_pages = array(
+	'user_registration_login_page_id'          => __( 'Login Page', 'user-registration' ),
+	'user_registration_lost_password_page_id'  => __( 'Lost Password Page', 'user-registration' ),
+	'user_registration_reset_password_page_id' => __( 'Reset Password Page', 'user-registration' ),
+	'user_registration_myaccount_page_id'      => __( 'My Account Page', 'user-registration' ),
+);
+
+if ( ur_check_module_activation( 'membership' ) ) {
+	$ur_plugin_pages['user_registration_member_registration_page_id'] = __( 'Membership Registration Page', 'user-registration' );
+	$ur_plugin_pages['user_registration_thank_you_page_id']           = __( 'Thank You Page', 'user-registration' );
+}
+
+/**
+ * Markup for a page's link, ID and live status; "Not Setup" if unpublished.
+ *
+ * @param int|string $page_id Page ID.
+ * @param string     $source  Optional muted source note, e.g. "[Redirect]".
+ * @return string Escaped HTML.
+ */
+$ur_page_status = function ( $page_id, $source = '' ) {
+	$page = get_post( $page_id );
+	$note = '' !== $source ? ' <small class="ur-source-note">' . esc_html( $source ) . '</small>' : '';
+
+	if ( $page && 'publish' === $page->post_status ) {
+		return '<a href="' . esc_url( get_permalink( $page_id ) ) . '" target="_blank" class="ur-page-link">' . esc_html( $page->post_title ) . '</a> <small class="ur-page-id">(ID: ' . esc_html( $page_id ) . ')</small> - <span class="ur-status-live">' . esc_html__( 'Live', 'user-registration' ) . '</span>' . $note;
+	}
+
+	return '<span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span>' . $note;
+};
+
+$ur_page_rows = array();
+
+foreach ( $ur_plugin_pages as $ur_option => $ur_label ) {
+	if ( 'user_registration_login_page_id' === $ur_option ) {
+		$ur_login_info = ur_get_login_page_info();
+
+		if ( $ur_login_info['login_page_id_set'] ) {
+			$ur_value = $ur_page_status( get_option( 'user_registration_login_page_id' ) );
+		} elseif ( $ur_login_info['login_redirect_url_set'] ) {
+			$ur_redirect = get_option( 'user_registration_login_options_login_redirect_url' );
+
+			if ( is_numeric( $ur_redirect ) ) {
+				$ur_value = $ur_page_status( $ur_redirect, __( '[Redirect]', 'user-registration' ) );
+			} else {
+				$ur_value = '<a href="' . esc_url( $ur_redirect ) . '" target="_blank" class="ur-page-link">' . esc_html( $ur_redirect ) . '</a> <small class="ur-source-note">' . esc_html__( '[External URL]', 'user-registration' ) . '</small>';
+			}
+		} elseif ( $ur_login_info['has_login_pages'] ) {
+			$ur_login_pages = $ur_login_info['login_pages_with_functionality'];
+			$ur_value       = $ur_page_status( $ur_login_pages[0]->ID, __( '[Auto-detected]', 'user-registration' ) );
+
+			if ( count( $ur_login_pages ) > 1 ) {
+				/* translators: %d: number of additional pages */
+				$ur_value .= '<br><small class="ur-additional-pages">' . esc_html( sprintf( __( '+%d more pages with login functionality', 'user-registration' ), count( $ur_login_pages ) - 1 ) ) . '</small>';
+			}
+		} else {
+			$ur_value = '<span class="ur-status-not-setup">' . esc_html__( 'No Login Page Found', 'user-registration' ) . '</span>';
+		}
+	} else {
+		$ur_page_id = get_option( $ur_option );
+		$ur_value   = $ur_page_id ? $ur_page_status( $ur_page_id ) : '<span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span>';
+	}
+
+	$ur_page_rows[] = array( $ur_label, $ur_value );
+}
+
+$ur_sections[] = array(
+	'title' => __( 'Required Pages', 'user-registration' ),
+	'rows'  => $ur_page_rows,
+);
+
+// Plugin settings (JSON), collapsed but always part of the copy.
+$ur_global_settings = array();
+
+foreach ( ur_setting_keys() as $ur_product => $ur_product_settings ) {
+	foreach ( $ur_product_settings as $ur_setting_array ) {
+		$ur_setting_key     = $ur_setting_array[0];
+		$ur_setting_default = $ur_setting_array[1];
+		$ur_value           = get_option( $ur_setting_key, 'NOT_SET' );
+
+		// Set boolean values for certain settings.
+		if ( isset( $ur_setting_array[2] ) && 'NOT_SET' !== $ur_value && $ur_setting_default !== $ur_value ) {
+			$ur_value = 1;
+		}
+
+		if ( 'NOT_SET' !== $ur_value ) {
+			$ur_global_settings[ $ur_product ][ $ur_setting_key ] = array( 'value' => $ur_value );
+		}
+	}
+}
+?>
+<style>
+	@media (max-width: 782px) {
+		body {
+			min-width: 0;
+		}
+
+		.user-registration-system-info-setting .ur-si-table th {
+			width: 40%;
+		}
+	}
+
+	.user-registration-system-info-setting {
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+	}
+
+	.user-registration-system-info-setting .ur-si-card + .ur-si-card {
+		margin-top: 24px;
+	}
+
+	.ur-system-info-actions {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.ur-system-info-copy.button-primary {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		width: auto;
+		height: auto;
+		padding: 0 16px;
+	}
+
+	.ur-copied-tip {
+		position: absolute;
+		top: calc(100% + 10px);
+		right: 0;
+		display: none;
+		padding: 12px 18px;
+		border-radius: 4px;
+		background: #fff;
+		box-shadow: 0 6px 24px rgba(10, 10, 10, 0.1);
+		font-size: 14px;
+		color: #383838;
+		white-space: nowrap;
+		z-index: 5;
+	}
+
+	.ur-copied-tip.is-visible {
+		display: block;
+	}
+
+	.user-registration-system-info-setting .ur-si-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	.user-registration-system-info-setting .ur-si-table th,
+	.user-registration-system-info-setting .ur-si-table td {
+		padding: 10px 0;
+		border: 0;
+		border-top: 1px solid #f0f1f5;
+		font-size: 14px;
+		line-height: 24px;
+		color: #383838;
+		white-space: normal;
+		overflow: visible;
+		text-overflow: clip;
+		background: transparent;
+		text-align: left;
+		vertical-align: top;
+	}
+
+	.user-registration-system-info-setting .ur-si-table tr:first-child th,
+	.user-registration-system-info-setting .ur-si-table tr:first-child td {
+		border-top: 0;
+		padding-top: 0;
+	}
+
+	.user-registration-system-info-setting .ur-si-table tr:hover,
+	.user-registration-system-info-setting .ur-si-table tr:hover th {
+		background: transparent;
+	}
+
+	.user-registration-system-info-setting .ur-si-table th {
+		width: 300px;
+		font-weight: 500;
+	}
+
+	.user-registration-system-info-setting .ur-si-json {
+		max-height: 320px;
+		overflow: auto;
+		white-space: pre-wrap;
+		font: 12px/18px Consolas, Monaco, monospace;
+	}
+
+	.ur-si-fallback {
+		width: 100%;
+		min-height: 160px;
+		margin-top: 12px;
+	}
+</style>
+
+<div class="user-registration-system-info-setting" id="ur-system-info">
+	<div class="ur-si-notice"></div>
+	<?php foreach ( $ur_sections as $ur_section ) : ?>
+		<div class="user-registration-card ur-mt-4 ur-border-0 ur-si-card">
+			<div class="user-registration-card__header ur-border-0">
+				<div class="user-registration-card__header-wrapper">
+					<h3 class="user-registration-card__title"><?php echo esc_html( $ur_section['title'] ); ?></h3>
+				</div>
+			</div>
+			<div class="pt-0 pb-0 user-registration-card__body">
+				<table class="ur-si-table">
+					<tbody>
+					<?php foreach ( $ur_section['rows'] as $ur_row ) : ?>
+						<tr>
+							<th scope="row"><?php echo esc_html( $ur_row[0] ); ?></th>
+							<td><?php echo $ur_row[1]; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- pre-escaped above. ?></td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+	<?php endforeach; ?>
+
+	<div class="user-registration-card ur-mt-4 ur-border-0 ur-si-card">
+		<div class="user-registration-card__header ur-border-0">
+			<div class="user-registration-card__header-wrapper">
+				<h3 class="user-registration-card__title"><?php esc_html_e( 'Plugin settings', 'user-registration' ); ?></h3>
+			</div>
+		</div>
+		<div class="pt-0 pb-0 user-registration-card__body">
+			<details>
+				<summary><?php esc_html_e( 'Show settings (JSON). Included when you copy', 'user-registration' ); ?></summary>
+				<pre class="ur-si-json" data-ur-si-json><?php echo esc_html( wp_json_encode( $ur_global_settings ) ); ?></pre>
+			</details>
 		</div>
 	</div>
-	<button type="button" class="button button-primary user-registration-system-info-setting-copy" data-tip="<?php esc_attr_e( 'Copy system info', 'user-registration' ); ?>" data-copied="<?php esc_attr_e( 'Copied!', 'user-registration' ); ?>">
-		<svg width="16" height="16" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-			<path d="M20 8H10C8.89543 8 8 8.89543 8 10V20C8 21.1046 8.89543 22 10 22H20C21.1046 22 22 21.1046 22 20V10C22 8.89543 21.1046 8 20 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-			<path d="M4 16C2.9 16 2 15.1 2 14V4C2 2.9 2.9 2 4 2H14C15.1 2 16 2.9 16 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-		</svg>
-		<?php esc_html_e( 'Copy system info', 'user-registration' ); ?>
-	</button>
-	<span id="ur-system-info-copy-status" class="screen-reader-text" role="status" aria-live="polite"></span>
-	<table>
-		<?php
-		$license_key = get_option( 'user-registration_license_key' );
-
-		if ( is_plugin_active( 'user-registration-pro/user-registration.php' ) ) {
-			?>
-			<tr>
-				<th colspan="2">
-					<?php
-					$license_data = get_transient( 'ur_pro_license_plan' );
-					if ( $license_key && $license_data ) {
-						$name = isset( $license_data->item_name ) ? esc_html( $license_data->item_name ) : '-';
-					} else {
-						$name = esc_html__( 'User Registration & Membership PRO', 'user-registration' );
-					}
-					echo esc_html( $name );
-					?>
-				</th>
-
-			</tr>
-			<tr>
-				<th><?php esc_html_e( 'Version', 'user-registration' ); ?></th>
-				<td>
-					<?php
-					$plugin_file = WP_PLUGIN_DIR . '/user-registration-pro/user-registration.php';
-
-					if ( file_exists( $plugin_file ) ) {
-						$plugin_data = get_plugin_data( $plugin_file, array( 'Version' => 'Version' ) );
-						if ( ! empty( $plugin_data['Version'] ) ) {
-							$plugin_version = $plugin_data['Version'];
-							echo esc_html( $plugin_version ) . ' ';
-						}
-					} else {
-						$plugin_version = null;
-					}
-					?>
-				</td>
-			</tr>
-			<tr>
-				<th><?php esc_html_e( 'Edition', 'user-registration' ); ?></th>
-				<td>
-					<?php
-					$license_data = get_transient( 'ur_pro_license_plan' );
-
-					if ( $license_key && $license_data ) {
-						$edition = isset( $license_data->item_plan ) ? esc_html__( 'PRO', 'user-registration' ) : '-';
-						echo esc_html( $edition );
-					} else {
-						echo esc_html__( 'Free', 'user-registration' );
-					}
-					?>
-				</td>
-			</tr>
-			<tr>
-				<th><?php esc_html_e( 'License Key', 'user-registration' ); ?></th>
-				<td>
-					<?php
-					$license_data = get_transient( 'ur_pro_license_plan' );
-
-					if ( $license_key && $license_data ) {
-						$license_key = isset( $license_data->license ) ? esc_html__( 'Licensed', 'user-registration' ) : '-';
-						echo esc_html( $license_key );
-					} else {
-						echo esc_html__( 'Unlicensed', 'user-registration' );
-					}
-					?>
-				</td>
-			</tr>
-			<tr>
-				<th><?php esc_html_e( 'License Activated', 'user-registration' ); ?></th>
-				<td>
-					<?php
-					$license_data = get_transient( 'ur_pro_license_plan' );
-
-					if ( $license_key && $license_data ) {
-						$license_status = isset( $license_data->success ) ? esc_html__( 'Yes', 'user-registration' ) : '-';
-						echo esc_html( $license_status );
-					} else {
-						echo esc_html__( 'No', 'user-registration' );
-					}
-					?>
-				</td>
-			</tr>
-			<tr>
-				<th><?php esc_html_e( 'License Expires', 'user-registration' ); ?></th>
-				<td>
-					<?php
-					$license_data = get_transient( 'ur_pro_license_plan' );
-					if ( $license_key && $license_data ) {
-						$expires = isset( $license_data->expires ) ? esc_html( $license_data->expires ) : '-';
-						echo esc_html( $expires );
-					} else {
-						echo esc_html__( '-', 'user-registration' );
-					}
-					?>
-				</td>
-			</tr>
-			<?php
-		} elseif ( is_plugin_active( 'user-registration/user-registration.php' ) ) {
-			?>
-			<tr>
-				<th colspan="2">
-					<?php
-					$plugin_name = esc_html__( 'User Registration & Membership', 'user-registration' );
-					echo esc_html( $plugin_name );
-					?>
-				</th>
-			</tr>
-			<tr>
-				<th><?php esc_html_e( 'Version', 'user-registration' ); ?></th>
-				<td>
-					<?php
-					$plugin_file = WP_PLUGIN_DIR . '/user-registration/user-registration.php';
-
-					if ( file_exists( $plugin_file ) ) {
-						$plugin_data = get_plugin_data( $plugin_file, array( 'Version' => 'Version' ) );
-						if ( ! empty( $plugin_data['Version'] ) ) {
-							$plugin_version = $plugin_data['Version'];
-							echo esc_html( $plugin_version );
-						}
-					} else {
-						$plugin_version = null;
-					}
-					?>
-				</td>
-			</tr>
-			<?php
-		}
-		?>
-		<!-- WordPress -->
-		<tr>
-			<th colspan="2">
-				<?php
-				esc_html_e( 'WordPress', 'user-registration' );
-				?>
-			</th>
-		</tr>
-		<tr>
-			<th>
-				<?php
-				$require_wp     = get_plugin_data( $plugin_file, array( 'RequiresWP' => 'Requires WP' ) );
-				$min_version_wp = $require_wp['RequiresWP'];
-				esc_html_e( 'Version', 'user-registration' );
-				if ( is_plugin_active( 'user-registration-pro/user-registration.php' ) ) {
-					echo esc_html( '(Min:' . $min_version_wp . ')' );
-				} elseif ( is_plugin_active( 'user-registration/user-registration.php' ) ) {
-					echo ' ';
-				}
-				?>
-			</th>
-			<td><?php echo esc_html( get_bloginfo( 'version' ) ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'MultiSite Enabled', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( is_multisite() ? 'Yes' : 'No' ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Home URL', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( home_url() ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Site URL', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( site_url() ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Theme', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$theme = wp_get_theme();
-				echo isset( $theme->name ) && isset( $theme->version ) ? esc_html( $theme->name ) . ' (' . esc_html( $theme->version ) . ')' : '';
-				?>
-			</td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Plugins', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$all_plugins    = get_plugins();
-				$active_plugins = get_option( 'active_plugins', array() );
-
-				foreach ( $active_plugins as $pf ) {
-					if ( isset( $all_plugins[ $pf ] ) ) {
-						$plugin_data = $all_plugins[ $pf ];
-						echo esc_html( $plugin_data['Name'] . ' (' . $plugin_data['Version'] . ')' ) . '<br>';
-					}
-				}
-				?>
-			</td>
-		</tr>
-		<tr class="ur-general-settings-hide">
-			<th><?php esc_html_e( 'User Registration & Membership Global Settings ', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$global_settings = array();
-				$settings        = ur_setting_keys();
-				$send_all        = false;
-				$send_default    = false;
-
-				foreach ( $settings as $product => $product_settings ) {
-					foreach ( $product_settings as $setting_array ) {
-						$setting_key     = $setting_array[0];
-						$setting_default = $setting_array[1];
-						$value           = get_option( $setting_key, 'NOT_SET' );
-
-						// Set boolean values for certain settings.
-						if ( isset( $setting_array[2] ) && 'NOT_SET' !== $value && $setting_default !== $value ) {
-							$value = 1;
-						}
-
-						if ( 'NOT_SET' !== $value || $send_all ) {
-							$setting_content = array(
-								'value' => $value //phpcs:ignore
-							);
-
-							if ( $send_default ) {
-								$setting_content['default'] = $setting_default;
-							}
-
-							$global_settings[ $product ][ $setting_key ] = $setting_content;
-						}
-					}
-				}
-				echo wp_json_encode( $global_settings );
-				?>
-			</td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Max Upload Size', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$max_upload_size_bytes = wp_max_upload_size();
-				$max_upload_size_mb    = $max_upload_size_bytes / 1024 / 1024;
-				echo esc_html( $max_upload_size_mb ) . ' MB';
-				?>
-			</td>
-		</tr>
-		<!-- PHP -->
-		<tr>
-			<th colspan="2"><?php esc_html_e( 'PHP', 'user-registration' ); ?></th>
-		</tr>
-		<tr>
-			<th>
-				<?php
-				$plugin_data     = get_plugin_data( $plugin_file, array( 'RequiresPHP' => 'Requires PHP' ) );
-				$min_version_php = $plugin_data['RequiresPHP'];
-				esc_html_e( 'Version', 'user-registration' );
-				if ( is_plugin_active( 'user-registration-pro/user-registration.php' ) ) {
-					echo esc_html( '(Min:' . $min_version_php . ')' );
-				} elseif ( is_plugin_active( 'user-registration/user-registration.php' ) ) {
-					echo ' ';
-				}
-				?>
-			</th>
-			<td><?php echo esc_html( phpversion() ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Default Timezone', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( date_default_timezone_get() ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Max Execution Time', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( ini_get( 'max_execution_time' ) ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Memory Limit', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( ini_get( 'memory_limit' ) ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Max Upload Size', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( ini_get( 'upload_max_filesize' ) ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Max Input Variables', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( ini_get( 'max_input_vars' ) ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'SMTP Hostname', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( ini_get( 'SMTP' ) ); ?></td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'SMTP Port', 'user-registration' ); ?></th>
-			<td><?php echo esc_html( ini_get( 'smtp_port' ) ); ?></td>
-		</tr>
-		<!-- Web Server -->
-		<tr>
-			<th colspan="2"><?php esc_html_e( 'Web Server', 'user-registration' ); ?></th>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Name', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$remote_addr = isset( $_SERVER['SERVER_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_NAME'] ) ) : '';
-				echo esc_html( $remote_addr );
-				?>
-			</td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'IP', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
-				echo esc_html( $remote_addr );
-				?>
-			</td>
-		</tr>
-		<!-- MySQL -->
-		<tr>
-			<th colspan="2"><?php esc_html_e( 'MySQL', 'user-registration' ); ?></th>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Version', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				global $wpdb;
-				echo esc_html( $wpdb->db_version() );
-				?>
-			</td>
-		</tr>
-		<tr>
-			<th><?php esc_html_e( 'Max Allowed Packet', 'user-registration' ); ?></th>
-			<td>
-				<?php
-				$max_packet_size_bytes = array(
-					'label' => __( 'Max allowed packet size', 'user-registration' ),
-					'value' => WP_Debug_Data::get_mysql_var( 'max_allowed_packet' ),
-				);
-
-				$info['wp-database']['fields']['max_allowed_packet'] = $max_packet_size_bytes;
-
-				$maxp_mb = isset( $max_packet_size_bytes['value'] ) ? $max_packet_size_bytes['value'] / 1024 / 1024 : '';
-				echo esc_html( $maxp_mb ) . ' MB';
-
-				?>
-			</td>
-		</tr>
-
-		<!-- Plugin Pages Information -->
-		<tr>
-			<th colspan="2"><?php esc_html_e( 'Required Pages', 'user-registration' ); ?></th>
-		</tr>
-		<?php
-		$plugin_pages = array(
-			'user_registration_login_page_id'          => __( 'Login Page', 'user-registration' ),
-			'user_registration_lost_password_page_id'  => __( 'Lost Password Page', 'user-registration' ),
-			'user_registration_reset_password_page_id' => __( 'Reset Password Page', 'user-registration' ),
-			'user_registration_myaccount_page_id'      => __( 'My Account Page', 'user-registration' ),
-		);
-		if ( ur_check_module_activation( 'membership' ) ) {
-			$plugin_pages['user_registration_member_registration_page_id'] = __( 'Membership Registration Page', 'user-registration' );
-			$plugin_pages['user_registration_thank_you_page_id']           = __( 'Thank You Page', 'user-registration' );
-		}
-
-		foreach ( $plugin_pages as $option => $label ) {
-			echo '<tr>';
-			echo '<th>' . esc_html( $label ) . '</th>';
-
-			// Special handling for login page
-			if ( $option === 'user_registration_login_page_id' ) {
-				$login_page_info = ur_get_login_page_info();
-				if ( $login_page_info['login_page_id_set'] ) {
-					// Check user_registration_login_page_id first
-					$page_id = get_option( 'user_registration_login_page_id' );
-					$page    = get_post( $page_id );
-					if ( $page && $page->post_status === 'publish' ) {
-						echo '<td><a href="' . esc_url( get_permalink( $page_id ) ) . '" target="_blank" class="ur-page-link">' . esc_html( $page->post_title ) . '</a> <small class="ur-page-id">(ID: ' . $page_id . ')</small> - <span class="ur-status-live">' . esc_html__( 'Live', 'user-registration' ) . '</span></td>';
-					} else {
-						echo '<td><span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span></td>';
-					}
-				} elseif ( $login_page_info['login_redirect_url_set'] ) {
-					// Check user_registration_login_options_login_redirect_url
-					$login_redirect_url = get_option( 'user_registration_login_options_login_redirect_url' );
-					if ( is_numeric( $login_redirect_url ) ) {
-						$page = get_post( $login_redirect_url );
-						if ( $page && $page->post_status === 'publish' ) {
-							echo '<td><a href="' . esc_url( get_permalink( $login_redirect_url ) ) . '" target="_blank" class="ur-page-link">' . esc_html( $page->post_title ) . '</a> <small class="ur-page-id">(ID: ' . $login_redirect_url . ')</small> - <span class="ur-status-live">' . esc_html__( 'Live', 'user-registration' ) . '</span> <small class="ur-source-redirect">[Redirect]</small></td>';
-						} else {
-							echo '<td><span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span> <small class="ur-source-redirect">[Redirect]</small></td>';
-						}
-					} else {
-						echo '<td><a href="' . esc_url( $login_redirect_url ) . '" target="_blank" class="ur-page-link">' . esc_html( $login_redirect_url ) . '</a> <small class="ur-source-redirect">[External URL]</small></td>';
-					}
-				} elseif ( $login_page_info['has_login_pages'] ) {
-					// Show pages with login functionality
-					$login_pages = $login_page_info['login_pages_with_functionality'];
-					$first_page  = $login_pages[0];
-					$page_id     = $first_page->ID;
-
-					if ( $first_page->post_status === 'publish' ) {
-						echo '<td><a href="' . esc_url( get_permalink( $page_id ) ) . '" target="_blank" class="ur-page-link">' . esc_html( $first_page->post_title ) . '</a> <small class="ur-page-id">(ID: ' . $page_id . ')</small> - <span class="ur-status-live">' . esc_html__( 'Live', 'user-registration' ) . '</span> <small class="ur-source-auto">[Auto-detected]</small></td>';
-					} else {
-						echo '<td><span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span> <small class="ur-source-auto">[Auto-detected]</small></td>';
-					}
-
-					// Show additional pages if more than one
-					if ( count( $login_pages ) > 1 ) {
-						echo '<br><small class="ur-additional-pages">+' . ( count( $login_pages ) - 1 ) . ' more pages with login functionality</small>';
-					}
-				} else {
-					echo '<td><span class="ur-status-not-setup">' . esc_html__( 'No Login Page Found', 'user-registration' ) . '</span></td>';
-				}
-			} else {
-				// Regular handling for other pages
-				$page_id = get_option( $option );
-				if ( $page_id ) {
-					$page = get_post( $page_id );
-					if ( $page && $page->post_status === 'publish' ) {
-						echo '<td><a href="' . esc_url( get_permalink( $page_id ) ) . '" target="_blank" class="ur-page-link">' . esc_html( $page->post_title ) . '</a> <small class="ur-page-id">(ID: ' . $page_id . ')</small> - <span class="ur-status-live">' . esc_html__( 'Live', 'user-registration' ) . '</span></td>';
-					} else {
-						echo '<td><span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span></td>';
-					}
-				} else {
-					echo '<td><span class="ur-status-not-setup">' . esc_html__( 'Not Setup', 'user-registration' ) . '</span></td>';
-				}
-			}
-
-			echo '</tr>';
-		}
-		?>
-	</table>
 </div>
 
 <style>
 	#wpfooter {
 		position: relative;
 	}
-
-	.user-registration-system-info-setting-copy.button-primary {
-		width: auto;
-		height: auto;
-		padding: 0 16px;
-		gap: 6px;
-	}
 </style>
 
 <script>
-	document.addEventListener( 'click', function ( event ) {
-		var button = event.target.closest ? event.target.closest( '.user-registration-system-info-setting-copy' ) : null;
-		var status = document.getElementById( 'ur-system-info-copy-status' );
+	( function () {
+		var root = document.getElementById( 'ur-system-info' );
 
-		if ( button && status ) {
-			status.textContent = '<?php echo esc_js( __( 'System info copied', 'user-registration' ) ); ?>';
+		if ( ! root ) {
+			return;
 		}
-	} );
+
+		var i18n = {
+			copied: <?php echo wp_json_encode( __( 'Copied!', 'user-registration' ) ); ?>,
+			announce: <?php echo wp_json_encode( __( 'System info copied', 'user-registration' ) ); ?>,
+			blocked: <?php echo wp_json_encode( __( 'Your browser blocked copying. The system info below is selected: press Ctrl/⌘ + C to copy it.', 'user-registration' ) ); ?>
+		};
+
+		function collectText() {
+			var lines = [];
+
+			root.querySelectorAll( '.ur-si-card' ).forEach( function ( card ) {
+				var title = card.querySelector( '.user-registration-card__title' );
+				lines.push( title ? title.textContent.trim() : '' );
+
+				card.querySelectorAll( '.ur-si-table tr' ).forEach( function ( row ) {
+					lines.push( row.children[0].textContent.trim() + '\t' + row.children[1].innerText.replace( /\s*\n\s*/g, ', ' ).trim() );
+				} );
+
+				var json = card.querySelector( '[data-ur-si-json]' );
+				if ( json ) {
+					lines.push( json.textContent.trim() );
+				}
+
+				lines.push( '' );
+			} );
+
+			return lines.join( '\n' ).trim();
+		}
+
+		function legacyCopy( text ) {
+			var area = document.createElement( 'textarea' );
+			area.className = 'ur-si-fallback';
+			area.value = text;
+			area.setAttribute( 'readonly', 'readonly' );
+			area.setAttribute( 'aria-label', <?php echo wp_json_encode( __( 'System info', 'user-registration' ) ); ?> );
+			root.querySelector( '.ur-si-notice' ).appendChild( area );
+			area.select();
+
+			var ok = false;
+			try {
+				ok = document.execCommand( 'copy' );
+			} catch ( e ) {
+				ok = false;
+			}
+
+			return { ok: ok, area: area };
+		}
+
+		function showResult( button, ok, area ) {
+			var tip = document.querySelector( '.ur-copied-tip' );
+			var status = document.getElementById( 'ur-system-info-copy-status' );
+
+			if ( ok ) {
+				if ( area ) {
+					area.remove();
+				}
+				if ( tip ) {
+					tip.textContent = i18n.copied;
+					tip.classList.add( 'is-visible' );
+					window.setTimeout( function () {
+						tip.classList.remove( 'is-visible' );
+					}, 2000 );
+				}
+				if ( status ) {
+					status.textContent = i18n.announce;
+				}
+				return;
+			}
+
+			if ( status ) {
+				status.textContent = i18n.blocked;
+			}
+			var notice = root.querySelector( '.ur-si-notice' );
+			var message = document.createElement( 'p' );
+			message.className = 'notice notice-warning inline';
+			message.textContent = i18n.blocked;
+			notice.insertBefore( message, notice.firstChild );
+		}
+
+		document.addEventListener( 'click', function ( event ) {
+			var button = event.target.closest ? event.target.closest( '.ur-system-info-copy' ) : null;
+
+			if ( ! button ) {
+				return;
+			}
+
+			var text = collectText();
+
+			if ( navigator.clipboard && window.isSecureContext ) {
+				navigator.clipboard.writeText( text ).then(
+					function () {
+						showResult( button, true );
+					},
+					function () {
+						var result = legacyCopy( text );
+						showResult( button, result.ok, result.area );
+					}
+				);
+				return;
+			}
+
+			var result = legacyCopy( text );
+			showResult( button, result.ok, result.area );
+		} );
+	}() );
 </script>

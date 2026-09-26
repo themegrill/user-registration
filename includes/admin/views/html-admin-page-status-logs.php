@@ -13,50 +13,145 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' );
 ?>
-	<style>
-		.user-registration-card__body .empty-list-table-container {
-			text-align: center;
-			padding: 40px 24px 44px;
+<style>
+	.user-registration-options-header--top {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.ur-log-card-header {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.ur-log-card-header .user-registration-card__header-wrapper {
+		display: flex;
+		align-items: baseline;
+		gap: 12px;
+	}
+
+	.ur-log-totals {
+		margin: 0;
+		font-size: 13px;
+		color: #6b6b6b;
+	}
+
+	.ur-log-search {
+		position: relative;
+		width: 275px;
+	}
+
+	.ur-log-search input[type="search"] {
+		width: 100%;
+		min-height: 38px;
+		height: 38px;
+		padding: 0 35px 0 12px;
+		border: 1px solid #e1e1e1;
+		border-radius: 4px;
+	}
+
+	.ur-log-search button {
+		position: absolute;
+		top: 50%;
+		right: 12px;
+		transform: translateY(-50%);
+		display: flex;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		cursor: pointer;
+	}
+
+	.ur-log-search button svg path {
+		fill: #a1a4b9;
+	}
+
+	.ur-logs-table th,
+	.ur-logs-table td {
+		padding: 12px 16px;
+		font-size: 14px;
+		line-height: 24px;
+		color: #383838;
+	}
+
+	.ur-logs-table thead th {
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.ur-logs-table .column-files,
+	.ur-logs-table .column-size {
+		text-align: right;
+	}
+
+	.ur-logs-table .row-title {
+		font-weight: 500;
+		color: #475bb2;
+	}
+
+	.ur-logs-table .row-actions {
+		font-size: 13px;
+		color: #6b6b6b;
+	}
+
+	.ur-logs-table .ur-log-handle {
+		display: block;
+		padding: 0;
+		background: none;
+		font: 12px/18px Consolas, Monaco, monospace;
+		color: #6b6b6b;
+	}
+
+	.user-registration-card__body .tablenav .actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.user-registration-card__body .tablenav .actions select {
+		max-width: 220px;
+	}
+
+	.user-registration-card__body .empty-list-table-container {
+		text-align: center;
+		padding: 40px 24px 44px;
+	}
+
+	.user-registration-card__body .empty-list-table-container img {
+		display: block;
+		width: 256px;
+		max-width: 100%;
+		height: auto;
+		margin: 0 auto 12px;
+	}
+
+	@media (max-width: 782px) {
+		body {
+			min-width: 0;
 		}
 
-		.user-registration-card__body .empty-list-table-container img {
-			display: block;
-			width: 256px;
-			max-width: 100%;
-			height: auto;
-			margin: 0 auto 12px;
+		.ur-log-search {
+			width: 100%;
 		}
 
-		.user-registration-card__body .search-box {
-			display: flex;
-			justify-content: flex-end;
-			align-items: center;
-			gap: 8px;
-			float: none;
-			margin: 0 0 12px;
+		.ur-log-card-header .user-registration-card__header-wrapper {
+			flex-wrap: wrap;
 		}
+	}
 
-		.user-registration-card__body .search-box input[type="search"] {
-			width: 275px;
-			margin: 0;
-		}
-
-		.user-registration-card__body .tablenav .actions {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-		}
-
-		.user-registration-card__body .tablenav .actions select {
-			max-width: 220px;
-		}
-	</style>
+</style>
 <?php if ( empty( $sources ) ) : ?>
 	<div class="user-registration-card ur-mt-4 ur-border-0">
 		<div class="user-registration-card__body">
 			<?php
 			UR_Base_Layout::no_items(
-				'logs',
+				__( 'logs', 'user-registration' ),
 				__( 'Logs appear here when an email, payment or fatal error needs your attention.', 'user-registration' )
 			);
 			?>
@@ -73,14 +168,9 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 		$total_files += count( $source['files'] );
 		$total_size  += $source['size'];
 	}
-
-	$delete_all_url = wp_nonce_url(
-		add_query_arg( array( 'handle_all' => sanitize_title( 'delete-all-logs' ) ), $ur_logs_url ),
-		'remove_all_logs'
-	);
 	?>
 	<div class="user-registration-card ur-mt-4 ur-border-0">
-		<div class="user-registration-card__header ur-border-0" style="display:flex; justify-content: space-between; align-items: center;">
+		<div class="user-registration-card__header ur-border-0 ur-log-card-header">
 			<div class="user-registration-card__header-wrapper">
 				<h3 class="user-registration-card__title"><?php esc_html_e( 'All logs', 'user-registration' ); ?></h3>
 				<p class="ur-log-totals">
@@ -97,16 +187,27 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 					?>
 				</p>
 			</div>
-			<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_all_url ); ?>" data-confirm="<?php esc_attr_e( 'Delete all log files permanently? This can’t be undone.', 'user-registration' ); ?>">
-				<?php esc_html_e( 'Delete all logs', 'user-registration' ); ?>
-			</a>
+			<?php if ( $table->should_show_search() ) : ?>
+				<div class="ur-log-search">
+					<label class="screen-reader-text" for="ur-log-search-input"><?php esc_html_e( 'Search logs', 'user-registration' ); ?></label>
+					<input type="search" id="ur-log-search-input" name="s" value="<?php echo esc_attr( isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification ?>" placeholder="<?php esc_attr_e( 'Search logs…', 'user-registration' ); ?>" />
+					<button type="submit" aria-label="<?php esc_attr_e( 'Search logs', 'user-registration' ); ?>">
+						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="#000" fill-rule="evenodd" d="M4 11a7 7 0 1 1 12.042 4.856 1.012 1.012 0 0 0-.186.186A7 7 0 0 1 4 11Zm12.618 7.032a9 9 0 1 1 1.414-1.414l3.675 3.675a1 1 0 0 1-1.414 1.414l-3.675-3.675Z" clip-rule="evenodd"/></svg>
+					</button>
+				</div>
+			<?php endif; ?>
 		</div>
 		<div class="pt-0 pb-0 user-registration-card__body">
 			<input type="hidden" name="page" value="user-registration-settings" />
 			<input type="hidden" name="tab" value="tools" />
 			<input type="hidden" name="section" value="logs" />
 			<?php
-			$table->search_box( __( 'Search logs', 'user-registration' ), 'ur-log' );
+			foreach ( array( 'orderby', 'order' ) as $ur_sort_key ) {
+				if ( isset( $_GET[ $ur_sort_key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+					echo '<input type="hidden" name="' . esc_attr( $ur_sort_key ) . '" value="' . esc_attr( sanitize_key( wp_unslash( $_GET[ $ur_sort_key ] ) ) ) . '" />'; // phpcs:ignore WordPress.Security.NonceVerification
+				}
+			}
+
 			$table->display();
 			?>
 		</div>
@@ -117,7 +218,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 	$info   = UR_Log_List_Table::describe_handle( $viewed_handle );
 
 	$delete_log_url = wp_nonce_url(
-		add_query_arg( array( 'handle' => rawurlencode( $viewed_handle ) ), $ur_logs_url ),
+		add_query_arg( array( 'handle' => $viewed_handle ), $ur_logs_url ),
 		'remove_log'
 	);
 	?>
