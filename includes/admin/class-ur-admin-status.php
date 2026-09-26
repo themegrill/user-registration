@@ -37,17 +37,23 @@ class UR_Admin_Status {
 	public static function status_logs_file() {
 		include_once __DIR__ . '/class-ur-log-list-table.php';
 
+		$deleting = false;
+
 		if ( ! empty( $_REQUEST['handle'] ) ) {
 			self::remove_log();
+			$deleting = true;
 		}
 		if ( ! empty( $_REQUEST['handle_all'] ) ) {
 			self::remove_all_logs();
+			$deleting = true;
 		}
 		if ( 'delete' === self::get_bulk_action() && ! empty( $_REQUEST['sources'] ) ) {
 			self::remove_selected_logs();
+			$deleting = true;
 		}
 
-		$sources = UR_Log_List_Table::scan_sources( true );
+		// Files only change on a delete; otherwise reuse this request's scan.
+		$sources = UR_Log_List_Table::scan_sources( $deleting );
 
 		$viewed_handle = '';
 		$viewed_file   = '';

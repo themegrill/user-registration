@@ -59,11 +59,15 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 				return;
 			}
 
-			include_once dirname( __DIR__ ) . '/class-ur-log-list-table.php';
-
 			$viewing_single = ! empty( $_GET['log'] ) || ! empty( $_REQUEST['log_file'] ); // phpcs:ignore WordPress.Security.NonceVerification
 
-			if ( ( $current_section && 'logs' !== $current_section ) || $viewing_single || count( UR_Log_List_Table::scan_sources() ) < 2 ) {
+			if ( ( $current_section && 'logs' !== $current_section ) || $viewing_single ) {
+				return;
+			}
+
+			include_once dirname( __DIR__ ) . '/class-ur-log-list-table.php';
+
+			if ( count( UR_Log_List_Table::scan_sources() ) < 2 ) {
 				return;
 			}
 

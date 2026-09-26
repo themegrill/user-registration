@@ -236,7 +236,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 						sprintf(
 							/* translators: 1: category, 2: number of files, 3: total size */
 							_n( '%1$s · %2$d file · %3$s', '%1$s · %2$d files · %3$s', count( $source['files'] ), 'user-registration' ),
-							$info['category'],
+							$info['category_label'],
 							count( $source['files'] ),
 							UR_Log_List_Table::format_size( $source['size'] )
 						)
