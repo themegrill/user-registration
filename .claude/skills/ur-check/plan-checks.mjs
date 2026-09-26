@@ -32,6 +32,19 @@ export function assertSafeRef(ref) {
 }
 
 /**
+ * Quote a path for safe use as a single POSIX shell argument.
+ *
+ * Paths come from git and can contain spaces or shell metacharacters; the planner's output is a
+ * command Claude runs directly, so every path must be quoted before being joined into one.
+ *
+ * @param {string} p Path to quote.
+ * @returns {string} `'...'`, with any embedded `'` escaped.
+ */
+export function shellQuote(p) {
+	return `'${p.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * Describe a list truncated for display, so nothing is dropped silently.
  *
  * @param {string[]} items Full list.
@@ -82,7 +95,7 @@ export function planChecks(files, areaPaths, diffText = "") {
 
 	if (php.length) {
 		for (let i = 0; i < php.length; i += PHPCS_BATCH_SIZE) {
-			commands.push(`php vendor/bin/phpcs -s ${php.slice(i, i + PHPCS_BATCH_SIZE).join(" ")}`);
+			commands.push(`php vendor/bin/phpcs -s ${php.slice(i, i + PHPCS_BATCH_SIZE).map(shellQuote).join(" ")}`);
 		}
 		notes.push("CI sniffs every changed PHP file in full (report-only, not blocking); the local hook reports changed lines only.");
 	}

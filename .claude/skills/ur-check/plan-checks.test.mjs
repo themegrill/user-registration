@@ -4,7 +4,7 @@ import { test } from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertSafeRef, globToRegExp, listWithOverflow, planChecks } from "./plan-checks.mjs";
+import { assertSafeRef, globToRegExp, listWithOverflow, planChecks, shellQuote } from "./plan-checks.mjs";
 
 /** `paths:` globs from a rule's frontmatter. */
 function ruleGlobs(ruleFile) {
@@ -39,7 +39,14 @@ test("more than one batch of php files is split, never truncated", () => {
 	const files = Array.from({ length: 60 }, (_, i) => `includes/f${i}.php`);
 	const cmds = planChecks(files, {}).commands.filter((c) => c.startsWith("php vendor/bin/phpcs"));
 	assert.equal(cmds.length, 3);
-	assert.equal(cmds.join(" ").split(" ").filter((x) => x.endsWith(".php")).length, 60);
+	assert.equal(cmds.join(" ").split(" ").filter((x) => x.endsWith(".php'")).length, 60);
+});
+
+test("shellQuote: a filename that looks like a shell command cannot execute one", () => {
+	assert.equal(shellQuote("includes/a; touch /tmp/pwned.php"), "'includes/a; touch /tmp/pwned.php'");
+	assert.equal(shellQuote("it's/evil.php"), "'it'\\''s/evil.php'");
+	const cmd = planChecks(["includes/a; touch /tmp/pwned.php"], {}).commands.find((c) => c.startsWith("php vendor/bin/phpcs"));
+	assert.equal(cmd, "php vendor/bin/phpcs -s 'includes/a; touch /tmp/pwned.php'");
 });
 
 test("long listings say how many were cut", () => {

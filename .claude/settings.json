@@ -28,12 +28,18 @@
       "Read(./.themegrill-qa/.env.local)",
       "Read(./.env)",
       "Read(./.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git push * --force*)",
       "Bash(git diff*--output*)",
       "Bash(git log*--output*)",
-      "Bash(git show*--output*)"
+      "Bash(git show*--output*)",
+      "Bash(git diff*--no-index*)",
+      "Bash(git diff*.env*)",
+      "Bash(git log*.env*)",
+      "Bash(git show*.env*)"
     ]
   },
   "hooks": {
