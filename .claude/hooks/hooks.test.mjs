@@ -78,6 +78,10 @@ test("guard: generated and vendored paths are denied", () => {
 		"languages/user-registration.pot",
 		".themegrill-qa/.env.local",
 		".themegrill-qa/docs/membership.md",
+		".env",
+		".env.local",
+		".env.production",
+		"tests/e2e/.env",
 	]) {
 		assert.equal(classify(p, never)?.decision, "deny", p);
 	}
