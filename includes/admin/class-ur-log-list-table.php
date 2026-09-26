@@ -359,7 +359,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				case 'size':
 					return esc_html( self::format_size( $item['size'] ) );
 				case 'last_updated':
-					return esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $item['mtime'] ) );
+					return esc_html( wp_date( _x( 'M j, Y, g:i A', 'log list date format', 'user-registration' ), $item['mtime'] ) );
 				default:
 					return '';
 			}

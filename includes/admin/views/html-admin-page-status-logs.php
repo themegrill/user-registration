@@ -95,9 +95,106 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 		color: #475bb2;
 	}
 
+	.ur-logs-table td,
+	.ur-logs-table tbody th {
+		vertical-align: top;
+		padding: 14px 16px;
+	}
+
+	.ur-logs-table tbody th.check-column {
+		width: 44px;
+		padding: 14px 0 0 16px;
+	}
+
+	.ur-logs-table thead .check-column,
+	.ur-logs-table tfoot .check-column {
+		width: 44px;
+		padding: 12px 0 0 16px;
+	}
+
+	.ur-logs-table .check-column input[type="checkbox"] {
+		margin: 4px 0 0;
+	}
+
+	.ur-logs-table .column-category {
+		width: 140px;
+	}
+
+	.ur-logs-table .column-files {
+		width: 80px;
+	}
+
+	.ur-logs-table .column-size {
+		width: 110px;
+	}
+
+	.ur-logs-table .column-last_updated {
+		width: 200px;
+		white-space: nowrap;
+	}
+
+	.ur-logs-table .check-column input[type="checkbox"] {
+		vertical-align: top;
+	}
+
+	.ur-logs-table .column-files,
+	.ur-logs-table .column-size {
+		font-variant-numeric: tabular-nums;
+	}
+
+	.ur-logs-table .row-title {
+		display: block;
+	}
+
 	.ur-logs-table .row-actions {
+		position: static;
+		left: auto;
+		padding: 0;
 		font-size: 13px;
+		line-height: 20px;
 		color: #6b6b6b;
+	}
+
+	.ur-logs-table .row-actions a {
+		color: #475bb2;
+		text-decoration: none;
+	}
+
+	.ur-logs-table .row-actions a.ur-log-delete-link {
+		color: #b3262b;
+	}
+
+	.user-registration-card__body .tablenav select {
+		min-height: 38px;
+		padding: 0 32px 0 12px;
+		border-color: #bababa;
+		border-radius: 4px;
+	}
+
+	.user-registration-card__body .tablenav .button {
+		min-height: 38px;
+		line-height: 36px;
+		padding: 0 14px;
+		font-size: 14px;
+		font-weight: 500;
+		color: #475bb2;
+		background: #f6f7f7;
+		border: 1px solid #475bb2;
+		border-radius: 4px;
+	}
+
+	.user-registration-card__body .tablenav-pages .button,
+	.user-registration-card__body .tablenav-pages .tablenav-pages-navspan {
+		min-width: 30px;
+		min-height: 30px;
+		line-height: 28px;
+		padding: 0;
+		border-radius: 3px;
+	}
+
+	.user-registration-card__body .tablenav-pages .current-page {
+		min-height: 30px;
+		border-radius: 3px;
 	}
 
 	.ur-logs-table .ur-log-handle {
