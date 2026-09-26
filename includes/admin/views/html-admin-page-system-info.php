@@ -30,16 +30,14 @@ if ( ! class_exists( 'WP_Debug_Data' ) ) {
 			<h3><?php esc_html_e( 'System Info', 'user-registration' ); ?></h3>
 		</div>
 	</div>
-	<button class="user-registration-system-info-setting-copy tooltipstered" href="#" data-tip="Copy Shortcode ! "
-			data-copied="Copied ! ">
-		<svg width="18" height="18" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-			<path
-				d="M20 8H10C8.89543 8 8 8.89543 8 10V20C8 21.1046 8.89543 22 10 22H20C21.1046 22 22 21.1046 22 20V10C22 8.89543 21.1046 8 20 8Z"
-				stroke="#383838" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-			<path d="M4 16C2.9 16 2 15.1 2 14V4C2 2.9 2.9 2 4 2H14C15.1 2 16 2.9 16 4" stroke="#383838" stroke-width="2"
-					stroke-linecap="round" stroke-linejoin="round"/>
+	<button type="button" class="button button-primary user-registration-system-info-setting-copy" data-tip="<?php esc_attr_e( 'Copy system info', 'user-registration' ); ?>" data-copied="<?php esc_attr_e( 'Copied!', 'user-registration' ); ?>">
+		<svg width="16" height="16" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+			<path d="M20 8H10C8.89543 8 8 8.89543 8 10V20C8 21.1046 8.89543 22 10 22H20C21.1046 22 22 21.1046 22 20V10C22 8.89543 21.1046 8 20 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+			<path d="M4 16C2.9 16 2 15.1 2 14V4C2 2.9 2.9 2 4 2H14C15.1 2 16 2.9 16 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 		</svg>
+		<?php esc_html_e( 'Copy system info', 'user-registration' ); ?>
 	</button>
+	<span id="ur-system-info-copy-status" class="screen-reader-text" role="status" aria-live="polite"></span>
 	<table>
 		<?php
 		$license_key = get_option( 'user-registration_license_key' );
@@ -465,4 +463,22 @@ if ( ! class_exists( 'WP_Debug_Data' ) ) {
 	#wpfooter {
 		position: relative;
 	}
+
+	.user-registration-system-info-setting-copy.button-primary {
+		width: auto;
+		height: auto;
+		padding: 0 16px;
+		gap: 6px;
+	}
 </style>
+
+<script>
+	document.addEventListener( 'click', function ( event ) {
+		var button = event.target.closest ? event.target.closest( '.user-registration-system-info-setting-copy' ) : null;
+		var status = document.getElementById( 'ur-system-info-copy-status' );
+
+		if ( button && status ) {
+			status.textContent = '<?php echo esc_js( __( 'System info copied', 'user-registration' ) ); ?>';
+		}
+	} );
+</script>

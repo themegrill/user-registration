@@ -29,6 +29,18 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 
 			add_filter( "user_registration_get_sections_{$this->id}", array( $this, 'get_sections_callback' ), 1, 1 );
 			add_filter( 'user_registration_settings_hide_save_button', array( $this, 'hide_save_button' ) );
+			add_filter( "user_registration_settings_form_method_tab_{$this->id}", array( $this, 'get_form_method' ) );
+		}
+
+		/**
+		 * Tools has no settings to save: its search, filter, sort and bulk
+		 * actions are plain GET requests, which also keeps them clear of the
+		 * Settings save flow that reacts to any POST carrying a nonce.
+		 *
+		 * @return string
+		 */
+		public function get_form_method() {
+			return 'get';
 		}
 
 		/**
