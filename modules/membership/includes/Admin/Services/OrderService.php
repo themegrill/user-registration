@@ -86,10 +86,10 @@ class OrderService {
 
 		// For upgrades, replace $total with the pre-tax prorated amount so that
 		// tax and total_amount are both calculated on the correct base.
-		// A plan with its own trial bills nothing up front on any gateway, so its upgrade order stays 0.
+		// PayPal bills a trial-plan upgrade nothing up front, so its order stays 0; other gateways keep the prorated amount.
 		$is_proration_upgrade_order = false;
 		if ( ! empty( $upgrade_details ) && isset( $upgrade_details['chargeable_amount'] ) ) {
-			$total                      = $has_trial ? 0 : floatval( $upgrade_details['chargeable_amount'] );
+			$total                      = ( $has_trial && 'paypal' === ( $data['membership_data']['payment_method'] ?? '' ) ) ? 0 : floatval( $upgrade_details['chargeable_amount'] );
 			$is_proration_upgrade_order = true;
 		}
 

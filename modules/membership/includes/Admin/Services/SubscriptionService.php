@@ -962,12 +962,12 @@ class SubscriptionService {
 				$decoded_data['subscription_data'] = $previous_subscription;
 				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
 				$subscription_data['status']       = 'active';
-				// The row was deliberately left pointing at the old (still-billing) PayPal subscription until
-				// today (see NewPaypalService::handle_subscription_webhook_event()'s deferred-ACTIVATED guard);
-				// switch it to the new one now that its billing actually takes over.
-				$new_paypal_subscription_id = get_user_meta( $user->ID, 'urm_paypal_subscription_paypal_id', true );
+				// The webhook left the row on the old subscription until now; point it at the new one as its billing starts.
+				$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
+				$new_paypal_subscription_id = get_user_meta( $user->ID, $scheduled_meta_key, true );
 				if ( ! empty( $new_paypal_subscription_id ) ) {
 					$subscription_data['subscription_id'] = $new_paypal_subscription_id;
+					delete_user_meta( $user->ID, $scheduled_meta_key );
 				}
 				$this->subscription_repository->update( $subscription_id, $subscription_data );
 				$last_order = $this->members_orders_repository->get_member_orders( $user->ID );
@@ -1531,7 +1531,7 @@ class SubscriptionService {
 								$paypal_last_synced = $last_synced;
 								update_option( 'urm_last_paypal_backfill_sync_time', $paypal_last_synced );
 							}
-							$paypal_service     = new NewPaypalService();
+							$paypal_service = new NewPaypalService();
 							if ( ! $paypal_service->has_rest_credentials() ) {
 								ur_get_logger()->info(
 									'[Backfill][PayPal] Skipped — no REST credentials; the PayPal sync time is kept.',

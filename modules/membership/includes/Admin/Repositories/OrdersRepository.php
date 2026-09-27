@@ -334,6 +334,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	public function get_completed_paypal_onetime_with_pending_subscription() {
 		$subs_table = $this->wpdb()->prefix . 'ur_membership_subscriptions';
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot be prepared placeholders.
 		$result = $this->wpdb()->get_results(
 			"SELECT o.*
 			 FROM {$this->table} o
@@ -346,6 +347,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 			 AND o.ID = ( SELECT MAX( o2.ID ) FROM {$this->table} o2 WHERE o2.subscription_id = s.ID )",
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return $result ? $result : array();
 	}
