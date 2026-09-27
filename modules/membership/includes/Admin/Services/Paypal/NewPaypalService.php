@@ -2574,6 +2574,7 @@ class NewPaypalService {
 	 */
 	private function is_pending_order_for_current_plan( $order, $membership_subscription ) {
 		return ! empty( $order['ID'] )
+			&& 'paypal' === ( $order['payment_method'] ?? '' )
 			&& 'pending' === ( $order['status'] ?? '' )
 			&& '' === (string) ( $order['transaction_id'] ?? '' )
 			&& (int) ( $order['item_id'] ?? 0 ) === (int) ( $membership_subscription['item_id'] ?? 0 );
@@ -4261,8 +4262,26 @@ class NewPaypalService {
 				}
 			}
 
-			if ( ! $this->backfill_write_succeeded( $this->members_subscription_repository->update( $local_sub_id, $update_data ) ) ) {
+			// Keyed by subscription_id too: an upgrade can switch this row to a different PayPal subscription
+			// between the lookup above (a live PayPal GET can happen in between) and this write.
+			$rows_affected = $this->members_subscription_repository->wpdb()->update(
+				TableList::subscriptions_table(),
+				$update_data,
+				array(
+					'ID'              => $local_sub_id,
+					'subscription_id' => $paypal_subscription_id,
+				)
+			);
+
+			if ( false === $rows_affected ) {
+				$this->backfill_failed = true;
 				++$count_errors;
+				continue;
+			}
+
+			if ( 0 === $rows_affected ) {
+				// The row switched subscriptions in the meantime; this event is stale, not an error.
+				++$count_skipped;
 				continue;
 			}
 

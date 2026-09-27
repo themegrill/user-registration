@@ -1539,8 +1539,16 @@ class SubscriptionService {
 							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
 							if ( $paypal_last_synced <= 0 ) {
 								// First run: store the starting point so a failed run cannot fall back to an advanced shared time.
+								// If this write itself fails, don't run on an un-persisted cursor — retry the seed next run instead
+								// of silently using it in memory only, which would let the shared cursor advance past it unseen.
+								if ( ! update_option( 'urm_last_paypal_backfill_sync_time', $last_synced ) ) {
+									ur_get_logger()->warning(
+										'[Backfill][PayPal] Could not store the starting sync time; skipped this run.',
+										array( 'source' => 'urm-missed-payment-backfill' )
+									);
+									break;
+								}
 								$paypal_last_synced = $last_synced;
-								update_option( 'urm_last_paypal_backfill_sync_time', $paypal_last_synced );
 							}
 							$paypal_service = new NewPaypalService();
 							if ( ! $paypal_service->has_rest_credentials() ) {
