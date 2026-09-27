@@ -20,6 +20,9 @@ class UR_Smart_Tags {
 	 * A single strip_shortcodes() pass unwraps [[tag]] to executable [tag].
 	 * Encode remaining delimiters so fragments from separate fields cannot combine
 	 * into executable shortcodes. HTML rendering preserves literal brackets.
+	 *
+	 * @param mixed $value Untrusted replacement value.
+	 * @return string
 	 */
 	private static function strip_value_shortcodes( $value ) {
 		$value = (string) $value;
