@@ -1448,9 +1448,11 @@ class NewPaypalService {
 				'subscription_id_placeholder' === $transaction_source ? 'notice' : 'info'
 			);
 
-			// Only THIS row's own scheduled-downgrade marker defers activation; standard subscriptions activate immediately.
-			$scheduled_id = ! empty( $member_subscription['ID'] ) ? get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true ) : '';
-			$is_deferred  = ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id;
+			// A marker match alone can't tell a late-approved scheduled downgrade apart; also require its start_time to still be future.
+			$scheduled_id    = ! empty( $member_subscription['ID'] ) ? get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true ) : '';
+			$remote_start    = strtotime( (string) ( $subscription_details['start_time'] ?? '' ) );
+			$billing_started = ! $remote_start || $remote_start <= time() + self::DEFERRED_START_THRESHOLD;
+			$is_deferred     = ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id && ! $billing_started;
 
 			// Defer status update on scheduled downgrades; resolve trial or active status for immediate subscriptions.
 			$resolved_status = $is_deferred
@@ -3461,6 +3463,18 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether a PayPal subscription is live and ACTIVE — used to confirm a scheduled downgrade was actually
+	 * approved before the daily cron cancels the old subscription and switches the row to it.
+	 *
+	 * @param string $subscription_id PayPal subscription ID.
+	 * @return bool
+	 */
+	public function is_paypal_subscription_active( $subscription_id ) {
+		$details = $this->get_paypal_subscription( $subscription_id, $this->get_paypal_rest_credentials() );
+		return ! is_wp_error( $details ) && 'ACTIVE' === strtoupper( isset( $details['status'] ) ? $details['status'] : '' );
+	}
+
+	/**
 	 * Activate subscription.
 	 *
 	 * @param string $subscription_id
@@ -4510,17 +4524,15 @@ class NewPaypalService {
 			// If an order for this transaction exists, sync its status with PayPal live.
 			$existing_payment = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 			if ( ! empty( $existing_payment ) ) {
-				// Use state already present in event payload to avoid N+1 synchronous HTTP requests.
-				$live_state = ! empty( $resource['state'] ) ? $resource['state'] : '';
-				if ( empty( $live_state ) ) {
-					$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
-					if ( is_wp_error( $sale_details ) || ! isset( $sale_details['state'] ) ) {
-						$this->backfill_failed = true;
-						++$count_errors;
-						continue;
-					}
-					$live_state = $sale_details['state'];
+				// A listed event's own resource is a historical snapshot — a later refund would never show up
+				// in it, so re-syncing an existing order always needs a fresh live lookup, not the event payload.
+				$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
+				if ( is_wp_error( $sale_details ) || ! isset( $sale_details['state'] ) ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
 				}
+				$live_state = $sale_details['state'];
 
 				$live_status = $this->map_paypal_sale_state( $live_state );
 				$prev_status  = $existing_payment['status'] ?? '';
@@ -4798,10 +4810,18 @@ class NewPaypalService {
 			// If an order for this capture exists, sync its status with PayPal live.
 			$existing_order = $this->orders_repository->get_order_by_transaction_id( $capture_id );
 			if ( ! empty( $existing_order ) ) {
+				// A listed event's own resource is a historical snapshot — a later refund would never show up
+				// in it, so re-syncing an existing order always needs a fresh live lookup, not the event payload.
 				$capture_details = $this->get_paypal_capture_details( $capture_id, $paypal_options );
-				$live_state      = ! is_wp_error( $capture_details ) && isset( $capture_details['status'] ) ? $capture_details['status'] : 'COMPLETED';
-				$live_status     = $this->map_paypal_capture_status( $live_state );
-				$prev_status     = $existing_order['status'] ?? '';
+				if ( is_wp_error( $capture_details ) || ! isset( $capture_details['status'] ) ) {
+					// A failed lookup must not be guessed as COMPLETED — that could resurrect a refunded order.
+					$this->backfill_failed = true;
+					++$count_skipped;
+					continue;
+				}
+
+				$live_status = $this->map_paypal_capture_status( $capture_details['status'] );
+				$prev_status = $existing_order['status'] ?? '';
 
 				if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $existing_order['ID'], array( 'status' => $live_status ) ) ) ) {
 					continue;
@@ -4813,7 +4833,7 @@ class NewPaypalService {
 							'event_type'        => 'order_status_synced',
 							'order_id'          => $existing_order['ID'],
 							'capture_id'        => $capture_id,
-							'paypal_live_state' => $live_state,
+							'paypal_live_state' => $capture_details['status'],
 							'status_from'       => $prev_status,
 							'status_to'         => $live_status,
 						),

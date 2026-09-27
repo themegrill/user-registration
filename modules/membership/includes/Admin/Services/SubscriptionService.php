@@ -957,6 +957,20 @@ class SubscriptionService {
 			$subscription_id = $decoded_data['subscription_id'];
 			$user            = get_userdata( $decoded_data['member_id'] );
 			if ( $user ) {
+				// Only for a PayPal scheduled downgrade — the marker is PayPal-specific and must not touch a Stripe/bank switch.
+				$is_paypal_delayed_checkout = 'paypal' === ( isset( $decoded_data['payment_method'] ) ? $decoded_data['payment_method'] : '' );
+				$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
+				$new_paypal_subscription_id = $is_paypal_delayed_checkout ? get_user_meta( $user->ID, $scheduled_meta_key, true ) : '';
+
+				// An abandoned scheduled checkout must not cancel the still-current subscription; leave it for a later run.
+				if ( $is_paypal_delayed_checkout && ! empty( $new_paypal_subscription_id ) && ! ( new NewPaypalService() )->is_paypal_subscription_active( $new_paypal_subscription_id ) ) {
+					ur_get_logger()->notice(
+						sprintf( 'Scheduled downgrade for user #%d skipped: PayPal subscription %s is not active yet.', $user->ID, $new_paypal_subscription_id ),
+						array( 'source' => 'urm-membership-crons' )
+					);
+					continue;
+				}
+
 				$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
 				ur_get_logger()->notice( $cancel_subscription['message'], array( 'source' => 'urm-membership-crons' ) );
 				$previous_subscription             = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
@@ -964,11 +978,6 @@ class SubscriptionService {
 				$decoded_data['subscription_data'] = $previous_subscription;
 				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
 				$subscription_data['status']       = 'active';
-				// The webhook left the row on the old subscription until now; point it at the new one as its billing starts.
-				// Only for a PayPal scheduled downgrade — the marker is PayPal-specific and must not touch a Stripe/bank switch.
-				$is_paypal_delayed_checkout = 'paypal' === ( isset( $decoded_data['payment_method'] ) ? $decoded_data['payment_method'] : '' );
-				$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
-				$new_paypal_subscription_id = $is_paypal_delayed_checkout ? get_user_meta( $user->ID, $scheduled_meta_key, true ) : '';
 				if ( ! empty( $new_paypal_subscription_id ) ) {
 					$subscription_data['subscription_id'] = $new_paypal_subscription_id;
 				}
