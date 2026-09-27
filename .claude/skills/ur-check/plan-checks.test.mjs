@@ -45,8 +45,9 @@ test("more than one batch of php files is split, never truncated", () => {
 test("shellQuote: a filename that looks like a shell command cannot execute one", () => {
 	assert.equal(shellQuote("includes/a; touch /tmp/pwned.php"), "'includes/a; touch /tmp/pwned.php'");
 	assert.equal(shellQuote("it's/evil.php"), "'it'\\''s/evil.php'");
+	assert.equal(shellQuote("-foo.php"), "'./-foo.php'");
 	const cmd = planChecks(["includes/a; touch /tmp/pwned.php"], {}).commands.find((c) => c.startsWith("php vendor/bin/phpcs"));
-	assert.equal(cmd, "php vendor/bin/phpcs -s 'includes/a; touch /tmp/pwned.php'");
+	assert.equal(cmd, "php vendor/bin/phpcs -s -- 'includes/a; touch /tmp/pwned.php'");
 });
 
 test("long listings say how many were cut", () => {
@@ -103,3 +104,36 @@ test("editing a hook or the plan script recommends the setup's own tests", () =>
 test("vendored php is not sniffed", () => {
 	assert.deepEqual(planChecks(["vendor/x/y.php", "includes/libraries/z.php"], areas).commands, []);
 });
+
+test("whole-file deletion of a PHP file containing public contracts triggers contract break warning without runnable phpcs", () => {
+	const wholeFileDeletionDiff = `diff --git a/includes/class-ur-deprecated-feature.php b/includes/class-ur-deprecated-feature.php
+deleted file mode 100644
+index 1234567..0000000
+--- a/includes/class-ur-deprecated-feature.php
++++ /dev/null
+@@ -1,5 +0,0 @@
+-<?php
+-function ur_deprecated_hook() {
+-	do_action( 'user_registration_deprecated_action', $data );
+-}
+-`;
+	const p = planChecks([], areas, wholeFileDeletionDiff);
+	assert.equal(p.commands.filter((c) => c.startsWith("php vendor/bin/phpcs")).length, 0);
+	assert.ok(p.notes.some((n) => n.includes("public contract")));
+});
+
+test("secret-named PHP files like .env.php are not sniffed by PHPCS", () => {
+	const p = planChecks([".env.php", "config/.env.local.php", "includes/class-ur-ajax.php"], areas);
+	const phpcsCmds = p.commands.filter((c) => c.startsWith("php vendor/bin/phpcs"));
+	assert.equal(phpcsCmds.length, 1);
+	assert.ok(!phpcsCmds[0].includes(".env.php"));
+	assert.ok(!phpcsCmds[0].includes(".env.local.php"));
+	assert.ok(phpcsCmds[0].includes("includes/class-ur-ajax.php"));
+});
+
+test("deleting a sensitive file triggers the reviewer note while excluding it from phpcs", () => {
+	const p = planChecks([], areas, "", ["modules/membership/deleted.php"]);
+	assert.equal(p.commands.filter((c) => c.startsWith("php vendor/bin/phpcs")).length, 0);
+	assert.ok(p.notes.some((n) => n.includes("ur-reviewer")));
+});
+

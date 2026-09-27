@@ -81,8 +81,15 @@ function changedRanges(root, rel) {
  * @param {string} root Repository root that owns the edited file.
  * @returns {string|null} Path to vendor/bin/phpcs, or null when none is installed.
  */
-function findPhpcs(root) {
-	const candidates = [root, process.env.CLAUDE_PROJECT_DIR].filter(Boolean).map((r) => path.join(r, "vendor", "bin", "phpcs"));
+export function findPhpcs(root) {
+	const commonDirRes = run("git", ["rev-parse", "--git-common-dir"], root, 5000);
+	let mainRepo = null;
+	if (commonDirRes.status === 0 && commonDirRes.stdout.trim()) {
+		mainRepo = path.dirname(path.resolve(root, commonDirRes.stdout.trim()));
+	}
+	const candidates = [root, mainRepo, process.env.CLAUDE_PROJECT_DIR]
+		.filter(Boolean)
+		.map((r) => path.join(r, "vendor", "bin", "phpcs"));
 	return candidates.find((c) => fs.existsSync(c)) ?? null;
 }
 
@@ -92,7 +99,7 @@ function main() {
 	if (!filePath || !filePath.endsWith(".php")) return;
 
 	const root = projectRootFor(filePath, input);
-	const abs = path.resolve(root, filePath);
+	const abs = path.resolve(input.cwd || root, filePath);
 	const rel = path.relative(root, abs).split(path.sep).join("/");
 	if (rel.startsWith("..") || path.isAbsolute(rel) || !fs.existsSync(abs)) return;
 

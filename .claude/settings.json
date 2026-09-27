@@ -3,10 +3,11 @@
   "permissions": {
     "allow": [
       "Bash(git status*)",
-      "Bash(git diff*)",
-      "Bash(git log*)",
-      "Bash(git show*)",
       "Bash(git ls-files*)",
+      "Bash(git diff --name-only*)",
+      "Bash(git diff --name-status*)",
+      "Bash(git log --name-only*)",
+      "Bash(git log --name-status*)",
       "Bash(php vendor/bin/phpcs*)",
       "Bash(composer phpcs*)",
       "Bash(pnpm typecheck)",
@@ -33,13 +34,24 @@
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git push * --force*)",
+      "Bash(git diff*.env*)",
+      "Bash(git log*.env*)",
+      "Bash(git show*.env*)",
+      "Bash(php vendor/bin/phpcs*.env*)",
+      "Bash(composer phpcs*.env*)",
       "Bash(git diff*--output*)",
       "Bash(git log*--output*)",
       "Bash(git show*--output*)",
       "Bash(git diff*--no-index*)",
-      "Bash(git diff*.env*)",
-      "Bash(git log*.env*)",
-      "Bash(git show*.env*)"
+      "Bash(git diff*-p*)",
+      "Bash(git diff*--patch*)",
+      "Bash(git diff*-u*)",
+      "Bash(git log*-p*)",
+      "Bash(git log*--patch*)",
+      "Bash(git log*-u*)",
+      "Bash(git show*-p*)",
+      "Bash(git show*--patch*)",
+      "Bash(git show*-u*)"
     ]
   },
   "hooks": {
@@ -49,10 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-files.mjs"
-            ],
+            "command": "node .claude/hooks/guard-files.mjs",
             "timeout": 10
           }
         ]
@@ -64,10 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node",
-            "args": [
-              "${CLAUDE_PROJECT_DIR}/.claude/hooks/phpcs-changed.mjs"
-            ],
+            "command": "node .claude/hooks/phpcs-changed.mjs",
             "timeout": 60
           }
         ]

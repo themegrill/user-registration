@@ -2,7 +2,7 @@
 name: ur-check
 description: Work out and run the checks that apply to the current change (phpcs, prettier, typecheck, grunt, e2e area, review triggers) before reporting a task done. Use when finishing a change or before opening a PR.
 disable-model-invocation: true
-allowed-tools: Bash(node .claude/skills/ur-check/plan-checks.mjs*) Bash(git diff*) Bash(git status*) Read Grep
+allowed-tools: Bash(node .claude/skills/ur-check/plan-checks.mjs*) Bash(git diff --name-only*) Bash(git status*) Read Grep
 ---
 
 # Verify a change

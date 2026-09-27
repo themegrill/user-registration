@@ -6,7 +6,7 @@
  * ASK   = legitimate to edit, but the team owns it or it has release impact.
  * Matching is case-insensitive: Windows and macOS filesystems are, so `Vendor/x.php` is `vendor/x.php`.
  * Symlinks and junctions are resolved, so a link to a protected path does not bypass the guard.
- * Only guards the Edit/Write tools; Bash is covered by permission rules in settings.json.
+ * This hook only guards the Edit and Write tools; direct Bash shell commands (such as file redirection or sed) are not intercepted by this hook.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -109,9 +109,19 @@ export function realPathLoose(p, hops = 0) {
  */
 export function decide(filePath, root, exists = fs.existsSync) {
 	const realRoot = realPathLoose(root);
+	const resolvedAbs = path.resolve(root, filePath);
+	const realAbs = realPathLoose(resolvedAbs);
+	const relLexical = toRelative(resolvedAbs, root);
+	const relReal = toRelative(realAbs, realRoot);
+
+	// Reject paths whose symlink target resolves outside the repository root
+	if (relLexical !== null && relReal === null) {
+		return { decision: "deny", reason: "Target resolves outside the repository root." };
+	}
+
 	const candidates = [
-		[toRelative(filePath, root), root],
-		[toRelative(realPathLoose(path.resolve(root, filePath)), realRoot), realRoot],
+		[relLexical, root],
+		[relReal, realRoot],
 	];
 	let strictest = null;
 	for (const [rel, base] of candidates) {
@@ -127,7 +137,8 @@ function main() {
 	const filePath = input.tool_input?.file_path;
 	if (!filePath) return;
 	const root = projectRootFor(filePath, input);
-	const hit = decide(filePath, root);
+	const resolvedPath = path.resolve(input.cwd || root, filePath);
+	const hit = decide(resolvedPath, root);
 	if (!hit) return;
 	process.stdout.write(
 		JSON.stringify({

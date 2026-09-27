@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { classify, decide, toRelative } from "./guard-files.mjs";
-import { extractJson, filterToChanged, parseChangedRanges } from "./phpcs-changed.mjs";
+import { extractJson, filterToChanged, findPhpcs, parseChangedRanges } from "./phpcs-changed.mjs";
 import { projectRootFor } from "./project-root.mjs";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -40,7 +40,28 @@ test("guard: the stricter of the written path and the real path wins", (t) => {
 	assert.equal(decide(path.join(base, "CHANGELOG.txt"), base)?.decision, "ask");
 	assert.equal(decide(path.join(base, "vendor", "autoload.php"), base)?.decision, "deny");
 });
+
 const repoRoot = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).stdout.trim();
+
+test("guard: relative path in nested input.cwd resolves against cwd and is guarded", () => {
+	const nestedCwd = path.join(repoRoot, "vendor");
+	const input = { cwd: nestedCwd, tool_input: { file_path: "autoload.php" } };
+	const root = projectRootFor(input.tool_input.file_path, input);
+	const resolved = path.resolve(input.cwd || root, input.tool_input.file_path);
+	assert.equal(decide(resolved, root)?.decision, "deny");
+});
+
+test("guard: an in-repository symlink whose target is outside the repository is denied", (t) => {
+	const base = fs.mkdtempSync(path.join(os.tmpdir(), "guard-ext-"));
+	const outside = fs.mkdtempSync(path.join(os.tmpdir(), "guard-out-"));
+	fs.writeFileSync(path.join(outside, "secret.txt"), "secret\n");
+	try {
+		fs.symlinkSync(outside, path.join(base, "ext-link"), "junction");
+	} catch {
+		return t.skip("symlinks/junctions cannot be created in this environment");
+	}
+	assert.equal(decide(path.join(base, "ext-link", "secret.txt"), base)?.decision, "deny");
+});
 
 test("root: a file inside the repo resolves to the repo root, even if its directory does not exist yet", () => {
 	assert.equal(norm(projectRootFor(path.join(repoRoot, "includes", "a.php"), {}, "/nowhere")), norm(repoRoot));
@@ -130,4 +151,22 @@ test("phpcs: only messages on changed lines survive; null ranges keeps all", () 
 	const msgs = [{ line: 2 }, { line: 11 }, { line: 12 }];
 	assert.deepEqual(filterToChanged(msgs, [[1, 3], [12, 12]]), [{ line: 2 }, { line: 12 }]);
 	assert.equal(filterToChanged(msgs, null).length, 3);
+});
+
+test("phpcs: findPhpcs locates vendor binary in repository root", () => {
+	const phpcs = findPhpcs(repoRoot);
+	if (fs.existsSync(path.join(repoRoot, "vendor", "bin", "phpcs"))) {
+		assert.ok(phpcs !== null, "phpcs should be found when vendor exists");
+		assert.ok(phpcs.includes("phpcs"));
+	} else {
+		assert.equal(phpcs, null);
+	}
+});
+
+test("phpcs: path resolution respects nested input.cwd", () => {
+	const nestedCwd = path.join(repoRoot, "includes");
+	const input = { cwd: nestedCwd, tool_input: { file_path: "functions-ur-core.php" } };
+	const root = projectRootFor(input.tool_input.file_path, input);
+	const abs = path.resolve(input.cwd || root, input.tool_input.file_path);
+	assert.equal(norm(abs), norm(path.join(repoRoot, "includes", "functions-ur-core.php")));
 });

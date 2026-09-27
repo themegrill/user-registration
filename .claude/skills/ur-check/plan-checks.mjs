@@ -16,6 +16,7 @@ const SUITE_FILE = ".themegrill-qa/suite.json";
 const MAX_LISTED_FILES = 25;
 const PHPCS_BATCH_SIZE = 25;
 const SAFE_REF = /^[A-Za-z0-9_][A-Za-z0-9._\/-]*$/;
+const SECRET_PATH = /(^|\/)\.env(\.[^/]*)?$/i;
 
 /**
  * Reject a base ref that git could read as an option (`--output=...`) or that carries odd characters.
@@ -36,12 +37,14 @@ export function assertSafeRef(ref) {
  *
  * Paths come from git and can contain spaces or shell metacharacters; the planner's output is a
  * command Claude runs directly, so every path must be quoted before being joined into one.
+ * Option-like paths beginning with a dash are prefixed with ./ to prevent CLI option injection.
  *
  * @param {string} p Path to quote.
  * @returns {string} `'...'`, with any embedded `'` escaped.
  */
 export function shellQuote(p) {
-	return `'${p.replace(/'/g, `'\\''`)}'`;
+	const safe = p.startsWith("-") ? `./${p}` : p;
+	return `'${safe.replace(/'/g, `'\\''`)}'`;
 }
 
 /**
@@ -79,15 +82,18 @@ export function globToRegExp(glob) {
 /**
  * Decide which checks apply to a set of changed files.
  *
- * @param {string[]} files Forward-slash paths relative to the repo root.
+ * @param {string[]} files Forward-slash paths of runnable changed files relative to the repo root.
  * @param {Record<string, string[]>} areaPaths `area_paths` from suite.json.
  * @param {string} diffText Unified diff used only to spot removed public-contract lines.
+ * @param {string[]} [allFiles=files] All changed paths including deleted files for scope checks.
  * @returns {{commands: string[], notes: string[], e2eAreas: string[], unmapped: string[]}}
  */
-export function planChecks(files, areaPaths, diffText = "") {
+export function planChecks(files, areaPaths, diffText = "", allFiles = files) {
 	const commands = [];
 	const notes = [];
-	const php = files.filter((f) => f.endsWith(".php") && !/^(vendor|includes\/libraries)\//.test(f));
+	const php = files.filter(
+		(f) => f.endsWith(".php") && !/^(vendor|includes\/libraries)\//.test(f) && !SECRET_PATH.test(f),
+	);
 	const frontendSrc = files.filter((f) => /^src\/.*\.(ts|tsx|js|jsx)$/.test(f));
 	const scss = files.filter((f) => f.endsWith(".scss"));
 	const ts = files.filter((f) => /\.(ts|tsx)$/.test(f));
@@ -95,7 +101,7 @@ export function planChecks(files, areaPaths, diffText = "") {
 
 	if (php.length) {
 		for (let i = 0; i < php.length; i += PHPCS_BATCH_SIZE) {
-			commands.push(`php vendor/bin/phpcs -s ${php.slice(i, i + PHPCS_BATCH_SIZE).map(shellQuote).join(" ")}`);
+			commands.push(`php vendor/bin/phpcs -s -- ${php.slice(i, i + PHPCS_BATCH_SIZE).map(shellQuote).join(" ")}`);
 		}
 		notes.push("CI sniffs every changed PHP file in full (report-only, not blocking); the local hook reports changed lines only.");
 	}
@@ -114,7 +120,7 @@ export function planChecks(files, areaPaths, diffText = "") {
 		.filter((f) => !matchers.some(([, res]) => res.some((re) => re.test(f))));
 	if (e2eAreas.length) commands.push(`pnpm test:e2e   # areas touched: ${e2eAreas.join(", ")} (needs a live site; ask before running)`);
 
-	const review = files.filter((f) => REVIEW_PATHS.test(f));
+	const review = allFiles.filter((f) => REVIEW_PATHS.test(f));
 	if (review.length) notes.push(`Security-sensitive paths changed (${review.slice(0, 5).join(", ")}${review.length > 5 ? ", ..." : ""}): run the ur-reviewer agent.`);
 	if (CONTRACT_REMOVAL.test(diffText)) notes.push("The diff removes a hook, shortcode, REST route, post type or AJAX action line: this may break a public contract. Confirm it is intentional and shimmed.");
 	if (php.length) notes.push("No PHP unit tests exist in this repo; do not report them as run.");
@@ -136,18 +142,55 @@ function changedFiles(base) {
 	return [...new Set(lines.map((l) => l.trim()).filter(Boolean))];
 }
 
+function allChangedFiles(base) {
+	const lines = [
+		...git(["diff", "--name-only", `${base}...HEAD`]).split("\n"),
+		...git(["diff", "--name-only", "HEAD"]).split("\n"),
+		...git(["ls-files", "--others", "--exclude-standard"]).split("\n"),
+	];
+	return [...new Set(lines.map((l) => l.trim()).filter(Boolean))];
+}
+
+export function phpDiffText(base) {
+	return (
+		git([
+			"diff",
+			"-U0",
+			`${base}...HEAD`,
+			"--",
+			"*.php",
+			":!vendor/*",
+			":!includes/libraries/*",
+			":!*.env*",
+			":!.env*",
+		]) +
+		git([
+			"diff",
+			"-U0",
+			"HEAD",
+			"--",
+			"*.php",
+			":!vendor/*",
+			":!includes/libraries/*",
+			":!*.env*",
+			":!.env*",
+		])
+	);
+}
+
 function main() {
 	const base = assertSafeRef(process.argv[2] || DEFAULT_BASE);
-	const files = changedFiles(base);
-	if (!files.length) {
+	const allFiles = allChangedFiles(base);
+	if (!allFiles.length) {
 		console.log(`No changes against ${base}.`);
 		return;
 	}
+	const runnableFiles = changedFiles(base);
 	const suite = JSON.parse(fs.readFileSync(path.join(process.cwd(), SUITE_FILE), "utf8"));
-	const diffText = git(["diff", "-U0", `${base}...HEAD`]) + git(["diff", "-U0", "HEAD"]);
-	const plan = planChecks(files, suite.area_paths ?? {}, diffText);
+	const diffText = phpDiffText(base);
+	const plan = planChecks(runnableFiles, suite.area_paths ?? {}, diffText, allFiles);
 
-	console.log(`Changed files (${files.length}) vs ${base}:\n${listWithOverflow(files).join("\n")}`);
+	console.log(`Changed files (${allFiles.length}) vs ${base}:\n${listWithOverflow(allFiles).join("\n")}`);
 	console.log(`\nRun:\n${plan.commands.length ? plan.commands.map((c) => `  ${c}`).join("\n") : "  (no automated check applies)"}`);
 	if (plan.unmapped.length) console.log(`\nNo e2e area in ${SUITE_FILE} covers (so CI runs no spec for them):\n${listWithOverflow(plan.unmapped).join("\n")}`);
 	if (plan.notes.length) console.log(`\nNotes:\n${plan.notes.map((n) => `  - ${n}`).join("\n")}`);
