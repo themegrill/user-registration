@@ -2407,12 +2407,15 @@ class NewPaypalService {
 			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
-		// Update a pending order that has no transaction_id yet.
+		// Update a pending order that has no transaction_id yet — but only when it is for the plan this
+		// row is currently on. An abandoned upgrade/downgrade leaves a pending order for a *different*
+		// plan on the same row; a sale from the old (still-billing) subscription must not complete it.
 		$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
 		if (
 			! empty( $pending_order['ID'] ) &&
 			'pending' === ( $pending_order['status'] ?? '' ) &&
-			'' === (string) ( $pending_order['transaction_id'] ?? '' )
+			'' === (string) ( $pending_order['transaction_id'] ?? '' ) &&
+			(int) ( $pending_order['item_id'] ?? 0 ) === (int) ( $membership_subscription['item_id'] ?? 0 )
 		) {
 			$this->orders_repository->update(
 				$pending_order['ID'],
@@ -4328,12 +4331,14 @@ class NewPaypalService {
 				continue;
 			}
 
-			// Update a pending order in place rather than creating a duplicate.
+			// Update a pending order in place rather than creating a duplicate — but only when it is for
+			// the plan this row is currently on; see the webhook handler for why.
 			$existing_pending = $this->orders_repository->get_order_by_subscription( $local_sub_id );
 			if (
 				! empty( $existing_pending['ID'] ) &&
 				'pending' === ( $existing_pending['status'] ?? '' ) &&
-				'' === (string) ( $existing_pending['transaction_id'] ?? '' )
+				'' === (string) ( $existing_pending['transaction_id'] ?? '' ) &&
+				(int) ( $existing_pending['item_id'] ?? 0 ) === (int) ( $membership_subscription['item_id'] ?? 0 )
 			) {
 				$this->orders_repository->update(
 					$existing_pending['ID'],
