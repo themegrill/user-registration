@@ -967,9 +967,18 @@ class SubscriptionService {
 				$new_paypal_subscription_id = get_user_meta( $user->ID, $scheduled_meta_key, true );
 				if ( ! empty( $new_paypal_subscription_id ) ) {
 					$subscription_data['subscription_id'] = $new_paypal_subscription_id;
+				}
+				$row_updated = $this->subscription_repository->update( $subscription_id, $subscription_data );
+
+				// A failed write must be retried next run: keep the scheduled id, the day's own marker, and the
+				// checkout data get_all_delayed_orders() needs to find this order again — clean up only once it took.
+				if ( false === $row_updated ) {
+					continue;
+				}
+
+				if ( ! empty( $new_paypal_subscription_id ) ) {
 					delete_user_meta( $user->ID, $scheduled_meta_key );
 				}
-				$this->subscription_repository->update( $subscription_id, $subscription_data );
 				$last_order = $this->members_orders_repository->get_member_orders( $user->ID );
 				$this->orders_repository->delete_order_meta(
 					array(

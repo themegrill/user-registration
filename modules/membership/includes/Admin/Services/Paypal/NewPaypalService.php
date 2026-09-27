@@ -1454,9 +1454,10 @@ class NewPaypalService {
 					'start_date' => date( 'Y-m-d 00:00:00' ), // phpcs:ignore WordPress.DateTime.RestrictedFunctions.date_date
 				);
 
-				// A scheduled downgrade's row keeps the still-billing old subscription until the daily cron switches it.
-				$scheduled_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
-				if ( $scheduled_id !== $paypal_subscription_id ) {
+				// A scheduled downgrade's billing has not started yet (PayPal's own start_time, already fetched above);
+				// the row keeps the still-billing old subscription until the daily cron switches it.
+				$new_start_time = strtotime( (string) ( $subscription_details['start_time'] ?? '' ) );
+				if ( ! $new_start_time || $new_start_time - time() <= self::DEFERRED_START_THRESHOLD ) {
 					$row_update['subscription_id'] = sanitize_text_field( $paypal_subscription_id );
 				}
 
@@ -4729,9 +4730,16 @@ class NewPaypalService {
 				continue;
 			}
 
-			$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
+			$subscription_row = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
 
-			if ( empty( $order ) || 'pending' !== ( isset( $order['status'] ) ? $order['status'] : '' ) ) {
+			if ( empty( $subscription_row ) ) {
+				++$count_skipped;
+				continue;
+			}
+
+			$order = $this->orders_repository->get_pending_order_for_item( $subscription_id, $subscription_row['item_id'] );
+
+			if ( empty( $order ) ) {
 				++$count_skipped;
 				continue;
 			}
@@ -4747,10 +4755,9 @@ class NewPaypalService {
 				continue;
 			}
 
-			$subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
-			if ( ! empty( $subscription['ID'] ) && 'pending' === ( isset( $subscription['status'] ) ? $subscription['status'] : '' ) ) {
+			if ( 'pending' === ( isset( $subscription_row['status'] ) ? $subscription_row['status'] : '' ) ) {
 				$subscription_activated = $this->members_subscription_repository->update(
-					$subscription['ID'],
+					$subscription_row['ID'],
 					array(
 						'status'     => 'active',
 						'start_date' => gmdate( 'Y-m-d 00:00:00' ),
@@ -4763,7 +4770,7 @@ class NewPaypalService {
 					'[Backfill][PayPal][OneTime] Subscription activated.' . "\n" . wp_json_encode(
 						array(
 							'event_type'      => 'subscription_activated',
-							'subscription_id' => $subscription['ID'],
+							'subscription_id' => $subscription_row['ID'],
 							'order_id'        => $order['ID'],
 							'capture_id'      => $capture_id,
 						),

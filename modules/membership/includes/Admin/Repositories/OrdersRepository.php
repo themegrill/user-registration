@@ -233,6 +233,39 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * The row's pending, uncharged order for one specific plan — not just its latest order overall.
+	 *
+	 * A newer, unrelated pending order for a different plan (an abandoned upgrade/downgrade) must not shadow
+	 * an older order for the plan actually being paid for.
+	 *
+	 * @param int $subscription_id Local subscription row ID.
+	 * @param int $item_id         Membership post ID the order must be for.
+	 *
+	 * @return array Empty when none matches.
+	 */
+	public function get_pending_order_for_item( $subscription_id, $item_id ) {
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- $this->table is a fixed internal value, never attacker-influenced; all user-supplied values go through $wpdb->prepare()'s own placeholders.
+		$result = $this->wpdb()->get_row(
+			$this->wpdb()->prepare(
+				"
+				SELECT * from $this->table
+				WHERE subscription_id = %d
+				AND item_id = %d
+				AND status = 'pending'
+				AND transaction_id = ''
+				ORDER BY ID DESC LIMIT 1
+		",
+				$subscription_id,
+				$item_id
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
+
+		return ! $result ? array() : $result;
+	}
+
+	/**
 	 * Get order by transaction ID (e.g. Stripe payment intent id).
 	 *
 	 * @param string $transaction_id Transaction ID.
@@ -347,7 +380,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 			 AND o.ID = ( SELECT MAX( o2.ID ) FROM {$this->table} o2 WHERE o2.subscription_id = s.ID )",
 			ARRAY_A
 		);
-		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return $result ? $result : array();
 	}
