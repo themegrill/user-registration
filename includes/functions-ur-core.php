@@ -4335,6 +4335,9 @@ if ( ! function_exists( 'ur_protect_public_upload_directory' ) ) {
 	/**
 	 * Keep profile images public while denying listings and non-image files.
 	 * Nginx hosts must configure the equivalent static-image-only location.
+	 *
+	 * @param string $directory Public upload directory.
+	 * @return void
 	 */
 	function ur_protect_public_upload_directory( $directory ) {
 		if ( apply_filters( 'user_registration_install_skip_create_files', false ) ) {
@@ -4358,6 +4361,7 @@ Options -Indexes
     </FilesMatch>
 </IfModule>
 APACHE;
+
 		$iis = <<<'IIS'
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration><system.webServer>
