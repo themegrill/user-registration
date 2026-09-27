@@ -73,8 +73,9 @@ class OrderService {
 		$base_amount = (float) $total;
 
 		$coupon_discount_amount = 0;
+		$has_trial              = isset( $membership_meta['trial_status'] ) && 'on' == $membership_meta['trial_status'];
 
-		if ( isset( $membership_meta['trial_status'] ) && 'on' == $membership_meta['trial_status'] ) {
+		if ( $has_trial ) {
 			$total = 0;
 		} elseif ( ur_check_module_activation( 'coupon' ) && ! empty( $data['coupon_data'] ) ) {
 			$coupon_discount_amount = ( isset( $data['coupon_data']['coupon_discount_type'] ) && 'fixed' === $data['coupon_data']['coupon_discount_type'] )
@@ -85,9 +86,10 @@ class OrderService {
 
 		// For upgrades, replace $total with the pre-tax prorated amount so that
 		// tax and total_amount are both calculated on the correct base.
+		// A plan with its own trial bills nothing up front on any gateway, so its upgrade order stays 0.
 		$is_proration_upgrade_order = false;
 		if ( ! empty( $upgrade_details ) && isset( $upgrade_details['chargeable_amount'] ) ) {
-			$total                      = floatval( $upgrade_details['chargeable_amount'] );
+			$total                      = $has_trial ? 0 : floatval( $upgrade_details['chargeable_amount'] );
 			$is_proration_upgrade_order = true;
 		}
 
