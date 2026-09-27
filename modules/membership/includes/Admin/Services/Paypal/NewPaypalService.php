@@ -2437,13 +2437,27 @@ class NewPaypalService {
 		// Replace placeholder order whose transaction_id is the subscription ID (not a real sale ID).
 		$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
 		if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
-			$this->orders_repository->update(
+			$placeholder_updated = $this->orders_repository->update(
 				$placeholder['ID'],
 				array(
 					'status'         => 'completed',
 					'transaction_id' => $transaction_id,
 				)
 			);
+			if ( false === $placeholder_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[PAYMENT.SALE.COMPLETED] Placeholder order update failed — PayPal will retry.' . "\n" . wp_json_encode(
+						array(
+							'order_id'               => $placeholder['ID'],
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				return false;
+			}
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[PAYMENT.SALE.COMPLETED] Placeholder order updated with real transaction ID.' . "\n" . wp_json_encode(
@@ -2463,13 +2477,27 @@ class NewPaypalService {
 		// Update a pending order that has no transaction_id yet.
 		$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
 		if ( $this->is_pending_order_for_current_plan( $pending_order, $membership_subscription ) ) {
-			$this->orders_repository->update(
+			$pending_order_updated = $this->orders_repository->update(
 				$pending_order['ID'],
 				array(
 					'status'         => 'completed',
 					'transaction_id' => $transaction_id,
 				)
 			);
+			if ( false === $pending_order_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[PAYMENT.SALE.COMPLETED] Pending order update failed — PayPal will retry.' . "\n" . wp_json_encode(
+						array(
+							'order_id'               => $pending_order['ID'],
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				return false;
+			}
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[PAYMENT.SALE.COMPLETED] Pending order completed with real transaction ID.' . "\n" . wp_json_encode(
@@ -2661,15 +2689,22 @@ class NewPaypalService {
 		$next_billing = $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next );
 		$table        = TableList::subscriptions_table();
 
-		// Conditional on status so a cancellation saved while PayPal was being asked is not overwritten.
+		// Conditional on status and on the row still using this PayPal subscription — either could have changed
+		// (a cancellation saved, or the row switched to a different subscription) while PayPal was being asked.
 		$update_result = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$table} SET status = 'active', expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table} SET status = 'active', expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled' AND subscription_id = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$expiry_date,
 				$next_billing,
-				$membership_subscription['ID']
+				$membership_subscription['ID'],
+				$paypal_subscription_id
 			)
 		);
+
+		if ( 0 === $update_result ) {
+			// Matched no row: stale by the time the live check finished, not a failure — nothing to retry.
+			return true;
+		}
 
 		if ( false === $update_result ) {
 			PaymentGatewayLogging::log_error(
