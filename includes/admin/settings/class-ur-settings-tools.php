@@ -33,6 +33,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			add_action( "user_registration_settings_header_actions_{$this->id}", array( $this, 'output_header_actions' ) );
 			add_filter( "user_registration_settings_header_title_{$this->id}", array( $this, 'get_header_title' ) );
 			add_filter( "user_registration_settings_header_icon_{$this->id}", array( $this, 'get_header_icon' ) );
+			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
 		}
 
 		/**
@@ -46,13 +47,13 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 				?>
 				<div class="user-registration-options-header--top__right ur-system-info-actions">
 					<button type="button" class="button button-primary ur-system-info-copy">
-						<svg width="16" height="16" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-							<path d="M20 8H10C8.89543 8 8 8.89543 8 10V20C8 21.1046 8.89543 22 10 22H20C21.1046 22 22 21.1046 22 20V10C22 8.89543 21.1046 8 20 8Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M4 16C2.9 16 2 15.1 2 14V4C2 2.9 2.9 2 4 2H14C15.1 2 16 2.9 16 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
 						</svg>
 						<?php esc_html_e( 'Copy system info', 'user-registration' ); ?>
 					</button>
-					<span class="ur-copied-tip" aria-hidden="true"></span>
+					<span class="ur-copied-tip" aria-hidden="true"><?php esc_html_e( 'Copied!', 'user-registration' ); ?></span>
 					<span id="ur-system-info-copy-status" class="screen-reader-text" role="status" aria-live="polite"></span>
 				</div>
 				<?php
@@ -67,8 +68,15 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 
 			include_once dirname( __DIR__ ) . '/class-ur-log-list-table.php';
 
-			if ( count( UR_Log_List_Table::scan_sources() ) < 2 ) {
+			$sources = UR_Log_List_Table::scan_sources();
+
+			if ( count( $sources ) < 2 ) {
 				return;
+			}
+
+			$total_file_count = 0;
+			foreach ( $sources as $source_item ) {
+				$total_file_count += count( $source_item['files'] );
 			}
 
 			$url = wp_nonce_url(
@@ -85,7 +93,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			);
 			?>
 			<div class="user-registration-options-header--top__right">
-				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $url ); ?>" data-confirm="<?php esc_attr_e( 'Delete all log files permanently? This can’t be undone.', 'user-registration' ); ?>">
+				<a class="button button-tertiary ur-log-delete-all" href="<?php echo esc_url( $url ); ?>" data-files="<?php echo esc_attr( $total_file_count ); ?>" data-sources="<?php echo esc_attr( count( $sources ) ); ?>">
 					<?php esc_html_e( 'Delete all logs', 'user-registration' ); ?>
 				</a>
 			</div>
@@ -212,6 +220,18 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			}
 
 			echo $content; // phpcs:ignore WordPress.Security.EscapeOutput -- already-rendered add-on markup, same trust boundary as any other action-hooked settings output.
+		}
+
+		/**
+		 * Enqueue SweetAlert2 for delete confirmations on the Tools tab.
+		 */
+		public function enqueue_scripts() {
+			global $current_tab;
+
+			if ( 'tools' === $current_tab ) {
+				wp_enqueue_style( 'sweetalert2' );
+				wp_enqueue_script( 'sweetalert2' );
+			}
 		}
 
 		/**

@@ -78,15 +78,22 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		 * @return array
 		 */
 		public static function get_categories() {
-			return array(
+			$categories = array(
 				'payments'     => __( 'Payments', 'user-registration' ),
 				'membership'   => __( 'Membership', 'user-registration' ),
 				'email'        => __( 'Email', 'user-registration' ),
-				'integrations' => __( 'Integrations', 'user-registration' ),
 				'forms'        => __( 'Forms', 'user-registration' ),
+				'integrations' => __( 'Integrations', 'user-registration' ),
 				'system'       => __( 'System', 'user-registration' ),
 				'other'        => __( 'Other', 'user-registration' ),
 			);
+
+			/**
+			 * Filters available log categories.
+			 *
+			 * @param array $categories Key-value pairs of category slug => label.
+			 */
+			return apply_filters( 'user_registration_log_categories', $categories );
 		}
 
 		/**
@@ -122,8 +129,8 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		/**
 		 * Friendly name and category for a log handle.
 		 *
-		 * Payment-gateway handles (urm-pg-*) are matched dynamically; any
-		 * other unrecognised handle is humanised and filed under "Other".
+		 * Matches known map first, dynamic payment gateways, semantic patterns,
+		 * and finally falls back to public filter.
 		 *
 		 * @param string $handle Base handle (no rotation suffix, no hash).
 		 * @return array {
@@ -141,24 +148,66 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				$category = $map[ $handle ][0];
 				$name     = $map[ $handle ][1];
 				$known    = true;
-			} elseif ( 0 === strpos( $handle, 'urm-pg-' ) ) {
+			} elseif ( preg_match( '/^(?:urm-pg-)+(.*)$/', $handle, $matches ) ) {
 				$category = 'payments';
-				$gateway  = ucwords( str_replace( array( '-', '_' ), ' ', substr( $handle, strlen( 'urm-pg-' ) ) ) );
+				$raw_gw   = ucwords( str_replace( array( '-', '_' ), ' ', $matches[1] ) );
+				$gateway  = str_ireplace( array( 'Paypal', 'Authorize Net' ), array( 'PayPal', 'Authorize.Net' ), $raw_gw );
 				/* translators: %s: payment gateway name */
-				$name  = sprintf( __( 'Payments · %s', 'user-registration' ), $gateway );
-				$known = true;
+				$name     = sprintf( __( 'Payments · %s', 'user-registration' ), $gateway );
+				$known    = true;
 			} else {
-				$category = 'other';
-				$name     = ucwords( str_replace( array( '-', '_' ), ' ', $handle ) );
-				$known    = false;
+				if ( preg_match( '/payment|stripe|paypal|mollie|authorize|bank/i', $handle ) ) {
+					$category = 'payments';
+					$clean_gw = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-|pg-)/', '', $handle ) ) );
+					$clean_gw = str_ireplace( array( 'Paypal', 'Authorize Net' ), array( 'PayPal', 'Authorize.Net' ), $clean_gw );
+					/* translators: %s: payment gateway name */
+					$name  = sprintf( __( 'Payments · %s', 'user-registration' ), $clean_gw );
+					$known = true;
+				} elseif ( preg_match( '/membership|subscription/i', $handle ) ) {
+					$category = 'membership';
+					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
+					$known    = true;
+				} elseif ( preg_match( '/mail|email|smtp/i', $handle ) ) {
+					$category = 'email';
+					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
+					$known    = true;
+				} elseif ( preg_match( '/form|field|builder|submission/i', $handle ) ) {
+					$category = 'forms';
+					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
+					$known    = true;
+				} elseif ( preg_match( '/addon|integration|chimp|poet|lite|zapier|hubspot/i', $handle ) ) {
+					$category = 'integrations';
+					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
+					$known    = true;
+				} elseif ( preg_match( '/error|fatal|system|captcha|migration|cron/i', $handle ) ) {
+					$category = 'system';
+					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
+					$known    = true;
+				} else {
+					$category = 'other';
+					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
+					$known    = false;
+				}
 			}
 
-			return array(
+			if ( ! isset( $categories[ $category ] ) ) {
+				$category = 'other';
+			}
+
+			$info = array(
 				'category'       => $category,
 				'category_label' => $categories[ $category ],
 				'name'           => $name,
 				'known'          => $known,
 			);
+
+			/**
+			 * Filters the description info for a log handle.
+			 *
+			 * @param array  $info   Log handle info (category, category_label, name, known).
+			 * @param string $handle Raw handle name.
+			 */
+			return apply_filters( 'user_registration_log_handle_info', $info, $handle );
 		}
 
 		/**
@@ -335,12 +384,26 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				$name .= '<code class="ur-log-handle">' . esc_html( $item['handle'] ) . '</code>';
 			}
 
-			$actions = array(
-				'view'   => '<a href="' . esc_url( $view_url ) . '">' . esc_html__( 'View', 'user-registration' ) . '</a>',
-				'delete' => '<a class="ur-log-delete-link" href="' . esc_url( $delete_url ) . '" data-confirm="' . esc_attr__( 'Delete this log permanently?', 'user-registration' ) . '">' . esc_html__( 'Delete', 'user-registration' ) . '</a>',
+			$file_count = count( $item['files'] );
+			$file_str   = sprintf(
+				/* translators: %d: number of files */
+				_n( '%d file', '%d files', $file_count, 'user-registration' ),
+				$file_count
 			);
 
-			return $name . $this->row_actions( $actions );
+			$mobile_sub = sprintf(
+				'<span class="ur-log-mobile-sub">%s · %s · %s</span>',
+				esc_html( wp_date( _x( 'M j, g:i A', 'log mobile date', 'user-registration' ), $item['mtime'] ) ),
+				esc_html( $file_str ),
+				esc_html( self::format_size( $item['size'] ) )
+			);
+
+			$actions = array(
+				'view'   => '<a href="' . esc_url( $view_url ) . '">' . esc_html__( 'View', 'user-registration' ) . '</a>',
+				'delete' => '<a class="ur-log-delete-link" href="' . esc_url( $delete_url ) . '" data-name="' . esc_attr( $item['name'] ) . '" data-files="' . esc_attr( $file_count ) . '" data-type="single">' . esc_html__( 'Delete', 'user-registration' ) . '</a>',
+			);
+
+			return $name . $mobile_sub . $this->row_actions( $actions );
 		}
 
 		/**
@@ -539,16 +602,66 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 			}
 			?>
 			<div class="tablenav <?php echo esc_attr( $which ); ?>">
-				<div class="alignleft actions bulkactions<?php echo $this->show_bulk ? '' : ' hidden'; ?>">
-					<?php $this->bulk_actions( $which ); ?>
-				</div>
-				<?php
-				$this->extra_tablenav( $which );
-				$this->pagination( $which );
-				?>
+				<?php if ( 'top' === $which ) : ?>
+					<div class="alignleft actions bulkactions<?php echo $this->show_bulk ? '' : ' hidden'; ?>">
+						<?php $this->bulk_actions( $which ); ?>
+					</div>
+					<?php $this->extra_tablenav( $which ); ?>
+				<?php else : ?>
+					<?php $this->pagination( $which ); ?>
+				<?php endif; ?>
 				<br class="clear" />
 			</div>
 			<?php
+		}
+
+		/**
+		 * Display pagination at the bottom toolbar, matching the members list table.
+		 *
+		 * @param string $which 'top' or 'bottom'.
+		 */
+		protected function pagination( $which ) {
+			if ( 'top' === $which || empty( $this->_pagination_args ) ) {
+				return;
+			}
+
+			$total_items = (int) $this->_pagination_args['total_items'];
+			$total_pages = (int) $this->_pagination_args['total_pages'];
+
+			if ( $total_pages <= 1 ) {
+				return;
+			}
+
+			$current  = $this->get_pagenum();
+			$base_url = remove_query_arg( 'paged' );
+			$links    = array();
+
+			if ( $current > 1 ) {
+				$links[] = sprintf( '<a class="first-page button" href="%s"><span class="screen-reader-text">%s</span><span aria-hidden="true">&laquo;</span></a>', esc_url( add_query_arg( 'paged', 1, $base_url ) ), esc_html__( 'First page', 'user-registration' ) );
+				$links[] = sprintf( '<a class="prev-page button" href="%s"><span class="screen-reader-text">%s</span><span aria-hidden="true">&lsaquo;</span></a>', esc_url( add_query_arg( 'paged', max( 1, $current - 1 ), $base_url ) ), esc_html__( 'Previous page', 'user-registration' ) );
+			} else {
+				$links[] = '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&laquo;</span>';
+				$links[] = '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&lsaquo;</span>';
+			}
+
+			$links[] = sprintf(
+				'<span class="paging-input"><span class="tablenav-paging-text">%d %s <span class="total-pages">%d</span></span></span>',
+				$current,
+				esc_html_x( 'of', 'paging', 'user-registration' ),
+				$total_pages
+			);
+
+			if ( $current < $total_pages ) {
+				$links[] = sprintf( '<a class="next-page button" href="%s"><span class="screen-reader-text">%s</span><span aria-hidden="true">&rsaquo;</span></a>', esc_url( add_query_arg( 'paged', min( $total_pages, $current + 1 ), $base_url ) ), esc_html__( 'Next page', 'user-registration' ) );
+				$links[] = sprintf( '<a class="last-page button" href="%s"><span class="screen-reader-text">%s</span><span aria-hidden="true">&raquo;</span></a>', esc_url( add_query_arg( 'paged', $total_pages, $base_url ) ), esc_html__( 'Last page', 'user-registration' ) );
+			} else {
+				$links[] = '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&rsaquo;</span>';
+				$links[] = '<span class="tablenav-pages-navspan button disabled" aria-hidden="true">&raquo;</span>';
+			}
+
+			$output = '<span class="pagination-links">' . implode( '', $links ) . '</span>';
+
+			echo "<div class=\"tablenav-pages\">{$output}</div>";
 		}
 
 		/**

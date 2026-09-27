@@ -13,238 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' );
 ?>
-<style>
-	.user-registration-options-header--top {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-
-	.ur-log-card-header {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		align-items: center;
-		gap: 12px;
-	}
-
-	.ur-log-card-header .user-registration-card__header-wrapper {
-		display: flex;
-		align-items: baseline;
-		gap: 12px;
-	}
-
-	.ur-log-totals {
-		margin: 0;
-		font-size: 13px;
-		color: #6b6b6b;
-	}
-
-	.ur-log-search {
-		position: relative;
-		width: 275px;
-	}
-
-	.ur-log-search input[type="search"] {
-		width: 100%;
-		min-height: 38px;
-		height: 38px;
-		padding: 0 35px 0 12px;
-		border: 1px solid #e1e1e1;
-		border-radius: 4px;
-	}
-
-	.ur-log-search button {
-		position: absolute;
-		top: 50%;
-		right: 12px;
-		transform: translateY(-50%);
-		display: flex;
-		width: 18px;
-		height: 18px;
-		padding: 0;
-		border: 0;
-		background: transparent;
-		cursor: pointer;
-	}
-
-	.ur-log-search button svg path {
-		fill: #a1a4b9;
-	}
-
-	.ur-logs-table th,
-	.ur-logs-table td {
-		padding: 12px 16px;
-		font-size: 14px;
-		line-height: 24px;
-		color: #383838;
-	}
-
-	.ur-logs-table thead th {
-		font-weight: 600;
-		white-space: nowrap;
-	}
-
-	.ur-logs-table .column-files,
-	.ur-logs-table .column-size {
-		text-align: right;
-	}
-
-	.ur-logs-table .row-title {
-		font-weight: 500;
-		color: #475bb2;
-	}
-
-	.ur-logs-table td,
-	.ur-logs-table tbody th {
-		vertical-align: top;
-		padding: 14px 16px;
-	}
-
-	.ur-logs-table tbody th.check-column {
-		width: 44px;
-		padding: 14px 0 0 16px;
-	}
-
-	.ur-logs-table thead .check-column,
-	.ur-logs-table tfoot .check-column {
-		width: 44px;
-		padding: 12px 0 0 16px;
-	}
-
-	.ur-logs-table .check-column input[type="checkbox"] {
-		margin: 4px 0 0;
-	}
-
-	.ur-logs-table .column-category {
-		width: 140px;
-	}
-
-	.ur-logs-table .column-files {
-		width: 80px;
-	}
-
-	.ur-logs-table .column-size {
-		width: 110px;
-	}
-
-	.ur-logs-table .column-last_updated {
-		width: 200px;
-		white-space: nowrap;
-	}
-
-	.ur-logs-table .check-column input[type="checkbox"] {
-		vertical-align: top;
-	}
-
-	.ur-logs-table .column-files,
-	.ur-logs-table .column-size {
-		font-variant-numeric: tabular-nums;
-	}
-
-	.ur-logs-table .row-title {
-		display: block;
-	}
-
-	.ur-logs-table .row-actions {
-		position: static;
-		left: auto;
-		padding: 0;
-		font-size: 13px;
-		line-height: 20px;
-		color: #6b6b6b;
-	}
-
-	.ur-logs-table .row-actions a {
-		color: #475bb2;
-		text-decoration: none;
-	}
-
-	.ur-logs-table .row-actions a.ur-log-delete-link {
-		color: #b3262b;
-	}
-
-	.user-registration-card__body .tablenav select {
-		min-height: 38px;
-		padding: 0 32px 0 12px;
-		border-color: #bababa;
-		border-radius: 4px;
-	}
-
-	.user-registration-card__body .tablenav .button {
-		min-height: 38px;
-		line-height: 36px;
-		padding: 0 14px;
-		font-size: 14px;
-		font-weight: 500;
-		color: #475bb2;
-		background: #f6f7f7;
-		border: 1px solid #475bb2;
-		border-radius: 4px;
-	}
-
-	.user-registration-card__body .tablenav-pages .button,
-	.user-registration-card__body .tablenav-pages .tablenav-pages-navspan {
-		min-width: 30px;
-		min-height: 30px;
-		line-height: 28px;
-		padding: 0;
-		border-radius: 3px;
-	}
-
-	.user-registration-card__body .tablenav-pages .current-page {
-		min-height: 30px;
-		border-radius: 3px;
-	}
-
-	.ur-logs-table .ur-log-handle {
-		display: block;
-		padding: 0;
-		background: none;
-		font: 12px/18px Consolas, Monaco, monospace;
-		color: #6b6b6b;
-	}
-
-	.user-registration-card__body .tablenav .actions {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.user-registration-card__body .tablenav .actions select {
-		max-width: 220px;
-	}
-
-	.user-registration-card__body .empty-list-table-container {
-		text-align: center;
-		padding: 40px 24px 44px;
-	}
-
-	.user-registration-card__body .empty-list-table-container img {
-		display: block;
-		width: 256px;
-		max-width: 100%;
-		height: auto;
-		margin: 0 auto 12px;
-	}
-
-	@media (max-width: 782px) {
-		body {
-			min-width: 0;
-		}
-
-		.ur-log-search {
-			width: 100%;
-		}
-
-		.ur-log-card-header .user-registration-card__header-wrapper {
-			flex-wrap: wrap;
-		}
-	}
-
-</style>
 <?php if ( empty( $sources ) ) : ?>
-	<div class="user-registration-card ur-mt-4 ur-border-0">
+	<div class="user-registration-card">
 		<div class="user-registration-card__body">
 			<?php
 			UR_Base_Layout::no_items(
@@ -266,8 +36,8 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 		$total_size  += $source['size'];
 	}
 	?>
-	<div class="user-registration-card ur-mt-4 ur-border-0">
-		<div class="user-registration-card__header ur-border-0 ur-log-card-header">
+	<div class="user-registration-card ur-log-card">
+		<div class="user-registration-card__header ur-log-card-header">
 			<div class="user-registration-card__header-wrapper">
 				<h3 class="user-registration-card__title"><?php esc_html_e( 'All logs', 'user-registration' ); ?></h3>
 				<p class="ur-log-totals">
@@ -294,7 +64,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				</div>
 			<?php endif; ?>
 		</div>
-		<div class="pt-0 pb-0 user-registration-card__body">
+		<div class="user-registration-card__body ur-log-card-body">
 			<input type="hidden" name="page" value="user-registration-settings" />
 			<input type="hidden" name="tab" value="tools" />
 			<input type="hidden" name="section" value="logs" />
@@ -323,8 +93,8 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 		<a class="ur-log-back" href="<?php echo esc_url( $ur_logs_url ); ?>">&lsaquo; <?php esc_html_e( 'All logs', 'user-registration' ); ?></a>
 	<?php endif; ?>
 
-	<div class="user-registration-card ur-mt-4 ur-border-0">
-		<div class="user-registration-card__header ur-border-0" style="display:flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+	<div class="user-registration-card ur-log-card">
+		<div class="user-registration-card__header ur-log-card-header ur-log-single-header">
 			<div class="user-registration-card__header-wrapper">
 				<h3 class="user-registration-card__title"><?php echo esc_html( $info['name'] ); ?></h3>
 				<p class="ur-log-totals">
@@ -363,37 +133,35 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 					</select>
 					<input type="submit" class="button button-tertiary" value="<?php esc_attr_e( 'View', 'user-registration' ); ?>" />
 				<?php endif; ?>
-				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-confirm="<?php esc_attr_e( 'Delete this log permanently?', 'user-registration' ); ?>">
+				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-name="<?php echo esc_attr( $info['name'] ); ?>" data-files="<?php echo esc_attr( count( $source['files'] ) ); ?>" data-type="single">
 					<?php esc_html_e( 'Delete log', 'user-registration' ); ?>
 				</a>
 			</div>
 		</div>
 
-		<style>
-			#log-viewer .log-highlight { font-weight: bold; }
-			#log-viewer .user-registration-badge { font-size: 12px; font-weight: 600; margin: 0 4px; }
-			#log-viewer details.log-payload { margin: 4px 0 8px 0; }
-			#log-viewer details.log-payload summary { display: none; }
-			#log-viewer .payload-box {
-				margin-top: 6px;
-				background: #f6f8f887;
-				border-radius: 4px;
-				padding: 10px 12px;
-				white-space: pre-wrap;
-				overflow-x: auto;
-			}
-		</style>
-
-		<div class="pt-0 pb-0 user-registration-card__body">
-			<div id="log-viewer">
+		<div class="user-registration-card__body ur-log-card-body">
+			<div id="log-viewer" dir="ltr" tabindex="0">
 				<?php
 				$log_content = file_get_contents( trailingslashit( UR_LOG_DIR ) . $viewed_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 				if ( false === $log_content ) {
 					echo '<p>' . esc_html__( 'This log couldn’t be opened. It may have been removed. Go back to All logs and choose another.', 'user-registration' ) . '</p>';
 				} else {
-					echo '<pre>';
-					$lines = explode( "\n", $log_content );
+					$lines       = explode( "\n", $log_content );
+					$total_lines = count( $lines );
+					$show_all    = ! empty( $_GET['show_all'] ); // phpcs:ignore WordPress.Security.NonceVerification
+
+					if ( $total_lines > 500 && ! $show_all ) {
+						$earlier_url = add_query_arg( 'show_all', '1' );
+						echo '<p class="ur-log-load-earlier">' . sprintf(
+							/* translators: 1: number of earlier lines, 2: link open tag, 3: link close tag */
+							esc_html__( 'Showing the latest 500 lines of %1$d. %2$sLoad earlier lines%3$s.', 'user-registration' ),
+							(int) $total_lines,
+							'<a href="' . esc_url( $earlier_url ) . '">',
+							'</a>'
+						) . '</p>';
+						$lines = array_slice( $lines, -500 );
+					}
 
 					$json_buffer   = array();
 					$in_json_block = false;
@@ -405,17 +173,14 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 						}
 
 						$payload = trim( implode( "\n", $buffer ) );
-
 						if ( '' === $payload ) {
 							return;
 						}
 
-						echo '</pre>';
 						echo '<details class="log-payload" open>';
-						echo '<summary>' . esc_html__( 'View', 'user-registration' ) . '</summary>';
-						echo '<div class="payload-box">' . esc_html( $payload ) . '</div>';
+						echo '<summary>' . esc_html__( 'View payload', 'user-registration' ) . '</summary>';
+						echo '<pre class="payload-box">' . esc_html( $payload ) . '</pre>';
 						echo '</details>';
-						echo '<pre>';
 					};
 
 					foreach ( $lines as $line ) {
@@ -423,11 +188,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 
 						if ( $in_json_block ) {
 							$json_buffer[] = $line;
-
-							$brace_balance += substr_count( $line, '{' );
-							$brace_balance += substr_count( $line, '[' );
-							$brace_balance -= substr_count( $line, '}' );
-							$brace_balance -= substr_count( $line, ']' );
+							$brace_balance += substr_count( $line, '{' ) + substr_count( $line, '[' ) - substr_count( $line, '}' ) - substr_count( $line, ']' );
 
 							if ( $brace_balance <= 0 ) {
 								$render_payload( $json_buffer );
@@ -435,19 +196,13 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 								$in_json_block = false;
 								$brace_balance = 0;
 							}
-
 							continue;
 						}
 
-						// Start View data block for JSON/array lines.
 						if ( '' !== $trimmed && in_array( $trimmed[0], array( '{', '[' ), true ) ) {
 							$in_json_block = true;
 							$json_buffer[] = $line;
-
-							$brace_balance += substr_count( $line, '{' );
-							$brace_balance += substr_count( $line, '[' );
-							$brace_balance -= substr_count( $line, '}' );
-							$brace_balance -= substr_count( $line, ']' );
+							$brace_balance += substr_count( $line, '{' ) + substr_count( $line, '[' ) - substr_count( $line, '}' ) - substr_count( $line, ']' );
 
 							if ( $brace_balance <= 0 ) {
 								$render_payload( $json_buffer );
@@ -455,11 +210,9 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 								$in_json_block = false;
 								$brace_balance = 0;
 							}
-
 							continue;
 						}
 
-						// Match log pattern: timestamp LEVEL message.
 						$pattern = '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})\s+(EMERGENCY|ALERT|CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG|SUCCESS)\s+(.+)$/s';
 
 						if ( preg_match( $pattern, $line, $matches ) ) {
@@ -467,42 +220,31 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 							$level     = $matches[2];
 							$message   = $matches[3];
 
-							// Format timestamp to be more readable using WordPress timezone.
 							try {
-								$date        = new DateTime( $timestamp );
-								$wp_timezone = wp_timezone();
-								$date->setTimezone( $wp_timezone );
-								$formatted_time = $date->format( 'M d, Y g:i:s A' );
+								$date = new DateTime( $timestamp );
+								$date->setTimezone( wp_timezone() );
+								$formatted_time = $date->format( 'M j, Y g:i:s A' );
 							} catch ( Exception $e ) {
 								$formatted_time = $timestamp;
 							}
 
 							$safe_message = esc_html( $message );
-							$safe_message = preg_replace(
-								'/(\[[^\]]+\])/',
-								'<span class="log-highlight">$1</span>',
-								$safe_message
-							);
+							$safe_message = preg_replace( '/(\[[^\]]+\])/', '<span class="log-highlight">$1</span>', $safe_message );
+							$safe_message = preg_replace( '/\*\*\*(.*?)\*\*\*/', '<span class="log-highlight">$1</span>', $safe_message );
 
-							$safe_message = preg_replace(
-								'/\*\*\*(.*?)\*\*\*/',
-								'<span class="log-highlight">$1</span>',
-								$safe_message
-							);
-
-							echo esc_html( $formatted_time ) . ' ';
-							echo '<span class="' . esc_attr( UR_Admin_Status::get_level_badge_class( $level ) ) . '">' . esc_html( $level ) . '</span> ';
-							echo wp_kses( $safe_message, array( 'span' => array( 'class' => true ) ) ) . "\n";
-						} else {
-							echo esc_html( $line ) . "\n";
+							echo '<div class="ur-log-line">';
+							echo '<span class="ur-log-ts">' . esc_html( $formatted_time ) . '</span>';
+							echo '<span class="ur-log-level ur-log-level--' . esc_attr( strtolower( $level ) ) . '">' . esc_html( $level ) . '</span>';
+							echo '<span class="ur-log-msg">' . wp_kses( $safe_message, array( 'span' => array( 'class' => true ) ) ) . '</span>';
+							echo '</div>';
+						} elseif ( '' !== $trimmed ) {
+							echo '<div class="ur-log-raw-line">' . esc_html( $line ) . '</div>';
 						}
 					}
 
 					if ( ! empty( $json_buffer ) ) {
 						$render_payload( $json_buffer );
 					}
-
-					echo '</pre>';
 				}
 				?>
 			</div>
@@ -512,13 +254,89 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 
 <script>
 	( function () {
+		/**
+		 * Triggers SweetAlert2 delete confirmation modal.
+		 *
+		 * @param {string} title Modal title text.
+		 * @param {string} html Modal HTML body.
+		 * @param {Function} onConfirm Callback when user confirms.
+		 */
+		function showDeleteModal( title, html, onConfirm ) {
+			if ( typeof Swal === 'undefined' ) {
+				var tempEl = document.createElement( 'div' );
+				tempEl.innerHTML = html;
+				if ( window.confirm( tempEl.textContent || tempEl.innerText || title ) ) {
+					onConfirm();
+				}
+				return;
+			}
+
+			var trashIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f25656" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>';
+
+			Swal.fire( {
+				title: trashIcon + '<span>' + title + '</span>',
+				html: html,
+				showCancelButton: true,
+				focusCancel: true,
+				confirmButtonText: '<?php echo esc_js( __( 'Delete', 'user-registration' ) ); ?>',
+				cancelButtonText: '<?php echo esc_js( __( 'Cancel', 'user-registration' ) ); ?>',
+				buttonsStyling: false,
+				customClass: {
+					popup: 'ur-tools-delete-modal',
+					header: 'ur-tools-delete-modal__header',
+					title: 'ur-tools-delete-modal__title',
+					htmlContainer: 'ur-tools-delete-modal__content',
+					actions: 'ur-tools-delete-modal__actions',
+					cancelButton: 'ur-tools-delete-modal__cancel',
+					confirmButton: 'ur-tools-delete-modal__confirm'
+				}
+			} ).then( function ( result ) {
+				if ( result.value || result.isConfirmed ) {
+					onConfirm();
+				}
+			} );
+		}
+
+		// Single or row action delete.
 		document.addEventListener( 'click', function ( event ) {
 			var link = event.target.closest ? event.target.closest( '.ur-log-delete-link' ) : null;
-			if ( link && ! window.confirm( link.getAttribute( 'data-confirm' ) ) ) {
-				event.preventDefault();
+			if ( ! link ) {
+				return;
 			}
+
+			event.preventDefault();
+			var name = link.getAttribute( 'data-name' ) || '<?php echo esc_js( __( 'this log', 'user-registration' ) ); ?>';
+			var files = parseInt( link.getAttribute( 'data-files' ) || '1', 10 );
+			var fileStr = files === 1 ? '1 <?php echo esc_js( __( 'file', 'user-registration' ) ); ?>' : files + ' <?php echo esc_js( __( 'files', 'user-registration' ) ); ?>';
+
+			var title = '<?php echo esc_js( __( 'Delete log', 'user-registration' ) ); ?>';
+			var html = '<?php echo esc_js( __( 'Are you sure you want to delete the', 'user-registration' ) ); ?> <b>' + name + '</b> (' + fileStr + ') <?php echo esc_js( __( 'permanently?', 'user-registration' ) ); ?>';
+
+			showDeleteModal( title, html, function () {
+				window.location.href = link.href;
+			} );
 		} );
 
+		// Header "Delete all logs".
+		document.addEventListener( 'click', function ( event ) {
+			var link = event.target.closest ? event.target.closest( '.ur-log-delete-all' ) : null;
+			if ( ! link ) {
+				return;
+			}
+
+			event.preventDefault();
+			var files = parseInt( link.getAttribute( 'data-files' ) || '0', 10 );
+			var fileStr = files > 0 ? files + ' ' : '';
+
+			var title = '<?php echo esc_js( __( 'Delete all logs', 'user-registration' ) ); ?>';
+			var html = '<?php echo esc_js( __( 'Are you sure you want to delete', 'user-registration' ) ); ?> <b><?php echo esc_js( __( 'all', 'user-registration' ) ); ?> ' + fileStr + '<?php echo esc_js( __( 'log files', 'user-registration' ) ); ?></b> <?php echo esc_js( __( 'permanently? This can\'t be undone.', 'user-registration' ) ); ?>';
+
+			showDeleteModal( title, html, function () {
+				window.location.href = link.href;
+			} );
+		} );
+
+		// Bulk delete.
 		var form = document.getElementById( 'mainform' );
 		if ( form ) {
 			form.addEventListener( 'submit', function ( event ) {
@@ -527,8 +345,15 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				var chosen = ( top && 'delete' === top.value ) || ( bottom && 'delete' === bottom.value );
 				var checked = form.querySelectorAll( 'input[name="sources[]"]:checked' ).length;
 
-				if ( chosen && checked && ! window.confirm( '<?php echo esc_js( __( 'Delete the selected logs permanently?', 'user-registration' ) ); ?>' ) ) {
+				if ( chosen && checked > 0 ) {
 					event.preventDefault();
+
+					var title = '<?php echo esc_js( __( 'Delete logs', 'user-registration' ) ); ?>';
+					var html = '<?php echo esc_js( __( 'Are you sure you want to delete these', 'user-registration' ) ); ?> <b>' + checked + ' <?php echo esc_js( __( 'logs', 'user-registration' ) ); ?></b> <?php echo esc_js( __( 'permanently?', 'user-registration' ) ); ?>';
+
+					showDeleteModal( title, html, function () {
+						form.submit();
+					} );
 				}
 			} );
 		}

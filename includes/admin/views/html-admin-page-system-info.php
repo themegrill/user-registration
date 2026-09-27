@@ -209,128 +209,17 @@ foreach ( ur_setting_keys() as $ur_product => $ur_product_settings ) {
 	}
 }
 ?>
-<style>
-	@media (max-width: 782px) {
-		body {
-			min-width: 0;
-		}
-
-		.user-registration-system-info-setting .ur-si-table th {
-			width: 40%;
-		}
-	}
-
-	.user-registration-system-info-setting {
-		margin: 0;
-		padding: 0;
-		border: 0;
-		background: transparent;
-	}
-
-	.user-registration-system-info-setting .ur-si-card + .ur-si-card {
-		margin-top: 24px;
-	}
-
-	.ur-system-info-actions {
-		position: relative;
-		display: flex;
-		align-items: center;
-	}
-
-	.ur-system-info-copy.button-primary {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		width: auto;
-		height: auto;
-		padding: 0 16px;
-	}
-
-	.ur-copied-tip {
-		position: absolute;
-		top: calc(100% + 10px);
-		right: 0;
-		display: none;
-		padding: 12px 18px;
-		border-radius: 4px;
-		background: #fff;
-		box-shadow: 0 6px 24px rgba(10, 10, 10, 0.1);
-		font-size: 14px;
-		color: #383838;
-		white-space: nowrap;
-		z-index: 5;
-	}
-
-	.ur-copied-tip.is-visible {
-		display: block;
-	}
-
-	.user-registration-system-info-setting .ur-si-table {
-		width: 100%;
-		border-collapse: collapse;
-	}
-
-	.user-registration-system-info-setting .ur-si-table th,
-	.user-registration-system-info-setting .ur-si-table td {
-		padding: 10px 0;
-		border: 0;
-		border-top: 1px solid #f0f1f5;
-		font-size: 14px;
-		line-height: 24px;
-		color: #383838;
-		white-space: normal;
-		overflow: visible;
-		text-overflow: clip;
-		background: transparent;
-		text-align: left;
-		vertical-align: top;
-	}
-
-	.user-registration-system-info-setting .ur-si-table tr:first-child th,
-	.user-registration-system-info-setting .ur-si-table tr:first-child td {
-		border-top: 0;
-		padding-top: 0;
-	}
-
-	.user-registration-system-info-setting .ur-si-table tr:last-child td,
-	.user-registration-system-info-setting .ur-si-table tr:last-child th {
-		padding-bottom: 0;
-	}
-
-	.user-registration-system-info-setting .ur-si-table tr:hover,
-	.user-registration-system-info-setting .ur-si-table tr:hover th {
-		background: transparent;
-	}
-
-	.user-registration-system-info-setting .ur-si-table th {
-		width: 300px;
-		font-weight: 500;
-	}
-
-	.user-registration-system-info-setting .ur-si-json {
-		max-height: 320px;
-		overflow: auto;
-		white-space: pre-wrap;
-		font: 12px/18px Consolas, Monaco, monospace;
-	}
-
-	.ur-si-fallback {
-		width: 100%;
-		min-height: 160px;
-		margin-top: 12px;
-	}
-</style>
 
 <div class="user-registration-system-info-setting" id="ur-system-info">
 	<div class="ur-si-notice"></div>
 	<?php foreach ( $ur_sections as $ur_section ) : ?>
-		<div class="user-registration-card ur-mt-4 ur-border-0 ur-si-card">
-			<div class="user-registration-card__header ur-border-0">
+		<div class="user-registration-card ur-si-card">
+			<div class="user-registration-card__header">
 				<div class="user-registration-card__header-wrapper">
 					<h3 class="user-registration-card__title"><?php echo esc_html( $ur_section['title'] ); ?></h3>
 				</div>
 			</div>
-			<div class="pt-0 pb-0 user-registration-card__body">
+			<div class="user-registration-card__body">
 				<table class="ur-si-table">
 					<tbody>
 					<?php foreach ( $ur_section['rows'] as $ur_row ) : ?>
@@ -345,13 +234,13 @@ foreach ( ur_setting_keys() as $ur_product => $ur_product_settings ) {
 		</div>
 	<?php endforeach; ?>
 
-	<div class="user-registration-card ur-mt-4 ur-border-0 ur-si-card">
-		<div class="user-registration-card__header ur-border-0">
+	<div class="user-registration-card ur-si-card">
+		<div class="user-registration-card__header">
 			<div class="user-registration-card__header-wrapper">
 				<h3 class="user-registration-card__title"><?php esc_html_e( 'Plugin settings', 'user-registration' ); ?></h3>
 			</div>
 		</div>
-		<div class="pt-0 pb-0 user-registration-card__body">
+		<div class="user-registration-card__body">
 			<details>
 				<summary><?php esc_html_e( 'Show settings (JSON). Included when you copy', 'user-registration' ); ?></summary>
 				<pre class="ur-si-json" data-ur-si-json><?php echo esc_html( wp_json_encode( $ur_global_settings ) ); ?></pre>

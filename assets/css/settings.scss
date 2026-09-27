@@ -1,16 +1,10 @@
 @import "variables/variables";
 @import "mixins/mixins";
-@import "components/button", "components/typography", "components/toggle";
+@import "components/button", "components/typography", "components/toggle", "components/settings-tools";
 
 // User Registration Global Settings CSS
 * {
 	box-sizing: border-box;
-}
-
-body {
-	@media screen and (max-width: 782px) {
-		min-width: 600px;
-	}
 }
 
 // ToolTip CSSs
