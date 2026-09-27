@@ -2213,6 +2213,35 @@ class NewPaypalService {
 			return true; // ignore late failure events for already-terminated subscriptions
 		}
 
+		// A scheduled downgrade's new subscription is approved right away but its billing starts at
+		// delayed_until; the row must keep pointing at the still-billing old subscription until then
+		// (run_daily_delayed_membership_subscriptions() switches it over), or that subscription's own
+		// renewal sales can no longer be found by ID and are silently dropped.
+		$row_paypal_id       = (string) ( $member_subscription['subscription_id'] ?? '' );
+		$is_new_subscription = '' !== $row_paypal_id && $paypal_subscription_id !== $row_paypal_id;
+		if ( 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type && $is_new_subscription ) {
+			$start_time = strtotime( (string) ( $resource['start_time'] ?? '' ) );
+			if ( $start_time && $start_time - time() > self::DEFERRED_START_THRESHOLD ) {
+				PaymentGatewayLogging::log_general(
+					'paypal',
+					sprintf(
+						'[Member ID #%s] Subscription webhook deferred: new PayPal subscription is approved but its billing has not started yet (scheduled downgrade).',
+						$member_id
+					) . "\n" . wp_json_encode(
+						array(
+							'event_type'                     => $event_type,
+							'paypal_subscription_id'         => $paypal_subscription_id,
+							'current_paypal_subscription_id' => $row_paypal_id,
+							'start_time'                     => $resource['start_time'] ?? null,
+						),
+						JSON_PRETTY_PRINT
+					),
+					'notice'
+				);
+				return true;
+			}
+		}
+
 		$this->members_subscription_repository->update(
 			$member_subscription['ID'],
 			array(
