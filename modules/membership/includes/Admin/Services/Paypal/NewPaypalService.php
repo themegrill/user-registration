@@ -1702,7 +1702,7 @@ class NewPaypalService {
 
 			// A trial-plan upgrade is charged nothing; its order carries trial_status 'on' (see OrderService).
 			// Marking it 'active' here would skip the trial state the redirect and cron elsewhere rely on.
-			$upgrade_order               = $this->members_orders_repository->get_member_orders( $member_id );
+			$upgrade_order               = $this->orders_repository->get_order_by_subscription( $subscription_id );
 			$subscription_data['status'] = 'on' === ( isset( $upgrade_order['trial_status'] ) ? $upgrade_order['trial_status'] : '' ) ? 'trial' : 'active';
 			$this->subscription_repository->update( $subscription_id, $subscription_data );
 		}
@@ -2758,7 +2758,7 @@ class NewPaypalService {
 	}
 
 	/**
-	 * Whether a missed-payment backfill in this request failed to fetch events from PayPal.
+	 * Whether a missed-payment backfill in this request failed to fetch from PayPal or to save a result.
 	 *
 	 * The scheduler keeps the last sync time when this is true, so the window is searched again next run.
 	 *
@@ -2766,6 +2766,21 @@ class NewPaypalService {
 	 */
 	public function has_backfill_failure() {
 		return $this->backfill_failed;
+	}
+
+	/**
+	 * Whether a backfill's repository write succeeded; a failed one marks the run failed so its sync window is kept.
+	 *
+	 * @param int|false $result Return value of a repository update().
+	 *
+	 * @return bool
+	 */
+	private function backfill_write_succeeded( $result ) {
+		if ( false === $result ) {
+			$this->backfill_failed = true;
+		}
+
+		return false !== $result;
 	}
 
 	/**
@@ -4206,7 +4221,10 @@ class NewPaypalService {
 				}
 			}
 
-			$this->members_subscription_repository->update( $local_sub_id, $update_data );
+			if ( ! $this->backfill_write_succeeded( $this->members_subscription_repository->update( $local_sub_id, $update_data ) ) ) {
+				++$count_errors;
+				continue;
+			}
 
 			PaymentGatewayLogging::log_general(
 				'paypal',
@@ -4230,10 +4248,10 @@ class NewPaypalService {
 				$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
 				if ( ! empty( $pending_order ) && 'pending' === ( $pending_order['status'] ?? '' ) ) {
 					$order_prev_status = $pending_order['status'];
-					$this->orders_repository->update(
-						$pending_order['ID'],
-						array( 'status' => 'completed' )
-					);
+					if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $pending_order['ID'], array( 'status' => 'completed' ) ) ) ) {
+						++$count_errors;
+						continue;
+					}
 					$logger->info(
 						'[Backfill][Paypal][Subscription][Status] Pending order completed alongside subscription activation.' . "\n" . wp_json_encode(
 							array(
@@ -4392,10 +4410,10 @@ class NewPaypalService {
 				$live_status = $this->map_paypal_sale_state( $live_state );
 				$prev_status  = $existing_payment['status'] ?? '';
 
-				$this->orders_repository->update(
-					$existing_payment['ID'],
-					array( 'status' => $live_status )
-				);
+				if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $existing_payment['ID'], array( 'status' => $live_status ) ) ) ) {
+					++$count_errors;
+					continue;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'[Backfill][PayPal][Subscription][Payments] Existing order status synced from PayPal live.' . "\n" . wp_json_encode(
@@ -4479,7 +4497,7 @@ class NewPaypalService {
 			// Update a pending order in place rather than creating a duplicate.
 			$existing_pending = $this->orders_repository->get_order_by_subscription( $local_sub_id );
 			if ( $this->is_pending_order_for_current_plan( $existing_pending, $membership_subscription ) ) {
-				$this->orders_repository->update(
+				$pending_completed = $this->orders_repository->update(
 					$existing_pending['ID'],
 					array(
 						'status'         => 'completed',
@@ -4487,6 +4505,10 @@ class NewPaypalService {
 						'total_amount'   => $gross_amount,
 					)
 				);
+				if ( ! $this->backfill_write_succeeded( $pending_completed ) ) {
+					++$count_errors;
+					continue;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'[Backfill][PayPal][Subscription][Payments] Pending order updated with real transaction.' . "\n" . wp_json_encode(
@@ -4665,10 +4687,9 @@ class NewPaypalService {
 				$live_status     = $this->map_paypal_capture_status( $live_state );
 				$prev_status     = $existing_order['status'] ?? '';
 
-				$this->orders_repository->update(
-					$existing_order['ID'],
-					array( 'status' => $live_status )
-				);
+				if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $existing_order['ID'], array( 'status' => $live_status ) ) ) ) {
+					continue;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'[Backfill][PayPal][OneTime] Existing order status synced from PayPal live.' . "\n" . wp_json_encode(
@@ -4715,23 +4736,29 @@ class NewPaypalService {
 				continue;
 			}
 
-			$this->orders_repository->update(
+			$order_completed = $this->orders_repository->update(
 				$order['ID'],
 				array(
 					'status'         => 'completed',
 					'transaction_id' => $capture_id,
 				)
 			);
+			if ( ! $this->backfill_write_succeeded( $order_completed ) ) {
+				continue;
+			}
 
 			$subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
 			if ( ! empty( $subscription['ID'] ) && 'pending' === ( isset( $subscription['status'] ) ? $subscription['status'] : '' ) ) {
-				$this->members_subscription_repository->update(
+				$subscription_activated = $this->members_subscription_repository->update(
 					$subscription['ID'],
 					array(
 						'status'     => 'active',
 						'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 					)
 				);
+				if ( ! $this->backfill_write_succeeded( $subscription_activated ) ) {
+					continue;
+				}
 				$logger->info(
 					'[Backfill][PayPal][OneTime] Subscription activated.' . "\n" . wp_json_encode(
 						array(
@@ -4790,13 +4817,16 @@ class NewPaypalService {
 				continue;
 			}
 
-			$this->members_subscription_repository->update(
+			$orphan_activated = $this->members_subscription_repository->update(
 				$subscription['ID'],
 				array(
 					'status'     => 'active',
 					'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 				)
 			);
+			if ( ! $this->backfill_write_succeeded( $orphan_activated ) ) {
+				continue;
+			}
 			++$count_activated;
 			$logger->info(
 				'[Backfill][PayPal][OneTime] Orphaned subscription activated.' . "\n" . wp_json_encode(
@@ -4938,7 +4968,9 @@ class NewPaypalService {
 				continue;
 			}
 
-			$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+			if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) ) ) ) {
+				continue;
+			}
 			++$total_updated;
 			$logger->info(
 				sprintf( '[Backfill][PayPal][Refunds] Marked order %d as refunded (transaction %s)', $order['ID'], $transaction_id ),
