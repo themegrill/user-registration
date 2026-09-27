@@ -291,6 +291,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		$sql = sprintf(
 			"
 					SELECT
+					       urmo.ID as order_id,
 					       wpum.meta_value as sub_data
 					FROM wp_ur_membership_orders urmo
 					         JOIN wp_ur_membership_ordermeta wpom ON urmo.ID = wpom.order_id

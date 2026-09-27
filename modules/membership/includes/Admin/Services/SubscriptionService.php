@@ -820,8 +820,10 @@ class SubscriptionService {
 			);
 
 		} else {
-			$upgradable_memberships = explode( ',', $upgrade_details['upgrade_path'] );
-			$status                 = in_array( $data['selected_membership_id'], $upgradable_memberships );
+			$upgradable_memberships = is_array( $upgrade_details['upgrade_path'] )
+				? $upgrade_details['upgrade_path']
+				: explode( ',', (string) $upgrade_details['upgrade_path'] );
+			$status                 = in_array( (string) $data['selected_membership_id'], array_map( 'strval', $upgradable_memberships ), true );
 		}
 
 		if ( ! $status ) {
@@ -981,13 +983,20 @@ class SubscriptionService {
 				if ( ! empty( $new_paypal_subscription_id ) ) {
 					delete_user_meta( $user->ID, $scheduled_meta_key );
 				}
-				$last_order = $this->members_orders_repository->get_member_orders( $user->ID );
-				$this->orders_repository->delete_order_meta(
-					array(
-						'order_id' => $last_order['ID'],
-						'meta_key' => 'delayed_until',
-					)
-				);
+				// Target the exact order that held delayed_until rather than assuming the newest order overall.
+				$delayed_order_id = ! empty( $data['order_id'] ) ? absint( $data['order_id'] ) : 0;
+				if ( empty( $delayed_order_id ) ) {
+					$last_order       = $this->members_orders_repository->get_member_orders( $user->ID );
+					$delayed_order_id = ! empty( $last_order['ID'] ) ? absint( $last_order['ID'] ) : 0;
+				}
+				if ( ! empty( $delayed_order_id ) ) {
+					$this->orders_repository->delete_order_meta(
+						array(
+							'order_id' => $delayed_order_id,
+							'meta_key' => 'delayed_until',
+						)
+					);
+				}
 				delete_user_meta( $user->ID, 'urm_next_subscription_data' );
 				delete_user_meta( $user->ID, 'urm_previous_subscription_data' );
 				delete_user_meta( $user->ID, 'urm_previous_order_data' );
@@ -1546,7 +1555,9 @@ class SubscriptionService {
 									$seed_candidate = $last_synced;
 									update_option( 'urm_paypal_backfill_seed_pending', $seed_candidate );
 								}
-								if ( ! update_option( 'urm_last_paypal_backfill_sync_time', $seed_candidate ) ) {
+								update_option( 'urm_last_paypal_backfill_sync_time', $seed_candidate );
+								// Verify stored option to prevent update_option() from failing when new value equals existing value.
+								if ( (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 ) !== $seed_candidate ) {
 									ur_get_logger()->warning(
 										'[Backfill][PayPal] Could not store the starting sync time; retrying next run.',
 										array( 'source' => 'urm-missed-payment-backfill' )

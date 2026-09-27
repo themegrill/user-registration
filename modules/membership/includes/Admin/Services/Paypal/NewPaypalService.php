@@ -453,12 +453,11 @@ class NewPaypalService {
 			'is_subscription_upgrade_revise'  => false,
 		);
 
-		// UR-4386: a valid 100% coupon zeroes a subscription's amount. Bill nothing now and start
-		// one period later (future start_time) with a plain REGULAR plan, instead of a $0 TRIAL cycle.
+		// Bill nothing now and defer first cycle by one period to prevent invalid zero-dollar trial cycles.
 		$context['is_full_discount_sub'] = $context['is_subscription']
-			&& ! $is_upgrading
 			&& ! empty( $coupon_details )
 			&& 0.0 === (float) $final_amount;
+
 
 		// Prorated upgrade: the prorated amount is billed as a priced first cycle, then the plan price.
 		// Excludes scheduled downgrades (billing starts at delayed_until) and plans with their own trial.
@@ -1233,6 +1232,7 @@ class NewPaypalService {
 			|| ( ! empty( $order_token ) && empty( $paypal_subscription_id ) );
 
 		$payment_verified = false;
+		$is_deferred      = false;
 
 		// if buyer already returned and internal order is completed, just redirect .
 		// if ( 'completed' === ( isset( $member_order['status'] ) ? $member_order['status'] : '' ) ) {
@@ -1448,30 +1448,41 @@ class NewPaypalService {
 				'subscription_id_placeholder' === $transaction_source ? 'notice' : 'info'
 			);
 
-			$this->members_orders_repository->update(
-				$member_order['ID'],
-				array(
-					'status'         => 'completed',
-					'transaction_id' => $transaction_id,
-				)
-			);
+			// Only THIS row's own scheduled-downgrade marker defers activation; standard subscriptions activate immediately.
+			$scheduled_id = ! empty( $member_subscription['ID'] ) ? get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true ) : '';
+			$is_deferred  = ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id;
 
-			$resolved_status = 'on' === ( isset( $member_order['trial_status'] ) ? $member_order['trial_status'] : '' ) ? 'trial' : $new_status;
+			// Defer status update on scheduled downgrades; resolve trial or active status for immediate subscriptions.
+			$resolved_status = $is_deferred
+				? ( ! empty( $member_subscription['status'] ) ? $member_subscription['status'] : 'active' )
+				: ( 'on' === ( isset( $member_order['trial_status'] ) ? $member_order['trial_status'] : '' ) ? 'trial' : $new_status );
 
-			if ( ! empty( $member_subscription ) ) {
-				$row_update = array(
-					'status'     => $resolved_status,
-					'start_date' => date( 'Y-m-d 00:00:00' ), // phpcs:ignore WordPress.DateTime.RestrictedFunctions.date_date
+			if ( ! $is_deferred ) {
+				$this->members_orders_repository->update(
+					$member_order['ID'],
+					array(
+						'status'         => 'completed',
+						'transaction_id' => $transaction_id,
+					)
 				);
 
-				// Only THIS row's own scheduled-downgrade marker defers writing the ID; a brand-new subscription (100% coupon) always keeps it.
-				$scheduled_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
-				$is_deferred  = ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id;
-				if ( ! $is_deferred ) {
-					$row_update['subscription_id'] = sanitize_text_field( $paypal_subscription_id );
-				}
+				if ( ! empty( $member_subscription ) ) {
+					$row_update = array(
+						'status'          => $resolved_status,
+						'start_date'      => date( 'Y-m-d 00:00:00' ), // phpcs:ignore WordPress.DateTime.RestrictedFunctions.date_date
+						'subscription_id' => sanitize_text_field( $paypal_subscription_id ),
+					);
 
-				$this->members_subscription_repository->update( $member_subscription['ID'], $row_update );
+					$this->members_subscription_repository->update( $member_subscription['ID'], $row_update );
+				}
+			} else {
+				// Scheduled downgrade: preserve pending status until switch-over day when first payment is billed.
+				$this->members_orders_repository->update(
+					$member_order['ID'],
+					array(
+						'transaction_id' => $paypal_subscription_id,
+					)
+				);
 			}
 
 			PaymentGatewayLogging::log_transaction_success(
@@ -1513,7 +1524,10 @@ class NewPaypalService {
 			$subscription_service->update_subscription_data_for_renewal( $member_subscription, $membership_metas );
 		}
 
-		$this->send_payment_success_email( $member_order['ID'], $member_subscription, $membership_metas, $member_id, $membership_id );
+		// Deferred downgrades are unbilled until the switch-over date; send receipt only on real payment.
+		if ( ! $is_deferred ) {
+			$this->send_payment_success_email( $member_order['ID'], $member_subscription, $membership_metas, $member_id, $membership_id );
+		}
 
 		// UR-4710: PayPal is offsite, so role was deferred at registration/upgrade time.
 		// Redirect confirms payment here — grant it now instead of waiting for next login.
@@ -2448,9 +2462,12 @@ class NewPaypalService {
 		$local_sub_id = $membership_subscription['ID'];
 		$user_id      = $membership_subscription['user_id'];
 
-		// Replace placeholder order whose transaction_id is the subscription ID (not a real sale ID).
-		$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
-		if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
+		// A completed zero-dollar order is the initial checkout; paid renewal sales must create a separate order.
+		$placeholder           = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
+		$sale_amount           = (float) ( $resource['amount']['total'] ?? 0 );
+		$is_initial_free_order = ! empty( $placeholder ) && 'completed' === ( $placeholder['status'] ?? '' ) && ( (float) ( $placeholder['total_amount'] ?? 0 ) <= 0 );
+
+		if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) && ( ! $is_initial_free_order || $sale_amount <= 0 ) ) {
 			$placeholder_updated = $this->orders_repository->update(
 				$placeholder['ID'],
 				array(
@@ -2488,9 +2505,9 @@ class NewPaypalService {
 			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
-		// Update a pending order that has no transaction_id yet.
-		$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
-		if ( $this->is_pending_order_for_current_plan( $pending_order, $membership_subscription ) ) {
+		// Query the pending order for the current plan to avoid picking an abandoned order for another plan.
+		$pending_order = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $membership_subscription['item_id'] );
+		if ( ! empty( $pending_order ) ) {
 			$pending_order_updated = $this->orders_repository->update(
 				$pending_order['ID'],
 				array(
@@ -2571,24 +2588,6 @@ class NewPaypalService {
 		return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 	}
 
-	/**
-	 * Whether an order is still waiting for its first sale and belongs to the plan its row is currently on.
-	 *
-	 * An abandoned upgrade or downgrade leaves a pending order for a different plan on the same row, and the
-	 * old, still-billing subscription's next sale must not complete it.
-	 *
-	 * @param array $order                   Latest order of the subscription row.
-	 * @param array $membership_subscription Local subscription row.
-	 *
-	 * @return bool
-	 */
-	private function is_pending_order_for_current_plan( $order, $membership_subscription ) {
-		return ! empty( $order['ID'] )
-			&& 'paypal' === ( $order['payment_method'] ?? '' )
-			&& 'pending' === ( $order['status'] ?? '' )
-			&& '' === (string) ( $order['transaction_id'] ?? '' )
-			&& (int) ( $order['item_id'] ?? 0 ) === (int) ( $membership_subscription['item_id'] ?? 0 );
-	}
 
 	/**
 	 * Record a completed PayPal subscription sale as an order, at most once per sale.
@@ -2622,6 +2621,27 @@ class NewPaypalService {
 				return false;
 			}
 
+			$order_meta = array(
+				array(
+					'meta_key'   => 'is_admin_created',
+					'meta_value' => false, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				),
+			);
+
+			// Inherit currency and tax configuration from the preceding order on this subscription.
+			$previous_order = $this->orders_repository->get_order_by_subscription( $membership_subscription['ID'] );
+			if ( ! empty( $previous_order['ID'] ) ) {
+				foreach ( array( 'local_currency', 'local_currency_converted_amount', 'tax_data' ) as $meta_key ) {
+					$prev_meta = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $previous_order['ID'], $meta_key );
+					if ( ! empty( $prev_meta['meta_value'] ) ) {
+						$order_meta[] = array(
+							'meta_key'   => $meta_key,
+							'meta_value' => $prev_meta['meta_value'], // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+						);
+					}
+				}
+			}
+
 			$order = $this->orders_repository->create(
 				array(
 					'orders_data'      => array(
@@ -2638,12 +2658,7 @@ class NewPaypalService {
 						'notes'           => $note,
 						'created_at'      => $created_at,
 					),
-					'orders_meta_data' => array(
-						array(
-							'meta_key'   => 'is_admin_created',
-							'meta_value' => false, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
-						),
-					),
+					'orders_meta_data' => $order_meta,
 				)
 			);
 
@@ -2695,14 +2710,28 @@ class NewPaypalService {
 			return false;
 		}
 
-		if ( 'ACTIVE' !== ( $remote['status'] ?? '' ) || empty( $remote['billing_info']['next_billing_time'] ) || $this->count_completed_cycles( $remote ) < $this->renewal_min_completed_cycles( $remote ) ) {
+		if ( $this->count_completed_cycles( $remote ) < $this->renewal_min_completed_cycles( $remote ) ) {
 			return true;
 		}
 
-		$paypal_next  = gmdate( 'Y-m-d H:i:s', strtotime( $remote['billing_info']['next_billing_time'] ) );
+		if ( ! empty( $remote['billing_info']['next_billing_time'] ) ) {
+			$paypal_next = gmdate( 'Y-m-d H:i:s', strtotime( $remote['billing_info']['next_billing_time'] ) );
+		} else {
+			// Extend access by plan duration on final fixed cycles or when future recurring billing is cancelled.
+			$membership_data  = $this->membership_repository->get_single_membership_by_ID( $membership_subscription['item_id'] );
+			$membership_metas = ! empty( $membership_data['meta_value'] ) ? json_decode( $membership_data['meta_value'], true ) : array();
+			$duration_val     = absint( $membership_metas['subscription']['value'] ?? 1 );
+			$duration_unit    = sanitize_text_field( $membership_metas['subscription']['duration'] ?? 'month' );
+			$base_timestamp   = ! empty( $membership_subscription['expiry_date'] ) ? strtotime( $membership_subscription['expiry_date'] ) : time();
+
+			$paypal_next = gmdate( 'Y-m-d H:i:s', strtotime( "+{$duration_val} {$duration_unit}", $base_timestamp ) );
+		}
+
 		$local_expiry = (string) ( $membership_subscription['expiry_date'] ?? '' );
 		$expiry_date  = $this->later_date( $local_expiry, $paypal_next );
-		$next_billing = $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next );
+		$next_billing = ! empty( $remote['billing_info']['next_billing_time'] )
+			? $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next )
+			: (string) ( $membership_subscription['next_billing_date'] ?? '' );
 		$table        = TableList::subscriptions_table();
 
 		// Conditional on status and on the row still using this PayPal subscription — either could have changed
@@ -3772,8 +3801,13 @@ class NewPaypalService {
 			return false;
 		}
 
+		// Zero-dollar cycles cannot be priced trial tiers in PayPal plan overrides.
+		if ( ! empty( $context['is_full_discount_sub'] ) || ( isset( $context['final_amount'] ) && 0.0 === (float) $context['final_amount'] ) ) {
+			return false;
+		}
+
 		return ! empty( $context['is_proration_upgrade'] )
-			|| ( ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) );
+			|| ! empty( $context['coupon_details'] );
 	}
 
 	/**
@@ -4313,13 +4347,21 @@ class NewPaypalService {
 				'success'
 			);
 
-			// When a subscription becomes active, also complete its pending order for the plan it's actually on
-			// — not just whichever order is latest, which could be an unrelated checkout started while canceled.
+			// Complete a zero-dollar or trial order; paid orders remain pending until run_missed_payment_backfill supplies the real sale ID.
 			if ( 'active' === $paypal_status && 'active' !== $local_status ) {
 				$pending_order = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $subscription['item_id'] );
-				if ( ! empty( $pending_order ) ) {
+				$is_free_order = ! empty( $pending_order ) && ( (float) ( $pending_order['total_amount'] ?? 0 ) <= 0 || 'on' === ( $pending_order['trial_status'] ?? '' ) );
+				if ( $is_free_order ) {
 					$order_prev_status = $pending_order['status'];
-					if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $pending_order['ID'], array( 'status' => 'completed' ) ) ) ) {
+					if ( ! $this->backfill_write_succeeded(
+						$this->orders_repository->update(
+							$pending_order['ID'],
+							array(
+								'status'         => 'completed',
+								'transaction_id' => $paypal_subscription_id,
+							)
+						)
+					) ) {
 						++$count_errors;
 						continue;
 					}
@@ -4468,16 +4510,18 @@ class NewPaypalService {
 			// If an order for this transaction exists, sync its status with PayPal live.
 			$existing_payment = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 			if ( ! empty( $existing_payment ) ) {
-				$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
-
-				// Guessing 'completed' here would flip a refunded order back; keep it and search this window again next run.
-				if ( is_wp_error( $sale_details ) || ! isset( $sale_details['state'] ) ) {
-					$this->backfill_failed = true;
-					++$count_errors;
-					continue;
+				// Use state already present in event payload to avoid N+1 synchronous HTTP requests.
+				$live_state = ! empty( $resource['state'] ) ? $resource['state'] : '';
+				if ( empty( $live_state ) ) {
+					$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
+					if ( is_wp_error( $sale_details ) || ! isset( $sale_details['state'] ) ) {
+						$this->backfill_failed = true;
+						++$count_errors;
+						continue;
+					}
+					$live_state = $sale_details['state'];
 				}
 
-				$live_state  = $sale_details['state'];
 				$live_status = $this->map_paypal_sale_state( $live_state );
 				$prev_status  = $existing_payment['status'] ?? '';
 
@@ -4530,10 +4574,11 @@ class NewPaypalService {
 			$local_sub_id = $membership_subscription['ID'];
 			$user_id      = $membership_subscription['user_id'];
 
-			// Placeholder order (transaction_id = PayPal subscription ID): complete it in place, as the webhook
-			// does, so its order meta (tax, coupon, currency, proration) survives.
-			$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
-			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
+			// A completed zero-dollar order is the initial checkout; paid renewal sales must create a separate order.
+			$placeholder           = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
+			$is_initial_free_order = ! empty( $placeholder ) && 'completed' === ( $placeholder['status'] ?? '' ) && ( (float) ( $placeholder['total_amount'] ?? 0 ) <= 0 );
+
+			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) && ( ! $is_initial_free_order || $gross_amount <= 0 ) ) {
 				$placeholder_updated = $this->orders_repository->update(
 					$placeholder['ID'],
 					array(
@@ -4565,9 +4610,9 @@ class NewPaypalService {
 				continue;
 			}
 
-			// Update a pending order in place rather than creating a duplicate.
-			$existing_pending = $this->orders_repository->get_order_by_subscription( $local_sub_id );
-			if ( $this->is_pending_order_for_current_plan( $existing_pending, $membership_subscription ) ) {
+			// Query the pending order for the current plan to avoid picking an abandoned order for another plan.
+			$existing_pending = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $membership_subscription['item_id'] );
+			if ( ! empty( $existing_pending ) ) {
 				$pending_completed = $this->orders_repository->update(
 					$existing_pending['ID'],
 					array(
@@ -4836,6 +4881,8 @@ class NewPaypalService {
 				if ( ! $this->backfill_write_succeeded( $subscription_activated ) ) {
 					continue;
 				}
+				// Grant deferred WordPress user role now that one-time payment is confirmed.
+				( new MembersService() )->maybe_grant_pending_role( absint( $subscription_row['user_id'] ) );
 				$logger->info(
 					'[Backfill][PayPal][OneTime] Subscription activated.' . "\n" . wp_json_encode(
 						array(
@@ -4904,6 +4951,8 @@ class NewPaypalService {
 			if ( ! $this->backfill_write_succeeded( $orphan_activated ) ) {
 				continue;
 			}
+			// Grant deferred WordPress user role now that orphaned subscription is active.
+			( new MembersService() )->maybe_grant_pending_role( absint( $subscription['user_id'] ) );
 			++$count_activated;
 			$logger->info(
 				'[Backfill][PayPal][OneTime] Orphaned subscription activated.' . "\n" . wp_json_encode(
