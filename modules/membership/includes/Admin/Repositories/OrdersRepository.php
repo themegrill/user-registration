@@ -341,7 +341,9 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 			 WHERE o.payment_method = 'paypal'
 			 AND o.order_type = 'paid'
 			 AND o.status = 'completed'
-			 AND s.status IN ('pending', 'expired', 'canceled')",
+			 AND s.status = 'pending'
+			 AND o.item_id = s.item_id
+			 AND o.ID = ( SELECT MAX( o2.ID ) FROM {$this->table} o2 WHERE o2.subscription_id = s.ID )",
 			ARRAY_A
 		);
 
