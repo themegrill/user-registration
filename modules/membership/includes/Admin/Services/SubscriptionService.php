@@ -1538,17 +1538,23 @@ class SubscriptionService {
 							// window is searched again without holding the other gateways back.
 							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
 							if ( $paypal_last_synced <= 0 ) {
-								// First run: store the starting point so a failed run cannot fall back to an advanced shared time.
-								// If this write itself fails, don't run on an un-persisted cursor — retry the seed next run instead
-								// of silently using it in memory only, which would let the shared cursor advance past it unseen.
-								if ( ! update_option( 'urm_last_paypal_backfill_sync_time', $last_synced ) ) {
+								// First run: seed from a bookmark that survives a failed write, not from $last_synced directly —
+								// the shared cursor keeps advancing on every run, so re-deriving from it on a later retry would
+								// silently start later than the original window this seed was meant to cover.
+								$seed_candidate = (int) get_option( 'urm_paypal_backfill_seed_pending', 0 );
+								if ( $seed_candidate <= 0 ) {
+									$seed_candidate = $last_synced;
+									update_option( 'urm_paypal_backfill_seed_pending', $seed_candidate );
+								}
+								if ( ! update_option( 'urm_last_paypal_backfill_sync_time', $seed_candidate ) ) {
 									ur_get_logger()->warning(
-										'[Backfill][PayPal] Could not store the starting sync time; skipped this run.',
+										'[Backfill][PayPal] Could not store the starting sync time; retrying next run.',
 										array( 'source' => 'urm-missed-payment-backfill' )
 									);
 									break;
 								}
-								$paypal_last_synced = $last_synced;
+								delete_option( 'urm_paypal_backfill_seed_pending' );
+								$paypal_last_synced = $seed_candidate;
 							}
 							$paypal_service = new NewPaypalService();
 							if ( ! $paypal_service->has_rest_credentials() ) {

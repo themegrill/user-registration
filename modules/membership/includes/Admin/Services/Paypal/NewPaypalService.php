@@ -857,7 +857,17 @@ class NewPaypalService {
 			update_user_meta( $context['member_id'], 'urm_paypal_subscription_paypal_id', sanitize_text_field( $response['id'] ) );
 
 			if ( $context['is_upgrading'] && ! empty( $context['response_data']['delayed_until'] ) ) {
-				update_user_meta( $context['member_id'], self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $context['subscription_id'], sanitize_text_field( $response['id'] ) );
+				// The PayPal side is already committed by this point, so a write failure here can only be logged, not retried.
+				if ( false === update_user_meta( $context['member_id'], self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $context['subscription_id'], sanitize_text_field( $response['id'] ) ) ) {
+					PaymentGatewayLogging::log_error(
+						'paypal',
+						sprintf(
+							'[Member ID #%s] Could not store the scheduled-downgrade marker for subscription %s; its billing dates may be applied without the new PayPal ID.',
+							$context['member_id'],
+							$context['subscription_id']
+						)
+					);
+				}
 			}
 		}
 
