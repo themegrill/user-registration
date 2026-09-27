@@ -2335,7 +2335,9 @@ class UR_AJAX {
 			( isset( $_POST['form_ids'] ) && ! is_string( $_POST['form_ids'] ) ) ) {
 			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
 		}
-		$for      = isset( $_POST['nonce_for'] ) ? sanitize_key( wp_unslash( $_POST['nonce_for'] ) ) : 'registration';
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Public guest nonce refresh does not require an existing nonce.
+		$for = isset( $_POST['nonce_for'] ) ? sanitize_key( wp_unslash( $_POST['nonce_for'] ) ) : 'registration';
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Public refresh; IDs are strictly validated below.
 		$form_ids = isset( $_POST['form_ids'] ) ? array_unique( array_filter( explode( ',', wp_unslash( $_POST['form_ids'] ) ) ) ) : array();
 		if ( ! in_array( $for, array( 'login', 'registration' ), true ) || count( $form_ids ) > 100 ) {
 			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
