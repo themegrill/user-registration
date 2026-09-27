@@ -4047,6 +4047,55 @@ class NewPaypalService {
 				continue;
 			}
 
+			// A listed downgrade (SUSPENDED/CANCELLED/EXPIRED) is never trusted on its own: PayPal can index one
+			// event type before another (proven for PAYMENT.SALE.COMPLETED; a reactivation is a plain ACTIVATED,
+			// confirmed live, so it is exactly as liable to lag), so an older SUSPENDED can still be listed after
+			// a newer ACTIVATED already reactivated the row. Ask PayPal directly before ever taking access away.
+			$restrictive_statuses = array( 'canceled', 'expired' );
+			$active_like_statuses = array( 'active', 'trial' );
+			if ( in_array( $paypal_status, $restrictive_statuses, true ) && in_array( $local_status, $active_like_statuses, true ) ) {
+				$live = $this->get_paypal_subscription( $paypal_subscription_id, $paypal_options );
+
+				if ( is_wp_error( $live ) ) {
+					$logger->info(
+						'[Backfill][Paypal][Subscription][Status] Could not verify a listed downgrade against PayPal — left as-is this run.' . "\n" . wp_json_encode(
+							array(
+								'event_type'             => 'downgrade_verify_error',
+								'local_sub_id'           => $local_sub_id,
+								'paypal_subscription_id' => $paypal_subscription_id,
+								'error'                  => $live->get_error_message(),
+							),
+							JSON_PRETTY_PRINT
+						),
+						array( 'source' => 'urm-missed-payment-backfill' )
+					);
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+
+				$live_status = $this->map_paypal_subscription_status( isset( $live['status'] ) ? $live['status'] : '' );
+
+				if ( ! in_array( $live_status, $restrictive_statuses, true ) ) {
+					$logger->info(
+						'[Backfill][Paypal][Subscription][Status] Skipped — listed downgrade is stale; PayPal reports the subscription is still current.' . "\n" . wp_json_encode(
+							array(
+								'event_type'             => 'skip',
+								'reason'                 => 'stale_downgrade',
+								'local_sub_id'           => $local_sub_id,
+								'paypal_subscription_id' => $paypal_subscription_id,
+								'listed_status'          => $paypal_status,
+								'live_status'            => $live_status,
+							),
+							JSON_PRETTY_PRINT
+						),
+						array( 'source' => 'urm-missed-payment-backfill' )
+					);
+					++$count_skipped;
+					continue;
+				}
+			}
+
 			$update_data       = array( 'status' => $paypal_status );
 			$next_billing_time = isset( $resource['billing_info']['next_billing_time'] ) ? $resource['billing_info']['next_billing_time'] : null;
 
