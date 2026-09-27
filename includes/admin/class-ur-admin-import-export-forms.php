@@ -165,7 +165,7 @@ class UR_Admin_Import_Export_Forms {
 								! is_string( $form_data->form_post->post_title ) || ! is_string( $form_data->form_post->post_content ) ) {
 								wp_send_json_error( array( 'message' => __( 'Invalid form data.', 'user-registration' ) ) );
 							}
-							$post = $form_data->form_post;
+							$post                 = $form_data->form_post;
 							$form_data->form_post = (object) array(
 								'post_title'   => sanitize_text_field( $post->post_title ),
 								'post_content' => $post->post_content,
