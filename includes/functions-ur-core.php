@@ -4373,7 +4373,13 @@ APACHE;
 </fileExtensions></requestFiltering></security>
 </system.webServer></configuration>
 IIS;
-		foreach ( array( 'index.html' => '', '.htaccess' => $apache, 'web.config' => $iis ) as $name => $content ) {
+
+		$files = array(
+			'index.html' => '',
+			'.htaccess'  => $apache,
+			'web.config' => $iis,
+		);
+		foreach ( $files as $name => $content ) {
 			$path = trailingslashit( $directory ) . $name;
 			// Do not replace administrator-managed server rules.
 			if ( ! file_exists( $path ) ) {
