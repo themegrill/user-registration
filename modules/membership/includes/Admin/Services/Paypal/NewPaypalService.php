@@ -1680,8 +1680,12 @@ class NewPaypalService {
 				delete_user_meta( $member_id, 'urm_next_subscription_data' );
 			}
 
-			$subscription_data           = $subscription_service->prepare_upgrade_subscription_data( $new_subscription_data['membership'], $new_subscription_data['member_id'], $new_subscription_data );
-			$subscription_data['status'] = 'active';
+			$subscription_data = $subscription_service->prepare_upgrade_subscription_data( $new_subscription_data['membership'], $new_subscription_data['member_id'], $new_subscription_data );
+
+			// A trial-plan upgrade is charged nothing; its order carries trial_status 'on' (see OrderService).
+			// Marking it 'active' here would skip the trial state the redirect and cron elsewhere rely on.
+			$upgrade_order                = $this->members_orders_repository->get_member_orders( $member_id );
+			$subscription_data['status']  = 'on' === ( isset( $upgrade_order['trial_status'] ) ? $upgrade_order['trial_status'] : '' ) ? 'trial' : 'active';
 			$this->subscription_repository->update( $subscription_id, $subscription_data );
 		}
 
