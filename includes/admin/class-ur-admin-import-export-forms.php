@@ -185,7 +185,7 @@ class UR_Admin_Import_Export_Forms {
 								}
 							}
 							$form_data->form_post->post_title = sanitize_text_field($form_data->form_post->post_title);
-							$post_id                         = wp_insert_post( (array) $form_data->form_post, true );
+							$post_id                          = wp_insert_post( (array) $form_data->form_post, true );
 
 							// Check for any error while inserting.
 							if ( is_wp_error( $post_id ) ) {
