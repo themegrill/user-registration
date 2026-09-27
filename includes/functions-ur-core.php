@@ -4314,7 +4314,7 @@ if ( ! function_exists( 'ur_clean_tmp_files' ) ) {
 		$lifespan = (int) apply_filters( 'user_registration_clean_tmp_files_lifespan', DAY_IN_SECONDS );
 
 		foreach ( $files as $file ) {
-			if ( ! is_file( $file ) ) {
+			if ( in_array( basename( $file ), array( 'index.html', '.htaccess', 'web.config' ), true ) || ! is_file( $file ) ) {
 				continue;
 			}
 
@@ -4326,6 +4326,54 @@ if ( ! function_exists( 'ur_clean_tmp_files' ) ) {
 
 			if ( ( time() - $modified ) >= $lifespan ) {
 				@unlink( $file ); // phpcs:ignore.WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+		}
+	}
+}
+
+if ( ! function_exists( 'ur_protect_public_upload_directory' ) ) {
+	/**
+	 * Keep profile images public while denying listings and non-image files.
+	 * Nginx hosts must configure the equivalent static-image-only location.
+	 */
+	function ur_protect_public_upload_directory( $directory ) {
+		if ( apply_filters( 'user_registration_install_skip_create_files', false ) ) {
+			return;
+		}
+		if ( ! wp_mkdir_p( $directory ) || ! wp_is_writable( $directory ) ) {
+			return;
+		}
+		$apache = <<<'APACHE'
+Options -Indexes
+<IfModule mod_authz_core.c>
+    Require all denied
+    <FilesMatch "(?i)^(?!.*\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx)(?:\.|$)).+\.(?:jpe?g|png|gif)$">
+        Require all granted
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Deny from all
+    <FilesMatch "(?i)^(?!.*\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx)(?:\.|$)).+\.(?:jpe?g|png|gif)$">
+        Allow from all
+    </FilesMatch>
+</IfModule>
+APACHE;
+		$iis = <<<'IIS'
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration><system.webServer>
+<directoryBrowse enabled="false" />
+<handlers accessPolicy="Read" />
+<security><requestFiltering><fileExtensions allowUnlisted="false">
+<clear /><add fileExtension=".jpg" allowed="true" /><add fileExtension=".jpeg" allowed="true" />
+<add fileExtension=".png" allowed="true" /><add fileExtension=".gif" allowed="true" />
+</fileExtensions></requestFiltering></security>
+</system.webServer></configuration>
+IIS;
+		foreach ( array( 'index.html' => '', '.htaccess' => $apache, 'web.config' => $iis ) as $name => $content ) {
+			$path = trailingslashit( $directory ) . $name;
+			// Do not replace administrator-managed server rules.
+			if ( ! file_exists( $path ) ) {
+				file_put_contents( $path, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 			}
 		}
 	}
@@ -4344,11 +4392,7 @@ if ( ! function_exists( 'ur_get_tmp_dir' ) ) {
 			wp_mkdir_p( $tmp_root );
 		}
 
-		$index = trailingslashit( $tmp_root ) . 'index.html';
-
-		if ( ! file_exists( $index ) ) {
-			file_put_contents( $index, '' ); // phpcs:ignore.WordPress.WP.AlternativeFunctions
-		}
+		ur_protect_public_upload_directory( $tmp_root );
 
 		return $tmp_root;
 	}
@@ -4400,6 +4444,10 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 		// Checks if the upload directory exists and create one if not.
 		if ( ! file_exists( $upload_path ) ) {
 			wp_mkdir_p( $upload_path );
+		}
+		// A filtered path may be shared with unrelated WordPress uploads.
+		if ( UR_UPLOAD_PATH . 'profile-pictures' === $upload_path ) {
+			ur_protect_public_upload_directory( $upload_path );
 		}
 		$valid_extensions = array( 'image/jpeg', 'image/jpg', 'image/gif', 'image/png' );
 		$upload_file      = $valid_form_data['profile_pic_url']->value;

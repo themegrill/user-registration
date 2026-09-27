@@ -739,6 +739,10 @@ CREATE TABLE {$wpdb->prefix}user_registration_sessions (
 			return;
 		}
 
+		foreach ( array( UR_UPLOAD_PATH, UR_UPLOAD_PATH . 'profile-pictures', UR_UPLOAD_PATH . 'temp-uploads' ) as $directory ) {
+			ur_protect_public_upload_directory( $directory );
+		}
+
 		// Install files and folders for uploading files and prevent hotlinking.
 		$upload_dir = wp_upload_dir();
 
