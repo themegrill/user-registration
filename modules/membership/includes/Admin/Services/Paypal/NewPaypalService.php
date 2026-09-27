@@ -1454,13 +1454,9 @@ class NewPaypalService {
 					'start_date' => date( 'Y-m-d 00:00:00' ), // phpcs:ignore WordPress.DateTime.RestrictedFunctions.date_date
 				);
 
-				// A brand-new subscription's ID is always kept, even with a deferred start (100% coupon) — it has to be
-				// findable by later sales. Only a scheduled downgrade REPLACING an existing subscription can defer:
-				// its row keeps the still-billing old subscription until the daily cron switches it.
-				$row_paypal_id       = (string) ( $member_subscription['subscription_id'] ?? '' );
-				$is_new_subscription = '' !== $row_paypal_id && $paypal_subscription_id !== $row_paypal_id;
-				$new_start_time      = strtotime( (string) ( $subscription_details['start_time'] ?? '' ) );
-				$is_deferred         = $is_new_subscription && $new_start_time && $new_start_time - time() > self::DEFERRED_START_THRESHOLD;
+				// Only THIS row's own scheduled-downgrade marker defers writing the ID; a brand-new subscription (100% coupon) always keeps it.
+				$scheduled_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
+				$is_deferred  = ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id;
 				if ( ! $is_deferred ) {
 					$row_update['subscription_id'] = sanitize_text_field( $paypal_subscription_id );
 				}
@@ -1677,8 +1673,9 @@ class NewPaypalService {
 			'notice'
 		);
 
-		if ( ! empty( $new_subscription_data ) ) {
-			if ( empty( $new_subscription_data['delayed_until'] ) && ! empty( $get_user_old_subscription['subscription_id'] ) ) {
+		// A scheduled downgrade is applied on delayed_until by the daily cron instead, not here.
+		if ( ! empty( $new_subscription_data ) && empty( $new_subscription_data['delayed_until'] ) ) {
+			if ( ! empty( $get_user_old_subscription['subscription_id'] ) ) {
 				$cancel_subscription = $subscription_service->cancel_subscription( $get_user_old_order, $get_user_old_subscription, true );
 
 				if ( empty( $cancel_subscription['status'] ) ) {
@@ -2140,7 +2137,10 @@ class NewPaypalService {
 	private function has_pending_paypal_checkout( $member_subscription ) {
 		$latest_order = $this->orders_repository->get_order_by_subscription( $member_subscription['ID'] ?? 0 );
 
-		return 'paypal' === ( $latest_order['payment_method'] ?? '' ) && 'pending' === ( $latest_order['status'] ?? '' );
+		// order_type excludes an unrelated pending one-time order on the same row from counting as a subscription checkout.
+		return 'paypal' === ( $latest_order['payment_method'] ?? '' )
+			&& 'pending' === ( $latest_order['status'] ?? '' )
+			&& 'subscription' === ( $latest_order['order_type'] ?? '' );
 	}
 
 	/**
@@ -2244,8 +2244,9 @@ class NewPaypalService {
 		$row_paypal_id       = (string) ( $member_subscription['subscription_id'] ?? '' );
 		$is_new_subscription = '' !== $row_paypal_id && $paypal_subscription_id !== $row_paypal_id;
 		if ( 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type && $is_new_subscription ) {
-			$start_time = strtotime( (string) ( $resource['start_time'] ?? '' ) );
-			if ( $start_time && $start_time - time() > self::DEFERRED_START_THRESHOLD ) {
+			// Defer only for this row's own scheduled-downgrade marker, not a time guess near delayed_until.
+			$scheduled_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
+			if ( ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id ) {
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					sprintf(
@@ -2256,7 +2257,6 @@ class NewPaypalService {
 							'event_type'             => $event_type,
 							'paypal_subscription_id' => $paypal_subscription_id,
 							'current_paypal_subscription_id' => $row_paypal_id,
-							'start_time'             => isset( $resource['start_time'] ) ? $resource['start_time'] : null,
 						),
 						JSON_PRETTY_PRINT
 					),
@@ -2637,7 +2637,8 @@ class NewPaypalService {
 				)
 			);
 
-			return empty( $order ) ? false : $order;
+			// A failed insert leaves a stale insert_id behind; require the retrieved order to actually be this sale.
+			return ( ! empty( $order ) && ( $order['transaction_id'] ?? '' ) === $transaction_id ) ? $order : false;
 		} finally {
 			$this->orders_repository->release_lock( $lock_name );
 		}
