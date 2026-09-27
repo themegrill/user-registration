@@ -963,8 +963,10 @@ class SubscriptionService {
 				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
 				$subscription_data['status']       = 'active';
 				// The webhook left the row on the old subscription until now; point it at the new one as its billing starts.
+				// Only for a PayPal scheduled downgrade — the marker is PayPal-specific and must not touch a Stripe/bank switch.
+				$is_paypal_delayed_checkout = 'paypal' === ( isset( $decoded_data['payment_method'] ) ? $decoded_data['payment_method'] : '' );
 				$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
-				$new_paypal_subscription_id = get_user_meta( $user->ID, $scheduled_meta_key, true );
+				$new_paypal_subscription_id = $is_paypal_delayed_checkout ? get_user_meta( $user->ID, $scheduled_meta_key, true ) : '';
 				if ( ! empty( $new_paypal_subscription_id ) ) {
 					$subscription_data['subscription_id'] = $new_paypal_subscription_id;
 				}

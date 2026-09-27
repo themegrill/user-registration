@@ -233,10 +233,10 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
-	 * The row's pending, uncharged order for one specific plan — not just its latest order overall.
+	 * The row's pending, uncharged PayPal order for one specific plan — not just its latest order overall.
 	 *
-	 * A newer, unrelated pending order for a different plan (an abandoned upgrade/downgrade) must not shadow
-	 * an older order for the plan actually being paid for.
+	 * A newer, unrelated pending order for a different plan (an abandoned upgrade/downgrade), or a pending
+	 * order on another gateway (bank/Stripe) for the same plan, must not be finalized by a PayPal event.
 	 *
 	 * @param int $subscription_id Local subscription row ID.
 	 * @param int $item_id         Membership post ID the order must be for.
@@ -251,6 +251,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 				SELECT * from $this->table
 				WHERE subscription_id = %d
 				AND item_id = %d
+				AND payment_method = 'paypal'
 				AND status = 'pending'
 				AND transaction_id = ''
 				ORDER BY ID DESC LIMIT 1

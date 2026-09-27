@@ -1454,10 +1454,14 @@ class NewPaypalService {
 					'start_date' => date( 'Y-m-d 00:00:00' ), // phpcs:ignore WordPress.DateTime.RestrictedFunctions.date_date
 				);
 
-				// A scheduled downgrade's billing has not started yet (PayPal's own start_time, already fetched above);
-				// the row keeps the still-billing old subscription until the daily cron switches it.
-				$new_start_time = strtotime( (string) ( $subscription_details['start_time'] ?? '' ) );
-				if ( ! $new_start_time || $new_start_time - time() <= self::DEFERRED_START_THRESHOLD ) {
+				// A brand-new subscription's ID is always kept, even with a deferred start (100% coupon) — it has to be
+				// findable by later sales. Only a scheduled downgrade REPLACING an existing subscription can defer:
+				// its row keeps the still-billing old subscription until the daily cron switches it.
+				$row_paypal_id       = (string) ( $member_subscription['subscription_id'] ?? '' );
+				$is_new_subscription = '' !== $row_paypal_id && $paypal_subscription_id !== $row_paypal_id;
+				$new_start_time      = strtotime( (string) ( $subscription_details['start_time'] ?? '' ) );
+				$is_deferred         = $is_new_subscription && $new_start_time && $new_start_time - time() > self::DEFERRED_START_THRESHOLD;
+				if ( ! $is_deferred ) {
 					$row_update['subscription_id'] = sanitize_text_field( $paypal_subscription_id );
 				}
 
@@ -4279,10 +4283,11 @@ class NewPaypalService {
 				'success'
 			);
 
-			// When a subscription becomes active, also complete its pending order.
+			// When a subscription becomes active, also complete its pending order for the plan it's actually on
+			// — not just whichever order is latest, which could be an unrelated checkout started while canceled.
 			if ( 'active' === $paypal_status && 'active' !== $local_status ) {
-				$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
-				if ( ! empty( $pending_order ) && 'pending' === ( $pending_order['status'] ?? '' ) ) {
+				$pending_order = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $subscription['item_id'] );
+				if ( ! empty( $pending_order ) ) {
 					$order_prev_status = $pending_order['status'];
 					if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $pending_order['ID'], array( 'status' => 'completed' ) ) ) ) {
 						++$count_errors;
