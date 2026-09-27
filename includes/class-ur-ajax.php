@@ -2330,8 +2330,16 @@ class UR_AJAX {
 	}
 
 	public static function get_recent_nonce() {
-		$form_ids = isset( $_POST['form_ids'] ) ? array_filter( explode( ',', sanitize_text_field( $_POST['form_ids'] ) ) ) : array();
-		$for      = isset( $_POST['nonce_for'] ) ? sanitize_text_field( $_POST['nonce_for'] ) : 'registration';
+		// Public forms need public nonce refresh. A request referer is not authorization.
+		if ( ( isset( $_POST['nonce_for'] ) && ! is_string( $_POST['nonce_for'] ) ) ||
+			( isset( $_POST['form_ids'] ) && ! is_string( $_POST['form_ids'] ) ) ) {
+			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
+		}
+		$for      = isset( $_POST['nonce_for'] ) ? sanitize_key( wp_unslash( $_POST['nonce_for'] ) ) : 'registration';
+		$form_ids = isset( $_POST['form_ids'] ) ? array_unique( array_filter( explode( ',', wp_unslash( $_POST['form_ids'] ) ) ) ) : array();
+		if ( ! in_array( $for, array( 'login', 'registration' ), true ) || count( $form_ids ) > 100 ) {
+			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
+		}
 
 		if ( 'registration' === $for ) {
 
@@ -2343,6 +2351,14 @@ class UR_AJAX {
 				);
 			}
 			foreach ( $form_ids as $form_id ) {
+				if ( ! ctype_digit( $form_id ) || (int) $form_id < 1 ) {
+					wp_send_json_error( array( __( 'Invalid form ID.', 'user-registration' ) ), 400 );
+				}
+				$post = get_post( (int) $form_id );
+				if ( ! $post || 'user_registration' !== $post->post_type ||
+					( 'publish' !== $post->post_status && ! current_user_can( 'edit_post', (int) $form_id ) ) ) {
+					wp_send_json_error( array( __( 'Form not found!', 'user-registration' ) ), 404 );
+				}
 				$form = ur_get_form_fields( $form_id );
 				if ( empty( $form ) ) {
 					wp_send_json_error(
@@ -2354,18 +2370,6 @@ class UR_AJAX {
 			}
 		}
 
-		// Strict referer verification
-		$referer      = wp_get_referer();
-		$allowed_host = parse_url( home_url(), PHP_URL_HOST );
-		$referer_host = parse_url( $referer, PHP_URL_HOST );
-
-		if ( ! $referer || $referer_host !== $allowed_host ) {
-			wp_send_json_error(
-				array(
-					__( 'Invalid form submission source.', 'user-registration' ),
-				)
-			);
-		}
 		$updated_nonce_array = array();
 		switch ( $for ) {
 			case 'registration':
