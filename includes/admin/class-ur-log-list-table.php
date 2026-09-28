@@ -95,15 +95,15 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 			$sources = array(
 				'fatal-errors'                 => array(
 					'category' => 'system',
-					'name'     => __( 'Fatal errors', 'user-registration' ),
+					'name'     => __( 'Fatal Errors', 'user-registration' ),
 				),
 				'user-registration'            => array(
 					'category' => 'system',
-					'name'     => __( 'User registration core', 'user-registration' ),
+					'name'     => __( 'User Registration Core', 'user-registration' ),
 				),
 				'migration-logger'             => array(
 					'category' => 'system',
-					'name'     => __( 'Database migrations', 'user-registration' ),
+					'name'     => __( 'Database Migrations', 'user-registration' ),
 				),
 				'ur-captcha-logs'              => array(
 					'category' => 'system',
@@ -111,7 +111,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				),
 				'ur-profile-validation'        => array(
 					'category' => 'system',
-					'name'     => __( 'Profile validation', 'user-registration' ),
+					'name'     => __( 'Profile Validation', 'user-registration' ),
 				),
 				'urm-tg-sdk-logs'              => array(
 					'category' => 'system',
@@ -119,35 +119,35 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				),
 				'my-account'                   => array(
 					'category' => 'system',
-					'name'     => __( 'My account', 'user-registration' ),
+					'name'     => __( 'My Account', 'user-registration' ),
 				),
 				'form-submission'              => array(
 					'category' => 'forms',
-					'name'     => __( 'Form submissions', 'user-registration' ),
+					'name'     => __( 'Form Submissions', 'user-registration' ),
 				),
 				'form-save'                    => array(
 					'category' => 'forms',
-					'name'     => __( 'Form saves', 'user-registration' ),
+					'name'     => __( 'Form Saves', 'user-registration' ),
 				),
 				'builder-fields'               => array(
 					'category' => 'forms',
-					'name'     => __( 'Builder fields', 'user-registration' ),
+					'name'     => __( 'Builder Fields', 'user-registration' ),
 				),
 				'form-preview'                 => array(
 					'category' => 'forms',
-					'name'     => __( 'Form preview', 'user-registration' ),
+					'name'     => __( 'Form Preview', 'user-registration' ),
 				),
 				'form-template'                => array(
 					'category' => 'forms',
-					'name'     => __( 'Form templates', 'user-registration' ),
+					'name'     => __( 'Form Templates', 'user-registration' ),
 				),
 				'ur_mail_logs'                 => array(
 					'category' => 'email',
-					'name'     => __( 'Email delivery', 'user-registration' ),
+					'name'     => __( 'Email Delivery', 'user-registration' ),
 				),
 				'ur-membership-email-logs'     => array(
 					'category' => 'email',
-					'name'     => __( 'Membership emails', 'user-registration' ),
+					'name'     => __( 'Membership Emails', 'user-registration' ),
 				),
 				'user-registration-membership' => array(
 					'category' => 'membership',
@@ -155,23 +155,23 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				),
 				'urm-membership-crons'         => array(
 					'category' => 'membership',
-					'name'     => __( 'Membership cron jobs', 'user-registration' ),
+					'name'     => __( 'Membership Cron Jobs', 'user-registration' ),
 				),
 				'urm-membership-expiration'    => array(
 					'category' => 'membership',
-					'name'     => __( 'Membership expiration', 'user-registration' ),
+					'name'     => __( 'Membership Expiration', 'user-registration' ),
 				),
 				'urm-missed-payment-backfill'  => array(
 					'category' => 'membership',
-					'name'     => __( 'Missed payment backfill', 'user-registration' ),
+					'name'     => __( 'Missed Payment Backfill', 'user-registration' ),
 				),
 				'urm-reactivation-log'         => array(
 					'category' => 'membership',
-					'name'     => __( 'Membership reactivation', 'user-registration' ),
+					'name'     => __( 'Membership Reactivation', 'user-registration' ),
 				),
 				'ur-membership-create'         => array(
 					'category' => 'membership',
-					'name'     => __( 'Membership creation', 'user-registration' ),
+					'name'     => __( 'Membership Creation', 'user-registration' ),
 				),
 				'urm-pg-stripe'                => array(
 					'category' => 'payments',
@@ -227,7 +227,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				),
 				'cloud-storage'                => array(
 					'category' => 'addons',
-					'name'     => __( 'Cloud storage', 'user-registration' ),
+					'name'     => __( 'Cloud Storage', 'user-registration' ),
 				),
 				'dropbox'                      => array(
 					'category' => 'addons',
@@ -239,7 +239,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				),
 				'sms-notifications'            => array(
 					'category' => 'addons',
-					'name'     => __( 'SMS notifications', 'user-registration' ),
+					'name'     => __( 'SMS Notifications', 'user-registration' ),
 				),
 			);
 
@@ -407,7 +407,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				'category'     => __( 'Category', 'user-registration' ),
 				'files'        => __( 'Files', 'user-registration' ),
 				'size'         => __( 'Size', 'user-registration' ),
-				'last_updated' => __( 'Last updated', 'user-registration' ),
+				'last_updated' => __( 'Last Updated', 'user-registration' ),
 			);
 		}
 
@@ -436,6 +436,40 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		 */
 		public function get_bulk_actions() {
 			return $this->show_bulk ? array( 'delete' => __( 'Delete', 'user-registration' ) ) : array();
+		}
+
+		/**
+		 * Bulk actions dropdown with Title Case label.
+		 *
+		 * @param string $which 'top' or 'bottom'.
+		 */
+		protected function bulk_actions( $which = '' ) {
+			if ( is_null( $this->_actions ) ) {
+				$this->_actions = $this->get_bulk_actions();
+				$this->_actions = apply_filters( "bulk_actions-{$this->screen->id}", $this->_actions ); // phpcs:ignore WordPress.NamingConventions.ValidHookName.UseUnderscores
+				$two            = '';
+			} else {
+				$two = '2';
+			}
+
+			if ( empty( $this->_actions ) ) {
+				return;
+			}
+
+			echo '<label for="bulk-action-selector-' . esc_attr( $which ) . '" class="screen-reader-text">' . esc_html__( 'Select bulk action', 'user-registration' ) . '</label>';
+			echo '<select name="action' . esc_attr( $two ) . '" id="bulk-action-selector-' . esc_attr( $which ) . "\">\n";
+			echo '<option value="-1">' . esc_html__( 'Bulk Actions', 'user-registration' ) . "</option>\n";
+
+			foreach ( $this->_actions as $name => $title ) {
+				$class = 'edit' === $name ? 'hide-if-no-js' : '';
+
+				echo "\t" . '<option value="' . esc_attr( $name ) . '" class="' . esc_attr( $class ) . '">' . esc_html( $title ) . "</option>\n";
+			}
+
+			echo "</select>\n";
+
+			submit_button( __( 'Apply', 'user-registration' ), 'action', '', false, array( 'id' => "doaction$two" ) );
+			echo "\n";
 		}
 
 		/**
@@ -561,7 +595,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 			<div class="alignleft actions ur-log-filter">
 				<label class="screen-reader-text" for="ur-log-category"><?php esc_html_e( 'Filter by category', 'user-registration' ); ?></label>
 				<select name="log_category" id="ur-log-category">
-					<option value=""><?php esc_html_e( 'All categories', 'user-registration' ); ?></option>
+					<option value=""><?php esc_html_e( 'All Categories', 'user-registration' ); ?></option>
 					<?php foreach ( $labels as $slug => $label ) : ?>
 						<?php
 						if ( empty( $present[ $slug ] ) && $slug !== $current ) {

@@ -51,7 +51,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
 							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
 						</svg>
-						<?php esc_html_e( 'Copy system info', 'user-registration' ); ?>
+						<?php esc_html_e( 'Copy System Info', 'user-registration' ); ?>
 					</button>
 					<span class="ur-copied-tip" aria-hidden="true"><?php esc_html_e( 'Copied!', 'user-registration' ); ?></span>
 					<span id="ur-system-info-copy-status" class="screen-reader-text" role="status" aria-live="polite"></span>
@@ -94,7 +94,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			?>
 			<div class="user-registration-options-header--top__right">
 				<a class="button button-tertiary ur-log-delete-all" href="<?php echo esc_url( $url ); ?>" data-files="<?php echo esc_attr( $total_file_count ); ?>" data-sources="<?php echo esc_attr( count( $sources ) ); ?>">
-					<?php esc_html_e( 'Delete all logs', 'user-registration' ); ?>
+					<?php esc_html_e( 'Delete All Logs', 'user-registration' ); ?>
 				</a>
 			</div>
 			<?php

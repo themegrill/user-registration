@@ -39,7 +39,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 	<div class="user-registration-card ur-log-card">
 		<div class="user-registration-card__header ur-log-card-header">
 			<div class="user-registration-card__header-wrapper">
-				<h3 class="user-registration-card__title"><?php esc_html_e( 'All logs', 'user-registration' ); ?></h3>
+				<h3 class="user-registration-card__title"><?php esc_html_e( 'All Logs', 'user-registration' ); ?></h3>
 				<p class="ur-log-totals">
 					<?php
 					echo esc_html(
@@ -92,7 +92,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 	);
 	?>
 	<?php if ( count( $sources ) > 1 ) : ?>
-		<a class="ur-log-back" href="<?php echo esc_url( $ur_logs_url ); ?>">&lsaquo; <?php esc_html_e( 'All logs', 'user-registration' ); ?></a>
+		<a class="ur-log-back" href="<?php echo esc_url( $ur_logs_url ); ?>">&lsaquo; <?php esc_html_e( 'All Logs', 'user-registration' ); ?></a>
 	<?php endif; ?>
 
 	<div class="user-registration-card ur-log-card">
@@ -136,7 +136,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 					<input type="submit" class="button button-tertiary" value="<?php esc_attr_e( 'View', 'user-registration' ); ?>" />
 				<?php endif; ?>
 				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-name="<?php echo esc_attr( $info['name'] ); ?>" data-files="<?php echo esc_attr( count( $source['files'] ) ); ?>" data-type="single">
-					<?php esc_html_e( 'Delete log', 'user-registration' ); ?>
+					<?php esc_html_e( 'Delete Log', 'user-registration' ); ?>
 				</a>
 			</div>
 		</div>
@@ -147,7 +147,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				$log_content = file_get_contents( trailingslashit( UR_LOG_DIR ) . $viewed_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 				if ( false === $log_content ) {
-					echo '<p>' . esc_html__( 'This log couldn’t be opened. It may have been removed. Go back to All logs and choose another.', 'user-registration' ) . '</p>';
+					echo '<p>' . esc_html__( 'This log couldn’t be opened. It may have been removed. Go back to All Logs and choose another.', 'user-registration' ) . '</p>';
 				} else {
 					$lines       = explode( "\n", $log_content );
 					$total_lines = count( $lines );
@@ -324,7 +324,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 			var files = parseInt( link.getAttribute( 'data-files' ) || '1', 10 );
 			var fileStr = files === 1 ? '1 <?php echo esc_js( __( 'file', 'user-registration' ) ); ?>' : files + ' <?php echo esc_js( __( 'files', 'user-registration' ) ); ?>';
 
-			var title = '<?php echo esc_js( __( 'Delete log', 'user-registration' ) ); ?>';
+			var title = '<?php echo esc_js( __( 'Delete Log', 'user-registration' ) ); ?>';
 			var html = '<?php echo esc_js( __( 'Are you sure you want to delete the', 'user-registration' ) ); ?> <b>' + name + '</b> (' + fileStr + ') <?php echo esc_js( __( 'permanently?', 'user-registration' ) ); ?>';
 
 			showDeleteModal( title, html, function () {
@@ -343,7 +343,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 			var files = parseInt( link.getAttribute( 'data-files' ) || '0', 10 );
 			var fileStr = files > 0 ? files + ' ' : '';
 
-			var title = '<?php echo esc_js( __( 'Delete all logs', 'user-registration' ) ); ?>';
+			var title = '<?php echo esc_js( __( 'Delete All Logs', 'user-registration' ) ); ?>';
 			var html = '<?php echo esc_js( __( 'Are you sure you want to delete', 'user-registration' ) ); ?> <b><?php echo esc_js( __( 'all', 'user-registration' ) ); ?> ' + fileStr + '<?php echo esc_js( __( 'log files', 'user-registration' ) ); ?></b> <?php echo esc_js( __( 'permanently? This can\'t be undone.', 'user-registration' ) ); ?>';
 
 			showDeleteModal( title, html, function () {
@@ -363,7 +363,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				if ( chosen && checked > 0 ) {
 					event.preventDefault();
 
-					var title = '<?php echo esc_js( __( 'Delete logs', 'user-registration' ) ); ?>';
+					var title = '<?php echo esc_js( __( 'Delete Logs', 'user-registration' ) ); ?>';
 					var html = '<?php echo esc_js( __( 'Are you sure you want to delete these', 'user-registration' ) ); ?> <b>' + checked + ' <?php echo esc_js( __( 'logs', 'user-registration' ) ); ?></b> <?php echo esc_js( __( 'permanently?', 'user-registration' ) ); ?>';
 
 					showDeleteModal( title, html, function () {
