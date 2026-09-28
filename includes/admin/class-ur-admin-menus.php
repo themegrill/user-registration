@@ -420,11 +420,13 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 				),
 			);
 
+			$form_id = isset( $_GET['edit-registration'] ) ? absint( wp_unslash( $_GET['edit-registration'] ) ) : 0; //phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
 			foreach ( $field_sections as $section ) {
 				$class_to_check = $section['fields_parent_class'];
 
-				// Payment fields are frozen, so new sites are not upsold them either.
-				if ( 'User_Registration_Payments_Admin' === $class_to_check && ! ur_legacy_payment_fields_enabled() ) {
+				// Payment fields are frozen per form, so new sites are not upsold them either - a legacy site's other forms stay frozen too.
+				if ( 'User_Registration_Payments_Admin' === $class_to_check && ! ur_legacy_payment_fields_enabled( $form_id ) ) {
 					continue;
 				}
 
