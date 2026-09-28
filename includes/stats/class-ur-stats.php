@@ -128,6 +128,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			$orders = $wpdb->prefix . 'ur_membership_orders';
 			$events = $wpdb->prefix . 'ur_membership_subscription_events';
 
+			// Orders has a foreign key to subscriptions, so this check covers both tables.
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $orders ) ) !== $orders ) {
 				return array();
 			}
@@ -151,7 +152,9 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				'duplicate_orders_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE( SUM( c - 1 ), 0 ) FROM ( SELECT COUNT(*) AS c FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY user_id, item_id, FLOOR( UNIX_TIMESTAMP( created_at ) / 300 ) HAVING c > 1 ) t", $min_order ) ),
 				'duplicate_txn_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM ( SELECT transaction_id FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND transaction_id <> '' AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY transaction_id HAVING COUNT(*) > 1 ) t", $min_order ) ),
 				'stale_pending_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND status = 'pending' AND created_at >= NOW() - INTERVAL 30 DAY AND created_at < NOW() - INTERVAL 1 DAY", $min_order ) ),
+				// Current snapshot, not windowed, since status mix is a point in time value.
 				'subs_by_status'       => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d GROUP BY status", $min_sub ), ARRAY_A ) ),
+				// Only renewals due in the last 30 days, so long stale gateway managed rows do not stick to a version.
 				'overdue_renewals_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d AND status = 'active' AND next_billing_date >= NOW() - INTERVAL 30 DAY AND next_billing_date < NOW() - INTERVAL 2 DAY", $min_sub ) ),
 				'events_30d'           => array(),
 			);
