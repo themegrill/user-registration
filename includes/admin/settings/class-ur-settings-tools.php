@@ -33,7 +33,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			add_action( "user_registration_settings_header_actions_{$this->id}", array( $this, 'output_header_actions' ) );
 			add_filter( "user_registration_settings_header_title_{$this->id}", array( $this, 'get_header_title' ) );
 			add_filter( "user_registration_settings_header_icon_{$this->id}", array( $this, 'get_header_icon' ) );
-			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
+			add_action( 'admin_footer', array( $this, 'output_setup_wizard_script' ) );
 		}
 
 		/**
@@ -141,7 +141,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		public function get_form_method() {
 			global $current_section;
 
-			if ( in_array( $current_section, array( '', 'logs', 'system_info' ), true ) ) {
+			if ( in_array( $current_section, array( '', 'logs', 'system_info', 'setup_wizard' ), true ) ) {
 				return 'get';
 			}
 
@@ -157,8 +157,9 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		 * @return array
 		 */
 		public function get_sections_callback( $sections ) {
-			$sections['logs']        = __( 'Logs', 'user-registration' );
-			$sections['system_info'] = __( 'System Info', 'user-registration' );
+			$sections['logs']         = __( 'Logs', 'user-registration' );
+			$sections['system_info']  = __( 'System Info', 'user-registration' );
+			$sections['setup_wizard'] = __( 'Setup Wizard', 'user-registration' );
 
 			/**
 			 * Filter to add extra Tools tabs/sections (e.g. from Pro or an add-on).
@@ -166,13 +167,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			 *
 			 * @param array $sections Slug => label.
 			 */
-			$sections = apply_filters( 'user_registration_admin_status_tabs', $sections );
-
-			// Setup Wizard is intentionally never part of this rail; it stays
-			// WP-sidebar-only for new installs (see class-ur-admin-welcome.php).
-			unset( $sections['setup_wizard'] );
-
-			return $sections;
+			return apply_filters( 'user_registration_admin_status_tabs', $sections );
 		}
 
 		/**
@@ -185,7 +180,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			global $current_tab, $current_section;
 
 			if ( 'tools' === $current_tab ) {
-				if ( in_array( $current_section, array( '', 'logs', 'system_info' ), true ) ) {
+				if ( in_array( $current_section, array( '', 'logs', 'system_info', 'setup_wizard' ), true ) ) {
 					return true;
 				}
 
@@ -211,6 +206,15 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 
 			if ( 'system_info' === $section ) {
 				UR_Admin_Status::system_info();
+				return;
+			}
+
+			if ( 'setup_wizard' === $section ) {
+				?>
+				<script>
+					window.location.href = '<?php echo esc_js( admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' ) ); ?>';
+				</script>
+				<?php
 				return;
 			}
 
@@ -241,15 +245,58 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		}
 
 		/**
-		 * Enqueue SweetAlert2 for delete confirmations on the Tools tab.
+		 * Output confirmation modal script for Setup Wizard rail link.
 		 */
-		public function enqueue_scripts() {
+		public function output_setup_wizard_script() {
 			global $current_tab;
 
-			if ( 'tools' === $current_tab ) {
-				wp_enqueue_style( 'sweetalert2' );
-				wp_enqueue_script( 'sweetalert2' );
+			if ( 'tools' !== $current_tab ) {
+				return;
 			}
+
+			$wizard_url = admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' );
+			?>
+			<script>
+				( function () {
+					document.addEventListener( 'click', function ( e ) {
+						var link = e.target.closest ? e.target.closest( 'a[href*="section=setup_wizard"], a[href*="tab=setup-wizard"]' ) : null;
+						if ( ! link ) {
+							return;
+						}
+						e.preventDefault();
+						e.stopPropagation();
+
+						var wizardUrl = '<?php echo esc_js( $wizard_url ); ?>';
+
+						if ( typeof Swal !== 'undefined' ) {
+							Swal.fire( {
+								title: '<?php echo esc_js( __( 'Proceed to Setup Wizard?', 'user-registration' ) ); ?>',
+								text: '<?php echo esc_js( __( 'You are about to leave this page and open the Setup Wizard.', 'user-registration' ) ); ?>',
+								showCancelButton: true,
+								focusCancel: true,
+								confirmButtonText: '<?php echo esc_js( __( 'Confirm', 'user-registration' ) ); ?>',
+								cancelButtonText: '<?php echo esc_js( __( 'Cancel', 'user-registration' ) ); ?>',
+								buttonsStyling: false,
+								customClass: {
+									popup: 'ur-tools-modal',
+									title: 'ur-tools-modal__title',
+									htmlContainer: 'ur-tools-modal__content',
+									actions: 'ur-tools-modal__actions',
+									cancelButton: 'ur-tools-delete-modal__cancel',
+									confirmButton: 'ur-tools-delete-modal__confirm'
+								}
+							} ).then( function ( result ) {
+								if ( result.isConfirmed || result.value ) {
+									window.location.href = wizardUrl;
+								}
+							} );
+						} else if ( window.confirm( '<?php echo esc_js( __( 'You are about to leave this page and open the Setup Wizard.', 'user-registration' ) ); ?>' ) ) {
+							window.location.href = wizardUrl;
+						}
+					} );
+				}() );
+			</script>
+			<?php
 		}
 
 		/**
@@ -258,7 +305,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		public function save() {
 			global $current_section;
 
-			if ( ! in_array( $current_section, array( '', 'logs', 'system_info' ), true ) ) {
+			if ( ! in_array( $current_section, array( '', 'logs', 'system_info', 'setup_wizard' ), true ) ) {
 				$settings = apply_filters( 'user_registration_get_settings_tools', array(), $current_section );
 				if ( ! empty( $settings ) ) {
 					UR_Admin_Settings::save_fields( $settings );

@@ -811,25 +811,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 * Add status menu item.
 		 */
 		public function status_menu() {
-			// Tools (Logs, System Info) moved into the Settings rail
-			// (see UR_Settings_Tools); only the Setup Wizard sidebar link,
-			// unrelated to Tools, is still registered from here.
-			$is_new_installation = ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) );
-
-			if ( $is_new_installation ) {
-				add_submenu_page(
-					'user-registration',
-					__( 'Setup Wizard', 'user-registration' ),
-					'↳ ' . __( 'Setup Wizard', 'user-registration' ),
-					'manage_user_registration',
-					'user-registration-welcome&tab=setup-wizard',
-					array(
-						$this,
-						'status_page',
-					),
-					78
-				);
-			}
+			// Tools (Logs, System Info, Setup Wizard) moved into the Settings rail (see UR_Settings_Tools).
 		}
 
 		/**
