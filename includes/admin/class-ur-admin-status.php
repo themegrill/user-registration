@@ -102,30 +102,6 @@ class UR_Admin_Status {
 	}
 
 	/**
-	 * Badge classes for a log level, reusing the plugin's existing badge component.
-	 *
-	 * @param string $level Log level, any case.
-	 * @return string
-	 */
-	public static function get_level_badge_class( $level ) {
-		$variants = array(
-			'emergency' => 'danger',
-			'alert'     => 'danger',
-			'critical'  => 'danger',
-			'error'     => 'danger-subtle',
-			'warning'   => 'warning-subtle',
-			'notice'    => 'primary-subtle',
-			'success'   => 'success-subtle',
-			'info'      => 'info-subtle',
-			'debug'     => 'secondary-subtle',
-		);
-
-		$variant = isset( $variants[ strtolower( $level ) ] ) ? $variants[ strtolower( $level ) ] : 'secondary-subtle';
-
-		return 'user-registration-badge user-registration-badge--' . $variant;
-	}
-
-	/**
 	 * Delete every file (current and rotated) of the given log sources.
 	 *
 	 * Only handles that exist on disk are acted on, and each file is removed

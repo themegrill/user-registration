@@ -75,8 +75,10 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				}
 			}
 
-			$table->display();
 			?>
+			<div class="ur-list-table-wrapper">
+				<?php $table->display(); ?>
+			</div>
 		</div>
 	</div>
 <?php else : ?>

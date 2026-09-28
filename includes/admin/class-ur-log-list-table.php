@@ -254,8 +254,14 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		/**
 		 * Friendly name and category for a log handle.
 		 *
-		 * Resolves registered sources first, then deterministic prefix patterns,
-		 * and falls back to a clean TitleCase slug without arbitrary keyword guessing.
+		 * Resolves registered sources first. `urm-pg-*` is the only prefix
+		 * reliable enough to guess a category from — every other prefix in
+		 * this codebase (`urm-`, `ur-`, `user-registration-`) is shared across
+		 * multiple categories in the registered map above (e.g. `urm-tg-sdk-logs`
+		 * is System, `ur-membership-create` is Membership, `ur-mailchimp` is an
+		 * add-on), so guessing from them would silently mislabel new handles.
+		 * A new handle in any other category is added to `get_registered_sources()`
+		 * instead of taught to a pattern.
 		 *
 		 * @param string $handle Base handle (no rotation suffix, no hash).
 		 * @return array {
@@ -280,23 +286,6 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				/* translators: %s: payment gateway name */
 				$name  = sprintf( __( 'Payments · %s', 'user-registration' ), $gateway );
 				$known = true;
-			} elseif ( preg_match( '/^(?:urm-|user-registration-membership)(.*)$/', $handle, $matches ) ) {
-				$category = 'membership';
-				$name     = ! empty( $matches[1] ) ? ucwords( trim( str_replace( array( '-', '_' ), ' ', $matches[1] ) ) ) : __( 'Membership', 'user-registration' );
-				$known    = true;
-			} elseif ( 0 === strpos( $handle, 'ur_mail' ) || false !== strpos( $handle, 'email' ) ) {
-				$category = 'email';
-				$name     = ucwords( trim( str_replace( array( '-', '_', 'ur' ), ' ', $handle ) ) );
-				$known    = true;
-			} elseif ( preg_match( '/^(?:form-|builder-)(.*)$/', $handle, $matches ) ) {
-				$category = 'forms';
-				$name     = ucwords( str_replace( array( '-', '_' ), ' ', $handle ) );
-				$known    = true;
-			} elseif ( preg_match( '/^(?:ur-|user-registration-)(.*)$/', $handle, $matches ) ) {
-				// Extension prefix: any add-on is automatically categorized as an add-on.
-				$category = 'addons';
-				$name     = ucwords( trim( str_replace( array( '-', '_' ), ' ', $matches[1] ) ) );
-				$known    = true;
 			} else {
 				$category = 'system';
 				$name     = ucwords( trim( str_replace( array( '-', '_' ), ' ', $handle ) ) );
