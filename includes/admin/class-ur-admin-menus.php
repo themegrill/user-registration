@@ -607,8 +607,8 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			}
 
 			$all_forms = ur_get_all_user_registration_form();
-			// Pluralize when multiple forms exist or the multiple-registration addon is active.
-			$postfix   = ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) ? 'Forms' : 'Form';
+			// Pluralize when multiple forms exist or the multiple-registration module is active.
+			$postfix = ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) ? 'Forms' : 'Form';
 
 			if ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) {
 				add_submenu_page(
