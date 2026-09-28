@@ -76,7 +76,8 @@ jQuery(function ($) {
 					user_registration_form_builder_data.form_membership_field_disabled_message;
 			} else if ($(this).hasClass("ur-no-membership-available")) {
 				message =
-					user_registration_form_builder_data.i18n_admin.i18n_prompt_no_membership_available;
+					user_registration_form_builder_data.i18n_admin
+						.i18n_prompt_no_membership_available;
 			} else {
 				message =
 					user_registration_form_builder_data.form_one_time_draggable_fields_locked_message.replace(
@@ -227,8 +228,13 @@ jQuery(function ($) {
 			'<i class="dashicons dashicons-lock" style="color:#72aee6; border-color: #72aee6;"></i>';
 
 		var plan = $this.data("plan") || "free";
-		var name = $this.data("name") || (typeof user_registration_all_forms !== "undefined" && user_registration_all_forms.i18n_default_addon) || "User Registration - Multiple Registration";
-		var slug = $this.data("slug") || "user-registration-multiple-registration";
+		var name =
+			$this.data("name") ||
+			(typeof user_registration_all_forms !== "undefined" &&
+				user_registration_all_forms.i18n_default_addon) ||
+			"User Registration - Multiple Registration";
+		var slug =
+			$this.data("slug") || "user-registration-multiple-registration";
 
 		if (!slug) {
 			return;
@@ -1368,7 +1374,9 @@ jQuery(function ($) {
 		var custom_redirection_page = $(
 			"#user_registration_form_setting_redirect_page"
 		).closest(".form-row");
-		var redirect_url = $("#user_registration_form_setting_redirect_options").closest(".form-row");
+		var redirect_url = $(
+			"#user_registration_form_setting_redirect_options"
+		).closest(".form-row");
 		var form_row = redirect_after_registration.closest(".form-row");
 		form_row.find("#ur-rar-url-notice").remove();
 
@@ -1386,7 +1394,9 @@ jQuery(function ($) {
 					$(
 						"#user_registration_form_setting_redirect_after_field"
 					).show();
-					instant ? custom_redirection_page.show() : custom_redirection_page.slideDown(800);
+					instant
+						? custom_redirection_page.show()
+						: custom_redirection_page.slideDown(800);
 					break;
 				case "external-url":
 					$(
@@ -1398,12 +1408,12 @@ jQuery(function ($) {
 					$(
 						"#user_registration_form_setting_redirect_after_field"
 					).hide();
-				// if (
-				// 	user_registration_form_builder_data.form_has_membership_field
-				// ) {
-				// 	show_membership_redirection_notice(form_row);
-				// }
-				break;
+					// if (
+					// 	user_registration_form_builder_data.form_has_membership_field
+					// ) {
+					// 	show_membership_redirection_notice(form_row);
+					// }
+					break;
 				case "previous-page":
 					$(
 						"#user_registration_form_setting_redirect_after_field"
@@ -2334,7 +2344,9 @@ jQuery(function ($) {
 	);
 
 	// Attach dependent module activation attributes to sidebar Add New submenu link.
-	$("#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module").attr({
+	$(
+		"#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module"
+	).attr({
 		"data-slug": "user-registration-multiple-registration",
 		"data-name": "User Registration - Multiple Registration",
 		"data-plan": "free",
@@ -2344,7 +2356,9 @@ jQuery(function ($) {
 	var urlParams = new URLSearchParams(window.location.search);
 	if (urlParams.get("trigger_multiple_registration") === "1") {
 		urlParams.delete("trigger_multiple_registration");
-		var cleanUrl = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "");
+		var cleanUrl =
+			window.location.pathname +
+			(urlParams.toString() ? "?" + urlParams.toString() : "");
 		// Remove query parameter from history to prevent re-triggering modal on page reload.
 		window.history.replaceState(null, "", cleanUrl);
 		$(".ur-activate-dependent-module").first().trigger("click");
