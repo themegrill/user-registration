@@ -236,10 +236,6 @@ jQuery(function ($) {
 		var slug =
 			$this.data("slug") || "user-registration-multiple-registration";
 
-		if (!slug) {
-			return;
-		}
-
 		var isInstalled = $this.data("installed");
 		if (typeof isInstalled === "undefined") {
 			var action = $this.data("action");
