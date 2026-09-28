@@ -187,7 +187,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 						$trimmed = trim( $line );
 
 						if ( $in_json_block ) {
-							$json_buffer[] = $line;
+							$json_buffer[]  = $line;
 							$brace_balance += substr_count( $line, '{' ) + substr_count( $line, '[' ) - substr_count( $line, '}' ) - substr_count( $line, ']' );
 
 							if ( $brace_balance <= 0 ) {
@@ -200,8 +200,8 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 						}
 
 						if ( '' !== $trimmed && in_array( $trimmed[0], array( '{', '[' ), true ) ) {
-							$in_json_block = true;
-							$json_buffer[] = $line;
+							$in_json_block  = true;
+							$json_buffer[]  = $line;
 							$brace_balance += substr_count( $line, '{' ) + substr_count( $line, '[' ) - substr_count( $line, '}' ) - substr_count( $line, ']' );
 
 							if ( $brace_balance <= 0 ) {

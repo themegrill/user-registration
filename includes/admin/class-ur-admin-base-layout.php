@@ -187,9 +187,9 @@ class UR_Base_Layout {
 	/**
 	 * No items found text.
 	 *
-	 * @param string $type              Item type label, e.g. "Memberships".
-	 * @param string $secondary_message Optional. Overrides the generic secondary
-	 *                                  message (only when not showing search results).
+	 * @param string $type                       Item type label, e.g. "Memberships".
+	 * @param string $secondary_message_override Optional. Overrides the generic secondary
+	 *                                            message (only when not showing search results).
 	 */
 	public static function no_items( $type, $secondary_message_override = '' ) {
 		$image_url    = esc_url( plugin_dir_url( UR_PLUGIN_FILE ) . 'assets/images/empty-table.png' );

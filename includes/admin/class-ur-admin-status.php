@@ -156,7 +156,7 @@ class UR_Admin_Status {
 			wp_die( esc_html__( 'Action failed. Please refresh the page and retry.', 'user-registration' ) );
 		}
 
-		$handles = array_map( 'sanitize_text_field', (array) wp_unslash( $_REQUEST['sources'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$handles = empty( $_REQUEST['sources'] ) ? array() : array_map( 'sanitize_text_field', (array) wp_unslash( $_REQUEST['sources'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 
 		self::delete_sources( $handles );
 		?>

@@ -13,7 +13,7 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
 	require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
 }
 
-include_once __DIR__ . '/class-ur-admin-base-layout.php';
+require_once __DIR__ . '/class-ur-admin-base-layout.php';
 
 if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 
@@ -153,8 +153,8 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				$raw_gw   = ucwords( str_replace( array( '-', '_' ), ' ', $matches[1] ) );
 				$gateway  = str_ireplace( array( 'Paypal', 'Authorize Net' ), array( 'PayPal', 'Authorize.Net' ), $raw_gw );
 				/* translators: %s: payment gateway name */
-				$name     = sprintf( __( 'Payments · %s', 'user-registration' ), $gateway );
-				$known    = true;
+				$name  = sprintf( __( 'Payments · %s', 'user-registration' ), $gateway );
+				$known = true;
 			} else {
 				if ( preg_match( '/payment|stripe|paypal|mollie|authorize|bank/i', $handle ) ) {
 					$category = 'payments';
@@ -661,7 +661,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 
 			$output = '<span class="pagination-links">' . implode( '', $links ) . '</span>';
 
-			echo "<div class=\"tablenav-pages\">{$output}</div>";
+			echo "<div class=\"tablenav-pages\">{$output}</div>"; // phpcs:ignore WordPress.Security.EscapeOutput -- $links are built from esc_url()/esc_html__() above.
 		}
 
 		/**
