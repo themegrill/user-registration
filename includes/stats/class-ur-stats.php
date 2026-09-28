@@ -118,7 +118,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
-		 * Returns payment health counts for the last 30 days.
+		 * Returns 30 day payment health counts plus a current subscription status snapshot.
 		 *
 		 * @return array
 		 */
@@ -152,7 +152,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				'duplicate_txn_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM ( SELECT transaction_id FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND transaction_id <> '' AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY transaction_id HAVING COUNT(*) > 1 ) t", $min_order ) ),
 				'stale_pending_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND status = 'pending' AND created_at >= NOW() - INTERVAL 30 DAY AND created_at < NOW() - INTERVAL 1 DAY", $min_order ) ),
 				'subs_by_status'       => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d GROUP BY status", $min_sub ), ARRAY_A ) ),
-				'overdue_renewals'     => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d AND status = 'active' AND next_billing_date > '2000-01-01' AND next_billing_date < NOW() - INTERVAL 2 DAY", $min_sub ) ),
+				'overdue_renewals_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d AND status = 'active' AND next_billing_date >= NOW() - INTERVAL 30 DAY AND next_billing_date < NOW() - INTERVAL 2 DAY", $min_sub ) ),
 				'events_30d'           => array(),
 			);
 
