@@ -607,7 +607,8 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			}
 
 			$all_forms = ur_get_all_user_registration_form();
-			$postfix   = count( $all_forms ) > 1 ? 'Forms' : 'Form';
+			// Pluralize when multiple forms exist or the multiple-registration addon is active.
+			$postfix   = ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) ? 'Forms' : 'Form';
 
 			if ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) {
 				add_submenu_page(
@@ -886,23 +887,76 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 				)
 			);
 
-			/**
-			 * Hides the Add New Button from the submenu
-			 *
-			 * @since 5.0.0
-			 */
+			add_filter(
+				'submenu_file',
+				function ( $submenu_file ) {
+					if ( isset( $_GET['page'] ) && 'add-new-registration' === $_GET['page'] && isset( $_GET['edit-registration'] ) ) {
+						// Keep parent Registration Form highlighted when editing a single form.
+						return 'user-registration';
+					}
+					return $submenu_file;
+				}
+			);
+
 			add_action(
 				'admin_head',
 				function () {
 					global $submenu;
-					if ( isset( $submenu['user-registration'] ) ) {
+
+					if ( empty( $submenu['user-registration'] ) ) {
+						return;
+					}
+
+					$all_forms            = ur_get_all_user_registration_form();
+					$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) );
+
+					if ( ! $is_single_form_setup ) {
+						// Hide Add New from submenu when multiple forms exist or module is active.
 						foreach ( $submenu['user-registration'] as $key => $item ) {
-							if ( isset( $item[2] ) && $item[2] === 'add-new-registration' ) {
+							if ( isset( $item[2] ) && 'add-new-registration' === $item[2] ) {
 								unset( $submenu['user-registration'][ $key ] );
 								break;
 							}
 						}
+						return;
 					}
+
+					$add_new_item = null;
+					foreach ( $submenu['user-registration'] as $key => $item ) {
+						if ( isset( $item[2] ) && 'add-new-registration' === $item[2] ) {
+							$add_new_item = $item;
+							unset( $submenu['user-registration'][ $key ] );
+							break;
+						}
+					}
+
+					if ( ! $add_new_item ) {
+						return;
+					}
+
+					// Attach class for SweetAlert2 activation trigger.
+					$add_new_item[4] = ! empty( $add_new_item[4] ) ? $add_new_item[4] . ' ur-activate-dependent-module' : 'ur-activate-dependent-module';
+
+					// Place Add New directly below whichever form menu item is active.
+					$current_page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+					$target_slug  = ( 'user-registration-login-forms' === $current_page ) ? 'user-registration-login-forms' : 'user-registration';
+
+					$inserted    = false;
+					$new_submenu = array();
+					foreach ( $submenu['user-registration'] as $item ) {
+						$new_submenu[] = $item;
+						if ( isset( $item[2] ) && $target_slug === $item[2] ) {
+							$new_submenu[] = $add_new_item;
+							$inserted      = true;
+						}
+					}
+
+					if ( ! $inserted ) {
+						$new_submenu[] = $add_new_item;
+					}
+
+					// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+					$submenu['user-registration'] = $new_submenu;
 				}
 			);
 		}
@@ -1187,7 +1241,12 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 				$form_id_from_url = isset( $_GET['edit-registration'] ) ? absint( $_GET['edit-registration'] ) : '';
 
 				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) {
-					wp_redirect( admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id ) );
+					$redirect_url = admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id );
+					if ( ! isset( $_GET['edit-registration'] ) ) {
+						// Flag redirect so modal opens automatically after arriving directly at Add New URL.
+						$redirect_url = add_query_arg( 'trigger_multiple_registration', '1', $redirect_url );
+					}
+					wp_redirect( $redirect_url );
 					exit;
 				}
 			}

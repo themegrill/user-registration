@@ -321,19 +321,17 @@ class UR_Admin_Assets {
 			);
 		}
 
-		if ( isset( $_GET['page'] ) && 'user-registration' === $_GET['page'] ) {
+		// UserRegistration admin pages.
+		if ( in_array( $screen_id, ur_get_screen_ids(), true ) ) {
 			wp_localize_script(
 				'user-registration-admin',
 				'user_registration_all_forms',
 				array(
 					'ajax_all_forms_nonce' => wp_create_nonce( 'all-forms-ajax-nonce' ),
 					'ajax_url'             => admin_url( 'admin-ajax.php' ),
+					'add_new_url'          => admin_url( 'admin.php?page=add-new-registration' ),
 				)
 			);
-		}
-
-		// UserRegistration admin pages.
-		if ( in_array( $screen_id, ur_get_screen_ids(), true ) ) {
 			wp_enqueue_script( 'user-registration-admin' );
 			wp_enqueue_script( 'user-registration-form-builder' );
 			wp_enqueue_script( 'user-registration-form-settings' );

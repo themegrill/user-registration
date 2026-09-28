@@ -226,9 +226,9 @@ jQuery(function ($) {
 		var icon =
 			'<i class="dashicons dashicons-lock" style="color:#72aee6; border-color: #72aee6;"></i>';
 
-		var plan = $this.data("plan");
-		var name = $this.data("name");
-		var slug = $this.data("slug");
+		var plan = $this.data("plan") || "free";
+		var name = $this.data("name") || "User Registration - Multiple Registration";
+		var slug = $this.data("slug") || "user-registration-multiple-registration";
 
 		if (!slug) {
 			return;
@@ -237,14 +237,14 @@ jQuery(function ($) {
 		Swal.fire({
 			title: icon + " Install dependent addon",
 			html:
-				"To add multiple forms you need to install <strong>" +
+				"To add multiple forms you need to install/activate <strong>" +
 				name +
-				"</strong> module.",
+				"</strong> addon.",
 			customClass:
 				"user-registration-swal2-modal user-registration-swal2-modal--centered user-registration-locked-field",
 			showCloseButton: true,
 			showConfirmButton: true,
-			confirmButtonText: "Activate Module",
+			confirmButtonText: "Activate Addon",
 			showLoaderOnConfirm: true,
 			allowOutsideClick: function () {
 				return !Swal.isLoading();
@@ -283,7 +283,11 @@ jQuery(function ($) {
 			}
 		}).then(function (result) {
 			if (result.isConfirmed) {
-				window.location.reload();
+				if (typeof user_registration_all_forms !== "undefined" && user_registration_all_forms.add_new_url) {
+					window.location.href = user_registration_all_forms.add_new_url;
+				} else {
+					window.location.reload();
+				}
 			}
 		});
 	});
@@ -2265,4 +2269,20 @@ jQuery(function ($) {
 		"href",
 		"admin.php?page=user-registration"
 	);
+
+	// Attach dependent module activation attributes to sidebar Add New submenu link.
+	$("#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module").attr({
+		"data-slug": "user-registration-multiple-registration",
+		"data-name": "User Registration - Multiple Registration",
+		"data-plan": "free"
+	});
+
+	var urlParams = new URLSearchParams(window.location.search);
+	if (urlParams.get("trigger_multiple_registration") === "1") {
+		urlParams.delete("trigger_multiple_registration");
+		var cleanUrl = window.location.pathname + (urlParams.toString() ? "?" + urlParams.toString() : "");
+		// Remove query parameter from history to prevent re-triggering modal on page reload.
+		window.history.replaceState(null, "", cleanUrl);
+		$(".ur-activate-dependent-module").first().trigger("click");
+	}
 });
