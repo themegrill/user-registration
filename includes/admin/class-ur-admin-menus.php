@@ -911,7 +911,13 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					// Gate activation trigger to administrators who possess manage_options capability.
 					$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) && current_user_can( 'manage_options' ) );
 
-					if ( ! $is_single_form_setup ) {
+					// Reveal Add New only while browsing Registration Form pages, matching the
+					// same "shown only within its own section" pattern used for Logs/System Info
+					// under Tools and for Registration Forms/Login Form under All Forms.
+					$current_page                  = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+					$in_registration_form_context  = in_array( $current_page, array( 'user-registration', 'add-new-registration' ), true );
+
+					if ( ! $is_single_form_setup || ! $in_registration_form_context ) {
 						// Hide Add New from submenu when multiple forms exist or module is active.
 						foreach ( $submenu['user-registration'] as $key => $item ) {
 							if ( isset( $item[2] ) && 'add-new-registration' === $item[2] ) {
@@ -938,15 +944,16 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					// Attach class for SweetAlert2 activation trigger.
 					$add_new_item[4] = ! empty( $add_new_item[4] ) ? $add_new_item[4] . ' ur-activate-dependent-module' : 'ur-activate-dependent-module';
 
-					// Place Add New directly below whichever form menu item is active.
-					$current_page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
-					$target_slug  = ( 'user-registration-login-forms' === $current_page ) ? 'user-registration-login-forms' : 'user-registration';
+					// Match the nested-item marker already used for other contextual submenu entries (Logs, System Info, Registration Forms).
+					$add_new_item[0] = '↳ ' . $add_new_item[0];
 
+					// Multiple Registration only ever adds more registration forms, never login forms,
+					// so Add New always belongs under Registration Form regardless of the page being viewed.
 					$inserted    = false;
 					$new_submenu = array();
 					foreach ( $submenu['user-registration'] as $item ) {
 						$new_submenu[] = $item;
-						if ( isset( $item[2] ) && $target_slug === $item[2] ) {
+						if ( isset( $item[2] ) && 'user-registration' === $item[2] ) {
 							$new_submenu[] = $add_new_item;
 							$inserted      = true;
 						}
