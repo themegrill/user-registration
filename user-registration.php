@@ -31,7 +31,6 @@ if ( ! class_exists( 'UserRegistration' ) ) :
 	 */
 	final class UserRegistration {
 
-
 		/**
 		 * Plugin version.
 		 *
