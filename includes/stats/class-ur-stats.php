@@ -57,9 +57,11 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 
 		/**
 		 * Get product license key.
+		 *
+		 * @return string License key, empty string when none is saved.
 		 */
 		public function get_base_product_license() {
-			return get_option( 'user-registration_license_key' );
+			return (string) get_option( 'user-registration_license_key', '' );
 		}
 
 		/**
