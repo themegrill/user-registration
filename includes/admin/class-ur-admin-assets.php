@@ -330,14 +330,14 @@ class UR_Admin_Assets {
 					'ajax_all_forms_nonce'         => wp_create_nonce( 'all-forms-ajax-nonce' ),
 					'ajax_url'                     => admin_url( 'admin-ajax.php' ),
 					'add_new_url'                  => admin_url( 'admin.php?page=add-new-registration' ),
-					'i18n_modal_title_activate'    => esc_html__( 'Activate Dependent Addon', 'user-registration' ),
-					'i18n_modal_title_install'     => esc_html__( 'Install & Activate Dependent Addon', 'user-registration' ),
-					/* translators: %s: Addon name */
-					'i18n_modal_message_activate'  => esc_html__( 'To add multiple forms you need to activate %s addon.', 'user-registration' ),
-					/* translators: %s: Addon name */
-					'i18n_modal_message_install'   => esc_html__( 'To add multiple forms you need to install & activate %s addon.', 'user-registration' ),
+					'i18n_modal_title_activate'    => esc_html__( 'Activate Dependent Module', 'user-registration' ),
+					'i18n_modal_title_install'     => esc_html__( 'Install & Activate Dependent Module', 'user-registration' ),
+					/* translators: %s: Module name */
+					'i18n_modal_message_activate'  => esc_html__( 'To add multiple forms you need to activate %s module.', 'user-registration' ),
+					/* translators: %s: Module name */
+					'i18n_modal_message_install'   => esc_html__( 'To add multiple forms you need to install & activate %s module.', 'user-registration' ),
 					'i18n_default_addon'           => esc_html__( 'User Registration - Multiple Registration', 'user-registration' ),
-					'i18n_button_activate'         => esc_html__( 'Activate Addon', 'user-registration' ),
+					'i18n_button_activate'         => esc_html__( 'Activate Module', 'user-registration' ),
 					'i18n_button_install_activate' => esc_html__( 'Install & Activate', 'user-registration' ),
 					'i18n_activation_failed'       => esc_html__( 'Activation failed', 'user-registration' ),
 					'i18n_error'                   => esc_html__( 'Something went wrong', 'user-registration' ),

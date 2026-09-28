@@ -260,24 +260,24 @@ jQuery(function ($) {
 			modalTitle =
 				(typeof user_registration_all_forms !== "undefined" &&
 					user_registration_all_forms.i18n_modal_title_activate) ||
-				"Activate Dependent Addon";
+				"Activate Dependent Module";
 			modalMsgTemplate =
 				(typeof user_registration_all_forms !== "undefined" &&
 					user_registration_all_forms.i18n_modal_message_activate) ||
-				"To add multiple forms you need to activate %s addon.";
+				"To add multiple forms you need to activate %s module.";
 			confirmBtn =
 				(typeof user_registration_all_forms !== "undefined" &&
 					user_registration_all_forms.i18n_button_activate) ||
-				"Activate Addon";
+				"Activate Module";
 		} else {
 			modalTitle =
 				(typeof user_registration_all_forms !== "undefined" &&
 					user_registration_all_forms.i18n_modal_title_install) ||
-				"Install & Activate Dependent Addon";
+				"Install & Activate Dependent Module";
 			modalMsgTemplate =
 				(typeof user_registration_all_forms !== "undefined" &&
 					user_registration_all_forms.i18n_modal_message_install) ||
-				"To add multiple forms you need to install & activate %s addon.";
+				"To add multiple forms you need to install & activate %s module.";
 			confirmBtn =
 				(typeof user_registration_all_forms !== "undefined" &&
 					user_registration_all_forms.i18n_button_install_activate) ||
