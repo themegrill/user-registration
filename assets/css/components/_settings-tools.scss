@@ -327,27 +327,6 @@
 				max-width: 200px;
 			}
 
-			input[type="submit"],
-			button[type="submit"],
-			.button-filter {
-				height: 34px;
-				line-height: 32px;
-				padding: 0 14px;
-				border-radius: 4px;
-				border: 1px solid #475bb2;
-				background: #f6f7f7;
-				color: #475bb2;
-				font-size: 14px;
-				font-weight: 500;
-				cursor: pointer;
-				transition: all 0.3s ease-in-out;
-
-				&:hover {
-					background: #39498e;
-					border-color: #39498e;
-					color: #ffffff;
-				}
-			}
 
 			.ur-log-filter-reset-btn {
 				display: inline-flex;

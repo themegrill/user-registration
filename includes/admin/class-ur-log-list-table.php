@@ -582,7 +582,6 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 						<option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $current, $slug ); ?>><?php echo esc_html( $label ); ?></option>
 					<?php endforeach; ?>
 				</select>
-				<?php submit_button( __( 'Filter', 'user-registration' ), 'button-filter', 'log_filter_action', false, array( 'id' => 'post-query-submit' ) ); ?>
 				<button type="button" id="ur-log-filter-reset-btn" class="button button-reset ur-log-filter-reset-btn<?php echo $is_filtered ? '' : ' disabled'; ?>" <?php echo $is_filtered ? '' : 'disabled aria-disabled="true"'; ?> title="<?php esc_attr_e( 'Reset', 'user-registration' ); ?>" aria-label="<?php esc_attr_e( 'Reset', 'user-registration' ); ?>">
 					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
 						<path fill="currentColor" fill-rule="evenodd" d="M12 2h-.004a10.75 10.75 0 0 0-7.431 3.021l-.012.012L4 5.586V3a1 1 0 1 0-2 0v5a.997.997 0 0 0 1 1h5a1 1 0 0 0 0-2H5.414l.547-.547A8.75 8.75 0 0 1 12.001 4 8 8 0 1 1 4 12a1 1 0 1 0-2 0A10 10 0 1 0 12 2Z" clip-rule="evenodd"/>

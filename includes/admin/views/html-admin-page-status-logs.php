@@ -399,7 +399,16 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 		}
 
 		if ( categorySelect ) {
-			categorySelect.addEventListener( 'change', updateResetState );
+			categorySelect.addEventListener( 'change', function () {
+				var url = new URL( window.location.href );
+				if ( categorySelect.value ) {
+					url.searchParams.set( 'log_category', categorySelect.value );
+				} else {
+					url.searchParams.delete( 'log_category' );
+				}
+				url.searchParams.delete( 'paged' );
+				window.location.href = url.toString();
+			} );
 		}
 		if ( searchInput ) {
 			searchInput.addEventListener( 'input', updateResetState );
