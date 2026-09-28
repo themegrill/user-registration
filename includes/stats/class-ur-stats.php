@@ -118,6 +118,53 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
+		 * Returns payment health counts for the last 30 days.
+		 *
+		 * @return array
+		 */
+		public function get_payment_health() {
+			global $wpdb;
+
+			$orders = $wpdb->prefix . 'ur_membership_orders';
+			$events = $wpdb->prefix . 'ur_membership_subscription_events';
+
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $orders ) ) !== $orders ) {
+				return array();
+			}
+
+			// ponytail: scan only the newest 2000 rows per table by primary key so cost stays flat on any site size; counts cap on very busy sites.
+			$min_order = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_orders" ) - 2000 );
+			$min_sub   = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_subscriptions" ) - 2000 );
+			$to_int    = function ( $rows ) {
+				return array_map(
+					function ( $row ) {
+						$row['total'] = (int) $row['total'];
+						return $row;
+					},
+					$rows
+				);
+			};
+
+			$health = array(
+				'orders_30d'           => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT payment_method, order_type, status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY payment_method, order_type, status", $min_order ), ARRAY_A ) ),
+				// ponytail: 5 minute buckets keep this a single bounded scan; pairs straddling a bucket edge are missed, so it undercounts slightly.
+				'duplicate_orders_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE( SUM( c - 1 ), 0 ) FROM ( SELECT COUNT(*) AS c FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY user_id, item_id, FLOOR( UNIX_TIMESTAMP( created_at ) / 300 ) HAVING c > 1 ) t", $min_order ) ),
+				'duplicate_txn_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM ( SELECT transaction_id FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND transaction_id <> '' AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY transaction_id HAVING COUNT(*) > 1 ) t", $min_order ) ),
+				'stale_pending_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND status = 'pending' AND created_at >= NOW() - INTERVAL 30 DAY AND created_at < NOW() - INTERVAL 1 DAY", $min_order ) ),
+				'subs_by_status'       => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d GROUP BY status", $min_sub ), ARRAY_A ) ),
+				'overdue_renewals'     => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d AND status = 'active' AND next_billing_date > '2000-01-01' AND next_billing_date < NOW() - INTERVAL 2 DAY", $min_sub ) ),
+				'events_30d'           => array(),
+			);
+
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $events ) ) === $events ) {
+				$min_event            = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_subscription_events" ) - 2000 );
+				$health['events_30d'] = $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT event_type, event_status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_subscription_events WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY event_type, event_status", $min_event ), ARRAY_A ) );
+			}
+
+			return $health;
+		}
+
+		/**
 		 * @param $type
 		 *
 		 * @return string|null
@@ -232,6 +279,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					'membership_form_users'   => $form_wise_users['membership_form_users'],
 					'normal_form_users'       => $form_wise_users['normal_form_users'],
 					'membership_gateway_usage' => $this->get_membership_gateway_usage(),
+					'payment_health'           => wp_doing_cron() ? $this->get_payment_health() : array(),
 				),
 			);
 
