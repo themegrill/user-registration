@@ -39,6 +39,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			}
 			add_action( 'init', array( $this, 'init_usage' ), 4 );
 			add_action( 'update_option_user_registration_allow_usage_tracking', array( $this, 'run_on_save' ), 10, 3 );
+			add_filter( 'user_registration_logger_data', array( $this, 'get_logger_data' ) );
 
 			/**
 			 * Enable module tracking.
@@ -401,6 +402,22 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
+		 * Returns the last sent usage report for the SDK logger ping.
+		 *
+		 * @param array $data Logger data.
+		 *
+		 * @return array
+		 */
+		public function get_logger_data( $data ) {
+			// The tracking API keeps only the latest payload per site, so an empty SDK ping would wipe the full report.
+			if ( ! $this->is_usage_allowed() ) {
+				return $data;
+			}
+
+			return get_option( 'user_registration_stats_last_data', $data );
+		}
+
+		/**
 		 * Start process.
 		 *
 		 * @return void
@@ -583,6 +600,8 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				'settings'          => array_merge( $this->get_global_settings(), $this->get_form_settings() ),
 				'onboarding'        => $this->get_onboarding_data(),
 			);
+
+			update_option( 'user_registration_stats_last_data', $data['data'], false );
 
 			$this->send_request( apply_filters( 'user_registration_tg_tracking_remote_url', $stats_api_url ), $data );
 		}
