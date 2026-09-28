@@ -44,7 +44,7 @@ test.describe("multiple registration discoverability @fresh", () => {
 		).toContainText(/activate/i);
 	});
 
-	test("positions Add New under Login Form when viewing login forms @fresh @admin", async ({
+	test("never shows Add New on the Login Form page, since Multiple Registration cannot add a second login form @fresh @admin", async ({
 		page
 	}) => {
 		await ensureFirstRun(page);
@@ -54,18 +54,6 @@ test.describe("multiple registration discoverability @fresh", () => {
 		const addNewItem = menu.locator(
 			'a[href*="page=add-new-registration"].ur-activate-dependent-module'
 		);
-		await expect(addNewItem).toBeVisible();
-
-		const submenuItems = menu.locator(
-			"#toplevel_page_user-registration .wp-submenu li a"
-		);
-		const itemTexts = await submenuItems.allInnerTexts();
-		const loginIndex = itemTexts.findIndex((text) =>
-			/Login Form/i.test(text)
-		);
-		const addNewIndex = itemTexts.findIndex((text) =>
-			/Add New/i.test(text)
-		);
-		expect(addNewIndex).toBe(loginIndex + 1);
+		await expect(addNewItem).toHaveCount(0);
 	});
 });
