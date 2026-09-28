@@ -391,7 +391,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		}
 
 		/**
-		 * Column definitions. The checkbox column only exists with 2+ rows.
+		 * Column definitions. The 'cb' checkbox column is added when bulk actions are available (2+ sources).
 		 *
 		 * @return array
 		 */
@@ -583,7 +583,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				$present[ self::describe_handle( $handle )['category'] ] = true;
 			}
 
-			$show = '' !== $current || ( count( $sources ) >= 1 && count( $present ) >= 2 );
+			$show = '' !== $current || count( $present ) >= 2;
 
 			if ( ! $show ) {
 				return;

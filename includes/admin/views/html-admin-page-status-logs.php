@@ -156,7 +156,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				$log_content = file_get_contents( trailingslashit( UR_LOG_DIR ) . $viewed_file ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 				if ( false === $log_content ) {
-					echo '<p>' . esc_html__( 'This log couldn’t be opened. It may have been removed. Go back to All Logs and choose another.', 'user-registration' ) . '</p>';
+					echo '<p>' . esc_html__( "This log couldn't be opened. It may have been removed. Go back to All Logs and choose another.", 'user-registration' ) . '</p>';
 				} else {
 					$lines       = explode( "\n", $log_content );
 					$total_lines = count( $lines );

@@ -614,11 +614,9 @@ table.wp-list-table.ur-logs-table {
 
 		input[type="checkbox"] {
 			margin: 4px 0 0;
+			// Rely on WP admin's native checkbox rendering; overriding border/background hides the check mark.
 			width: 16px;
 			height: 16px;
-			border-radius: 2px;
-			border: 1px solid #bababa;
-			background: #ffffff;
 		}
 	}
 
@@ -631,7 +629,8 @@ table.wp-list-table.ur-logs-table {
 			font-weight: 500;
 			color: #475bb2;
 			text-decoration: none;
-			display: block;
+			// Inline so focus outline wraps the link text, not the full cell width.
+			display: inline;
 
 			&:hover {
 				text-decoration: underline;
