@@ -233,8 +233,11 @@ jQuery(function ($) {
 			(typeof user_registration_all_forms !== "undefined" &&
 				user_registration_all_forms.i18n_default_addon) ||
 			"User Registration - Multiple Registration";
-		var slug =
-			$this.data("slug") || "user-registration-multiple-registration";
+		var slug = $this.data("slug");
+
+		if (!slug) {
+			return;
+		}
 
 		var isInstalled = $this.data("installed");
 		if (typeof isInstalled === "undefined") {
@@ -280,7 +283,7 @@ jQuery(function ($) {
 				"Install & Activate";
 		}
 		var modalMsg = modalMsgTemplate.replace(
-			"%s",
+			/%1\$s|%s/,
 			"<strong>" + name + "</strong>"
 		);
 
@@ -2362,6 +2365,10 @@ jQuery(function ($) {
 			(urlParams.toString() ? "?" + urlParams.toString() : "");
 		// Remove query parameter from history to prevent re-triggering modal on page reload.
 		window.history.replaceState(null, "", cleanUrl);
-		$(".ur-activate-dependent-module").first().trigger("click");
+		$(
+			"#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module"
+		)
+			.first()
+			.trigger("click");
 	}
 });

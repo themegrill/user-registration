@@ -907,13 +907,16 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 						return;
 					}
 
-					$all_forms            = ur_get_all_user_registration_form();
-					// Gate activation trigger to administrators who possess manage_options capability.
-					$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) && current_user_can( 'manage_options' ) );
-
 					// Reveal Add New only within its own section, matching Logs/System Info under Tools.
-					$current_page                  = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
-					$in_registration_form_context  = in_array( $current_page, array( 'user-registration', 'add-new-registration' ), true );
+					$current_page                 = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+					$in_registration_form_context = in_array( $current_page, array( 'user-registration', 'add-new-registration' ), true );
+
+					$is_single_form_setup = false;
+					if ( $in_registration_form_context ) {
+						$all_forms = ur_get_all_user_registration_form();
+						// Gate activation trigger to administrators who possess manage_options capability.
+						$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) && current_user_can( 'manage_options' ) );
+					}
 
 					if ( ! $is_single_form_setup || ! $in_registration_form_context ) {
 						// Hide Add New from submenu when multiple forms exist or module is active.
@@ -1247,8 +1250,8 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 
 				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) {
 					$redirect_url = admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id );
-					if ( ! isset( $_GET['edit-registration'] ) ) {
-						// Flag redirect so modal opens automatically after arriving directly at Add New URL.
+					if ( ! isset( $_GET['edit-registration'] ) && current_user_can( 'manage_options' ) ) {
+						// Flag redirect so modal opens automatically after arriving directly at Add New URL, admins only.
 						$redirect_url = add_query_arg( 'trigger_multiple_registration', '1', $redirect_url );
 					}
 					wp_redirect( $redirect_url );
