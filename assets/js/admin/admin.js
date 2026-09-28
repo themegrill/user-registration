@@ -227,24 +227,69 @@ jQuery(function ($) {
 			'<i class="dashicons dashicons-lock" style="color:#72aee6; border-color: #72aee6;"></i>';
 
 		var plan = $this.data("plan") || "free";
-		var name = $this.data("name") || "User Registration - Multiple Registration";
+		var name = $this.data("name") || (typeof user_registration_all_forms !== "undefined" && user_registration_all_forms.i18n_default_addon) || "User Registration - Multiple Registration";
 		var slug = $this.data("slug") || "user-registration-multiple-registration";
 
 		if (!slug) {
 			return;
 		}
 
+		var isInstalled = $this.data("installed");
+		if (typeof isInstalled === "undefined") {
+			var action = $this.data("action");
+			// Check if action explicitly specifies install or if built-in module.
+			isInstalled = action !== "install";
+		} else {
+			isInstalled =
+				isInstalled === true ||
+				isInstalled === "true" ||
+				isInstalled === 1 ||
+				isInstalled === "1";
+		}
+
+		var modalTitle;
+		var modalMsgTemplate;
+		var confirmBtn;
+		if (isInstalled) {
+			modalTitle =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_title_activate) ||
+				"Activate Dependent Addon";
+			modalMsgTemplate =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_message_activate) ||
+				"To add multiple forms you need to activate %s addon.";
+			confirmBtn =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_button_activate) ||
+				"Activate Addon";
+		} else {
+			modalTitle =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_title_install) ||
+				"Install & Activate Dependent Addon";
+			modalMsgTemplate =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_message_install) ||
+				"To add multiple forms you need to install & activate %s addon.";
+			confirmBtn =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_button_install_activate) ||
+				"Install & Activate";
+		}
+		var modalMsg = modalMsgTemplate.replace(
+			"%s",
+			"<strong>" + name + "</strong>"
+		);
+
 		Swal.fire({
-			title: icon + " Install dependent addon",
-			html:
-				"To add multiple forms you need to install/activate <strong>" +
-				name +
-				"</strong> addon.",
+			title: icon + " " + modalTitle,
+			html: modalMsg,
 			customClass:
 				"user-registration-swal2-modal user-registration-swal2-modal--centered user-registration-locked-field",
 			showCloseButton: true,
 			showConfirmButton: true,
-			confirmButtonText: "Activate Addon",
+			confirmButtonText: confirmBtn,
 			showLoaderOnConfirm: true,
 			allowOutsideClick: function () {
 				return !Swal.isLoading();
@@ -271,20 +316,38 @@ jQuery(function ($) {
 				})
 					.then(function (response) {
 						if (!response.success) {
-							throw new Error(
-								response.data || "Activation failed"
-							);
+							var failMsg =
+								(typeof user_registration_all_forms !==
+									"undefined" &&
+									user_registration_all_forms.i18n_activation_failed) ||
+								"Activation failed";
+							throw new Error(response.data || failMsg);
 						}
 						return response;
 					})
 					.fail(function () {
-						Swal.showValidationMessage("Something went wrong");
+						var errorMsg =
+							(typeof user_registration_all_forms !==
+								"undefined" &&
+								user_registration_all_forms.i18n_error) ||
+							"Something went wrong";
+						Swal.showValidationMessage(errorMsg);
 					});
 			}
 		}).then(function (result) {
 			if (result.isConfirmed) {
-				if (typeof user_registration_all_forms !== "undefined" && user_registration_all_forms.add_new_url) {
-					window.location.href = user_registration_all_forms.add_new_url;
+				var urlParams = new URLSearchParams(window.location.search);
+				var currentPage = urlParams.get("page") || "";
+
+				// If activating from Login Form, stay on Login Form; otherwise redirect to Add New Registration.
+				if ("user-registration-login-forms" === currentPage) {
+					window.location.reload();
+				} else if (
+					typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.add_new_url
+				) {
+					window.location.href =
+						user_registration_all_forms.add_new_url;
 				} else {
 					window.location.reload();
 				}
@@ -2274,7 +2337,8 @@ jQuery(function ($) {
 	$("#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module").attr({
 		"data-slug": "user-registration-multiple-registration",
 		"data-name": "User Registration - Multiple Registration",
-		"data-plan": "free"
+		"data-plan": "free",
+		"data-installed": "true"
 	});
 
 	var urlParams = new URLSearchParams(window.location.search);
