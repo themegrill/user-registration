@@ -2343,12 +2343,17 @@ jQuery(function ($) {
 		"admin.php?page=user-registration"
 	);
 
+	var defaultAddonName =
+		(typeof user_registration_all_forms !== "undefined" &&
+			user_registration_all_forms.i18n_default_addon) ||
+		"User Registration - Multiple Registration";
+
 	// Attach dependent module activation attributes to sidebar Add New submenu link.
 	$(
 		"#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module"
 	).attr({
 		"data-slug": "user-registration-multiple-registration",
-		"data-name": "User Registration - Multiple Registration",
+		"data-name": defaultAddonName,
 		"data-plan": "free",
 		"data-installed": "true"
 	});

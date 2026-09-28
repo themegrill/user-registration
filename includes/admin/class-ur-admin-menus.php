@@ -908,7 +908,8 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					}
 
 					$all_forms            = ur_get_all_user_registration_form();
-					$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) );
+					// Gate activation trigger to administrators who possess manage_options capability.
+					$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) && current_user_can( 'manage_options' ) );
 
 					if ( ! $is_single_form_setup ) {
 						// Hide Add New from submenu when multiple forms exist or module is active.
