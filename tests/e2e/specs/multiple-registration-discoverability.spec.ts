@@ -11,7 +11,7 @@ test.describe("multiple registration discoverability @fresh", () => {
 		await loginAsAdmin(page);
 	});
 
-	test("shows contextual Add New in sidebar when single form exists and addon is inactive @fresh @admin", async ({
+	test("shows contextual Add New in sidebar when single form exists and module is inactive @fresh @admin", async ({
 		page
 	}) => {
 		await ensureFirstRun(page);
