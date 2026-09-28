@@ -132,7 +132,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				return array();
 			}
 
-			// ponytail: scan only the newest 2000 rows per table by primary key so cost stays flat on any site size; counts cap on very busy sites.
+			// Scan only the newest 2000 rows per table by primary key so cost stays flat on any site size; counts cap on very busy sites.
 			$min_order = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_orders" ) - 2000 );
 			$min_sub   = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_subscriptions" ) - 2000 );
 			$to_int    = function ( $rows ) {
@@ -147,7 +147,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 
 			$health = array(
 				'orders_30d'           => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT payment_method, order_type, status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY payment_method, order_type, status", $min_order ), ARRAY_A ) ),
-				// ponytail: 5 minute buckets keep this a single bounded scan; pairs straddling a bucket edge are missed, so it undercounts slightly.
+				// 5 minute buckets keep this a single bounded scan; pairs straddling a bucket edge are missed, so it undercounts slightly.
 				'duplicate_orders_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE( SUM( c - 1 ), 0 ) FROM ( SELECT COUNT(*) AS c FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY user_id, item_id, FLOOR( UNIX_TIMESTAMP( created_at ) / 300 ) HAVING c > 1 ) t", $min_order ) ),
 				'duplicate_txn_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM ( SELECT transaction_id FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND transaction_id <> '' AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY transaction_id HAVING COUNT(*) > 1 ) t", $min_order ) ),
 				'stale_pending_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND status = 'pending' AND created_at >= NOW() - INTERVAL 30 DAY AND created_at < NOW() - INTERVAL 1 DAY", $min_order ) ),
