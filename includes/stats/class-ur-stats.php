@@ -86,6 +86,11 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			}
 		}
 
+		/**
+		 * Returns registered user counts per form, split by membership and normal forms.
+		 *
+		 * @return array
+		 */
 		public function get_form_wise_user() {
 			return array(
 				'membership_form_users' => $this->get_form_users_count( true ),
@@ -100,7 +105,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 * from the membership orders table.
 		 *
 		 * @since 1.0.0
-		 * 
+		 *
 		 * @return array An array of payment methods and their corresponding order counts.
 		 */
 		public function get_membership_gateway_usage() {
@@ -113,7 +118,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			}
 
 			return $wpdb->get_results(
-				"SELECT payment_method, COUNT(*) AS total FROM {$table} GROUP BY payment_method ORDER BY total DESC",
+				"SELECT payment_method, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_orders GROUP BY payment_method ORDER BY total DESC",
 				ARRAY_A
 			);
 		}
@@ -169,9 +174,11 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
-		 * @param $type
+		 * Returns registered user counts per form.
 		 *
-		 * @return string|null
+		 * @param bool $for_membership Count membership form users when true, other forms otherwise.
+		 *
+		 * @return array
 		 */
 		public function get_form_users_count( $for_membership = false ) {
 			global $wpdb;
@@ -272,16 +279,16 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 
 			$addons_data = array(
 				array(
-					'product_name'          => $base_product_name,
-					'product_version'       => UR()->version,
-					'product_type'          => 'plugin',
-					'product_slug'          => $base_product,
-					'is_premium'            => $is_premium,
-					'license_key'           => $is_premium ? $license_key : '',
-					'total_form_count'      => $this->get_form_count(),
-					'total_user_count'      => $this->get_user_count(),
-					'membership_form_users'   => $form_wise_users['membership_form_users'],
-					'normal_form_users'       => $form_wise_users['normal_form_users'],
+					'product_name'             => $base_product_name,
+					'product_version'          => UR()->version,
+					'product_type'             => 'plugin',
+					'product_slug'             => $base_product,
+					'is_premium'               => $is_premium,
+					'license_key'              => $is_premium ? $license_key : '',
+					'total_form_count'         => $this->get_form_count(),
+					'total_user_count'         => $this->get_user_count(),
+					'membership_form_users'    => $form_wise_users['membership_form_users'],
+					'normal_form_users'        => $form_wise_users['normal_form_users'],
 					'membership_gateway_usage' => $this->get_membership_gateway_usage(),
 					'payment_health'           => wp_doing_cron() ? $this->get_payment_health() : array(),
 				),
@@ -341,7 +348,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 							'is_premium'      => $is_premium,
 						);
 
-						// Add content restriction stats if it's the content-restriction module
+						// Add content restriction stats if it's the content-restriction module.
 						if ( class_exists( 'UR_Stats_Helpers' ) && $is_premium ) {
 							$addon_info = UR_Stats_Helpers::maybe_add_content_restriction_stats( $addon_info, $slug );
 							$addon_info = UR_Stats_Helpers::maybe_add_email_template_stats( $addon_info, $slug );
@@ -526,7 +533,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					$default_value          = ! empty( $setting['default_value'] ) ? $setting['default_value'] : '';
 					$settings_default_value = is_bool( $default_value ) ? ur_bool_to_string( $default_value ) : $default_value;
 
-					// Convert arrays and other non-scalar values to JSON strings to avoid array to string conversion warnings
+					// Convert arrays and other non-scalar values to JSON strings to avoid array to string conversion warnings.
 					$settings_value_str         = is_scalar( $settings_value ) ? (string) $settings_value : wp_json_encode( $settings_value );
 					$settings_default_value_str = is_scalar( $settings_default_value ) ? (string) $settings_default_value : wp_json_encode( $settings_default_value );
 
@@ -671,7 +678,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					'body'        => wp_json_encode( $data ),
 				)
 			);
-			ur_get_logger()->notice( print_r( json_decode( wp_remote_retrieve_body( $response ), true ), true ), array( 'source' => 'urm-tg-sdk-logs' ) );
+			ur_get_logger()->notice( wp_remote_retrieve_body( $response ), array( 'source' => 'urm-tg-sdk-logs' ) );
 			ur_get_logger()->debug( '------------- TG SDK API log tracking response received -------------', array( 'source' => 'urm-tg-sdk-logs' ) );
 
 			return json_decode( wp_remote_retrieve_body( $response ), true );
@@ -685,7 +692,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		private function setting_keys() {
 			return array(
 				'user-registration'                => array(
-					// General Settings
+					// General Settings.
 					array( 'user_registration_general_setting_disabled_user_roles', '["subscriber"]' ),
 					array( 'user_registration_myaccount_page_id', '', true ),
 					array( 'user_registration_my_account_layout', 'vertical' ),
@@ -697,7 +704,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_general_setting_uninstall_option', false ),
 					array( 'user_registration_allow_usage_tracking', false ),
 
-					// Login Settings
+					// Login Settings.
 					array( 'user_registration_login_option_hide_show_password', false ),
 					array( 'user_registration_ajax_form_submission_on_edit_profile', false ),
 					array( 'user_registration_disable_profile_picture', false ),
@@ -719,7 +726,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_login_options_login_redirect_url', '', true ),
 					array( 'user_registration_login_options_configured_captcha_type', 'v2' ),
 
-					// Captcha Settings
+					// Captcha Settings.
 					array( 'user_registration_captcha_setting_recaptcha_version', 'v2' ),
 					array( 'user_registration_captcha_setting_recaptcha_site_key', '' ),
 					array( 'user_registration_captcha_setting_recaptcha_site_secret', '' ),
@@ -732,7 +739,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_captcha_setting_invisible_recaptcha_v2', false ),
 					array( 'user_registration_captcha_setting_recaptcha_cloudflare_theme', 'light' ),
 
-					// Email Settings
+					// Email Settings.
 					array( 'user_registration_email_setting_disable_email', false ),
 				),
 				'user-registration-pro'            => array(
@@ -822,7 +829,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 * @since 4.0
 		 */
 		public function get_modules() {
-			$all_modules = file_get_contents( ur()->plugin_path() . '/assets/extensions-json/all-features.json' );
+			$all_modules = file_get_contents( ur()->plugin_path() . '/assets/extensions-json/all-features.json' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local plugin file, not a remote URL.
 
 			if ( ur_is_json( $all_modules ) ) {
 				$all_modules = json_decode( $all_modules, true );
@@ -832,6 +839,8 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
+		 * Returns the base site info sent with every usage report.
+		 *
 		 * @return array
 		 */
 		public function get_base_info() {
