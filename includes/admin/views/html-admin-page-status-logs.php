@@ -92,7 +92,14 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 	);
 	?>
 	<?php if ( count( $sources ) > 1 ) : ?>
-		<a class="ur-log-back" href="<?php echo esc_url( $ur_logs_url ); ?>">&lsaquo; <?php esc_html_e( 'All Logs', 'user-registration' ); ?></a>
+		<div class="user-registration-list-table-heading ur-log-back-heading">
+			<a class="navigator navigator-prev ur-log-back" href="<?php echo esc_url( $ur_logs_url ); ?>">
+				<span class="dashicons dashicons-arrow-left-alt2"></span>
+			</a>
+			<div class="ur-page-title__wrapper">
+				<h2><?php esc_html_e( 'All Logs', 'user-registration' ); ?></h2>
+			</div>
+		</div>
 	<?php endif; ?>
 
 	<div class="user-registration-card ur-log-card">
@@ -101,13 +108,15 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				<h3 class="user-registration-card__title"><?php echo esc_html( $info['name'] ); ?></h3>
 				<p class="ur-log-totals">
 					<?php
+					$last_updated_date = wp_date( _x( 'M j, Y, g:i A', 'log list date format', 'user-registration' ), $source['mtime'] );
 					echo esc_html(
 						sprintf(
-							/* translators: 1: category, 2: number of files, 3: total size */
-							_n( '%1$s · %2$d file · %3$s', '%1$s · %2$d files · %3$s', count( $source['files'] ), 'user-registration' ),
+							/* translators: 1: category, 2: number of files, 3: total size, 4: last updated date */
+							_n( '%1$s · %2$d file · %3$s · %4$s', '%1$s · %2$d files · %3$s · %4$s', count( $source['files'] ), 'user-registration' ),
 							$info['category_label'],
 							count( $source['files'] ),
-							UR_Log_List_Table::format_size( $source['size'] )
+							UR_Log_List_Table::format_size( $source['size'] ),
+							$last_updated_date
 						)
 					);
 					?>
@@ -165,87 +174,90 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 						$lines = array_slice( $lines, -500 );
 					}
 
-					$json_buffer   = array();
-					$in_json_block = false;
-					$brace_balance = 0;
-
-					$render_payload = function ( $buffer ) {
-						if ( empty( $buffer ) ) {
-							return;
-						}
-
-						$payload = trim( implode( "\n", $buffer ) );
-						if ( '' === $payload ) {
-							return;
-						}
-
-						echo '<details class="log-payload" open>';
-						echo '<summary>' . esc_html__( 'View payload', 'user-registration' ) . '</summary>';
-						echo '<pre class="payload-box">' . esc_html( $payload ) . '</pre>';
-						echo '</details>';
-					};
+					$pattern       = '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})\s+(EMERGENCY|ALERT|CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG|SUCCESS)\s+(.+)$/s';
+					$entries       = array();
+					$current_entry = null;
 
 					foreach ( $lines as $line ) {
 						$trimmed = trim( $line );
-
-						if ( $in_json_block ) {
-							$json_buffer[]  = $line;
-							$brace_balance += substr_count( $line, '{' ) + substr_count( $line, '[' ) - substr_count( $line, '}' ) - substr_count( $line, ']' );
-
-							if ( $brace_balance <= 0 ) {
-								$render_payload( $json_buffer );
-								$json_buffer   = array();
-								$in_json_block = false;
-								$brace_balance = 0;
-							}
+						if ( '' === $trimmed && null === $current_entry ) {
 							continue;
 						}
-
-						if ( '' !== $trimmed && in_array( $trimmed[0], array( '{', '[' ), true ) ) {
-							$in_json_block  = true;
-							$json_buffer[]  = $line;
-							$brace_balance += substr_count( $line, '{' ) + substr_count( $line, '[' ) - substr_count( $line, '}' ) - substr_count( $line, ']' );
-
-							if ( $brace_balance <= 0 ) {
-								$render_payload( $json_buffer );
-								$json_buffer   = array();
-								$in_json_block = false;
-								$brace_balance = 0;
-							}
-							continue;
-						}
-
-						$pattern = '/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})\s+(EMERGENCY|ALERT|CRITICAL|ERROR|WARNING|NOTICE|INFO|DEBUG|SUCCESS)\s+(.+)$/s';
 
 						if ( preg_match( $pattern, $line, $matches ) ) {
-							$timestamp = $matches[1];
-							$level     = $matches[2];
-							$message   = $matches[3];
-
-							try {
-								$date = new DateTime( $timestamp );
-								$date->setTimezone( wp_timezone() );
-								$formatted_time = $date->format( 'M j, Y g:i:s A' );
-							} catch ( Exception $e ) {
-								$formatted_time = $timestamp;
+							if ( null !== $current_entry ) {
+								$entries[] = $current_entry;
 							}
-
-							$safe_message = esc_html( $message );
-							$safe_message = preg_replace( '/(\[[^\]]+\])/', '<span class="log-highlight">$1</span>', $safe_message );
-							$safe_message = preg_replace( '/\*\*\*(.*?)\*\*\*/', '<span class="log-highlight">$1</span>', $safe_message );
-
-							echo '<div class="ur-log-line">';
-							echo '<span class="ur-log-ts">' . esc_html( $formatted_time ) . '</span>';
-							echo '<span class="ur-log-level ur-log-level--' . esc_attr( strtolower( $level ) ) . '">' . esc_html( $level ) . '</span>';
-							echo '<span class="ur-log-msg">' . wp_kses( $safe_message, array( 'span' => array( 'class' => true ) ) ) . '</span>';
-							echo '</div>';
+							$current_entry = array(
+								'timestamp' => $matches[1],
+								'level'     => $matches[2],
+								'message'   => $matches[3],
+								'extra'     => array(),
+								'raw'       => false,
+							);
+						} elseif ( null !== $current_entry ) {
+							$current_entry['extra'][] = $line;
 						} elseif ( '' !== $trimmed ) {
-							echo '<div class="ur-log-raw-line">' . esc_html( $line ) . '</div>';
+							$entries[] = array(
+								'raw'  => true,
+								'line' => $line,
+							);
 						}
 					}
 
-					if ( ! empty( $json_buffer ) ) {
-						$render_payload( $json_buffer );
+					if ( null !== $current_entry ) {
+						$entries[] = $current_entry;
+					}
+
+					// Ensure logs display starting from the last (latest) date first.
+					$first_ts = null;
+					$last_ts  = null;
+					foreach ( $entries as $entry ) {
+						if ( ! empty( $entry['timestamp'] ) ) {
+							if ( null === $first_ts ) {
+								$first_ts = strtotime( $entry['timestamp'] );
+							}
+							$last_ts = strtotime( $entry['timestamp'] );
+						}
+					}
+
+					if ( null !== $first_ts && null !== $last_ts && $first_ts < $last_ts ) {
+						$entries = array_reverse( $entries );
+					}
+
+					foreach ( $entries as $entry ) {
+						if ( ! empty( $entry['raw'] ) ) {
+							echo '<div class="ur-log-raw-line">' . esc_html( $entry['line'] ) . '</div>';
+							continue;
+						}
+
+						try {
+							$date = new DateTime( $entry['timestamp'] );
+							$date->setTimezone( wp_timezone() );
+							$formatted_time = $date->format( 'M j, Y g:i:s A' );
+						} catch ( Exception $e ) {
+							$formatted_time = $entry['timestamp'];
+						}
+
+						$safe_message = esc_html( $entry['message'] );
+						$safe_message = preg_replace( '/(\[[^\]]+\])/', '<span class="log-highlight">$1</span>', $safe_message );
+						$safe_message = preg_replace( '/\*\*\*(.*?)\*\*\*/', '<span class="log-highlight">$1</span>', $safe_message );
+
+						echo '<div class="ur-log-line">';
+						echo '<span class="ur-log-ts">' . esc_html( $formatted_time ) . '</span>';
+						echo '<span class="ur-log-level ur-log-level--' . esc_attr( strtolower( $entry['level'] ) ) . '">' . esc_html( $entry['level'] ) . '</span>';
+						echo '<span class="ur-log-msg">' . wp_kses( $safe_message, array( 'span' => array( 'class' => true ) ) ) . '</span>';
+						echo '</div>';
+
+						if ( ! empty( $entry['extra'] ) ) {
+							$extra_payload = trim( implode( "\n", $entry['extra'] ) );
+							if ( '' !== $extra_payload ) {
+								echo '<details class="log-payload" open>';
+								echo '<summary>' . esc_html__( 'View payload', 'user-registration' ) . '</summary>';
+								echo '<pre class="payload-box">' . esc_html( $extra_payload ) . '</pre>';
+								echo '</details>';
+							}
+						}
 					}
 				}
 				?>

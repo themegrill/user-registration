@@ -697,19 +697,43 @@ table.wp-list-table.ur-logs-table {
 	}
 }
 
-// Single Log View
+// Single Log View - back-navigation heading row
+.ur-log-back-heading {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	margin-bottom: 12px;
+
+	.ur-page-title__wrapper h2 {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		color: #1d2327;
+	}
+}
+
 .ur-log-back {
 	display: inline-flex;
 	align-items: center;
-	gap: 4px;
-	font-size: 14px;
-	font-weight: 500;
-	color: #475bb2;
+	justify-content: center;
+	padding: 8px 10px;
+	background-color: #f0f0f0;
+	border-radius: 4px;
+	cursor: pointer;
 	text-decoration: none;
-	margin-bottom: 12px;
+	color: #1d2327;
+	flex-shrink: 0;
+
+	.dashicons {
+		font-size: 18px;
+		width: 18px;
+		height: 18px;
+		line-height: 1;
+	}
 
 	&:hover {
-		text-decoration: underline;
+		background-color: #e0e0e0;
+		color: #1d2327;
 	}
 }
 
