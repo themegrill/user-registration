@@ -911,9 +911,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					// Gate activation trigger to administrators who possess manage_options capability.
 					$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) && current_user_can( 'manage_options' ) );
 
-					// Reveal Add New only while browsing Registration Form pages, matching the
-					// same "shown only within its own section" pattern used for Logs/System Info
-					// under Tools and for Registration Forms/Login Form under All Forms.
+					// Reveal Add New only within its own section, matching Logs/System Info under Tools.
 					$current_page                  = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
 					$in_registration_form_context  = in_array( $current_page, array( 'user-registration', 'add-new-registration' ), true );
 
@@ -947,8 +945,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					// Match the nested-item marker already used for other contextual submenu entries (Logs, System Info, Registration Forms).
 					$add_new_item[0] = '↳ ' . $add_new_item[0];
 
-					// Multiple Registration only ever adds more registration forms, never login forms,
-					// so Add New always belongs under Registration Form regardless of the page being viewed.
+					// Multiple Registration never adds login forms, so Add New belongs under Registration Form only.
 					$inserted    = false;
 					$new_submenu = array();
 					foreach ( $submenu['user-registration'] as $item ) {
