@@ -294,7 +294,7 @@ class UR_Admin_Status {
 		}
 		?>
 		<script>
-		var redirect = '<?php echo esc_url( admin_url( 'admin.php?page=user-registration-status&tab=logs' ) ); ?>';
+		var redirect = '<?php echo esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ); ?>';
 		window.setTimeout( function () {
 			window.location.href = redirect;
 		})
@@ -317,7 +317,7 @@ class UR_Admin_Status {
 
 		?>
 		<script>
-		var redirect = '<?php echo esc_url( admin_url( 'admin.php?page=user-registration-status&tab=logs' ) ); ?>';
+		var redirect = '<?php echo esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ); ?>';
 		window.setTimeout( function () {
 			window.location.href = redirect;
 		})

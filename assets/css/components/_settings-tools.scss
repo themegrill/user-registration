@@ -301,6 +301,10 @@
 			background-color: #ffffff;
 		}
 
+		br.clear {
+			display: none;
+		}
+
 		.actions.bulkactions {
 			select {
 				width: 150px;
@@ -310,6 +314,12 @@
 		}
 
 		.actions.ur-log-filter {
+			margin-left: auto;
+			padding-right: 0;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+
 			select {
 				height: 34px;
 				min-height: 34px;
@@ -317,9 +327,74 @@
 				max-width: 200px;
 			}
 
-			.button {
+			input[type="submit"],
+			button[type="submit"],
+			.button-filter {
 				height: 34px;
 				line-height: 32px;
+				padding: 0 14px;
+				border-radius: 4px;
+				border: 1px solid #475bb2;
+				background: #f6f7f7;
+				color: #475bb2;
+				font-size: 14px;
+				font-weight: 500;
+				cursor: pointer;
+				transition: all 0.3s ease-in-out;
+
+				&:hover {
+					background: #39498e;
+					border-color: #39498e;
+					color: #ffffff;
+				}
+			}
+
+			.ur-log-filter-reset-btn {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				width: 34px;
+				min-width: 34px;
+				height: 34px;
+				padding: 0;
+				background: #f6f7f7;
+				border: 1px solid #bababa;
+				border-radius: 4px;
+				color: #383838;
+				cursor: pointer;
+				text-decoration: none;
+				transition: all 0.3s ease-in-out;
+
+				svg {
+					width: 16px;
+					height: 16px;
+					fill: currentColor;
+				}
+
+				&:hover,
+				&:focus {
+					background: #f2f2f2;
+					border-color: #bababa;
+					color: #383838;
+				}
+
+				&.disabled,
+				&:disabled {
+					opacity: 0.35;
+					border-color: #dcdcde;
+					color: #a7aaad;
+					background: #f6f7f7;
+					cursor: default;
+					pointer-events: none;
+					box-shadow: none;
+
+					&:hover,
+					&:focus {
+						background: #f6f7f7;
+						border-color: #dcdcde;
+						color: #a7aaad;
+					}
+				}
 			}
 		}
 
@@ -415,6 +490,12 @@
 	}
 }
 
+.ur-list-table-wrapper {
+	width: 100%;
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
 // Logs List Table
 table.wp-list-table.ur-logs-table {
 	border: 1px solid #e1e1e1;
@@ -423,6 +504,7 @@ table.wp-list-table.ur-logs-table {
 	border-spacing: 0;
 	overflow: hidden;
 	width: 100%;
+	min-width: 600px;
 	background: #ffffff;
 	box-shadow: none;
 	table-layout: fixed;
@@ -443,15 +525,39 @@ table.wp-list-table.ur-logs-table {
 		padding: 12px 16px;
 		white-space: nowrap;
 
-		a {
-			color: #383838;
-			text-decoration: none;
-			display: inline-flex;
-			align-items: center;
-			gap: 4px;
+		&.sortable,
+		&.sorted {
+			padding: 0;
 
-			&:hover {
-				color: #475bb2;
+			a {
+				font-size: 14px;
+				font-weight: 600;
+				line-height: 24px;
+				padding: 12px 16px;
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				color: #383838;
+				text-decoration: none;
+
+				&:hover {
+					color: #475bb2;
+				}
+
+				&:focus {
+					box-shadow: none;
+				}
+
+				.sorting-indicators {
+					display: grid;
+					gap: 4px;
+					margin: 0;
+
+					.sorting-indicator {
+						display: block;
+						margin: 0;
+					}
+				}
 			}
 		}
 
@@ -465,65 +571,17 @@ table.wp-list-table.ur-logs-table {
 			}
 		}
 
-		.sorting-indicators {
-			display: inline-flex;
-			flex-direction: column;
-			visibility: hidden;
-			margin-left: 4px;
-			vertical-align: middle;
-
-			.sorting-indicator {
-				display: none;
-				width: 10px;
-				height: 10px;
-
-				&::before {
-					font-family: dashicons;
-					font-size: 12px;
-					line-height: 10px;
-					color: #a1a4b9;
-				}
-			}
-		}
-
-		&:hover .sorting-indicators {
-			visibility: visible;
-			.sorting-indicator {
-				display: block;
-			}
-		}
-
 		&.sorted {
-			color: #475bb2;
-
 			a {
 				color: #475bb2;
 			}
 
-			.sorting-indicators {
-				visibility: visible;
-
-				.sorting-indicator {
-					display: none;
-
-					&::before {
-						color: #475bb2;
-					}
-				}
+			&.asc .sorting-indicator.asc::before {
+				color: #475bb2;
 			}
 
-			&.asc .sorting-indicator.asc {
-				display: block;
-				&::before {
-					content: "\f142";
-				}
-			}
-
-			&.desc .sorting-indicator.desc {
-				display: block;
-				&::before {
-					content: "\f140";
-				}
+			&.desc .sorting-indicator.desc::before {
+				color: #475bb2;
 			}
 		}
 	}

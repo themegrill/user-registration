@@ -124,7 +124,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 								<?php
 								echo esc_html(
 									( 'current' === $file['part'] ? __( 'Current', 'user-registration' ) : sprintf( /* translators: %d: rotation number */ __( 'Part %d', 'user-registration' ), $file['part'] + 1 ) )
-									. ' · ' . date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $file['mtime'] )
+									. ' · ' . wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $file['mtime'] )
 									. ' · ' . UR_Log_List_Table::format_size( $file['size'] )
 								);
 								?>
@@ -255,6 +255,18 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 <script>
 	( function () {
 		/**
+		 * Escapes plain text for safe inclusion in an HTML sink.
+		 *
+		 * @param {string} str Untrusted text.
+		 * @return {string} HTML-escaped string.
+		 */
+		function escapeHTML( str ) {
+			var div = document.createElement( 'div' );
+			div.textContent = str;
+			return div.innerHTML;
+		}
+
+		/**
 		 * Triggers SweetAlert2 delete confirmation modal.
 		 *
 		 * @param {string} title Modal title text.
@@ -305,7 +317,8 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 			}
 
 			event.preventDefault();
-			var name = link.getAttribute( 'data-name' ) || '<?php echo esc_js( __( 'this log', 'user-registration' ) ); ?>';
+			var rawName = link.getAttribute( 'data-name' ) || '<?php echo esc_js( __( 'this log', 'user-registration' ) ); ?>';
+			var name = escapeHTML( rawName );
 			var files = parseInt( link.getAttribute( 'data-files' ) || '1', 10 );
 			var fileStr = files === 1 ? '1 <?php echo esc_js( __( 'file', 'user-registration' ) ); ?>' : files + ' <?php echo esc_js( __( 'files', 'user-registration' ) ); ?>';
 
@@ -354,6 +367,62 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 					showDeleteModal( title, html, function () {
 						form.submit();
 					} );
+				}
+			} );
+		}
+
+		// Synchronize Reset button state with category dropdown and search input.
+		var categorySelect = document.getElementById( 'ur-log-category' );
+		var searchInput    = document.getElementById( 'ur-log-search-input' );
+		var resetBtn       = document.getElementById( 'ur-log-filter-reset-btn' );
+
+		function updateResetState() {
+			if ( ! resetBtn ) {
+				return;
+			}
+
+			var urlParams   = new URLSearchParams( window.location.search );
+			var urlFiltered = ( urlParams.get( 'log_category' ) && urlParams.get( 'log_category' ) !== '' )
+				|| ( urlParams.get( 's' ) && urlParams.get( 's' ).trim() !== '' );
+			var dirty       = ( categorySelect && categorySelect.value !== '' )
+				|| ( searchInput && searchInput.value.trim() !== '' );
+
+			if ( dirty || urlFiltered ) {
+				resetBtn.disabled = false;
+				resetBtn.classList.remove( 'disabled' );
+				resetBtn.removeAttribute( 'aria-disabled' );
+			} else {
+				resetBtn.disabled = true;
+				resetBtn.classList.add( 'disabled' );
+				resetBtn.setAttribute( 'aria-disabled', 'true' );
+			}
+		}
+
+		if ( categorySelect ) {
+			categorySelect.addEventListener( 'change', updateResetState );
+		}
+		if ( searchInput ) {
+			searchInput.addEventListener( 'input', updateResetState );
+		}
+
+		if ( resetBtn ) {
+			resetBtn.addEventListener( 'click', function ( e ) {
+				e.preventDefault();
+				if ( resetBtn.disabled ) {
+					return;
+				}
+				if ( categorySelect ) {
+					categorySelect.selectedIndex = 0;
+				}
+				if ( searchInput ) {
+					searchInput.value = '';
+				}
+
+				var urlParams = new URLSearchParams( window.location.search );
+				if ( urlParams.has( 'log_category' ) || urlParams.has( 's' ) || urlParams.has( 'paged' ) ) {
+					window.location.href = '<?php echo esc_js( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ); ?>';
+				} else {
+					updateResetState();
 				}
 			} );
 		}

@@ -131,14 +131,21 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		}
 
 		/**
-		 * Tools has no settings to save: its search, filter, sort and bulk
-		 * actions are plain GET requests, which also keeps them clear of the
-		 * Settings save flow that reacts to any POST carrying a nonce.
+		 * Form method for Tools tab.
+		 *
+		 * Built-in sections (logs, system info) use GET, while add-on sections with
+		 * settings fields use POST to allow saving options.
 		 *
 		 * @return string
 		 */
 		public function get_form_method() {
-			return 'get';
+			global $current_section;
+
+			if ( in_array( $current_section, array( '', 'logs', 'system_info' ), true ) ) {
+				return 'get';
+			}
+
+			return 'post';
 		}
 
 		/**
@@ -169,16 +176,24 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		}
 
 		/**
-		 * Hide the page-level Save button on every Tools section: none of
-		 * Logs, System Info, or an add-on's tab is a settings form.
+		 * Hide the page-level Save button on built-in Tools sections.
 		 *
 		 * @param bool $hide Current value.
 		 * @return bool
 		 */
 		public function hide_save_button( $hide ) {
-			global $current_tab;
+			global $current_tab, $current_section;
 
-			return 'tools' === $current_tab ? true : $hide;
+			if ( 'tools' === $current_tab ) {
+				if ( in_array( $current_section, array( '', 'logs', 'system_info' ), true ) ) {
+					return true;
+				}
+
+				$settings = apply_filters( 'user_registration_get_settings_tools', array(), $current_section );
+				return empty( $settings );
+			}
+
+			return $hide;
 		}
 
 		/**
@@ -199,8 +214,6 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 				return;
 			}
 
-			// An add-on-registered tab: give it a content hook, and fall
-			// back to an explicit empty state if nothing renders into it.
 			ob_start();
 			/**
 			 * Fires to render a Tools tab registered by an add-on.
@@ -210,16 +223,21 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			do_action( 'user_registration_status_tab_content_' . $section, $section );
 			$content = ob_get_clean();
 
-			if ( '' === trim( $content ) ) {
-				?>
-				<div class="user-registration-card">
-					<p><?php esc_html_e( 'Nothing to show here yet.', 'user-registration' ); ?></p>
-				</div>
-				<?php
+			if ( '' !== trim( $content ) ) {
+				echo $content; // phpcs:ignore WordPress.Security.EscapeOutput -- already-rendered add-on markup, same trust boundary as any other action-hooked settings output.
 				return;
 			}
 
-			echo $content; // phpcs:ignore WordPress.Security.EscapeOutput -- already-rendered add-on markup, same trust boundary as any other action-hooked settings output.
+			$settings = apply_filters( 'user_registration_get_settings_tools', array(), $section );
+			if ( ! empty( $settings ) ) {
+				UR_Admin_Settings::output_fields( $settings );
+				return;
+			}
+			?>
+			<div class="user-registration-card">
+				<p><?php esc_html_e( 'Nothing to show here yet.', 'user-registration' ); ?></p>
+			</div>
+			<?php
 		}
 
 		/**
@@ -235,9 +253,19 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 		}
 
 		/**
-		 * Tools has no settings fields of its own to save.
+		 * Save settings for custom Tools sections registered by add-ons.
 		 */
-		public function save() {}
+		public function save() {
+			global $current_section;
+
+			if ( ! in_array( $current_section, array( '', 'logs', 'system_info' ), true ) ) {
+				$settings = apply_filters( 'user_registration_get_settings_tools', array(), $current_section );
+				if ( ! empty( $settings ) ) {
+					UR_Admin_Settings::save_fields( $settings );
+				}
+				do_action( 'user_registration_settings_save_tools_section_' . $current_section );
+			}
+		}
 	}
 
 endif;

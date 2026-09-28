@@ -27,16 +27,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		 *
 		 * @var int
 		 */
-		const PER_PAGE = 20;
-
-		/**
-		 * Search, category filter and sortable headers only appear once there
-		 * are at least this many sources/rows; below that the whole list is
-		 * visible at a glance and the controls are just noise.
-		 *
-		 * @var int
-		 */
-		const MIN_ROWS_FOR_CONTROLS = 10;
+		const PER_PAGE = 10;
 
 		/**
 		 * Per-request cache of the scanned sources.
@@ -75,17 +66,16 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		/**
 		 * Category slug => translated label.
 		 *
-		 * @return array
+		 * @return array<string, string>
 		 */
 		public static function get_categories() {
 			$categories = array(
-				'payments'     => __( 'Payments', 'user-registration' ),
-				'membership'   => __( 'Membership', 'user-registration' ),
-				'email'        => __( 'Email', 'user-registration' ),
-				'forms'        => __( 'Forms', 'user-registration' ),
-				'integrations' => __( 'Integrations', 'user-registration' ),
-				'system'       => __( 'System', 'user-registration' ),
-				'other'        => __( 'Other', 'user-registration' ),
+				'system'     => __( 'System', 'user-registration' ),
+				'forms'      => __( 'Forms', 'user-registration' ),
+				'membership' => __( 'Membership', 'user-registration' ),
+				'payments'   => __( 'Payments', 'user-registration' ),
+				'email'      => __( 'Email', 'user-registration' ),
+				'addons'     => __( 'Add-ons', 'user-registration' ),
 			);
 
 			/**
@@ -97,40 +87,175 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		}
 
 		/**
-		 * Known log handle => array( category slug, friendly name ).
+		 * Known log sources across Core, Membership, Payments, and official Add-ons.
 		 *
-		 * @return array
+		 * @return array<string, array{category: string, name: string}>
 		 */
-		protected static function get_handle_map() {
-			return array(
-				'fatal-errors'                 => array( 'system', __( 'Fatal errors', 'user-registration' ) ),
-				'ur_mail_logs'                 => array( 'email', __( 'Email log', 'user-registration' ) ),
-				'ur-membership-email-logs'     => array( 'email', __( 'Membership emails', 'user-registration' ) ),
-				'form-submission'              => array( 'forms', __( 'Form submissions', 'user-registration' ) ),
-				'form-save'                    => array( 'forms', __( 'Form saves', 'user-registration' ) ),
-				'builder-fields'               => array( 'forms', __( 'Builder fields', 'user-registration' ) ),
-				'user-registration-membership' => array( 'membership', __( 'Membership', 'user-registration' ) ),
-				'urm-membership-crons'         => array( 'membership', __( 'Membership cron jobs', 'user-registration' ) ),
-				'urm-membership-expiration'    => array( 'membership', __( 'Membership expiration', 'user-registration' ) ),
-				'urm-missed-payment-backfill'  => array( 'membership', __( 'Missed payment backfill', 'user-registration' ) ),
-				'urm-reactivation-log'         => array( 'membership', __( 'Reactivation log', 'user-registration' ) ),
-				'ur-mailchimp'                 => array( 'integrations', __( 'Mailchimp', 'user-registration' ) ),
-				'ur-mailerlite'                => array( 'integrations', __( 'MailerLite', 'user-registration' ) ),
-				'ur-mailpoet'                  => array( 'integrations', __( 'MailPoet', 'user-registration' ) ),
-				'ur-profile-validation'        => array( 'system', __( 'Profile validation', 'user-registration' ) ),
-				'ur-captcha-logs'              => array( 'system', __( 'Captcha', 'user-registration' ) ),
-				'urm-tg-sdk-logs'              => array( 'system', __( 'ThemeGrill SDK', 'user-registration' ) ),
-				'migration-logger'             => array( 'system', __( 'Migration', 'user-registration' ) ),
-				'my-account'                   => array( 'system', __( 'My account', 'user-registration' ) ),
-				'user-registration'            => array( 'system', __( 'User registration', 'user-registration' ) ),
+		public static function get_registered_sources() {
+			$sources = array(
+				'fatal-errors'                 => array(
+					'category' => 'system',
+					'name'     => __( 'Fatal errors', 'user-registration' ),
+				),
+				'user-registration'            => array(
+					'category' => 'system',
+					'name'     => __( 'User registration core', 'user-registration' ),
+				),
+				'migration-logger'             => array(
+					'category' => 'system',
+					'name'     => __( 'Database migrations', 'user-registration' ),
+				),
+				'ur-captcha-logs'              => array(
+					'category' => 'system',
+					'name'     => __( 'Captcha', 'user-registration' ),
+				),
+				'ur-profile-validation'        => array(
+					'category' => 'system',
+					'name'     => __( 'Profile validation', 'user-registration' ),
+				),
+				'urm-tg-sdk-logs'              => array(
+					'category' => 'system',
+					'name'     => __( 'ThemeGrill SDK', 'user-registration' ),
+				),
+				'my-account'                   => array(
+					'category' => 'system',
+					'name'     => __( 'My account', 'user-registration' ),
+				),
+				'form-submission'              => array(
+					'category' => 'forms',
+					'name'     => __( 'Form submissions', 'user-registration' ),
+				),
+				'form-save'                    => array(
+					'category' => 'forms',
+					'name'     => __( 'Form saves', 'user-registration' ),
+				),
+				'builder-fields'               => array(
+					'category' => 'forms',
+					'name'     => __( 'Builder fields', 'user-registration' ),
+				),
+				'form-preview'                 => array(
+					'category' => 'forms',
+					'name'     => __( 'Form preview', 'user-registration' ),
+				),
+				'form-template'                => array(
+					'category' => 'forms',
+					'name'     => __( 'Form templates', 'user-registration' ),
+				),
+				'ur_mail_logs'                 => array(
+					'category' => 'email',
+					'name'     => __( 'Email delivery', 'user-registration' ),
+				),
+				'ur-membership-email-logs'     => array(
+					'category' => 'email',
+					'name'     => __( 'Membership emails', 'user-registration' ),
+				),
+				'user-registration-membership' => array(
+					'category' => 'membership',
+					'name'     => __( 'Membership', 'user-registration' ),
+				),
+				'urm-membership-crons'         => array(
+					'category' => 'membership',
+					'name'     => __( 'Membership cron jobs', 'user-registration' ),
+				),
+				'urm-membership-expiration'    => array(
+					'category' => 'membership',
+					'name'     => __( 'Membership expiration', 'user-registration' ),
+				),
+				'urm-missed-payment-backfill'  => array(
+					'category' => 'membership',
+					'name'     => __( 'Missed payment backfill', 'user-registration' ),
+				),
+				'urm-reactivation-log'         => array(
+					'category' => 'membership',
+					'name'     => __( 'Membership reactivation', 'user-registration' ),
+				),
+				'ur-membership-create'         => array(
+					'category' => 'membership',
+					'name'     => __( 'Membership creation', 'user-registration' ),
+				),
+				'urm-pg-stripe'                => array(
+					'category' => 'payments',
+					'name'     => __( 'Payments · Stripe', 'user-registration' ),
+				),
+				'urm-pg-paypal'                => array(
+					'category' => 'payments',
+					'name'     => __( 'Payments · PayPal', 'user-registration' ),
+				),
+				'urm-pg-authorize-net'         => array(
+					'category' => 'payments',
+					'name'     => __( 'Payments · Authorize.Net', 'user-registration' ),
+				),
+				'urm-pg-mollie'                => array(
+					'category' => 'payments',
+					'name'     => __( 'Payments · Mollie', 'user-registration' ),
+				),
+				'ur-mailchimp'                 => array(
+					'category' => 'addons',
+					'name'     => __( 'Mailchimp', 'user-registration' ),
+				),
+				'ur-activecampaign'            => array(
+					'category' => 'addons',
+					'name'     => __( 'ActiveCampaign', 'user-registration' ),
+				),
+				'ur-brevo'                     => array(
+					'category' => 'addons',
+					'name'     => __( 'Brevo', 'user-registration' ),
+				),
+				'ur-convertkit'                => array(
+					'category' => 'addons',
+					'name'     => __( 'ConvertKit', 'user-registration' ),
+				),
+				'ur-klaviyo'                   => array(
+					'category' => 'addons',
+					'name'     => __( 'Klaviyo', 'user-registration' ),
+				),
+				'ur-mailerlite'                => array(
+					'category' => 'addons',
+					'name'     => __( 'MailerLite', 'user-registration' ),
+				),
+				'ur-mailpoet'                  => array(
+					'category' => 'addons',
+					'name'     => __( 'MailPoet', 'user-registration' ),
+				),
+				'ur-salesforce'                => array(
+					'category' => 'addons',
+					'name'     => __( 'Salesforce', 'user-registration' ),
+				),
+				'ur-zapier'                    => array(
+					'category' => 'addons',
+					'name'     => __( 'Zapier', 'user-registration' ),
+				),
+				'cloud-storage'                => array(
+					'category' => 'addons',
+					'name'     => __( 'Cloud storage', 'user-registration' ),
+				),
+				'dropbox'                      => array(
+					'category' => 'addons',
+					'name'     => __( 'Dropbox', 'user-registration' ),
+				),
+				'google-drive'                 => array(
+					'category' => 'addons',
+					'name'     => __( 'Google Drive', 'user-registration' ),
+				),
+				'sms-notifications'            => array(
+					'category' => 'addons',
+					'name'     => __( 'SMS notifications', 'user-registration' ),
+				),
 			);
+
+			/**
+			 * Filters registered log sources metadata.
+			 *
+			 * @param array $sources Map of handle => array( 'category' => slug, 'name' => label ).
+			 */
+			return apply_filters( 'user_registration_log_sources', $sources );
 		}
 
 		/**
 		 * Friendly name and category for a log handle.
 		 *
-		 * Matches known map first, dynamic payment gateways, semantic patterns,
-		 * and finally falls back to public filter.
+		 * Resolves registered sources first, then deterministic prefix patterns,
+		 * and falls back to a clean TitleCase slug without arbitrary keyword guessing.
 		 *
 		 * @param string $handle Base handle (no rotation suffix, no hash).
 		 * @return array {
@@ -142,11 +267,11 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		 */
 		public static function describe_handle( $handle ) {
 			$categories = self::get_categories();
-			$map        = self::get_handle_map();
+			$registered = self::get_registered_sources();
 
-			if ( isset( $map[ $handle ] ) ) {
-				$category = $map[ $handle ][0];
-				$name     = $map[ $handle ][1];
+			if ( isset( $registered[ $handle ] ) ) {
+				$category = $registered[ $handle ]['category'];
+				$name     = $registered[ $handle ]['name'];
 				$known    = true;
 			} elseif ( preg_match( '/^(?:urm-pg-)+(.*)$/', $handle, $matches ) ) {
 				$category = 'payments';
@@ -155,43 +280,31 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				/* translators: %s: payment gateway name */
 				$name  = sprintf( __( 'Payments · %s', 'user-registration' ), $gateway );
 				$known = true;
+			} elseif ( preg_match( '/^(?:urm-|user-registration-membership)(.*)$/', $handle, $matches ) ) {
+				$category = 'membership';
+				$name     = ! empty( $matches[1] ) ? ucwords( trim( str_replace( array( '-', '_' ), ' ', $matches[1] ) ) ) : __( 'Membership', 'user-registration' );
+				$known    = true;
+			} elseif ( 0 === strpos( $handle, 'ur_mail' ) || false !== strpos( $handle, 'email' ) ) {
+				$category = 'email';
+				$name     = ucwords( trim( str_replace( array( '-', '_', 'ur' ), ' ', $handle ) ) );
+				$known    = true;
+			} elseif ( preg_match( '/^(?:form-|builder-)(.*)$/', $handle, $matches ) ) {
+				$category = 'forms';
+				$name     = ucwords( str_replace( array( '-', '_' ), ' ', $handle ) );
+				$known    = true;
+			} elseif ( preg_match( '/^(?:ur-|user-registration-)(.*)$/', $handle, $matches ) ) {
+				// Extension prefix: any add-on is automatically categorized as an add-on.
+				$category = 'addons';
+				$name     = ucwords( trim( str_replace( array( '-', '_' ), ' ', $matches[1] ) ) );
+				$known    = true;
 			} else {
-				if ( preg_match( '/payment|stripe|paypal|mollie|authorize|bank/i', $handle ) ) {
-					$category = 'payments';
-					$clean_gw = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-|pg-)/', '', $handle ) ) );
-					$clean_gw = str_ireplace( array( 'Paypal', 'Authorize Net' ), array( 'PayPal', 'Authorize.Net' ), $clean_gw );
-					/* translators: %s: payment gateway name */
-					$name  = sprintf( __( 'Payments · %s', 'user-registration' ), $clean_gw );
-					$known = true;
-				} elseif ( preg_match( '/membership|subscription/i', $handle ) ) {
-					$category = 'membership';
-					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
-					$known    = true;
-				} elseif ( preg_match( '/mail|email|smtp/i', $handle ) ) {
-					$category = 'email';
-					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
-					$known    = true;
-				} elseif ( preg_match( '/form|field|builder|submission/i', $handle ) ) {
-					$category = 'forms';
-					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
-					$known    = true;
-				} elseif ( preg_match( '/addon|integration|chimp|poet|lite|zapier|hubspot/i', $handle ) ) {
-					$category = 'integrations';
-					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
-					$known    = true;
-				} elseif ( preg_match( '/error|fatal|system|captcha|migration|cron/i', $handle ) ) {
-					$category = 'system';
-					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
-					$known    = true;
-				} else {
-					$category = 'other';
-					$name     = ucwords( str_replace( array( '-', '_' ), ' ', preg_replace( '/^(?:ur-|urm-)/', '', $handle ) ) );
-					$known    = false;
-				}
+				$category = 'system';
+				$name     = ucwords( trim( str_replace( array( '-', '_' ), ' ', $handle ) ) );
+				$known    = false;
 			}
 
 			if ( ! isset( $categories[ $category ] ) ) {
-				$category = 'other';
+				$category = 'system';
 			}
 
 			$info = array(
@@ -447,13 +560,14 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 				$present[ self::describe_handle( $handle )['category'] ] = true;
 			}
 
-			$show = '' !== $current || ( count( $sources ) >= self::MIN_ROWS_FOR_CONTROLS && count( $present ) >= 2 );
+			$show = '' !== $current || ( count( $sources ) >= 1 && count( $present ) >= 2 );
 
 			if ( ! $show ) {
 				return;
 			}
 
-			$labels = self::get_categories();
+			$labels      = self::get_categories();
+			$is_filtered = '' !== $current || ! empty( $this->get_requested_search() );
 			?>
 			<div class="alignleft actions ur-log-filter">
 				<label class="screen-reader-text" for="ur-log-category"><?php esc_html_e( 'Filter by category', 'user-registration' ); ?></label>
@@ -468,10 +582,12 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 						<option value="<?php echo esc_attr( $slug ); ?>" <?php selected( $current, $slug ); ?>><?php echo esc_html( $label ); ?></option>
 					<?php endforeach; ?>
 				</select>
-				<?php submit_button( __( 'Filter', 'user-registration' ), 'button-tertiary', 'filter_action', false ); ?>
-				<?php if ( '' !== $current || $this->get_requested_search() ) : ?>
-					<a class="ur-log-clear" href="<?php echo esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ); ?>"><?php esc_html_e( 'Clear', 'user-registration' ); ?></a>
-				<?php endif; ?>
+				<?php submit_button( __( 'Filter', 'user-registration' ), 'button-filter', 'log_filter_action', false, array( 'id' => 'post-query-submit' ) ); ?>
+				<button type="button" id="ur-log-filter-reset-btn" class="button button-reset ur-log-filter-reset-btn<?php echo $is_filtered ? '' : ' disabled'; ?>" <?php echo $is_filtered ? '' : 'disabled aria-disabled="true"'; ?> title="<?php esc_attr_e( 'Reset', 'user-registration' ); ?>" aria-label="<?php esc_attr_e( 'Reset', 'user-registration' ); ?>">
+					<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+						<path fill="currentColor" fill-rule="evenodd" d="M12 2h-.004a10.75 10.75 0 0 0-7.431 3.021l-.012.012L4 5.586V3a1 1 0 1 0-2 0v5a.997.997 0 0 0 1 1h5a1 1 0 0 0 0-2H5.414l.547-.547A8.75 8.75 0 0 1 12.001 4 8 8 0 1 1 4 12a1 1 0 1 0-2 0A10 10 0 1 0 12 2Z" clip-rule="evenodd"/>
+					</svg>
+				</button>
 			</div>
 			<?php
 		}
@@ -502,7 +618,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		 * @return bool
 		 */
 		public function should_show_search() {
-			return '' !== $this->get_requested_search() || count( self::scan_sources() ) >= self::MIN_ROWS_FOR_CONTROLS;
+			return '' !== $this->get_requested_search() || count( self::scan_sources() ) >= 1;
 		}
 
 		/**
@@ -568,7 +684,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 
 			$total_items        = count( $items );
 			$this->show_bulk    = $total_items >= 2;
-			$this->show_sorting = $total_items >= self::MIN_ROWS_FOR_CONTROLS;
+			$this->show_sorting = $total_items >= 1;
 
 			$this->_column_headers = array( $this->get_columns(), array(), $this->get_sortable_columns(), 'log' );
 
