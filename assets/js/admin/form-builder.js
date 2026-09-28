@@ -2958,6 +2958,13 @@
 									);
 								}
 
+								if (
+									typeof window.ur_toggle_field_sync_membership_visibility ===
+									"function"
+								) {
+									window.ur_toggle_field_sync_membership_visibility();
+								}
+
 								$.each(ul_node.find("li"), function () {
 									var $this = $(this);
 

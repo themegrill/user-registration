@@ -835,8 +835,34 @@ jQuery(function ($) {
 					$(".ur-builder-wrapper").scrollTop(0);
 				}
 			});
+
+		ur_toggle_field_sync_membership_visibility();
 	});
 
+	/**
+	 * Show Field Sync form-settings tab only while a membership field is on the canvas.
+	 * The panel is always rendered when a gateway is available so drag/delete can toggle live.
+	 */
+	window.ur_toggle_field_sync_membership_visibility = function () {
+		var hasMembership =
+			$(".ur-input-grids").find('.ur-field[data-field-key="membership"]')
+				.length > 0;
+		var $tab = $("#ur-tab-field-settings > #field-sync-settings");
+		var $panel = $("form #ur-field-all-settings > #field-sync-settings");
+
+		if (!$tab.length && !$panel.length) {
+			return;
+		}
+
+		$tab.toggle(hasMembership);
+
+		if (!hasMembership) {
+			if ($tab.hasClass("active")) {
+				$("#ur-tab-field-settings > #general-settings").trigger("click");
+			}
+			$panel.hide();
+		}
+	};
 	/**
 	 * Enables disables the lost password page
 	 *
@@ -2256,5 +2282,26 @@ jQuery(function ($) {
 	$("li.toplevel_page_user-registration > a").attr(
 		"href",
 		"admin.php?page=user-registration"
+	);
+});
+
+// Field Sync panel: each gateway's mapping fields stay hidden until its own enable toggle is checked.
+jQuery(function ($) {
+	function ur_sync_field_visibility(toggle_id) {
+		$('#field-sync-settings [data-sync-toggle="' + toggle_id + '"]').toggle(
+			$("#" + toggle_id).is(":checked")
+		);
+	}
+
+	$("#field-sync-settings [data-sync-toggle]").each(function () {
+		ur_sync_field_visibility($(this).data("sync-toggle"));
+	});
+
+	$(document.body).on(
+		"change",
+		'#field-sync-settings input[type="checkbox"]',
+		function () {
+			ur_sync_field_visibility(this.id);
+		}
 	);
 });
