@@ -2227,9 +2227,7 @@ class NewPaypalService {
 			return false;
 		}
 
-		// Two webhooks for the same row (the new subscription's ACTIVATED and the one it replaced's
-		// CANCELLED) can be in flight at once and PayPal does not guarantee delivery order, so the
-		// ownership check below and the write it guards must be atomic per row, not just per event.
+		// PayPal doesn't guarantee webhook delivery order, so two events for this row can race here.
 		$lock_name = 'urm_paypal_subscription_webhook_' . $subscription_row_id;
 		if ( true !== $this->members_subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT ) ) {
 			return false;
@@ -2324,8 +2322,7 @@ class NewPaypalService {
 			}
 		}
 
-		// No conditional-update guard needed here: the caller's per-row lock already holds for the
-		// entire read-check-write section, so nothing else can move this row in between.
+		// No conditional-update guard needed: the caller's lock already covers this whole section.
 		$this->members_subscription_repository->update(
 			$member_subscription['ID'],
 			array(
