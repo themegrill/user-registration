@@ -116,8 +116,8 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	 * Guards a webhook/backfill write against the row having switched to a different PayPal
 	 * subscription (e.g. an upgrade) between the caller's read and this write.
 	 *
-	 * @param int    $id                      Row ID.
-	 * @param array  $data                    Columns to update.
+	 * @param int    $id                       Row ID.
+	 * @param array  $data                     Columns to update.
 	 * @param string $expected_subscription_id PayPal subscription ID the row must still carry.
 	 *
 	 * @return int|false Rows affected (0 means the row had already moved on), false on DB error.
