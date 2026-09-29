@@ -2676,11 +2676,19 @@ class StripeService {
 		}
 
 		$existing_flag = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
-		$already_seen  = is_array( $existing_flag )
+		$same_dispute  = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' );
+		$already_seen  = $same_dispute;
+		// Do not overwrite a later closed outcome if created is replayed out of order.
+		$already_closed = $same_dispute
+			&& ! empty( $existing_flag['status'] )
+			&& 'open' !== $existing_flag['status'];
 
-		$this->flag_order_dispute( $order, $dispute, 'open' );
+		if ( ! $already_closed ) {
+			$this->flag_order_dispute( $order, $dispute, 'open' );
+		}
+
 		$this->revoke_membership_for_dispute( $order, $dispute );
 
 		if ( ! $already_seen ) {
@@ -2699,7 +2707,10 @@ class StripeService {
 	}
 
 	/**
-	 * Handle charge.dispute.closed: update flag; ensure revoke on lost.
+	 * Handle charge.dispute.closed: update flag; ensure access stays revoked.
+	 *
+	 * Always revokes (including won). If created was missed, a won close must still
+	 * cancel access; admins restore manually after a won dispute.
 	 *
 	 * @param array $event Stripe event array.
 	 * @return void
@@ -2733,8 +2744,8 @@ class StripeService {
 			return;
 		}
 
-		$existing_flag   = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
-		$already_closed  = is_array( $existing_flag )
+		$existing_flag  = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
+		$already_closed = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' )
 			&& ! empty( $existing_flag['status'] )
@@ -2742,11 +2753,7 @@ class StripeService {
 			&& (string) $existing_flag['status'] === (string) $dispute_status;
 
 		$this->flag_order_dispute( $order, $dispute, $dispute_status ? $dispute_status : 'closed' );
-
-		// Lost / charge refunded: ensure access stays revoked. Won: leave canceled — admin restores manually.
-		if ( in_array( $dispute_status, array( 'lost', 'charge_refunded' ), true ) ) {
-			$this->revoke_membership_for_dispute( $order, $dispute );
-		}
+		$this->revoke_membership_for_dispute( $order, $dispute );
 
 		if ( ! $already_closed ) {
 			$this->notify_admin_of_dispute( $order, $dispute, 'closed' );
@@ -4103,13 +4110,22 @@ class StripeService {
 			)
 		);
 
-		$total_found   = 0;
+		// Stripe returns newest-first; process oldest-first so created runs before closed.
+		$ordered_events = array();
+		foreach ( $events->autoPagingIterator() as $event ) {
+			$ordered_events[] = json_decode( wp_json_encode( $event ), true );
+		}
+		usort(
+			$ordered_events,
+			static function ( $a, $b ) {
+				return (int) ( $a['created'] ?? 0 ) <=> (int) ( $b['created'] ?? 0 );
+			}
+		);
+
+		$total_found   = count( $ordered_events );
 		$total_handled = 0;
 
-		foreach ( $events->autoPagingIterator() as $event ) {
-			++$total_found;
-			$event_array = json_decode( wp_json_encode( $event ), true );
-
+		foreach ( $ordered_events as $event_array ) {
 			if ( empty( $event_array['type'] ) ) {
 				continue;
 			}
