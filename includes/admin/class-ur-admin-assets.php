@@ -59,6 +59,7 @@ class UR_Admin_Assets {
 		// Add RTL support for admin styles.
 		wp_style_add_data( 'user-registration-menu', 'rtl', 'replace' );
 		wp_style_add_data( 'user-registration-admin', 'rtl', 'replace' );
+		wp_style_add_data( 'user-registration-settings', 'rtl', 'replace' );
 
 		// Sitewide menu CSS.
 

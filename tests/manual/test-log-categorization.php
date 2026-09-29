@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile -- standalone CLI harness outside WPCS scope, excluded from the plugin zip via .distignore.
 /**
  * Regression check for UR_Log_List_Table::describe_handle().
  *

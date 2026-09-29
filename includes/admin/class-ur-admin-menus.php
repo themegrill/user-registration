@@ -38,7 +38,6 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			add_action( 'admin_menu', array( $this, 'admin_menu' ), 1 );
 			add_action( 'admin_menu', array( $this, 'settings_menu' ), 20 );
 			add_action( 'admin_menu', array( $this, 'add_registration_menu' ), 8 );
-			add_action( 'admin_menu', array( $this, 'status_menu' ), 75 );
 			add_action( 'admin_menu', array( $this, 'dashboard_menu' ), 3 );
 			// Fires right where WP core is about to wp_die() an unregistered
 			// admin page (wp-admin/includes/menu.php), before admin_init
@@ -808,13 +807,6 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		}
 
 		/**
-		 * Add status menu item.
-		 */
-		public function status_menu() {
-			// Tools (Logs, System Info, Setup Wizard) moved into the Settings rail (see UR_Settings_Tools).
-		}
-
-		/**
 		 * Add dashboard sub menu.
 		 */
 		public function dashboard_menu() {
@@ -1200,13 +1192,6 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 */
 		public function settings_page() {
 			UR_Admin_Settings::output();
-		}
-
-		/**
-		 * Init the status page.
-		 */
-		public function status_page() {
-			UR_Admin_Status::output();
 		}
 
 		/**

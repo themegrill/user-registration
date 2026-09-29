@@ -24,7 +24,7 @@ $user_registration_settings_form_method_tab = apply_filters( 'user_registration_
 <div class="wrap user-registration">
 	<form method="<?php echo esc_attr( $user_registration_settings_form_method_tab ); ?>" id="mainform" action="" enctype="multipart/form-data">
 		<h1 class="screen-reader-text"><?php echo isset( $tabs[ $current_tab ] ) ? esc_html( $tabs[ $current_tab ] ) : ''; ?></h1>
-		<div class="user-registration-settings" >
+		<div class="user-registration-settings user-registration-settings--<?php echo esc_attr( $current_tab ); ?>" >
 			<div class="user-registration-settings-wrapper">
 				<header class="user-registration-header">
 					<div class="user-registration-header__close user-registration-header__close--hidden">

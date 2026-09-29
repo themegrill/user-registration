@@ -7,6 +7,19 @@
 	box-sizing: border-box;
 }
 
+body {
+	@media screen and (max-width: 782px) {
+		min-width: 600px;
+	}
+
+	// Tools tab's Logs table needs the full mobile width; every other Settings tab keeps the 600px floor.
+	&:has(.user-registration-settings--tools) {
+		@media screen and (max-width: 782px) {
+			min-width: 0;
+		}
+	}
+}
+
 // ToolTip CSSs
 .tooltipster-sidetip {
 	max-width: 240px !important;

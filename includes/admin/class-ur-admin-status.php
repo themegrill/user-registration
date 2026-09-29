@@ -16,22 +16,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class UR_Admin_Status {
 
 	/**
-	 * Handles output of the reports page in admin.
-	 */
-	public static function output() {
-		include_once __DIR__ . '/views/html-admin-page-status.php';
-	}
-
-
-	/**
-	 * Show the logs page.
-	 */
-	public static function status_logs() {
-		self::status_logs_file();
-	}
-
-
-	/**
 	 * Show the log page contents for file log handler.
 	 */
 	public static function status_logs_file() {

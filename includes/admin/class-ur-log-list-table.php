@@ -499,6 +499,29 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 		}
 
 		/**
+		 * Build the "delete this log" confirmation sentence, correctly pluralized
+		 * for the file count known at render time.
+		 *
+		 * @param string $name       Log name (raw, unescaped).
+		 * @param int    $file_count Number of files under this log.
+		 * @return string Escaped HTML fragment, safe for a `data-*` attribute.
+		 */
+		public static function get_delete_confirm_html( $name, $file_count ) {
+			$file_str = sprintf(
+				/* translators: %d: number of files */
+				_n( '%d file', '%d files', $file_count, 'user-registration' ),
+				$file_count
+			);
+
+			return sprintf(
+				/* translators: 1: log name, 2: pluralized file count */
+				__( 'Are you sure you want to delete the %1$s (%2$s) permanently?', 'user-registration' ),
+				'<b>' . esc_html( $name ) . '</b>',
+				esc_html( $file_str )
+			);
+		}
+
+		/**
 		 * "Log" column: friendly name, raw handle when unmapped, and row actions.
 		 *
 		 * @param array $item Row item.
@@ -536,7 +559,7 @@ if ( ! class_exists( 'UR_Log_List_Table' ) ) :
 
 			$actions = array(
 				'view'   => '<a href="' . esc_url( $view_url ) . '">' . esc_html__( 'View', 'user-registration' ) . '</a>',
-				'delete' => '<a class="ur-log-delete-link" href="' . esc_url( $delete_url ) . '" data-name="' . esc_attr( $item['name'] ) . '" data-files="' . esc_attr( $file_count ) . '" data-type="single">' . esc_html__( 'Delete', 'user-registration' ) . '</a>',
+				'delete' => '<a class="ur-log-delete-link" href="' . esc_url( $delete_url ) . '" data-confirm-html="' . esc_attr( self::get_delete_confirm_html( $item['name'], $file_count ) ) . '" data-type="single">' . esc_html__( 'Delete', 'user-registration' ) . '</a>',
 			);
 
 			return $name . $mobile_sub . $this->row_actions( $actions );

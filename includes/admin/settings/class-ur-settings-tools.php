@@ -60,19 +60,16 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 				return;
 			}
 
-			$viewing_single = ! empty( $_GET['log'] ) || ! empty( $_REQUEST['log_file'] ); // phpcs:ignore WordPress.Security.NonceVerification
-
-			if ( ( $current_section && 'logs' !== $current_section ) || $viewing_single ) {
+			if ( ( $current_section && 'logs' !== $current_section ) ) {
 				return;
 			}
+
+			$log_enabled    = ur_option_checked( 'user_registration_enable_log', false );
+			$viewing_single = ! empty( $_GET['log'] ) || ! empty( $_REQUEST['log_file'] ); // phpcs:ignore WordPress.Security.NonceVerification
 
 			include_once dirname( __DIR__ ) . '/class-ur-log-list-table.php';
 
 			$sources = UR_Log_List_Table::scan_sources();
-
-			if ( count( $sources ) < 2 ) {
-				return;
-			}
 
 			$total_file_count = 0;
 			foreach ( $sources as $source_item ) {
@@ -92,12 +89,60 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 				'remove_all_logs'
 			);
 			?>
-			<div class="user-registration-options-header--top__right">
-				<a class="button button-tertiary ur-log-delete-all" href="<?php echo esc_url( $url ); ?>" data-files="<?php echo esc_attr( $total_file_count ); ?>" data-sources="<?php echo esc_attr( count( $sources ) ); ?>">
-					<?php esc_html_e( 'Delete All Logs', 'user-registration' ); ?>
-				</a>
+			<div class="user-registration-options-header--top__right ur-log-header-actions">
+				<div class="ur-log-toggle-control" id="ur-log-toggle-control">
+					<span class="ur-log-toggle-label">
+						<label for="ur-toggle-logging" class="ur-log-toggle-text">
+							<?php esc_html_e( 'Enable Logs', 'user-registration' ); ?>
+						</label>
+						<?php echo ur_help_tip( __( 'Records plugin activity and events. Critical errors are logged automatically regardless of this setting.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					</span>
+					<div class="ur-toggle-section">
+						<span class="user-registration-toggle-form">
+							<input
+								type="checkbox"
+								id="ur-toggle-logging"
+								class="ur-toggle-logging-checkbox"
+								value="1"
+								<?php checked( true, $log_enabled ); ?>
+								data-nonce="<?php echo esc_attr( wp_create_nonce( 'ur_toggle_logging_nonce' ) ); ?>"
+							/>
+							<span class="slider round"></span>
+						</span>
+					</div>
+				</div>
+				<?php if ( ! $viewing_single && count( $sources ) >= 2 ) : ?>
+					<span class="ur-log-header-divider" aria-hidden="true"></span>
+					<a class="button button-tertiary ur-log-delete-all" href="<?php echo esc_url( $url ); ?>" data-confirm-html="<?php echo esc_attr( $this->get_delete_all_confirm_html( $total_file_count ) ); ?>">
+						<?php esc_html_e( 'Delete All Logs', 'user-registration' ); ?>
+					</a>
+				<?php endif; ?>
 			</div>
 			<?php
+		}
+
+		/**
+		 * Build the "delete all logs" confirmation sentence, correctly pluralized
+		 * for the total file count known at render time.
+		 *
+		 * @param int $total_file_count Total number of files across every log source.
+		 * @return string Escaped HTML fragment, safe for a `data-*` attribute.
+		 */
+		private function get_delete_all_confirm_html( $total_file_count ) {
+			if ( $total_file_count > 0 ) {
+				return sprintf(
+					/* translators: %d: total number of log files */
+					_n(
+						"Are you sure you want to delete <b>all %d log file</b> permanently? This can't be undone.",
+						"Are you sure you want to delete <b>all %d log files</b> permanently? This can't be undone.",
+						$total_file_count,
+						'user-registration'
+					),
+					$total_file_count
+				);
+			}
+
+			return __( "Are you sure you want to delete <b>all log files</b> permanently? This can't be undone.", 'user-registration' );
 		}
 
 		/**
@@ -210,11 +255,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			}
 
 			if ( 'setup_wizard' === $section ) {
-				?>
-				<script>
-					window.location.href = '<?php echo esc_js( admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' ) ); ?>';
-				</script>
-				<?php
+				$this->output_setup_wizard_confirm( admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' ) );
 				return;
 			}
 
@@ -241,6 +282,68 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			<div class="user-registration-card">
 				<p><?php esc_html_e( 'Nothing to show here yet.', 'user-registration' ); ?></p>
 			</div>
+			<?php
+		}
+
+		/**
+		 * Render a placeholder card and prompt for confirmation before leaving
+		 * for the Setup Wizard, instead of redirecting without consent — for
+		 * anyone who reaches this section directly (bookmark, typed URL) rather
+		 * than through the rail link `output_setup_wizard_script()` already
+		 * intercepts.
+		 *
+		 * @param string $wizard_url Setup Wizard destination URL.
+		 */
+		private function output_setup_wizard_confirm( $wizard_url ) {
+			$logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' );
+			?>
+			<div class="user-registration-card">
+				<p><?php esc_html_e( 'Redirecting to the Setup Wizard…', 'user-registration' ); ?></p>
+			</div>
+			<script>
+				( function () {
+					var wizardUrl   = '<?php echo esc_js( $wizard_url ); ?>';
+					var fallbackUrl = '<?php echo esc_js( $logs_url ); ?>';
+
+					function proceed() {
+						window.location.href = wizardUrl;
+					}
+
+					function cancel() {
+						window.location.href = fallbackUrl;
+					}
+
+					if ( typeof Swal !== 'undefined' ) {
+						Swal.fire( {
+							title: '<?php echo esc_js( __( 'Proceed to Setup Wizard?', 'user-registration' ) ); ?>',
+							text: '<?php echo esc_js( __( 'You are about to leave this page and open the Setup Wizard.', 'user-registration' ) ); ?>',
+							showCancelButton: true,
+							focusCancel: true,
+							confirmButtonText: '<?php echo esc_js( __( 'Confirm', 'user-registration' ) ); ?>',
+							cancelButtonText: '<?php echo esc_js( __( 'Cancel', 'user-registration' ) ); ?>',
+							buttonsStyling: false,
+							customClass: {
+								popup: 'ur-tools-modal',
+								title: 'ur-tools-modal__title',
+								htmlContainer: 'ur-tools-modal__content',
+								actions: 'ur-tools-modal__actions',
+								cancelButton: 'ur-tools-delete-modal__cancel',
+								confirmButton: 'ur-tools-delete-modal__confirm'
+							}
+						} ).then( function ( result ) {
+							if ( result.isConfirmed || result.value ) {
+								proceed();
+							} else {
+								cancel();
+							}
+						} );
+					} else if ( window.confirm( '<?php echo esc_js( __( 'You are about to leave this page and open the Setup Wizard.', 'user-registration' ) ); ?>' ) ) {
+						proceed();
+					} else {
+						cancel();
+					}
+				}() );
+			</script>
 			<?php
 		}
 

@@ -12,14 +12,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' );
+$log_enabled = ur_option_checked( 'user_registration_enable_log', false );
 ?>
 <?php if ( empty( $sources ) ) : ?>
-	<div class="user-registration-card">
-		<div class="user-registration-card__body">
+	<div class="user-registration-card ur-log-card">
+		<div class="user-registration-card__body ur-log-card-body">
 			<?php
 			UR_Base_Layout::no_items(
 				__( 'logs', 'user-registration' ),
-				__( 'Logs appear here when an email, payment or fatal error needs your attention.', 'user-registration' )
+				$log_enabled
+					? __( 'Logs appear here when an email, payment or fatal error needs your attention.', 'user-registration' )
+					: __( 'Logging is currently disabled. Toggle “Enable Logs” in the header above to start recording plugin activity and errors.', 'user-registration' )
 			);
 			?>
 		</div>
@@ -42,12 +45,22 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				<h3 class="user-registration-card__title"><?php esc_html_e( 'All Logs', 'user-registration' ); ?></h3>
 				<p class="ur-log-totals">
 					<?php
+					$sources_str = sprintf(
+						/* translators: %d: number of log sources */
+						_n( '%d source', '%d sources', count( $sources ), 'user-registration' ),
+						count( $sources )
+					);
+					$files_str = sprintf(
+						/* translators: %d: number of log files */
+						_n( '%d file', '%d files', $total_files, 'user-registration' ),
+						$total_files
+					);
 					echo esc_html(
 						sprintf(
-							/* translators: 1: number of sources, 2: number of files, 3: total size */
-							__( '%1$d sources · %2$d files · %3$s', 'user-registration' ),
-							count( $sources ),
-							$total_files,
+							/* translators: 1: pluralized source count, 2: pluralized file count, 3: total size */
+							__( '%1$s · %2$s · %3$s', 'user-registration' ),
+							$sources_str,
+							$files_str,
 							UR_Log_List_Table::format_size( $total_size )
 						)
 					);
@@ -144,7 +157,7 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 					</select>
 					<input type="submit" class="button button-tertiary" value="<?php esc_attr_e( 'View', 'user-registration' ); ?>" />
 				<?php endif; ?>
-				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-name="<?php echo esc_attr( $info['name'] ); ?>" data-files="<?php echo esc_attr( count( $source['files'] ) ); ?>" data-type="single">
+				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-confirm-html="<?php echo esc_attr( UR_Log_List_Table::get_delete_confirm_html( $info['name'], count( $source['files'] ) ) ); ?>" data-type="single">
 					<?php esc_html_e( 'Delete Log', 'user-registration' ); ?>
 				</a>
 			</div>
@@ -269,18 +282,6 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 <script>
 	( function () {
 		/**
-		 * Escapes plain text for safe inclusion in an HTML sink.
-		 *
-		 * @param {string} str Untrusted text.
-		 * @return {string} HTML-escaped string.
-		 */
-		function escapeHTML( str ) {
-			var div = document.createElement( 'div' );
-			div.textContent = str;
-			return div.innerHTML;
-		}
-
-		/**
 		 * Triggers SweetAlert2 delete confirmation modal.
 		 *
 		 * @param {string} title Modal title text.
@@ -331,13 +332,8 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 			}
 
 			event.preventDefault();
-			var rawName = link.getAttribute( 'data-name' ) || '<?php echo esc_js( __( 'this log', 'user-registration' ) ); ?>';
-			var name = escapeHTML( rawName );
-			var files = parseInt( link.getAttribute( 'data-files' ) || '1', 10 );
-			var fileStr = files === 1 ? '1 <?php echo esc_js( __( 'file', 'user-registration' ) ); ?>' : files + ' <?php echo esc_js( __( 'files', 'user-registration' ) ); ?>';
-
 			var title = '<?php echo esc_js( __( 'Delete Log', 'user-registration' ) ); ?>';
-			var html = '<?php echo esc_js( __( 'Are you sure you want to delete the', 'user-registration' ) ); ?> <b>' + name + '</b> (' + fileStr + ') <?php echo esc_js( __( 'permanently?', 'user-registration' ) ); ?>';
+			var html = link.getAttribute( 'data-confirm-html' );
 
 			showDeleteModal( title, html, function () {
 				window.location.href = link.href;
@@ -352,11 +348,8 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 			}
 
 			event.preventDefault();
-			var files = parseInt( link.getAttribute( 'data-files' ) || '0', 10 );
-			var fileStr = files > 0 ? files + ' ' : '';
-
 			var title = '<?php echo esc_js( __( 'Delete All Logs', 'user-registration' ) ); ?>';
-			var html = '<?php echo esc_js( __( 'Are you sure you want to delete', 'user-registration' ) ); ?> <b><?php echo esc_js( __( 'all', 'user-registration' ) ); ?> ' + fileStr + '<?php echo esc_js( __( 'log files', 'user-registration' ) ); ?></b> <?php echo esc_js( __( 'permanently? This can\'t be undone.', 'user-registration' ) ); ?>';
+			var html = link.getAttribute( 'data-confirm-html' );
 
 			showDeleteModal( title, html, function () {
 				window.location.href = link.href;
@@ -375,8 +368,16 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				if ( chosen && checked > 0 ) {
 					event.preventDefault();
 
+					// The checked count only exists client-side, so pluralization
+					// can't run through PHP's _n() for this exact number — pick
+					// between the two server-supplied templates instead.
+					var bulkDeleteI18n = {
+						singular: '<?php /* translators: %d: number of logs (singular) */ echo esc_js( _n( 'Are you sure you want to delete <b>this %d log</b> permanently?', 'Are you sure you want to delete <b>these %d logs</b> permanently?', 1, 'user-registration' ) ); ?>',
+						plural: '<?php /* translators: %d: number of logs (plural) */ echo esc_js( _n( 'Are you sure you want to delete <b>this %d log</b> permanently?', 'Are you sure you want to delete <b>these %d logs</b> permanently?', 2, 'user-registration' ) ); ?>'
+					};
 					var title = '<?php echo esc_js( __( 'Delete Logs', 'user-registration' ) ); ?>';
-					var html = '<?php echo esc_js( __( 'Are you sure you want to delete these', 'user-registration' ) ); ?> <b>' + checked + ' <?php echo esc_js( __( 'logs', 'user-registration' ) ); ?></b> <?php echo esc_js( __( 'permanently?', 'user-registration' ) ); ?>';
+					var template = 1 === checked ? bulkDeleteI18n.singular : bulkDeleteI18n.plural;
+					var html = template.replace( '%d', String( checked ) );
 
 					showDeleteModal( title, html, function () {
 						form.submit();
@@ -447,6 +448,50 @@ $ur_logs_url = admin_url( 'admin.php?page=user-registration-settings&tab=tools&s
 				} else {
 					updateResetState();
 				}
+			} );
+		}
+
+		// Toggle logging handler.
+		var toggleCheckbox = document.getElementById( 'ur-toggle-logging' );
+		if ( toggleCheckbox ) {
+			toggleCheckbox.addEventListener( 'change', function () {
+				var isChecked = this.checked;
+				var control   = document.getElementById( 'ur-log-toggle-control' );
+				var nonce     = this.getAttribute( 'data-nonce' );
+
+				if ( control ) {
+					control.classList.add( 'is-saving' );
+				}
+
+				var body = new URLSearchParams();
+				body.append( 'action', 'user_registration_toggle_logging' );
+				body.append( 'security', nonce );
+				body.append( 'enabled', isChecked ? 'true' : 'false' );
+
+				fetch( ajaxurl, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+					},
+					body: body.toString()
+				} )
+				.then( function ( response ) {
+					return response.json();
+				} )
+				.then( function ( data ) {
+					if ( control ) {
+						control.classList.remove( 'is-saving' );
+					}
+					if ( ! data.success ) {
+						toggleCheckbox.checked = ! isChecked;
+					}
+				} )
+				.catch( function () {
+					if ( control ) {
+						control.classList.remove( 'is-saving' );
+					}
+					toggleCheckbox.checked = ! isChecked;
+				} );
 			} );
 		}
 	}() );

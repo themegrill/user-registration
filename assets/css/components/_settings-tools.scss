@@ -1,7 +1,7 @@
 // Tools Settings & Status SCSS
 // Provides parity with Settings styling and responsive rules for Logs and System Info.
 
-.user-registration-settings {
+.user-registration-settings--tools {
 	.user-registration-options-header {
 		padding-top: 24px;
 		margin-bottom: 28px;
@@ -57,7 +57,7 @@
 }
 
 // Tertiary button
-.button.button-tertiary {
+.user-registration-settings--tools .button.button-tertiary {
 	height: 30px;
 	line-height: 28px;
 	padding: 0 14px;
@@ -160,8 +160,8 @@
 	}
 }
 
-// Cards styling in Settings context
-.user-registration-card {
+// Cards styling in Tools context
+.user-registration-settings--tools .user-registration-card {
 	background: #ffffff;
 	border: 1px solid #e1e1e1;
 	border-radius: 7px;
@@ -198,6 +198,96 @@
 	&__body {
 		padding: 0;
 	}
+}
+
+// Logging toggle in Tools options header
+.ur-log-toggle-control {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	height: 30px;
+	background: transparent;
+	border: none;
+	padding: 0;
+	box-sizing: border-box;
+	transition: opacity 0.2s ease;
+
+	&.is-saving {
+		opacity: 0.6;
+		pointer-events: none;
+	}
+
+	.ur-log-toggle-label {
+		display: inline-flex;
+		align-items: center;
+		margin: 0;
+		font-size: 13px;
+		font-weight: 500;
+		color: #383838;
+		line-height: 1;
+
+		.ur-log-toggle-text {
+			cursor: pointer;
+			user-select: none;
+		}
+
+		.user-registration-help-tip {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 16px;
+			height: 16px;
+			margin-left: 4px;
+			vertical-align: middle;
+			position: relative;
+			top: 1px;
+
+			&::after {
+				content: "";
+				background-image: url("../images/settings-icons/information.svg") !important;
+				background-repeat: no-repeat !important;
+				background-size: 100% !important;
+				background-position: center;
+				display: block;
+				width: 8px;
+				height: 8px;
+				cursor: pointer;
+				padding: 4px;
+				background: transparent;
+				border-radius: 3px;
+			}
+
+			&:hover {
+				&::after {
+					filter: brightness(0) saturate(100%)
+						invert(33%) sepia(19%)
+						saturate(2330%) hue-rotate(195deg)
+						brightness(100%) contrast(87%);
+				}
+			}
+		}
+	}
+
+	.ur-toggle-section {
+		display: inline-flex;
+		align-items: center;
+		margin: 0;
+		padding: 0;
+
+		.user-registration-toggle-form {
+			margin: 0;
+		}
+	}
+}
+
+// Vertical divider between toggle and button in Tools header
+.ur-log-header-divider {
+	display: inline-block;
+	width: 1px;
+	height: 18px;
+	background: #e1e1e1;
+	margin: 0 4px;
+	flex-shrink: 0;
 }
 
 // All logs card header & search box
@@ -265,7 +355,7 @@
 }
 
 // Toolbar (tablenav)
-.user-registration-card__body {
+.user-registration-settings--tools .user-registration-card__body {
 	.tablenav {
 		height: auto;
 		margin: 0 0 16px 0;
@@ -538,7 +628,7 @@ table.wp-list-table.ur-logs-table {
 
 		&.column-files,
 		&.column-size {
-			text-align: left;
+			text-align: start;
 
 			a {
 				justify-content: flex-start;
@@ -674,24 +764,24 @@ table.wp-list-table.ur-logs-table {
 
 	.column-category {
 		width: 150px;
-		text-align: left;
+		text-align: start;
 	}
 
 	.column-files {
 		width: 80px;
-		text-align: left;
+		text-align: start;
 		font-variant-numeric: tabular-nums;
 	}
 
 	.column-size {
 		width: 100px;
-		text-align: left;
+		text-align: start;
 		font-variant-numeric: tabular-nums;
 	}
 
 	.column-last_updated {
 		width: 190px;
-		text-align: left;
+		text-align: start;
 		white-space: nowrap;
 	}
 }
@@ -890,7 +980,7 @@ table.wp-list-table.ur-logs-table {
 			line-height: 24px;
 			color: #383838;
 			background: transparent;
-			text-align: left;
+			text-align: start;
 			vertical-align: top;
 		}
 
@@ -929,7 +1019,7 @@ table.wp-list-table.ur-logs-table {
 }
 
 // Empty state helper
-.user-registration-card__body .empty-list-table-container {
+.user-registration-settings--tools .user-registration-card__body .empty-list-table-container {
 	text-align: center;
 	padding: 40px 24px 44px;
 
@@ -971,7 +1061,7 @@ table.wp-list-table.ur-logs-table {
 			font-weight: 600 !important;
 			line-height: 26px !important;
 			color: #111827 !important;
-			text-align: left !important;
+			text-align: start !important;
 			justify-content: flex-start !important;
 
 			svg,
@@ -989,7 +1079,7 @@ table.wp-list-table.ur-logs-table {
 			font-size: 14px !important;
 			line-height: 22px !important;
 			color: #4b5563 !important;
-			text-align: left !important;
+			text-align: start !important;
 		}
 
 		&__actions {
@@ -1067,7 +1157,7 @@ table.wp-list-table.ur-logs-table {
 
 // Responsive Breakpoints: Tablet & Mobile
 @media (max-width: 782px) {
-	.user-registration-settings {
+	.user-registration-settings--tools {
 		.user-registration-options-header {
 			&--top {
 				flex-wrap: wrap;
@@ -1104,7 +1194,7 @@ table.wp-list-table.ur-logs-table {
 		}
 	}
 
-	.user-registration-card__body {
+	.user-registration-settings--tools .user-registration-card__body {
 		.tablenav {
 			flex-direction: column;
 			align-items: stretch;
@@ -1246,7 +1336,7 @@ table.wp-list-table.ur-logs-table {
 }
 
 @media (max-width: 480px) {
-	.user-registration-card {
+	.user-registration-settings--tools .user-registration-card {
 		padding: 16px 14px;
 	}
 

@@ -100,7 +100,7 @@ class UR_AJAX {
 			'activate_dependent_module'            => false,
 			'add_membership_field_to_default_form' => false,
 			'update_state_field'                   => true,
-
+			'toggle_logging'                       => false,
 		);
 
 		foreach ( $ajax_events as $ajax_event => $nopriv ) {
@@ -2845,6 +2845,32 @@ class UR_AJAX {
 			array(
 				'state'     => $option,
 				'has_state' => $has_state,
+			)
+		);
+	}
+
+	/**
+	 * Toggle user registration logging state.
+	 *
+	 * @return void
+	 */
+	public static function toggle_logging() {
+		check_ajax_referer( 'ur_toggle_logging_nonce', 'security' );
+
+		if ( ! current_user_can( 'manage_user_registration' ) && ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'user-registration' ) ) );
+		}
+
+		$enabled = ! empty( $_POST['enabled'] ) && ( 'true' === $_POST['enabled'] || '1' === $_POST['enabled'] );
+		// Store setting compatible with ur_option_checked and Settings page.
+		update_option( 'user_registration_enable_log', $enabled ? 'yes' : 'no' );
+
+		wp_send_json_success(
+			array(
+				'enabled' => $enabled,
+				'message' => $enabled
+					? __( 'Logging enabled.', 'user-registration' )
+					: __( 'Logging disabled.', 'user-registration' ),
 			)
 		);
 	}
