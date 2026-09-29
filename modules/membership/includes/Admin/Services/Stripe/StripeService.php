@@ -2579,14 +2579,17 @@ class StripeService {
 	}
 
 	/**
-	 * Handle charge.refunded webhook: mark the linked order as refunded.
+	 * Handle charge.refunded webhook: mark the linked order as refunded and
+	 * revoke membership access on a full refund.
 	 *
 	 * @param array $event Stripe event array.
 	 * @return void
 	 */
 	public function handle_refunded_charge( $event ) {
 		$charge            = isset( $event['data']['object'] ) ? $event['data']['object'] : array();
-		$payment_intent_id = isset( $charge['payment_intent'] ) ? $charge['payment_intent'] : null;
+		$payment_intent_id = is_array( $charge )
+			? ( isset( $charge['payment_intent'] ) ? $charge['payment_intent'] : null )
+			: ( $charge->payment_intent ?? null );
 
 		PaymentGatewayLogging::log_webhook_received(
 			'stripe',
@@ -2620,16 +2623,77 @@ class StripeService {
 			return;
 		}
 
-		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+		$is_fully_refunded = is_array( $charge )
+			? ! empty( $charge['refunded'] )
+			: ! empty( $charge->refunded );
+
+		$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
-			sprintf( 'Order %d marked as refunded (PaymentIntent %s).', $order['ID'], $payment_intent_id ),
+			sprintf(
+				'Order %d marked as refunded (PaymentIntent %s)%s.',
+				$order['ID'],
+				$payment_intent_id,
+				$is_fully_refunded ? '; membership subscription canceled' : '; partial refund — subscription unchanged'
+			),
 			array(
 				'order_id'          => $order['ID'],
 				'payment_intent_id' => $payment_intent_id,
+				'is_fully_refunded' => $is_fully_refunded,
+				'subscription_id'   => $order['subscription_id'] ?? null,
 			)
 		);
+	}
+
+	/**
+	 * Mark an order refunded and, on a full refund, cancel the linked subscription
+	 * so content restriction (active/trial only) drops access immediately.
+	 *
+	 * @param array $order             Order row from OrdersRepository.
+	 * @param bool  $is_fully_refunded Whether Stripe reports the charge as fully refunded.
+	 * @return void
+	 */
+	private function apply_refund_to_order_and_subscription( $order, $is_fully_refunded = true ) {
+		if ( empty( $order['ID'] ) ) {
+			return;
+		}
+
+		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+
+		if ( ! $is_fully_refunded ) {
+			return;
+		}
+
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		if ( ! $subscription_id ) {
+			return;
+		}
+
+		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
+		if ( empty( $subscription ) ) {
+			return;
+		}
+
+		// Local cancel first — content restriction only grants active/trial.
+		if ( 'canceled' !== ( $subscription['status'] ?? '' ) ) {
+			$this->members_subscription_repository->update(
+				$subscription_id,
+				array(
+					'status' => 'canceled',
+				)
+			);
+		}
+
+		// Stop further Stripe billing when this was a recurring subscription.
+		if ( ! empty( $subscription['subscription_id'] ) ) {
+			$this->cancel_subscription( $order, $subscription );
+		}
+
+		$member_id = ! empty( $order['user_id'] ) ? absint( $order['user_id'] ) : 0;
+		if ( $member_id ) {
+			delete_transient( 'urm_pending_login_' . $member_id );
+		}
 	}
 
 	/**
@@ -3721,10 +3785,16 @@ class StripeService {
 				continue;
 			}
 
-			$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+			$is_fully_refunded = ! empty( $charge->refunded );
+			$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
 			++$total_updated;
 			$logger->info(
-				sprintf( '[Backfill][Stripe][Refunds] Marked order %d as refunded (PaymentIntent %s)', $order['ID'], $payment_intent_id ),
+				sprintf(
+					'[Backfill][Stripe][Refunds] Marked order %d as refunded (PaymentIntent %s)%s',
+					$order['ID'],
+					$payment_intent_id,
+					$is_fully_refunded ? '; membership subscription canceled' : '; partial refund — subscription unchanged'
+				),
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);
 		}
