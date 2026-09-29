@@ -2927,9 +2927,18 @@ body {
 		align-items: center;
 		justify-content: center;
 
-		&:hover,
+		&:hover {
+			color: #135e96;
+		}
+
 		&:focus {
 			color: #135e96;
+			outline: 2px solid #2271b1;
+			outline-offset: 2px;
+			border-radius: 2px;
+		}
+
+		&:focus:not(:focus-visible) {
 			outline: none;
 		}
 

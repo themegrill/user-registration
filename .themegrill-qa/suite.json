@@ -21,7 +21,12 @@
       "includes/admin/class-ur-admin-menus.php",
       "includes/admin/class-ur-admin-settings.php",
       "includes/admin/settings/**",
-      "includes/admin/class-ur-admin-assets.php"
+      "includes/admin/class-ur-admin-assets.php",
+      "includes/functions-ur-core.php",
+      "assets/css/settings*",
+      "assets/js/admin/**",
+      "modules/paypal/**",
+      "modules/stripe/**"
     ],
     "registration": [
       "includes/class-ur-form-handler.php",
