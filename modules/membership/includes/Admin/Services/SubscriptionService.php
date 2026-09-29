@@ -299,7 +299,8 @@ class SubscriptionService {
 
 		$member_id = $current_user_subscription['user_id'];
 
-		$latest_order = $this->members_orders_repository->get_member_orders( $member_id );
+		// Scoped to this subscription, not the member's most recent order overall.
+		$latest_order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 		$membership = $this->membership_repository->get_single_membership_by_ID( $current_user_subscription['item_id'] );
 
@@ -310,6 +311,7 @@ class SubscriptionService {
 
 		$email_data = array(
 			'subscription'     => $subscription,
+			'subscription_id'  => $subscription_id,
 			'order'            => $latest_order,
 			'membership_metas' => $membership_metas,
 			'member_id'        => $member_id,
@@ -346,14 +348,25 @@ class SubscriptionService {
 			}
 		}
 
-		if ( empty( $member_order ) ) {
-			$member_order = $this->members_orders_repository->get_member_orders( $data['member_id'] );
+		if ( isset( $data['subscription']['ID'] ) ) {
+			$subscription_id = $data['subscription']['ID'];
+		} elseif ( ! empty( $data['subscription_id'] ) ) {
+			$subscription_id = $data['subscription_id'];
+		} elseif ( ! empty( $member_order['subscription_id'] ) ) {
+			$subscription_id = $member_order['subscription_id'];
 		}
 
-		if ( isset( $data['subscription']['ID'] ) ) {
-			$subscription_id = $data['subscription']['ID'] ?? 0;
-		} else {
-			$subscription_id = ! empty( $member_order ) ? ( $member_order['subscription_id'] ?? '' ) : '';
+		// Scope the order lookup to this subscription rather than the member's most recent order.
+		if ( empty( $member_order ) && ! empty( $subscription_id ) ) {
+			$member_order = $this->orders_repository->get_order_by_subscription( $subscription_id );
+		}
+
+		if ( empty( $member_order ) ) {
+			$member_order = $this->members_orders_repository->get_member_orders( $data['member_id'] );
+
+			if ( empty( $subscription_id ) ) {
+				$subscription_id = ! empty( $member_order ) ? ( $member_order['subscription_id'] ?? '' ) : '';
+			}
 		}
 
 		$subscription  = $this->members_subscription_repository->get_subscription_by_subscription_id( $subscription_id );
@@ -362,7 +375,6 @@ class SubscriptionService {
 
 		$membership_metas               = ! empty( $membership['meta_value'] ) ? wp_unslash( json_decode( $membership['meta_value'], true ) ) : array();
 		$membership_metas['post_title'] = $membership['post_title'] ?? '';
-		$member_order                   = $member_order ? $member_order : $this->members_orders_repository->get_member_orders( $data['member_id'] );
 		$order                          = ! empty( $member_order['ID'] ) ? $this->orders_repository->get_order_detail( $member_order['ID'] ) : array();
 		$total                          = $order['total_amount'] ?? 0;
 		$membership_tab_url             = esc_url( ur_get_my_account_url() . 'ur-membership' );
