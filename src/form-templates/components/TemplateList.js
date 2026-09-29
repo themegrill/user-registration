@@ -678,7 +678,10 @@ const TemplateList = ({ selectedCategory, templates }) => {
 								"https://wpuserregistration.com/upgrade/",
 								{
 									source: "form-template",
-									medium: "popup"
+									medium: "popup",
+									content:
+										selectedTemplateSlug ||
+										"premium-template"
 								}
 							)}
 							target="_blank"

@@ -1081,7 +1081,7 @@ if ( ! function_exists( 'user_registration_plugin_main_header' ) ) {
 					if ( ! UR_PRO_ACTIVE ) {
 						?>
 							<div class="ur-version-tag-separator" bis_skin_checked="1"><hr></div>
-							<a target="_blank" rel="noopener" class="ur-upgrade--link" href="<?php echo esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'header', 'medium' => 'menu-link' ) ) ); ?>">
+							<a target="_blank" rel="noopener" class="ur-upgrade--link" href="<?php echo esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'header', 'medium' => 'menu-link', 'content' => 'header-upgrade-button' ) ) ); ?>">
 								<?php esc_html_e( 'Upgrade To Pro', 'user-registration' ); ?>
 							</a>
 						<?php
