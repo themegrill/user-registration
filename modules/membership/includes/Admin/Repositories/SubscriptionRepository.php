@@ -41,7 +41,10 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 		$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 		$subscription_service = new SubscriptionService();
-		if ( 'canceled' === $subscription['status'] ) {
+		// A still-billing subscription (future expiry_date) records the cancellation as a pending-cancel
+		// marker instead of flipping status, so a retry after that must check the marker too, or it
+		// re-issues the same PayPal cancel call every run until the switch-over day actually arrives.
+		if ( 'canceled' === $subscription['status'] || get_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id, true ) ) {
 			return array(
 				'status'  => false,
 				'message' => esc_html__( 'Subscription is already canceled.', 'user-registration' ),

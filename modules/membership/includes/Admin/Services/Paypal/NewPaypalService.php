@@ -40,6 +40,11 @@ class NewPaypalService {
 	const SALE_LOCK_TIMEOUT = 10;
 
 	/**
+	 * Seconds to wait for another subscription-status webhook for the same row before giving up.
+	 */
+	const SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT = 10;
+
+	/**
 	 * Billing cycles PayPal must have completed before a sale counts as a renewal; the first belongs to the checkout.
 	 */
 	const RENEWAL_MIN_COMPLETED_CYCLES = 2;
@@ -1471,7 +1476,7 @@ class NewPaypalService {
 				if ( ! empty( $member_subscription ) ) {
 					$row_update = array(
 						'status'          => $resolved_status,
-						'start_date'      => date( 'Y-m-d 00:00:00' ), // phpcs:ignore WordPress.DateTime.RestrictedFunctions.date_date
+						'start_date'      => gmdate( 'Y-m-d 00:00:00' ),
 						'subscription_id' => sanitize_text_field( $paypal_subscription_id ),
 					);
 
@@ -2222,11 +2227,38 @@ class NewPaypalService {
 			return false;
 		}
 
-		$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_row_id );
-		if ( empty( $member_subscription ) ) {
+		// Two webhooks for the same row (the new subscription's ACTIVATED and the one it replaced's
+		// CANCELLED) can be in flight at once and PayPal does not guarantee delivery order, so the
+		// ownership check below and the write it guards must be atomic per row, not just per event.
+		$lock_name = 'urm_paypal_subscription_webhook_' . $subscription_row_id;
+		if ( true !== $this->members_subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT ) ) {
 			return false;
 		}
 
+		try {
+			$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_row_id );
+			if ( empty( $member_subscription ) ) {
+				return false;
+			}
+
+			return $this->process_subscription_webhook_event( $event_type, $member_id, $subscription_row_id, $paypal_subscription_id, $member_subscription );
+		} finally {
+			$this->members_subscription_repository->release_lock( $lock_name );
+		}
+	}
+
+	/**
+	 * Decide the row's new state for a subscription webhook and write it, holding the caller's per-row lock.
+	 *
+	 * @param string $event_type             PayPal webhook event type.
+	 * @param int    $member_id              Member the row belongs to.
+	 * @param string $subscription_row_id    Local subscription row ID.
+	 * @param string $paypal_subscription_id PayPal subscription ID the event is about.
+	 * @param array  $member_subscription    Row data, freshly read under the lock.
+	 *
+	 * @return bool
+	 */
+	private function process_subscription_webhook_event( $event_type, $member_id, $subscription_row_id, $paypal_subscription_id, $member_subscription ) {
 		if ( ! $this->is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) ) {
 			PaymentGatewayLogging::log_general(
 				'paypal',
@@ -2292,6 +2324,8 @@ class NewPaypalService {
 			}
 		}
 
+		// No conditional-update guard needed here: the caller's per-row lock already holds for the
+		// entire read-check-write section, so nothing else can move this row in between.
 		$this->members_subscription_repository->update(
 			$member_subscription['ID'],
 			array(
@@ -4323,13 +4357,10 @@ class NewPaypalService {
 
 			// Keyed by subscription_id too: an upgrade can switch this row to a different PayPal subscription
 			// between the lookup above (a live PayPal GET can happen in between) and this write.
-			$rows_affected = $this->members_subscription_repository->wpdb()->update(
-				TableList::subscriptions_table(),
+			$rows_affected = $this->members_subscription_repository->update_if_subscription_id_matches(
+				$local_sub_id,
 				$update_data,
-				array(
-					'ID'              => $local_sub_id,
-					'subscription_id' => $paypal_subscription_id,
-				)
+				$paypal_subscription_id
 			);
 
 			if ( false === $rows_affected ) {
