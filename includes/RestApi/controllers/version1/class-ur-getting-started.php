@@ -1749,6 +1749,28 @@ class UR_Getting_Started {
 					throw new \Exception( __( 'Invalid Stripe API credentials. Please verify your keys.', 'user-registration' ) );
 				}
 
+				// Match Payment → Stripe settings save: register webhooks so charge.refunded
+				// and other events reach the site after setup-wizard onboarding.
+				foreach ( array( 'test', 'live' ) as $mode ) {
+					$mode_secret = get_option( 'user_registration_stripe_' . $mode . '_secret_key', '' );
+					if ( empty( $mode_secret ) ) {
+						continue;
+					}
+
+					$webhook_result = \WPEverest\URMembership\Admin\Services\Stripe\StripeService::create_webhook( $mode );
+					if ( ! empty( $webhook_result['success'] ) && class_exists( '\WPEverest\URMembership\Admin\Services\PaymentGatewayLogging' ) ) {
+						\WPEverest\URMembership\Admin\Services\PaymentGatewayLogging::log_general(
+							'stripe',
+							'Webhook created or verified for ' . $mode . ' mode (setup wizard)',
+							'notice',
+							array(
+								'event_type' => 'webhook_setup_wizard',
+								'mode'       => $mode,
+							)
+						);
+					}
+				}
+
 				$membership_ids = (array) get_option( 'urm_onboarding_membership_ids', array() );
 
 				foreach ( $membership_ids as $membership_id ) {
