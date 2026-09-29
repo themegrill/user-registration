@@ -337,27 +337,29 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				$modules_by_slug = array_column( $our_modules, null, 'slug' );
 
 				foreach ( $enabled_features as $slug ) {
-					if ( isset( $modules_by_slug[ $slug ] ) ) {
-						$module               = $modules_by_slug[ $slug ];
-						$is_moved_addon       = in_array( $slug, $addons_list_moved_into_module, true );
-						$is_standalone_active = $is_moved_addon && in_array( $slug . '/' . $slug . '.php', $active_plugins, true );
-						$product_slug         = $is_standalone_active ? $slug . '/' . $slug . '.php' : $slug;
-						$addon_info           = array(
-							'product_name'    => $module['name'],
-							'product_version' => UR()->version,
-							'product_type'    => $is_standalone_active ? 'plugin' : 'module',
-							'product_slug'    => $product_slug,
-							'is_premium'      => $is_premium,
-						);
-
-						// Add content restriction stats if it's the content-restriction module.
-						if ( class_exists( 'UR_Stats_Helpers' ) && $is_premium ) {
-							$addon_info = UR_Stats_Helpers::maybe_add_content_restriction_stats( $addon_info, $slug );
-							$addon_info = UR_Stats_Helpers::maybe_add_email_template_stats( $addon_info, $slug );
-						}
-
-						$addons_data[] = $addon_info;
+					// Report every enabled module, not only those listed in the UI features file, so auto-enabled ones like payment-history are tracked.
+					if ( ! is_string( $slug ) || 0 !== strpos( $slug, 'user-registration-' ) ) {
+						continue;
 					}
+
+					$is_moved_addon       = in_array( $slug, $addons_list_moved_into_module, true );
+					$is_standalone_active = $is_moved_addon && in_array( $slug . '/' . $slug . '.php', $active_plugins, true );
+					$product_slug         = $is_standalone_active ? $slug . '/' . $slug . '.php' : $slug;
+					$addon_info           = array(
+						'product_name'    => isset( $modules_by_slug[ $slug ]['name'] ) ? $modules_by_slug[ $slug ]['name'] : ucwords( str_replace( '-', ' ', $slug ) ),
+						'product_version' => UR()->version,
+						'product_type'    => $is_standalone_active ? 'plugin' : 'module',
+						'product_slug'    => $product_slug,
+						'is_premium'      => $is_premium,
+					);
+
+					// Add content restriction stats if it's the content-restriction module.
+					if ( class_exists( 'UR_Stats_Helpers' ) && $is_premium ) {
+						$addon_info = UR_Stats_Helpers::maybe_add_content_restriction_stats( $addon_info, $slug );
+						$addon_info = UR_Stats_Helpers::maybe_add_email_template_stats( $addon_info, $slug );
+					}
+
+					$addons_data[] = $addon_info;
 				}
 			}
 
