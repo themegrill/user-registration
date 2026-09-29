@@ -10632,6 +10632,9 @@ if ( ! function_exists( 'ur_sanitize_value_by_type' ) ) {
 			case 'tinymce':
 				$value = wpautop( $raw_value );
 				break;
+			case 'password':
+				$value = is_string( $raw_value ) ? trim( $raw_value ) : '';
+				break;
 
 			default:
 				$value = ur_clean( $raw_value );
