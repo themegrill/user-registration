@@ -288,22 +288,27 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	public function get_all_delayed_orders( $date ) {
-		$sql = sprintf(
+		$users_meta_table = TableList::users_meta_table();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table names are fixed internal values, never attacker-influenced; the date value goes through $wpdb->prepare()'s own placeholder.
+		// A row due today or earlier, not an exact-date match: one skipped on its own scheduled day (e.g. the new subscription wasn't active yet) must still be picked up by a later run instead of being dropped permanently.
+		$sql = $this->wpdb()->prepare(
 			"
 					SELECT
 					       urmo.ID as order_id,
 					       wpum.meta_value as sub_data
-					FROM wp_ur_membership_orders urmo
-					         JOIN wp_ur_membership_ordermeta wpom ON urmo.ID = wpom.order_id
-					         JOIN wp_usermeta wpum ON urmo.user_id = wpum.user_id
+					FROM {$this->table} urmo
+					         JOIN {$this->orders_meta_table} wpom ON urmo.ID = wpom.order_id
+					         JOIN {$users_meta_table} wpum ON urmo.user_id = wpum.user_id
 					WHERE wpom.meta_key = 'delayed_until'
-					  AND wpom.meta_value = '%s'
+					  AND wpom.meta_value <= %s
 					  AND wpum.meta_key = 'urm_next_subscription_data'
 				",
 			$date
 		);
 
 		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return ! $result ? array() : $result;
 	}

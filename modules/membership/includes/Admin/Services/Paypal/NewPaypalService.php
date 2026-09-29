@@ -1934,6 +1934,10 @@ class NewPaypalService {
 
 		$member_id    = absint( $parsed['member_id'] );
 		$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+		// get_member_orders() is member-wide, not scoped to this checkout — refuse to act on someone else's plan/gateway.
+		if ( ! empty( $member_order ) && ( (int) ( $member_order['item_id'] ?? 0 ) !== absint( $parsed['membership'] ) || 'paypal' !== ( $member_order['payment_method'] ?? '' ) ) ) {
+			$member_order = array();
+		}
 
 		if ( empty( $member_order ) ) {
 			// No membership order for this member_id — may be a normal-registration event.
@@ -2350,7 +2354,11 @@ class NewPaypalService {
 		}
 
 		if ( 'active' === $new_status ) {
-			$member_order         = $this->members_orders_repository->get_member_orders( $member_id );
+			$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+			// get_member_orders() is member-wide, not scoped to this subscription — refuse to act on someone else's plan/gateway.
+			if ( ! empty( $member_order ) && ( (int) ( $member_order['item_id'] ?? 0 ) !== (int) ( $member_subscription['item_id'] ?? 0 ) || 'paypal' !== ( $member_order['payment_method'] ?? '' ) ) ) {
+				$member_order = array();
+			}
 			$current_order_status = isset( $member_order['status'] ) ? $member_order['status'] : '';
 
 			if ( ! empty( $member_order['ID'] ) ) {
@@ -2779,7 +2787,9 @@ class NewPaypalService {
 			$membership_metas = ! empty( $membership_data['meta_value'] ) ? json_decode( $membership_data['meta_value'], true ) : array();
 			$duration_val     = absint( $membership_metas['subscription']['value'] ?? 1 );
 			$duration_unit    = sanitize_text_field( $membership_metas['subscription']['duration'] ?? 'month' );
-			$base_timestamp   = ! empty( $membership_subscription['expiry_date'] ) ? strtotime( $membership_subscription['expiry_date'] ) : time();
+			// Anchored to PayPal's own last-payment time, not the mutable local expiry_date this function writes, so a replay computes the same date instead of stacking another period on top.
+			$last_payment_time = $remote['billing_info']['last_payment']['time'] ?? '';
+			$base_timestamp    = ! empty( $last_payment_time ) ? strtotime( $last_payment_time ) : time();
 
 			$paypal_next = gmdate( 'Y-m-d H:i:s', strtotime( "+{$duration_val} {$duration_unit}", $base_timestamp ) );
 		}
