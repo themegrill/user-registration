@@ -348,6 +348,15 @@ class SubscriptionService {
 			}
 		}
 
+		// The caller already resolved the exact order this email is about - trust it over any
+		// lookup below, so a newer order on the same subscription can't get substituted in.
+		if ( empty( $member_order ) && ! empty( $data['order'] ) ) {
+			$member_order = $data['order'];
+			if ( empty( $member_order['ID'] ) && ! empty( $member_order['order_id'] ) ) {
+				$member_order['ID'] = $member_order['order_id'];
+			}
+		}
+
 		if ( isset( $data['subscription']['ID'] ) ) {
 			$subscription_id = $data['subscription']['ID'];
 		} elseif ( ! empty( $data['subscription_id'] ) ) {
