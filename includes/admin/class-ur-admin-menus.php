@@ -890,7 +890,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			add_filter(
 				'submenu_file',
 				function ( $submenu_file ) {
-					if ( isset( $_GET['page'] ) && 'add-new-registration' === $_GET['page'] && isset( $_GET['edit-registration'] ) ) {
+					if ( isset( $_GET['page'] ) && 'add-new-registration' === $_GET['page'] && isset( $_GET['edit-registration'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 						// Keep parent Registration Form highlighted when editing a single form.
 						return 'user-registration';
 					}
@@ -908,7 +908,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					}
 
 					// Reveal Add New only within its own section, matching Logs/System Info under Tools.
-					$current_page                 = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+					$current_page                 = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 					$in_registration_form_context = in_array( $current_page, array( 'user-registration', 'add-new-registration' ), true );
 
 					$is_single_form_setup = false;
@@ -1250,11 +1250,11 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 
 				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) {
 					$redirect_url = admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id );
-					if ( ! isset( $_GET['edit-registration'] ) && current_user_can( 'manage_options' ) ) {
+					if ( ! isset( $_GET['edit-registration'] ) && current_user_can( 'manage_options' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 						// Flag redirect so modal opens automatically after arriving directly at Add New URL, admins only.
 						$redirect_url = add_query_arg( 'trigger_multiple_registration', '1', $redirect_url );
 					}
-					wp_redirect( $redirect_url );
+					wp_safe_redirect( $redirect_url );
 					exit;
 				}
 			}
