@@ -1522,6 +1522,7 @@ class SubscriptionService {
 							$paypal_service->run_missed_payment_backfill( $last_synced, $now );
 							$paypal_service->run_missed_onetime_payment_backfill( $last_synced, $now );
 							$paypal_service->run_missed_refund_backfill( $last_synced, $now );
+							$paypal_service->run_missed_dispute_backfill( $last_synced, $now );
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(
