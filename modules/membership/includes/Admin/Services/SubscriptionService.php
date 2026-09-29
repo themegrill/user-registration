@@ -983,8 +983,7 @@ class SubscriptionService {
 				}
 				$row_updated = $this->subscription_repository->update( $subscription_id, $subscription_data );
 
-				// A failed write must be retried next run: keep the scheduled id, the day's own marker, and the
-				// checkout data get_all_delayed_orders() needs to find this order again — clean up only once it took.
+				// Only clean up the scheduled markers once the write actually took, so a failed run gets retried next time.
 				if ( false === $row_updated ) {
 					continue;
 				}
@@ -1552,13 +1551,10 @@ class SubscriptionService {
 						break;
 					case 'paypal':
 						try {
-							// PayPal keeps its own sync time, advanced only when every fetch succeeded, so a failed
-							// window is searched again without holding the other gateways back.
+							// PayPal keeps its own sync time, advanced only on full success, so a failed window is retried without blocking other gateways.
 							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
 							if ( $paypal_last_synced <= 0 ) {
-								// First run: seed from a bookmark that survives a failed write, not from $last_synced directly —
-								// the shared cursor keeps advancing on every run, so re-deriving from it on a later retry would
-								// silently start later than the original window this seed was meant to cover.
+								// First run seeds from a bookmark, not the ever-advancing $last_synced, so a retry can't silently skip past this window.
 								$seed_candidate = (int) get_option( 'urm_paypal_backfill_seed_pending', 0 );
 								if ( $seed_candidate <= 0 ) {
 									$seed_candidate = $last_synced;

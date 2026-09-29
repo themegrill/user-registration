@@ -205,8 +205,7 @@ class NewPaypalService {
 			return $this->revise_paypal_subscription_for_upgrade( $context );
 		}
 
-		// Upgrade to a subscription plan: new subscription whose first cycle is the prorated amount and every
-		// later cycle the full plan price (scheduled downgrades start at delayed_until instead).
+		// Upgrade to a subscription plan: prorated first cycle, then full price (scheduled downgrades bill at delayed_until instead).
 		if ( $context['is_upgrading'] && ! empty( $context['response_data']['chargeable_amount'] ) && $context['is_subscription'] ) {
 			return $this->create_paypal_subscription_order( $context );
 		}
@@ -464,8 +463,7 @@ class NewPaypalService {
 			&& 0.0 === (float) $final_amount;
 
 
-		// Prorated upgrade: the prorated amount is billed as a priced first cycle, then the plan price.
-		// Excludes scheduled downgrades (billing starts at delayed_until) and plans with their own trial.
+		// Prorated upgrade: priced first cycle then plan price, excluding scheduled downgrades and plans with their own trial.
 		$context['is_proration_upgrade'] = $context['is_subscription']
 			&& $is_upgrading
 			&& ! empty( $response_data['chargeable_amount'] )
@@ -1733,8 +1731,7 @@ class NewPaypalService {
 
 			$subscription_data = $subscription_service->prepare_upgrade_subscription_data( $new_subscription_data['membership'], $new_subscription_data['member_id'], $new_subscription_data );
 
-			// A trial-plan upgrade is charged nothing; its order carries trial_status 'on' (see OrderService).
-			// Marking it 'active' here would skip the trial state the redirect and cron elsewhere rely on.
+			// A trial-plan upgrade is charged nothing, so it stays out of 'active' to preserve the trial state (order carries trial_status 'on', see OrderService).
 			$upgrade_order               = $this->orders_repository->get_order_by_subscription( $subscription_id );
 			$subscription_data['status'] = 'on' === ( isset( $upgrade_order['trial_status'] ) ? $upgrade_order['trial_status'] : '' ) ? 'trial' : 'active';
 			$this->subscription_repository->update( $subscription_id, $subscription_data );
@@ -2767,8 +2764,7 @@ class NewPaypalService {
 			: (string) ( $membership_subscription['next_billing_date'] ?? '' );
 		$table        = TableList::subscriptions_table();
 
-		// Conditional on status and on the row still using this PayPal subscription — either could have changed
-		// (a cancellation saved, or the row switched to a different subscription) while PayPal was being asked.
+		// Conditional on status and subscription_id, since either could have changed while PayPal was being asked.
 		$update_result = $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$table} SET status = 'active', expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled' AND subscription_id = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
@@ -3700,8 +3696,7 @@ class NewPaypalService {
 				),
 			),
 		);
-		// Coupon or proration upgrade: plan must define a TRIAL cycle so the subscription override can
-		// set the first-cycle price — PayPal rejects overrides that add cycles the plan lacks.
+		// Coupon/proration upgrade needs a plan TRIAL cycle to override, since PayPal rejects overrides adding cycles the plan lacks.
 		if ( $this->has_priced_first_cycle( $context ) ) {
 			$billing_cycles = array(
 				array(
@@ -4352,8 +4347,7 @@ class NewPaypalService {
 				}
 			}
 
-			// Keyed by subscription_id too: an upgrade can switch this row to a different PayPal subscription
-			// between the lookup above (a live PayPal GET can happen in between) and this write.
+			// Keyed by subscription_id too, since an upgrade can switch this row between the lookup above and this write.
 			$rows_affected = $this->members_subscription_repository->update_if_subscription_id_matches(
 				$local_sub_id,
 				$update_data,
@@ -4552,8 +4546,7 @@ class NewPaypalService {
 			// If an order for this transaction exists, sync its status with PayPal live.
 			$existing_payment = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 			if ( ! empty( $existing_payment ) ) {
-				// A listed event's own resource is a historical snapshot — a later refund would never show up
-				// in it, so re-syncing an existing order always needs a fresh live lookup, not the event payload.
+				// The listed event's own resource is a stale snapshot, so a re-sync always needs a fresh live lookup instead.
 				$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
 				if ( is_wp_error( $sale_details ) || ! isset( $sale_details['state'] ) ) {
 					$this->backfill_failed = true;
@@ -4838,8 +4831,7 @@ class NewPaypalService {
 			// If an order for this capture exists, sync its status with PayPal live.
 			$existing_order = $this->orders_repository->get_order_by_transaction_id( $capture_id );
 			if ( ! empty( $existing_order ) ) {
-				// A listed event's own resource is a historical snapshot — a later refund would never show up
-				// in it, so re-syncing an existing order always needs a fresh live lookup, not the event payload.
+				// The listed event's own resource is a stale snapshot, so a re-sync always needs a fresh live lookup instead.
 				$capture_details = $this->get_paypal_capture_details( $capture_id, $paypal_options );
 				if ( is_wp_error( $capture_details ) || ! isset( $capture_details['status'] ) ) {
 					// A failed lookup must not be guessed as COMPLETED — that could resurrect a refunded order.
