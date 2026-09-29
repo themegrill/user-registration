@@ -302,7 +302,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				$addon_file_data = get_plugin_data( $addon_file );
 				$plugin_slug     = class_exists( 'UR_Stats_Helpers' ) ? UR_Stats_Helpers::extract_plugin_slug( $plugin ) : ( false !== strpos( $plugin, '/' ) ? explode( '/', $plugin )[0] : $plugin );
 
-				if ( $base_product !== $plugin && strpos( $plugin_slug, 'user-registration-' ) === 0 ) {
+				if ( $base_product !== $plugin_slug && strpos( $plugin_slug, 'user-registration-' ) === 0 ) {
 					$addon_info = array(
 						'product_name'    => isset( $addon_file_data['Name'] ) ? trim( $addon_file_data['Name'] ) : '',
 						'product_version' => isset( $addon_file_data['Version'] ) ? trim( $addon_file_data['Version'] ) : '',
