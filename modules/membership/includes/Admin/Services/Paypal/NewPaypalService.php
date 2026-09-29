@@ -1362,7 +1362,7 @@ class NewPaypalService {
 					$member_subscription['ID'],
 					array(
 						'status'     => 'active',
-						'start_date' => date( 'Y-m-d 00:00:00' ),
+						'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 					)
 				);
 			}
@@ -1885,17 +1885,23 @@ class NewPaypalService {
 					}
 
 					// Redirect was missed — complete via transaction ID lookup.
-					$this->orders_repository->update( $order['ID'], array( 'status' => 'completed' ) );
+					if ( false === $this->orders_repository->update( $order['ID'], array( 'status' => 'completed' ) ) ) {
+						PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.CAPTURE.COMPLETED: failed to complete order %d.', $order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+						return false;
+					}
 
 					$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $order['subscription_id'] );
 					if ( ! empty( $member_subscription['ID'] ) ) {
-						$this->members_subscription_repository->update(
+						if ( false === $this->members_subscription_repository->update(
 							$member_subscription['ID'],
 							array(
 								'status'     => 'active',
-								'start_date' => date( 'Y-m-d 00:00:00' ),
+								'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 							)
-						);
+						) ) {
+							PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.CAPTURE.COMPLETED: failed to activate subscription %d.', $member_subscription['ID'] ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+							return false;
+						}
 					}
 
 					PaymentGatewayLogging::log_transaction_success(
@@ -1989,23 +1995,29 @@ class NewPaypalService {
 			'notice'
 		);
 
-		$this->members_orders_repository->update(
+		if ( false === $this->members_orders_repository->update(
 			$member_order['ID'],
 			array(
 				'status'         => 'completed',
 				'transaction_id' => $transaction_id,
 			)
-		);
+		) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'Order webhook fallback: failed to complete order %d.', $member_order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+			return false;
+		}
 
 		$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $member_order['subscription_id'] );
 		if ( ! empty( $member_subscription['ID'] ) ) {
-			$this->members_subscription_repository->update(
+			if ( false === $this->members_subscription_repository->update(
 				$member_subscription['ID'],
 				array(
 					'status'     => 'active',
-					'start_date' => date( 'Y-m-d 00:00:00' ),
+					'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 				)
-			);
+			) ) {
+				PaymentGatewayLogging::log_error( 'paypal', sprintf( 'Order webhook fallback: failed to activate subscription %d.', $member_subscription['ID'] ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+				return false;
+			}
 		}
 
 		PaymentGatewayLogging::log_transaction_success(
@@ -2058,10 +2070,13 @@ class NewPaypalService {
 			return true;
 		}
 
-		$this->members_subscription_repository->update(
+		if ( false === $this->members_subscription_repository->update(
 			$current_subscription['sub_id'],
 			array( 'status' => 'active' )
-		);
+		) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.SALE.COMPLETED: failed to restore subscription %d to active.', $current_subscription['sub_id'] ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+			return false;
+		}
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'paypal',
@@ -2127,7 +2142,10 @@ class NewPaypalService {
 			return false;
 		}
 
-		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+		if ( false === $this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) ) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PayPal %s: failed to mark order %d as refunded.', $event_type, $order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+			return false;
+		}
 
 		PaymentGatewayLogging::log_general(
 			'paypal',
@@ -2320,13 +2338,16 @@ class NewPaypalService {
 		}
 
 		// No conditional-update guard needed: the caller's lock already covers this whole section.
-		$this->members_subscription_repository->update(
+		if ( false === $this->members_subscription_repository->update(
 			$member_subscription['ID'],
 			array(
 				'status'          => $new_status,
 				'subscription_id' => $paypal_subscription_id,
 			)
-		);
+		) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to write status %s.', $member_id, $new_status ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+			return false;
+		}
 
 		if ( 'active' === $new_status ) {
 			$member_order         = $this->members_orders_repository->get_member_orders( $member_id );
@@ -2338,10 +2359,13 @@ class NewPaypalService {
 
 					if ( empty( $current_transaction_id ) ) {
 						// Order completed (by redirect) but transaction_id was never stored — fill it in now.
-						$this->members_orders_repository->update(
+						if ( false === $this->members_orders_repository->update(
 							$member_order['ID'],
 							array( 'transaction_id' => $paypal_subscription_id )
-						);
+						) ) {
+							PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to sync transaction_id on order %d.', $member_id, $member_order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+							return false;
+						}
 
 						PaymentGatewayLogging::log_general(
 							'paypal',
@@ -2396,13 +2420,16 @@ class NewPaypalService {
 						'notice'
 					);
 
-					$this->members_orders_repository->update(
+					if ( false === $this->members_orders_repository->update(
 						$member_order['ID'],
 						array(
 							'status'         => 'completed',
 							'transaction_id' => $paypal_subscription_id,
 						)
-					);
+					) ) {
+						PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to complete order %d.', $member_id, $member_order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+						return false;
+					}
 				}
 			}
 		}
