@@ -348,20 +348,24 @@ class SubscriptionService {
 			}
 		}
 
-		// The caller already resolved the exact order this email is about - trust it over any
-		// lookup below, so a newer order on the same subscription can't get substituted in.
-		if ( empty( $member_order ) && ! empty( $data['order'] ) ) {
-			$member_order = $data['order'];
-			if ( empty( $member_order['ID'] ) && ! empty( $member_order['order_id'] ) ) {
-				$member_order['ID'] = $member_order['order_id'];
-			}
-		}
-
 		if ( isset( $data['subscription']['ID'] ) ) {
 			$subscription_id = $data['subscription']['ID'];
 		} elseif ( ! empty( $data['subscription_id'] ) ) {
 			$subscription_id = $data['subscription_id'];
-		} elseif ( ! empty( $member_order['subscription_id'] ) ) {
+		}
+
+		// Trust a caller-supplied order only when it matches the resolved subscription, so a caller's own mis-derived order can't bypass the lookup below.
+		if ( empty( $member_order ) && ! empty( $data['order'] ) ) {
+			$candidate_order = $data['order'];
+			if ( empty( $candidate_order['ID'] ) && ! empty( $candidate_order['order_id'] ) ) {
+				$candidate_order['ID'] = $candidate_order['order_id'];
+			}
+			if ( empty( $subscription_id ) || (int) ( $candidate_order['subscription_id'] ?? 0 ) === (int) $subscription_id ) {
+				$member_order = $candidate_order;
+			}
+		}
+
+		if ( empty( $subscription_id ) && ! empty( $member_order['subscription_id'] ) ) {
 			$subscription_id = $member_order['subscription_id'];
 		}
 
