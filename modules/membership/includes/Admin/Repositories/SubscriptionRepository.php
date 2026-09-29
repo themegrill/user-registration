@@ -48,7 +48,7 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 			);
 		}
 
-		if ( ! $is_upgrade && ( 'free' === $order['order_type'] || 'paid' === $order['order_type'] || empty( $order['payment_method'] ) ) ) {
+		if ( ! $is_upgrade && ( 'free' === ( $order['order_type'] ?? '' ) || 'paid' === ( $order['order_type'] ?? '' ) || empty( $order['payment_method'] ) ) ) {
 			$this->update(
 				$subscription_id,
 				array(
