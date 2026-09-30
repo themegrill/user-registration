@@ -937,7 +937,7 @@
 
 	$(".user-registration #mainform").on("keyup keypress", function (e) {
 		var keyCode = e.keyCode || e.which;
-		if (keyCode === 13) {
+		if (keyCode === 13 && $(e.target).attr("type") !== "search") {
 			e.preventDefault();
 			return false;
 		}

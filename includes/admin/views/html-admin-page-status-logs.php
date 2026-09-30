@@ -372,8 +372,8 @@ $log_enabled = ur_option_checked( 'user_registration_enable_log', false );
 					// can't run through PHP's _n() for this exact number — pick
 					// between the two server-supplied templates instead.
 					var bulkDeleteI18n = {
-						singular: '<?php /* translators: %d: number of logs (singular) */ echo esc_js( _n( 'Are you sure you want to delete <b>this %d log</b> permanently?', 'Are you sure you want to delete <b>these %d logs</b> permanently?', 1, 'user-registration' ) ); ?>',
-						plural: '<?php /* translators: %d: number of logs (plural) */ echo esc_js( _n( 'Are you sure you want to delete <b>this %d log</b> permanently?', 'Are you sure you want to delete <b>these %d logs</b> permanently?', 2, 'user-registration' ) ); ?>'
+						singular: <?php /* translators: %d: number of logs (singular) */ echo wp_json_encode( _n( 'Are you sure you want to delete <b>this %d log</b> permanently?', 'Are you sure you want to delete <b>these %d logs</b> permanently?', 1, 'user-registration' ) ); ?>,
+						plural: <?php /* translators: %d: number of logs (plural) */ echo wp_json_encode( _n( 'Are you sure you want to delete <b>this %d log</b> permanently?', 'Are you sure you want to delete <b>these %d logs</b> permanently?', 2, 'user-registration' ) ); ?>
 					};
 					var title = '<?php echo esc_js( __( 'Delete Logs', 'user-registration' ) ); ?>';
 					var template = 1 === checked ? bulkDeleteI18n.singular : bulkDeleteI18n.plural;
@@ -444,7 +444,7 @@ $log_enabled = ur_option_checked( 'user_registration_enable_log', false );
 
 				var urlParams = new URLSearchParams( window.location.search );
 				if ( urlParams.has( 'log_category' ) || urlParams.has( 's' ) || urlParams.has( 'paged' ) ) {
-					window.location.href = '<?php echo esc_js( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ); ?>';
+					window.location.href = <?php echo wp_json_encode( esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ) ); ?>;
 				} else {
 					updateResetState();
 				}

@@ -302,8 +302,8 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 			</div>
 			<script>
 				( function () {
-					var wizardUrl   = '<?php echo esc_js( $wizard_url ); ?>';
-					var fallbackUrl = '<?php echo esc_js( $logs_url ); ?>';
+					var wizardUrl   = <?php echo wp_json_encode( esc_url_raw( $wizard_url ) ); ?>;
+					var fallbackUrl = <?php echo wp_json_encode( esc_url_raw( $logs_url ) ); ?>;
 
 					function proceed() {
 						window.location.href = wizardUrl;
@@ -369,7 +369,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 						e.preventDefault();
 						e.stopPropagation();
 
-						var wizardUrl = '<?php echo esc_js( $wizard_url ); ?>';
+						var wizardUrl = <?php echo wp_json_encode( esc_url_raw( $wizard_url ) ); ?>;
 
 						if ( typeof Swal !== 'undefined' ) {
 							Swal.fire( {
