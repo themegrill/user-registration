@@ -1060,7 +1060,10 @@ class UR_AJAX {
 		do_action( 'user_registration_validation_before_login_form_save', $output );
 
 		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ) ) {
-			if ( '' === $output['user_registration_login_options_configured_captcha_type'] || ! $output['user_registration_login_options_configured_captcha_type'] ) {
+			$configured_captcha_type = isset( $output['user_registration_login_options_configured_captcha_type'] ) ? $output['user_registration_login_options_configured_captcha_type'] : '';
+
+			// An empty selection is fine as long as the site-wide default type already has usable keys.
+			if ( ! ur_captcha_type_has_keys( $configured_captcha_type ) && ! ur_captcha_type_has_keys( get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' ) ) ) {
 				wp_send_json_error(
 					array(
 						'message' => esc_html__( "Seems like you haven't selected the reCAPTCHA type (Configured Captcha).", 'user-registration' ),
