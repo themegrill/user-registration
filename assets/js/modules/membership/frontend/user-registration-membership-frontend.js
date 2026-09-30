@@ -1249,9 +1249,9 @@
 					typeof discount_amount !== "undefined"
 						? parseFloat(discount_amount)
 						: 0,
-				membershipAmount = $membershipRadio.data(
-					"urm-membership-amount"
-				),
+				membershipAmount =
+					parseFloat($membershipRadio.data("urm-membership-amount")) ||
+					0,
 				upgradeType = $membershipRadio.data("urm-upgrade-type") || null;
 
 			totalDetails.total = total;
