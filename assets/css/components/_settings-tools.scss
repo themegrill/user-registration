@@ -390,6 +390,7 @@
 			font-size: 14px;
 			color: #383838;
 			background-color: #ffffff;
+			background-position: right 12px center;
 		}
 
 		br.clear {
@@ -856,6 +857,7 @@ table.wp-list-table.ur-logs-table {
 	padding: 16px;
 	max-height: 560px;
 	overflow-y: auto;
+	min-width: 0;
 	font-family: "JetBrains Mono", Consolas, Monaco, monospace;
 	font-size: 13px;
 	line-height: 22px;
@@ -907,6 +909,7 @@ table.wp-list-table.ur-logs-table {
 			border-radius: 4px;
 			padding: 10px 12px;
 			white-space: pre-wrap;
+			overflow-wrap: anywhere;
 			font-size: 12px;
 			line-height: 18px;
 			overflow-x: auto;

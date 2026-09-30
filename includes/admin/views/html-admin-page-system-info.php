@@ -237,7 +237,7 @@ foreach ( ur_setting_keys() as $ur_product => $ur_product_settings ) {
 	<div class="user-registration-card ur-si-card">
 		<div class="user-registration-card__header">
 			<div class="user-registration-card__header-wrapper">
-				<h3 class="user-registration-card__title"><?php esc_html_e( 'Plugin settings', 'user-registration' ); ?></h3>
+				<h3 class="user-registration-card__title"><?php esc_html_e( 'Plugin Settings', 'user-registration' ); ?></h3>
 			</div>
 		</div>
 		<div class="user-registration-card__body">
