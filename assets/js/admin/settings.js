@@ -937,7 +937,8 @@
 
 	$(".user-registration #mainform").on("keyup keypress", function (e) {
 		var keyCode = e.keyCode || e.which;
-		if (keyCode === 13) {
+		// Buttons (e.g. the password visibility toggle) rely on native Enter-to-click; only guard inputs against accidental submit.
+		if (keyCode === 13 && e.target.tagName !== "BUTTON") {
 			e.preventDefault();
 			return false;
 		}
