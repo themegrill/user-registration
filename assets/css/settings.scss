@@ -1862,7 +1862,8 @@ body {
 							}
 						}
 
-						.user_registration_send_email_test {
+						.user_registration_send_email_test,
+						.user_registration_email_health_checkup {
 							color: $primary_color;
 							border-color: $primary_color;
 						}
@@ -2346,7 +2347,7 @@ body {
 		&--nav {
 			// max-height: calc(100vh - 194px);
 			overflow-x: hidden;
-			overflow-y: scroll;
+			overflow-y: auto;
 			height: 80%;
 		}
 	}

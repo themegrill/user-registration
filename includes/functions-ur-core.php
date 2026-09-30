@@ -8254,6 +8254,31 @@ if ( ! function_exists( 'ur_get_capitalized_words' ) ) {
 
 add_action( 'wp_mail_failed', 'ur_email_send_failed_handler', 1 );
 
+if ( ! function_exists( 'ur_get_mail_log_url' ) ) {
+
+	/**
+	 * Link straight to the mail log in the status-page log viewer.
+	 *
+	 * The viewer keys its file list by sanitize_title() of the filename and
+	 * reads `log_file` from $_REQUEST, so preselecting the right file means
+	 * reproducing the name UR_Log_Handler_File writes it under.
+	 *
+	 * @return string
+	 */
+	function ur_get_mail_log_url() {
+		$file = sanitize_file_name( 'ur_mail_logs-' . wp_hash( 'ur_mail_logs' ) . '.log' );
+
+		return add_query_arg(
+			array(
+				'page'     => 'user-registration-status',
+				'tab'      => 'logs',
+				'log_file' => sanitize_title( $file ),
+			),
+			admin_url( 'admin.php' )
+		);
+	}
+}
+
 if ( ! function_exists( 'ur_email_send_failed_handler' ) ) {
 
 	/**
@@ -8291,7 +8316,7 @@ if ( ! function_exists( 'ur_email_send_failed_handler' ) ) {
 			$error_message = wp_kses_post(
 				sprintf(
 					__( 'Please check the `ur_mail_logs` log under <a target="_blank" href="%s">Status Log</a> section.', 'user-registration' ),
-					admin_url( 'admin.php?page=user-registration-status' )
+					ur_get_mail_log_url()
 				)
 			);
 		} else {

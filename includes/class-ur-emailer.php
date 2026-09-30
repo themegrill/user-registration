@@ -381,6 +381,15 @@ class UR_Emailer {
 	 */
 	public static function ur_sender_name() {
 		$sender_name = get_option( 'user_registration_email_from_name', esc_attr( get_bloginfo( 'name', 'display' ) ) );
+
+		// Same empty-versus-unset trap as the address: get_option() only reaches
+		// its default when the row is missing, so a cleared field would send
+		// with no display name at all — and the settings screen promises the
+		// site title instead.
+		if ( '' === trim( (string) $sender_name ) ) {
+			$sender_name = esc_attr( get_bloginfo( 'name', 'display' ) );
+		}
+
 		return $sender_name;
 	}
 
@@ -391,6 +400,15 @@ class UR_Emailer {
 	 */
 	public static function ur_sender_email() {
 		$sender_email = get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) );
+
+		// An empty saved value is not the same as an unset one: get_option()
+		// only falls back to its default when the row is missing, so a field the
+		// admin cleared would send `From: Name <>` — a malformed header that
+		// mail servers reject outright.
+		if ( '' === trim( (string) $sender_email ) ) {
+			$sender_email = get_option( 'admin_email' );
+		}
+
 		return $sender_email;
 	}
 
