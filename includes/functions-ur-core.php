@@ -11723,7 +11723,8 @@ if ( ! function_exists( 'ur_get_payment_gateway_label' ) ) {
 	 * @since x.x.x
 	 */
 	function ur_get_payment_gateway_label( $gateway ) {
-		$gateway = strtolower( sanitize_key( (string) $gateway ) );
+		// Callers may pass display-formatted slugs like 'paypal standard'; sanitize_key() would drop the space.
+		$gateway = strtolower( sanitize_key( str_replace( ' ', '_', trim( (string) $gateway ) ) ) );
 
 		if ( '' === $gateway ) {
 			return '';
