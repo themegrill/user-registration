@@ -322,13 +322,10 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table names are fixed internal values, never attacker-influenced; the date value goes through $wpdb->prepare()'s own placeholder.
 		// A row due today or earlier, not an exact-date match: one skipped on its own scheduled day (e.g. the new subscription wasn't active yet) must still be picked up by a later run instead of being dropped permanently.
-		// subscription_id/delayed_until travel with the row so the caller can confirm `urm_next_subscription_data` still belongs to THIS order.
 		$sql = $this->wpdb()->prepare(
 			"
 					SELECT
 					       urmo.ID as order_id,
-					       urmo.subscription_id as subscription_id,
-					       wpom.meta_value as delayed_until,
 					       wpum.meta_value as sub_data
 					FROM {$this->table} urmo
 					         JOIN {$this->orders_meta_table} wpom ON urmo.ID = wpom.order_id

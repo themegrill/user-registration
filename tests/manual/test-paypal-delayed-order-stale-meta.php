@@ -9,8 +9,8 @@
  * and a newer, unrelated urm_next_subscription_data would have the newer data
  * misapplied to the older order: wrong plan switch, wrong subscription cancelled.
  *
- * Fixed by requiring the order's own subscription_id and delayed_until to match
- * what's decoded from urm_next_subscription_data before acting on it.
+ * Fixed by requiring the order's own order_id to match what's decoded from
+ * urm_next_subscription_data before acting on it.
  *
  * Needs a real WP bootstrap (DB-backed repositories) but no PayPal HTTP calls --
  * both fixtures use payment_method 'bank', which cancel_subscription_by_id()
@@ -135,6 +135,7 @@ update_user_meta(
 			'membership'                   => $membership_id,
 			'member_id'                    => $matching['user_id'],
 			'subscription_id'              => $matching['subscription_id'],
+			'order_id'                     => $matching['order_id'],
 			'payment_method'               => 'bank',
 			'delayed_until'                => $yesterday,
 			'remaining_subscription_value' => 1,
@@ -142,7 +143,9 @@ update_user_meta(
 	)
 );
 
-// --- Scenario 2: urm_next_subscription_data was overwritten by a later, unrelated change -- must be skipped. ---
+// --- Scenario 2: urm_next_subscription_data was overwritten by a second delayed attempt on the SAME
+// subscription submitted before either took effect (so subscription_id/delayed_until alone wouldn't catch
+// it) -- the order_id itself is the only thing that still tells them apart, and it must be skipped. ---
 $stale = make_fixture( $membership_id, $subscription_repo, $orders_repo, $yesterday );
 update_user_meta(
 	$stale['user_id'],
@@ -151,10 +154,11 @@ update_user_meta(
 		array(
 			'membership'                   => $membership_id,
 			'member_id'                    => $stale['user_id'],
-			// Neither field matches $stale's own order: a different (later) subscription/date.
-			'subscription_id'              => $stale['subscription_id'] + 999,
+			'subscription_id'              => $stale['subscription_id'],
+			// A different order for the same subscription/date -- a second delayed attempt, not this one.
+			'order_id'                     => $stale['order_id'] + 999,
 			'payment_method'               => 'bank',
-			'delayed_until'                => gmdate( 'Y-m-d 00:00:00' ),
+			'delayed_until'                => $yesterday,
 			'remaining_subscription_value' => 1,
 		)
 	)

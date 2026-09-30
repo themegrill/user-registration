@@ -955,12 +955,8 @@ class SubscriptionService {
 				continue;
 			}
 
-			// `urm_next_subscription_data` gets overwritten by ANY later upgrade, so require it to still match this order's own subscription and due date.
-			$decoded_delayed_until = isset( $decoded_data['delayed_until'] ) ? $decoded_data['delayed_until'] : '';
-			if ( empty( $decoded_delayed_until )
-				|| $decoded_delayed_until !== $data['delayed_until']
-				|| (int) $decoded_data['subscription_id'] !== (int) $data['subscription_id']
-			) {
+			// `urm_next_subscription_data` gets overwritten by ANY later upgrade, so require it to still name THIS order (not just the same subscription/date, which a second delayed attempt submitted before either took effect could also share).
+			if ( empty( $decoded_data['order_id'] ) || (int) $decoded_data['order_id'] !== (int) $data['order_id'] ) {
 				ur_get_logger()->notice(
 					sprintf( 'Delayed order #%d skipped: urm_next_subscription_data no longer matches this order (superseded by a later change).', $data['order_id'] ),
 					array( 'source' => 'urm-membership-crons' )
