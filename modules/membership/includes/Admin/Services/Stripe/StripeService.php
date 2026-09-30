@@ -2665,6 +2665,12 @@ class StripeService {
 			return;
 		}
 
+		// Clear pending login before the subscription lookups so one-time or orphaned orders are covered too.
+		$member_id = ! empty( $order['user_id'] ) ? absint( $order['user_id'] ) : 0;
+		if ( $member_id ) {
+			delete_transient( 'urm_pending_login_' . $member_id );
+		}
+
 		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
 		if ( ! $subscription_id ) {
 			return;
@@ -2688,11 +2694,6 @@ class StripeService {
 		// Stop further Stripe billing when this was a recurring subscription.
 		if ( ! empty( $subscription['subscription_id'] ) ) {
 			$this->cancel_subscription( $order, $subscription );
-		}
-
-		$member_id = ! empty( $order['user_id'] ) ? absint( $order['user_id'] ) : 0;
-		if ( $member_id ) {
-			delete_transient( 'urm_pending_login_' . $member_id );
 		}
 	}
 
@@ -3777,7 +3778,10 @@ class StripeService {
 				continue;
 			}
 
-			if ( 'refunded' === $order['status'] ) {
+			$is_fully_refunded = ! empty( $charge->refunded );
+
+			// A partial refund may already have marked the order refunded; the final full refund must still revoke access.
+			if ( 'refunded' === $order['status'] && ! $is_fully_refunded ) {
 				$logger->info(
 					sprintf( '[Backfill][Stripe][Refunds] Order %d already refunded — skipping.', $order['ID'] ),
 					array( 'source' => 'urm-missed-payment-backfill' )
@@ -3785,7 +3789,6 @@ class StripeService {
 				continue;
 			}
 
-			$is_fully_refunded = ! empty( $charge->refunded );
 			$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
 			++$total_updated;
 			$logger->info(
