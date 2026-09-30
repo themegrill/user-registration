@@ -93,7 +93,7 @@ if ( ! function_exists( 'ur_utm_url' ) ) {
 			_doing_it_wrong(
 				__FUNCTION__,
 				esc_html__( 'Outbound marketing links must pass a non-empty content argument for utm_content attribution.', 'user-registration' ),
-				'5.2.9'
+				defined( 'UR_VERSION' ) ? UR_VERSION : ''
 			);
 		}
 

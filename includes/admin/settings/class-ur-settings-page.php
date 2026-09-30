@@ -334,7 +334,16 @@ if ( ! class_exists( 'UR_Settings_Page', false ) ) :
 							'is_premium'  => true,
 							'title'       => $title,
 							'before_desc' => "$setting > $title is only available in User Registration & Membership Pro.",
-							'desc'        => 'To unlock this setting, consider upgrading to <a href="' . esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'ur-settings-desc', 'medium' => 'upgrade-link', 'content' => 'locked-setting-description' ) ) ) . '">Pro</a>.',
+							'desc'        => 'To unlock this setting, consider upgrading to <a href="' . esc_url(
+								ur_utm_url(
+									'https://wpuserregistration.com/upgrade/',
+									array(
+										'source'  => 'ur-settings-desc',
+										'medium'  => 'upgrade-link',
+										'content' => 'locked-setting-description',
+									)
+								)
+							) . '">Pro</a>.',
 							'class'       => 'ur-upgrade--link',
 						),
 					)
