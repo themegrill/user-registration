@@ -7740,17 +7740,32 @@ if ( ! function_exists( 'ur_increment_coupon_usage' ) ) {
 			return false;
 		}
 
-		$coupon_id = absint( $coupon_details['coupon_id'] );
-		$meta_raw  = get_post_meta( $coupon_id, 'ur_coupon_meta', true );
-		$meta      = json_decode( $meta_raw, true );
+		global $wpdb;
 
-		if ( ! is_array( $meta ) ) {
-			return false;
+		$coupon_id = absint( $coupon_details['coupon_id'] );
+
+		// Compare-and-swap on the raw row so concurrent redemptions cannot overwrite each other's increment.
+		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
+			$row  = $wpdb->get_row( $wpdb->prepare( "SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id ASC LIMIT 1", $coupon_id, 'ur_coupon_meta' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- must read the uncached row for the compare-and-swap below.
+			$meta = $row ? json_decode( $row->meta_value, true ) : null;
+
+			if ( ! is_array( $meta ) ) {
+				return false;
+			}
+
+			$meta['coupon_usage_count'] = isset( $meta['coupon_usage_count'] ) ? absint( $meta['coupon_usage_count'] ) + 1 : 1;
+
+			// Written raw, not via update_post_meta(), whose wp_unslash() would break the nested JSON strings in this meta.
+			$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE meta_id = %d AND meta_value = %s", wp_json_encode( $meta ), $row->meta_id, $row->meta_value ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- atomic conditional update; the meta cache is cleared right after.
+
+			if ( 1 === $updated ) {
+				wp_cache_delete( $coupon_id, 'post_meta' );
+
+				return true;
+			}
 		}
 
-		$meta['coupon_usage_count'] = isset( $meta['coupon_usage_count'] ) ? absint( $meta['coupon_usage_count'] ) + 1 : 1;
-
-		return (bool) update_post_meta( $coupon_id, 'ur_coupon_meta', wp_json_encode( $meta ) );
+		return false;
 	}
 }
 
