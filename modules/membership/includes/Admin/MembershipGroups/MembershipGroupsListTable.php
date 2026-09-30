@@ -129,7 +129,7 @@ class MembershipGroupsListTable extends \UR_List_Table {
 	 */
 	public function column_status( $membership_group ) {
 		$membership_content = json_decode( $membership_group->post_content, true );
-		$enabled            = is_array( $membership_content ) && ( $membership_content['status'] ?? '' ) == 'true';
+		$enabled            = ! empty( $membership_content['status'] ) && ur_string_to_bool( $membership_content['status'] );
 		$actions            = '<div class="visible ur-status-toggle ur-d-flex ur-align-items-center" style="gap: 5px">';
 		$actions           .= '<div class="ur-toggle-section">';
 		$actions           .= '<span class="user-registration-toggle-form">';
