@@ -104,9 +104,18 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 				}
 			}
 
+			$cancel_sub = array( 'status' => false );
 			foreach ( $orders_to_try as $order_to_try ) {
 				// A gateway rejects an id it does not own, so the first success is the owning gateway.
-				$cancel_sub = $subscription_service->cancel_subscription( $order_to_try, $subscription, $force_cancel );
+				try {
+					$cancel_sub = $subscription_service->cancel_subscription( $order_to_try, $subscription, $force_cancel );
+				} catch ( \Exception $e ) {
+					// Some gateway SDKs (e.g. Mollie) throw on a foreign id instead of failing; only swallow it when another gateway is still to be tried.
+					if ( 1 === count( $orders_to_try ) ) {
+						throw $e;
+					}
+					$cancel_sub = array( 'status' => false );
+				}
 
 				if ( ! empty( $cancel_sub['status'] ) ) {
 					break;
