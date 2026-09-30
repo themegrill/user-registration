@@ -270,7 +270,9 @@ $status_class       = ! empty( $member_subscription ) ? 'user-registration-badge
 									</label>
 									<span class="urm-membership-expiry-date">
 									<?php
-									$member_expiry = ! empty( $member_subscription['expiry_date'] ) ? $member_subscription['expiry_date'] : ( $member_subscription['next_billing_date'] ?? '' );
+									$member_pending_cancel = ! empty( $member_subscription['user_id'] ) ? get_user_meta( $member_subscription['user_id'], 'urm_pending_cancel_' . ( $member_subscription['ID'] ?? '' ), true ) : '';
+									$member_is_renewing    = 'active' === ( $member_subscription['status'] ?? '' ) && empty( $member_pending_cancel );
+									$member_expiry         = ! empty( $member_subscription['expiry_date'] ) ? $member_subscription['expiry_date'] : ( $member_is_renewing ? '' : ( $member_subscription['next_billing_date'] ?? '' ) );
 									echo ! empty( $member_expiry ) && strtotime( $member_expiry ) > 0 ? esc_html( date_i18n( 'F d, Y', strtotime( $member_expiry ) ) ) : esc_html__( 'N/A', 'user-registration' );
 									?>
 								</span>

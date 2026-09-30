@@ -1169,12 +1169,11 @@ if ( ! class_exists( 'Admin' ) ) :
 									$amount = $amount . ' / ' . $membership['billing_cycle'];
 								}
 
-								/*
-								 * Prefer expiry_date; if empty, fall back to next_billing_date
-								 * (often the same period end). Does not invent dates or change
-								 * stored subscription rows — display only.
-								 */
-								$raw_expiry  = ! empty( $membership['expiry_date'] ) ? $membership['expiry_date'] : ( $membership['next_billing_date'] ?? '' );
+								$pending_cancel = get_user_meta( $user_id, 'urm_pending_cancel_' . ( $membership['subscription_id'] ?? '' ), true );
+								$is_renewing    = 'active' === ( $membership['status'] ?? '' ) && empty( $pending_cancel );
+
+								// A renewing subscription does not end on its next billing date, so only non-renewing ones fall back to it.
+								$raw_expiry  = ! empty( $membership['expiry_date'] ) ? $membership['expiry_date'] : ( $is_renewing ? '' : ( $membership['next_billing_date'] ?? '' ) );
 								$expiry_date = ( isset( $plan_details['type'] ) && 'subscription' === $plan_details['type'] && ! empty( $raw_expiry ) && strtotime( $raw_expiry ) )
 									? date_i18n( 'Y-m-d', strtotime( $raw_expiry ) )
 									: __( 'N/A', 'user-registration' );

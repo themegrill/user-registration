@@ -838,15 +838,12 @@ class UR_Frontend {
 			);
 			$payment_details['membership']['status'] = $ur_payment_subscription_status;
 
-			/*
-			 * Form subscriptions store the period end in ur_payment_subscription_expiry.
-			 * ur_payment_next_billing_date is rarely written — fall back so My Account
-			 * "Next Billing Date" is not empty when expiry meta already exists.
-			 * Only fills empty next_billing; never overrides an explicit value.
-			 */
 			$subscription_expiry = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
 			$next_billing_date   = get_user_meta( $user_id, 'ur_payment_next_billing_date', true );
-			if ( empty( $next_billing_date ) && ! empty( $subscription_expiry ) ) {
+			$is_renewing         = 'active' === $ur_payment_subscription_status && empty( $payment_details['membership']['cancel_sub'] );
+
+			// The period end is only the next billing date while the subscription still renews.
+			if ( $is_renewing && empty( $next_billing_date ) && ! empty( $subscription_expiry ) ) {
 				$next_billing_date = $subscription_expiry;
 			}
 
