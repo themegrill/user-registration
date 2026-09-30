@@ -73,7 +73,9 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	transition: background-color 0.2s, border-color 0.2s;
+	transition:
+		background-color 0.2s,
+		border-color 0.2s;
 
 	&:hover,
 	&:focus {
@@ -259,10 +261,9 @@
 
 			&:hover {
 				&::after {
-					filter: brightness(0) saturate(100%)
-						invert(33%) sepia(19%)
-						saturate(2330%) hue-rotate(195deg)
-						brightness(100%) contrast(87%);
+					filter: brightness(0) saturate(100%) invert(33%) sepia(19%)
+						saturate(2330%) hue-rotate(195deg) brightness(100%)
+						contrast(87%);
 				}
 			}
 		}
@@ -729,7 +730,10 @@ table.wp-list-table.ur-logs-table {
 
 		.ur-log-handle {
 			display: block;
-			font: 400 12px/18px Consolas, Monaco, monospace;
+			font:
+				400 12px/18px Consolas,
+				Monaco,
+				monospace;
 			color: #6b6b6b;
 			background: none;
 			padding: 0;
@@ -1010,7 +1014,10 @@ table.wp-list-table.ur-logs-table {
 		max-height: 320px;
 		overflow: auto;
 		white-space: pre-wrap;
-		font: 12px/18px Consolas, Monaco, monospace;
+		font:
+			12px/18px Consolas,
+			Monaco,
+			monospace;
 		background: #f8f8fa;
 		border: 1px solid #e1e1e1;
 		border-radius: 4px;
@@ -1019,7 +1026,9 @@ table.wp-list-table.ur-logs-table {
 }
 
 // Empty state helper
-.user-registration-settings--tools .user-registration-card__body .empty-list-table-container {
+.user-registration-settings--tools
+	.user-registration-card__body
+	.empty-list-table-container {
 	text-align: center;
 	padding: 40px 24px 44px;
 
@@ -1340,7 +1349,7 @@ table.wp-list-table.ur-logs-table {
 		padding: 16px 14px;
 	}
 
-	.user-registration-settings {
+	.user-registration-settings--tools {
 		.user-registration-settings-container {
 			padding: 0 12px 24px;
 		}
