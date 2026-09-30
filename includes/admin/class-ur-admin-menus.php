@@ -607,7 +607,8 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			}
 
 			$all_forms = ur_get_all_user_registration_form();
-			$postfix   = count( $all_forms ) > 1 ? 'Forms' : 'Form';
+			// Pluralize when multiple forms exist or the multiple-registration module is active.
+			$postfix = ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) ? 'Forms' : 'Form';
 
 			if ( count( $all_forms ) > 1 || ur_check_module_activation( 'multiple-registration' ) ) {
 				add_submenu_page(
@@ -874,7 +875,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 * Add new registration menu items.
 		 */
 		public function add_registration_menu() {
-			add_submenu_page(
+			$add_new_registration_page = add_submenu_page(
 				'user-registration',
 				esc_html__( 'Add New', 'user-registration' ),
 				esc_html__( 'Add New', 'user-registration' ),
@@ -886,23 +887,87 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 				)
 			);
 
-			/**
-			 * Hides the Add New Button from the submenu
-			 *
-			 * @since 5.0.0
-			 */
+			// Redirect before headers are sent; the page callback itself runs too late.
+			add_action( 'load-' . $add_new_registration_page, array( $this, 'add_registration_page_init' ) );
+
+			add_filter(
+				'submenu_file',
+				function ( $submenu_file ) {
+					if ( isset( $_GET['page'] ) && 'add-new-registration' === $_GET['page'] && isset( $_GET['edit-registration'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+						// Keep parent Registration Form highlighted when editing a single form.
+						return 'user-registration';
+					}
+					return $submenu_file;
+				}
+			);
+
 			add_action(
 				'admin_head',
 				function () {
 					global $submenu;
-					if ( isset( $submenu['user-registration'] ) ) {
+
+					if ( empty( $submenu['user-registration'] ) ) {
+						return;
+					}
+
+					// Reveal Add New only within its own section, matching Logs/System Info under Tools.
+					$current_page                 = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					$in_registration_form_context = in_array( $current_page, array( 'user-registration', 'add-new-registration' ), true );
+
+					$is_single_form_setup = false;
+					if ( $in_registration_form_context ) {
+						$all_forms = ur_get_all_user_registration_form();
+						// Gate activation trigger to administrators who possess manage_options capability.
+						$is_single_form_setup = ( count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) && current_user_can( 'manage_options' ) );
+					}
+
+					if ( ! $is_single_form_setup || ! $in_registration_form_context ) {
+						// Hide Add New from submenu when multiple forms exist or module is active.
 						foreach ( $submenu['user-registration'] as $key => $item ) {
-							if ( isset( $item[2] ) && $item[2] === 'add-new-registration' ) {
+							if ( isset( $item[2] ) && 'add-new-registration' === $item[2] ) {
 								unset( $submenu['user-registration'][ $key ] );
 								break;
 							}
 						}
+						return;
 					}
+
+					$add_new_item = null;
+					foreach ( $submenu['user-registration'] as $key => $item ) {
+						if ( isset( $item[2] ) && 'add-new-registration' === $item[2] ) {
+							$add_new_item = $item;
+							unset( $submenu['user-registration'][ $key ] );
+							break;
+						}
+					}
+
+					if ( ! $add_new_item ) {
+						return;
+					}
+
+					// Attach class for SweetAlert2 activation trigger.
+					$add_new_item[4] = ! empty( $add_new_item[4] ) ? $add_new_item[4] . ' ur-activate-dependent-module' : 'ur-activate-dependent-module';
+
+					// Match the nested-item marker already used for other contextual submenu entries (Logs, System Info, Registration Forms).
+					$add_new_item[0] = '↳ ' . $add_new_item[0];
+
+					// Multiple Registration never adds login forms, so Add New belongs under Registration Form only.
+					$inserted    = false;
+					$new_submenu = array();
+					foreach ( $submenu['user-registration'] as $item ) {
+						$new_submenu[] = $item;
+						if ( isset( $item[2] ) && 'user-registration' === $item[2] ) {
+							$new_submenu[] = $add_new_item;
+							$inserted      = true;
+						}
+					}
+
+					if ( ! $inserted ) {
+						$new_submenu[] = $add_new_item;
+					}
+
+					// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
+					$submenu['user-registration'] = $new_submenu;
 				}
 			);
 		}
@@ -1104,6 +1169,29 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 
 
 		/**
+		 * Redirects a single-form, module-inactive site straight to that form's
+		 * editor before any admin output is sent, so the modal can still open.
+		 */
+		public function add_registration_page_init() {
+			$all_forms = ur_get_all_user_registration_form();
+
+			if ( ( ! empty( $all_forms ) && count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) ) ) {
+				$form_id          = key( $all_forms );
+				$form_id_from_url = isset( $_GET['edit-registration'] ) ? absint( $_GET['edit-registration'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					$redirect_url = admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id );
+					if ( ! isset( $_GET['edit-registration'] ) && current_user_can( 'manage_options' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+						// Flag redirect so modal opens automatically after arriving directly at Add New URL, admins only.
+						$redirect_url = add_query_arg( 'trigger_multiple_registration', '1', $redirect_url );
+					}
+					wp_safe_redirect( $redirect_url );
+					exit;
+				}
+			}
+		}
+
+		/**
 		 * Init the add registration page.
 		 */
 		public function add_registration_page() {
@@ -1179,18 +1267,6 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					'reload_text'                  => esc_html__( 'Just Reload', 'user-registration' ),
 				)
 			);
-
-			$all_forms = ur_get_all_user_registration_form();
-
-			if ( ( ! empty( $all_forms ) && count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) ) ) {
-				$form_id          = key( $all_forms );
-				$form_id_from_url = isset( $_GET['edit-registration'] ) ? absint( $_GET['edit-registration'] ) : '';
-
-				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) {
-					wp_redirect( admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id ) );
-					exit;
-				}
-			}
 
 			if ( isset( $_GET['edit-registration'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 				// Forms view.
