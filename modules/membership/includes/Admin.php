@@ -607,12 +607,14 @@ if ( ! class_exists( 'Admin' ) ) :
 					)
 				);
 
-				// Only a coupon the order will apply consumes a use; prepare_members_data() drops the rest.
+				// Only a coupon the order will apply consumes a use; prepare_members_data() drops the rest, but a used-up one is rejected rather than silently charged in full.
+				$coupon_details = $coupon_check['status'] ? array() : ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
+				$coupon_used_up = ! empty( $coupon_details ) && function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( $coupon_details );
+				if ( $coupon_used_up || ( $coupon_check['status'] && ! ur_claim_coupon_usage( $data['coupon'] ) ) ) {
+					wp_delete_user( absint( $member_id ) );
+					wp_send_json_error( array( 'message' => esc_html__( 'This coupon has reached its usage limit.', 'user-registration' ) ) );
+				}
 				if ( $coupon_check['status'] ) {
-					if ( ! ur_claim_coupon_usage( $data['coupon'] ) ) {
-						wp_delete_user( absint( $member_id ) );
-						wp_send_json_error( array( 'message' => esc_html__( 'This coupon has reached its usage limit.', 'user-registration' ) ) );
-					}
 					$claimed_coupon = sanitize_text_field( $data['coupon'] );
 				}
 			}

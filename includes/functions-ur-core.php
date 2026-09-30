@@ -7823,7 +7823,13 @@ if ( ! function_exists( 'ur_claim_coupon_usage' ) ) {
 	 * @since x.x.x
 	 */
 	function ur_claim_coupon_usage( $coupon_code ) {
-		return ur_change_coupon_usage( $coupon_code, 1, true );
+		$claimed = ur_change_coupon_usage( $coupon_code, 1, true );
+
+		if ( $claimed ) {
+			ur_coupon_claimed_this_request( $coupon_code, true );
+		}
+
+		return $claimed;
 	}
 }
 
@@ -7836,7 +7842,33 @@ if ( ! function_exists( 'ur_release_coupon_usage' ) ) {
 	 * @since x.x.x
 	 */
 	function ur_release_coupon_usage( $coupon_code ) {
+		ur_coupon_claimed_this_request( $coupon_code, false );
+
 		return ur_change_coupon_usage( $coupon_code, -1 );
+	}
+}
+
+if ( ! function_exists( 'ur_coupon_claimed_this_request' ) ) {
+	/**
+	 * Track coupons this request has claimed a use of.
+	 *
+	 * @param string    $coupon_code Coupon code.
+	 * @param bool|null $state       True to mark claimed, false to clear, null to only read.
+	 * @return bool Whether this request holds a claim on the coupon.
+	 * @since x.x.x
+	 */
+	function ur_coupon_claimed_this_request( $coupon_code, $state = null ) {
+		static $claimed = array();
+
+		$coupon_code = sanitize_text_field( (string) $coupon_code );
+
+		if ( true === $state ) {
+			$claimed[ $coupon_code ] = true;
+		} elseif ( false === $state ) {
+			unset( $claimed[ $coupon_code ] );
+		}
+
+		return isset( $claimed[ $coupon_code ] );
 	}
 }
 
