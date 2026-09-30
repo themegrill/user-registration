@@ -376,7 +376,17 @@ const Modules = () => {
 	};
 
 	const parseDate = (dateString) => {
-		const [day, month, year] = dateString.split("/").map(Number);
+		// Missing/invalid released_date must not throw — newest/oldest sort would blank the Addons page.
+		if (typeof dateString !== "string" || dateString.trim() === "") {
+			return new Date(0);
+		}
+
+		const parts = dateString.split("/").map(Number);
+		if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+			return new Date(0);
+		}
+
+		const [day, month, year] = parts;
 		return new Date(year, month - 1, day);
 	};
 
