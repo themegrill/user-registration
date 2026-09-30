@@ -1168,7 +1168,16 @@ if ( ! class_exists( 'Admin' ) ) :
 								if ( isset( $plan_details['type'] ) && 'subscription' === $plan_details['type'] ) {
 									$amount = $amount . ' / ' . $membership['billing_cycle'];
 								}
-								$expiry_date = 'subscription' === $plan_details['type'] && ! empty( $membership['expiry_date'] ) ? date_i18n( 'Y-m-d', strtotime( $membership['expiry_date'] ) ) : __( 'N/A', 'user-registration' );
+
+								/*
+								 * Prefer expiry_date; if empty, fall back to next_billing_date
+								 * (often the same period end). Does not invent dates or change
+								 * stored subscription rows — display only.
+								 */
+								$raw_expiry  = ! empty( $membership['expiry_date'] ) ? $membership['expiry_date'] : ( $membership['next_billing_date'] ?? '' );
+								$expiry_date = ( isset( $plan_details['type'] ) && 'subscription' === $plan_details['type'] && ! empty( $raw_expiry ) && strtotime( $raw_expiry ) )
+									? date_i18n( 'Y-m-d', strtotime( $raw_expiry ) )
+									: __( 'N/A', 'user-registration' );
 
 								?>
 								<tr>
