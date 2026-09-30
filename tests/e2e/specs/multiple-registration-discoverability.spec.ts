@@ -44,6 +44,26 @@ test.describe("multiple registration discoverability @fresh", () => {
 		).toContainText(/activate/i);
 	});
 
+	/**
+	 * Regression spec for Issue #1794: the redirect used to run inside the
+	 * page's render callback, after headers were already sent, so a direct
+	 * visit landed on a blank page instead of the form editor + modal.
+	 */
+	test("opening Add New by direct URL still redirects to the form editor and opens the modal @fresh @admin", async ({
+		page
+	}) => {
+		await ensureFirstRun(page);
+		await gotoAdminPage(page, "add-new-registration");
+
+		await expect(page).toHaveURL(/[?&]edit-registration=\d+/);
+		await expect(
+			page.locator(".user-registration-swal2-modal")
+		).toBeVisible();
+		await expect(
+			page.locator(".user-registration-swal2-modal")
+		).toContainText(/activate/i);
+	});
+
 	test("never shows Add New on the Login Form page, since Multiple Registration cannot add a second login form @fresh @admin", async ({
 		page
 	}) => {

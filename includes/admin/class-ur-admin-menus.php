@@ -875,7 +875,7 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 * Add new registration menu items.
 		 */
 		public function add_registration_menu() {
-			add_submenu_page(
+			$add_new_registration_page = add_submenu_page(
 				'user-registration',
 				esc_html__( 'Add New', 'user-registration' ),
 				esc_html__( 'Add New', 'user-registration' ),
@@ -886,6 +886,9 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					'add_registration_page',
 				)
 			);
+
+			// Redirect before headers are sent; the page callback itself runs too late.
+			add_action( 'load-' . $add_new_registration_page, array( $this, 'add_registration_page_init' ) );
 
 			add_filter(
 				'submenu_file',
@@ -1166,6 +1169,29 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 
 
 		/**
+		 * Redirects a single-form, module-inactive site straight to that form's
+		 * editor before any admin output is sent, so the modal can still open.
+		 */
+		public function add_registration_page_init() {
+			$all_forms = ur_get_all_user_registration_form();
+
+			if ( ( ! empty( $all_forms ) && count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) ) ) {
+				$form_id          = key( $all_forms );
+				$form_id_from_url = isset( $_GET['edit-registration'] ) ? absint( $_GET['edit-registration'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					$redirect_url = admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id );
+					if ( ! isset( $_GET['edit-registration'] ) && current_user_can( 'manage_options' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+						// Flag redirect so modal opens automatically after arriving directly at Add New URL, admins only.
+						$redirect_url = add_query_arg( 'trigger_multiple_registration', '1', $redirect_url );
+					}
+					wp_safe_redirect( $redirect_url );
+					exit;
+				}
+			}
+		}
+
+		/**
 		 * Init the add registration page.
 		 */
 		public function add_registration_page() {
@@ -1241,23 +1267,6 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					'reload_text'                  => esc_html__( 'Just Reload', 'user-registration' ),
 				)
 			);
-
-			$all_forms = ur_get_all_user_registration_form();
-
-			if ( ( ! empty( $all_forms ) && count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) ) ) {
-				$form_id          = key( $all_forms );
-				$form_id_from_url = isset( $_GET['edit-registration'] ) ? absint( $_GET['edit-registration'] ) : '';
-
-				if ( ! isset( $_GET['edit-registration'] ) || $form_id_from_url != $form_id ) {
-					$redirect_url = admin_url( 'admin.php?page=add-new-registration&edit-registration=' . $form_id );
-					if ( ! isset( $_GET['edit-registration'] ) && current_user_can( 'manage_options' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-						// Flag redirect so modal opens automatically after arriving directly at Add New URL, admins only.
-						$redirect_url = add_query_arg( 'trigger_multiple_registration', '1', $redirect_url );
-					}
-					wp_safe_redirect( $redirect_url );
-					exit;
-				}
-			}
 
 			if ( isset( $_GET['edit-registration'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 				// Forms view.
