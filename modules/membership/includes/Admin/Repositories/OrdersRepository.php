@@ -307,6 +307,61 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * Settle the coupon use an order claimed at checkout.
+	 *
+	 * A completed order keeps the use; a failed, cancelled or refunded one gives it back. Only the
+	 * caller that deletes the claim marker acts on it, so each use settles once.
+	 *
+	 * @param int    $order_id Order ID.
+	 * @param string $status   The order's new status.
+	 * @return void
+	 * @since x.x.x
+	 */
+	public function settle_coupon_claim( $order_id, $status ) {
+		if ( ! in_array( $status, array( 'completed', 'failed', 'canceled', 'cancelled', 'refunded' ), true ) ) {
+			return;
+		}
+
+		$claim = $this->get_order_meta_by_order_id_and_meta_key( $order_id, 'urm_coupon_usage_claim' );
+
+		if ( empty( $claim['meta_value'] ) ) {
+			return;
+		}
+
+		$deleted = $this->delete_order_meta(
+			array(
+				'order_id' => absint( $order_id ),
+				'meta_key' => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- keyed delete on the order meta table.
+			)
+		);
+
+		if ( $deleted && 'completed' !== $status && function_exists( 'ur_release_coupon_usage' ) ) {
+			ur_release_coupon_usage( $claim['meta_value'] );
+		}
+	}
+
+	/**
+	 * Give back the coupon uses claimed by a member's unfinished orders before they are deleted.
+	 *
+	 * @param int  $member_id   Member user ID.
+	 * @param bool $latest_only Only settle the member's latest order.
+	 * @return void
+	 * @since x.x.x
+	 */
+	public function release_member_coupon_claims( $member_id, $latest_only = false ) {
+		$wpdb      = $this->wpdb();
+		$order_ids = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$this->table} WHERE user_id = %d ORDER BY ID DESC", absint( $member_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name comes from TableList.
+
+		if ( $latest_only ) {
+			$order_ids = array_slice( $order_ids, 0, 1 );
+		}
+
+		foreach ( $order_ids as $order_id ) {
+			$this->settle_coupon_claim( $order_id, 'failed' );
+		}
+	}
+
+	/**
 	 * Get pending PayPal one-time payment orders created on or after a given timestamp.
 	 *
 	 * @param int $since Unix timestamp.

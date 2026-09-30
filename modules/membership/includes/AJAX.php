@@ -814,6 +814,11 @@ class AJAX {
 
 		$response = $coupon_service->validate( $data );
 
+		// validate() leaves the cap out because checkout re-validates after claiming a use; preview it here.
+		if ( $response['status'] && function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) ) ) ) {
+			$response = $coupon_service->set_coupon_response( false, 422, 'This coupon has reached its usage limit.' );
+		}
+
 		if ( $response['status'] ) {
 			wp_send_json_success(
 				array(
