@@ -75,6 +75,41 @@ export async function ensureFirstRun(page: Page): Promise<void> {
   firstRunDone = true;
 }
 
+let membershipEnabledDone = false;
+
+/**
+ * Ensure the Membership module is enabled on the site under test.
+ *
+ * On a fresh install, modules are opt-in and stored in `user_registration_enabled_features`.
+ * Without `user-registration-membership` enabled, `admin.php?page=user-registration-membership`
+ * is not registered and WP returns 403 ("Sorry, you are not allowed to access this page.").
+ * We run the first-run bootstrap and explicitly activate the module.
+ */
+export async function ensureMembershipEnabled(page: Page): Promise<void> {
+  if (membershipEnabledDone) return;
+
+  await ensureFirstRun(page);
+
+  const nonce = await restNonce(page);
+  await page.evaluate(async (nonce) => {
+    await fetch("/wp-json/user-registration/v1/modules/activate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-WP-Nonce": nonce,
+      },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        slug: "user-registration-membership",
+        name: "Membership",
+        type: "feature",
+      }),
+    });
+  }, nonce);
+
+  membershipEnabledDone = true;
+}
+
 /** The id of the first registration form on the site. */
 export async function firstFormId(page: Page): Promise<number> {
   if (cachedFormId) return cachedFormId;
