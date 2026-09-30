@@ -2012,11 +2012,12 @@ class StripeService {
 	/**
 	 * Cancel Stripe subscription.
 	 *
-	 * @param array $order        Order data.
-	 * @param array $subscription Subscription data.
+	 * @param array $order         Order data.
+	 * @param array $subscription  Subscription data.
+	 * @param bool  $force_cancel  When true, cancel immediately; otherwise cancel at period end.
 	 * @return array
 	 */
-	public function cancel_subscription( $order, $subscription ) {
+	public function cancel_subscription( $order, $subscription, $force_cancel = false ) {
 
 		$response = array(
 			'status' => false,
@@ -2043,6 +2044,7 @@ class StripeService {
 				array(
 					'event_type'      => 'cancellation_initiated',
 					'subscription_id' => $subscription['subscription_id'],
+					'force_cancel'    => $force_cancel,
 					'order_id'        => $order['ID'] ?? 'unknown',
 				),
 				JSON_PRETTY_PRINT
@@ -2053,12 +2055,16 @@ class StripeService {
 		try {
 			$stripe_subscription = \Stripe\Subscription::retrieve( $subscription['subscription_id'] );
 			if ( $stripe_subscription ) {
-				$deleted_sub = \Stripe\Subscription::update(
-					$subscription['subscription_id'],
-					array(
-						'cancel_at_period_end' => true,
-					)
-				);
+				if ( $force_cancel ) {
+					$deleted_sub = $stripe_subscription->cancel();
+				} else {
+					$deleted_sub = \Stripe\Subscription::update(
+						$subscription['subscription_id'],
+						array(
+							'cancel_at_period_end' => true,
+						)
+					);
+				}
 			}
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
 			PaymentGatewayLogging::log_error(
@@ -2077,7 +2083,10 @@ class StripeService {
 			return $response;
 		}
 
-		if ( isset( $deleted_sub['canceled_at'] ) && '' !== $deleted_sub['canceled_at'] ) {
+		$canceled_now     = isset( $deleted_sub['canceled_at'] ) && '' !== $deleted_sub['canceled_at'];
+		$cancel_at_period = ! empty( $deleted_sub['cancel_at_period_end'] );
+
+		if ( $canceled_now || ( ! $force_cancel && $cancel_at_period ) ) {
 			$response['status'] = true;
 
 			PaymentGatewayLogging::log_general(
@@ -2086,7 +2095,7 @@ class StripeService {
 					array(
 						'event_type'           => 'cancellation_success',
 						'subscription_id'      => $subscription['subscription_id'],
-						'canceled_at'          => date( 'Y-m-d H:i:s', $deleted_sub['canceled_at'] ),
+						'canceled_at'          => ! empty( $deleted_sub['canceled_at'] ) ? date( 'Y-m-d H:i:s', $deleted_sub['canceled_at'] ) : '',
 						'cancel_at_period_end' => $deleted_sub['cancel_at_period_end'] ?? false,
 					),
 					JSON_PRETTY_PRINT

@@ -37,10 +37,18 @@ class Subscriptions {
 		} else {
 			$ids = array( absint( wp_unslash( $_GET['id'] ?? 0 ) ) );
 		}
-		foreach ( $ids  as $id ) {
-			if ( $id > 0 ) {
-				( new SubscriptionRepository() )->delete( $id );
+
+		$repo = new SubscriptionRepository();
+		foreach ( $ids as $id ) {
+			if ( $id <= 0 ) {
+				continue;
 			}
+
+			// Cancel at the gateway first (force for PayPal/Stripe) so delete does not leave live billing.
+			// send_email=false: admin cleanup should not email members. Ignore cancel result so
+			// already-canceled / bank / missing gateway id rows can still be removed locally.
+			$repo->cancel_subscription_by_id( $id, false, false, true );
+			$repo->delete( $id );
 		}
 		wp_safe_redirect( admin_url( 'admin.php?page=user-registration-subscriptions&deleted=1' ) );
 	}
@@ -158,7 +166,7 @@ class Subscriptions {
 				'i18n_required_fields'           => __( 'Please fill in all required fields.', 'user-registration' ),
 				'payment_gateways'               => get_option( 'ur_membership_payment_gateways', array() ),
 				'i18n_prompt_delete_title'       => __( 'Delete Subscription', 'user-registration' ),
-				'i18n_prompt_delete_description' => __( 'Are you sure you want to delete this subscription?', 'user-registration' ),
+				'i18n_prompt_delete_description' => __( 'Are you sure you want to delete this subscription? This will also cancel it at the payment gateway when possible.', 'user-registration' ),
 				'i18n_prompt_delete_cancel'      => __( 'Cancel', 'user-registration' ),
 				'i18n_prompt_delete_confirm'     => __( 'Delete', 'user-registration' ),
 			)

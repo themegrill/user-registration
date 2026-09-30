@@ -29,14 +29,22 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	/**
 	 * cancel_subscription_by_id
 	 *
-	 * @param $subscription_id
-	 * @param $send_email
-	 * @param $is_upgrade
+	 * @param int  $subscription_id Subscription ID.
+	 * @param bool $send_email      Whether to send cancellation emails.
+	 * @param bool $is_upgrade      Whether this cancel is part of an upgrade.
+	 * @param bool $force_cancel    Force immediate gateway cancel (PayPal cancel vs suspend; Stripe cancel now vs period end).
 	 *
 	 * @return array|bool[]|mixed|null
 	 */
-	public function cancel_subscription_by_id( $subscription_id, $send_email = true, $is_upgrade = false ) {
+	public function cancel_subscription_by_id( $subscription_id, $send_email = true, $is_upgrade = false, $force_cancel = false ) {
 		$subscription = $this->retrieve( $subscription_id );
+
+		if ( empty( $subscription ) || ! is_array( $subscription ) ) {
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Subscription not found.', 'user-registration' ),
+			);
+		}
 
 		$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
@@ -84,15 +92,17 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 				}
 			}
 
-			$cancel_sub = $subscription_service->cancel_subscription( $order, $subscription );
+			$cancel_sub = $subscription_service->cancel_subscription( $order, $subscription, $force_cancel );
 
 			if ( $cancel_sub['status'] ) {
 				$expiry_date = $subscription['expiry_date'] ?? '';
 
-				if ( ! empty( $expiry_date ) && strtotime( $expiry_date ) > time() ) {
+				// Force cancel ends billing now — mark canceled locally even if expiry is still in the future.
+				if ( ! $force_cancel && ! empty( $expiry_date ) && strtotime( $expiry_date ) > time() ) {
 					update_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id, $expiry_date );
 				} else {
 					$this->update( $subscription_id, array( 'status' => 'canceled' ) );
+					delete_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id );
 				}
 				if ( $send_email ) {
 					$subscription_service->send_cancel_emails( $subscription_id );
