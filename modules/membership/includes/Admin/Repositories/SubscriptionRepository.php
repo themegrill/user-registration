@@ -92,7 +92,26 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 				}
 			}
 
-			$cancel_sub = $subscription_service->cancel_subscription( $order, $subscription, $force_cancel );
+			$orders_to_try = array( $order );
+
+			// A pending renewal on another gateway may not own the stored gateway id yet, so try the last completed order's gateway first.
+			if ( ! $is_upgrade && 'pending' === ( $order['status'] ?? '' ) ) {
+				$completed_order = $this->orders_repository->get_order_by_subscription( $subscription_id, 'completed' );
+
+				if ( ! empty( $completed_order['payment_method'] ) && 'bank' !== $completed_order['payment_method'] && $completed_order['payment_method'] !== $order['payment_method'] ) {
+					// A pending bank renewal never owns a gateway id, and its no-op success must not mask a failed gateway cancel.
+					$orders_to_try = 'bank' === ( $order['payment_method'] ?? '' ) ? array( $completed_order ) : array( $completed_order, $order );
+				}
+			}
+
+			foreach ( $orders_to_try as $order_to_try ) {
+				// A gateway rejects an id it does not own, so the first success is the owning gateway.
+				$cancel_sub = $subscription_service->cancel_subscription( $order_to_try, $subscription, $force_cancel );
+
+				if ( ! empty( $cancel_sub['status'] ) ) {
+					break;
+				}
+			}
 
 			if ( $cancel_sub['status'] ) {
 				$expiry_date = $subscription['expiry_date'] ?? '';
