@@ -503,6 +503,8 @@ class SubscriptionService {
 			'membership_plan_total'             => ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( $total, 2 ) : number_format( $total, 2 ) . $symbol,
 			'membership_renewal_link'           => "<a href=$membership_tab_url>" . __( 'Renew Now', 'user-registration' ) . '</a>',
 			'membership_plan_transaction_id'    => ! empty( $data['transaction_id'] ) ? $data['transaction_id'] : '',
+			// Raw date for the {{payment_date}} smart tag, so it resolves to this subscription-scoped order instead of falling back to the member's most recent order.
+			'payment_date'                      => ! empty( $order['created_at'] ) ? esc_html( $order['created_at'] ) : '',
 		);
 
 		if ( ! empty( $team_data ) ) {
