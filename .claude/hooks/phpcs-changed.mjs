@@ -112,7 +112,7 @@ function main() {
 	const ranges = changedRanges(root, rel);
 	if (ranges !== null && ranges.length === 0) return;
 
-	const res = run("php", [phpcs, "--report=json", "-s", rel], root, PHPCS_TIMEOUT_MS);
+	const res = run("php", [phpcs, "--report=json", "-s", rel.startsWith("-") ? `./${rel}` : rel], root, PHPCS_TIMEOUT_MS);
 	if (res.error) {
 		emit(`phpcs check skipped: could not run php (${res.error.code || res.error.message}).`);
 		return;
