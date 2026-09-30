@@ -113,7 +113,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 				</div>
 				<?php if ( ! $viewing_single && count( $sources ) >= 2 ) : ?>
 					<span class="ur-log-header-divider" aria-hidden="true"></span>
-					<a class="button button-tertiary ur-log-delete-all" href="<?php echo esc_url( $url ); ?>" data-confirm-html="<?php echo esc_attr( $this->get_delete_all_confirm_html( $total_file_count ) ); ?>">
+					<a class="button button-danger ur-log-delete-all" href="<?php echo esc_url( $url ); ?>" data-confirm-html="<?php echo esc_attr( $this->get_delete_all_confirm_html( $total_file_count ) ); ?>">
 						<?php esc_html_e( 'Delete All Logs', 'user-registration' ); ?>
 					</a>
 				<?php endif; ?>
@@ -321,15 +321,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 							focusCancel: true,
 							confirmButtonText: '<?php echo esc_js( __( 'Confirm', 'user-registration' ) ); ?>',
 							cancelButtonText: '<?php echo esc_js( __( 'Cancel', 'user-registration' ) ); ?>',
-							buttonsStyling: false,
-							customClass: {
-								popup: 'ur-tools-modal',
-								title: 'ur-tools-modal__title',
-								htmlContainer: 'ur-tools-modal__content',
-								actions: 'ur-tools-modal__actions',
-								cancelButton: 'ur-tools-delete-modal__cancel',
-								confirmButton: 'ur-tools-delete-modal__confirm'
-							}
+							customClass: 'user-registration-swal2-modal user-registration-swal2-modal--centered'
 						} ).then( function ( result ) {
 							if ( result.isConfirmed || result.value ) {
 								proceed();
@@ -379,15 +371,7 @@ if ( ! class_exists( 'UR_Settings_Tools' ) ) :
 								focusCancel: true,
 								confirmButtonText: '<?php echo esc_js( __( 'Confirm', 'user-registration' ) ); ?>',
 								cancelButtonText: '<?php echo esc_js( __( 'Cancel', 'user-registration' ) ); ?>',
-								buttonsStyling: false,
-								customClass: {
-									popup: 'ur-tools-modal',
-									title: 'ur-tools-modal__title',
-									htmlContainer: 'ur-tools-modal__content',
-									actions: 'ur-tools-modal__actions',
-									cancelButton: 'ur-tools-delete-modal__cancel',
-									confirmButton: 'ur-tools-delete-modal__confirm'
-								}
+								customClass: 'user-registration-swal2-modal user-registration-swal2-modal--centered'
 							} ).then( function ( result ) {
 								if ( result.isConfirmed || result.value ) {
 									window.location.href = wizardUrl;

@@ -157,7 +157,7 @@ $log_enabled = ur_option_checked( 'user_registration_enable_log', false );
 					</select>
 					<input type="submit" class="button button-tertiary" value="<?php esc_attr_e( 'View', 'user-registration' ); ?>" />
 				<?php endif; ?>
-				<a class="button button-tertiary ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-confirm-html="<?php echo esc_attr( UR_Log_List_Table::get_delete_confirm_html( $info['name'], count( $source['files'] ) ) ); ?>" data-type="single">
+				<a class="button button-danger ur-log-delete-link" href="<?php echo esc_url( $delete_log_url ); ?>" data-confirm-html="<?php echo esc_attr( UR_Log_List_Table::get_delete_confirm_html( $info['name'], count( $source['files'] ) ) ); ?>" data-type="single">
 					<?php esc_html_e( 'Delete Log', 'user-registration' ); ?>
 				</a>
 			</div>
@@ -222,21 +222,8 @@ $log_enabled = ur_option_checked( 'user_registration_enable_log', false );
 						$entries[] = $current_entry;
 					}
 
-					// Ensure logs display starting from the last (latest) date first.
-					$first_ts = null;
-					$last_ts  = null;
-					foreach ( $entries as $entry ) {
-						if ( ! empty( $entry['timestamp'] ) ) {
-							if ( null === $first_ts ) {
-								$first_ts = strtotime( $entry['timestamp'] );
-							}
-							$last_ts = strtotime( $entry['timestamp'] );
-						}
-					}
-
-					if ( null !== $first_ts && null !== $last_ts && $first_ts < $last_ts ) {
-						$entries = array_reverse( $entries );
-					}
+					// The log handler always appends, so entries are written oldest first; show newest first.
+					$entries = array_reverse( $entries );
 
 					foreach ( $entries as $entry ) {
 						if ( ! empty( $entry['raw'] ) ) {
@@ -298,25 +285,14 @@ $log_enabled = ur_option_checked( 'user_registration_enable_log', false );
 				return;
 			}
 
-			var trashIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f25656" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>';
-
 			Swal.fire( {
-				title: trashIcon + '<span>' + title + '</span>',
+				title: '<i class="dashicons dashicons-trash"></i><span class="user-registration-swal2-modal__title">' + title + '</span>',
 				html: html,
 				showCancelButton: true,
 				focusCancel: true,
 				confirmButtonText: '<?php echo esc_js( __( 'Delete', 'user-registration' ) ); ?>',
 				cancelButtonText: '<?php echo esc_js( __( 'Cancel', 'user-registration' ) ); ?>',
-				buttonsStyling: false,
-				customClass: {
-					popup: 'ur-tools-delete-modal',
-					header: 'ur-tools-delete-modal__header',
-					title: 'ur-tools-delete-modal__title',
-					htmlContainer: 'ur-tools-delete-modal__content',
-					actions: 'ur-tools-delete-modal__actions',
-					cancelButton: 'ur-tools-delete-modal__cancel',
-					confirmButton: 'ur-tools-delete-modal__confirm'
-				}
+				customClass: 'user-registration-swal2-modal user-registration-swal2-modal--centered user-registration-trashed'
 			} ).then( function ( result ) {
 				if ( result.value || result.isConfirmed ) {
 					onConfirm();
