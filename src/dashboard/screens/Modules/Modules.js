@@ -222,8 +222,66 @@ const Modules = () => {
 		});
 	};
 
-	// Filter Modules by Categories
-	const filterModules = (modules, category, showLoading = false, statusFilter = null, planFilter = null) => {
+	const parseDate = (dateString) => {
+		// Missing/invalid released_date must not throw — newest/oldest sort would blank the Addons page.
+		if (typeof dateString !== "string" || dateString.trim() === "") {
+			return new Date(0);
+		}
+
+		const parts = dateString.split("/").map(Number);
+		if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
+			return new Date(0);
+		}
+
+		const [day, month, year] = parts;
+		return new Date(year, month - 1, day);
+	};
+
+	/**
+	 * Sort a modules list. Applied after category/status/plan filters (AND).
+	 *
+	 * @param {Array}  modules  Filtered modules.
+	 * @param {string} sortType Sort key.
+	 * @return {Array} Sorted copy.
+	 */
+	const sortModulesList = (modules, sortType) => {
+		const sorted = [...modules];
+
+		switch (sortType) {
+			case "newest":
+				return sorted.sort(
+					(firstAddonInContext, secondAddonInContext) =>
+						parseDate(secondAddonInContext.released_date) -
+						parseDate(firstAddonInContext.released_date)
+				);
+			case "oldest":
+				return sorted.sort(
+					(firstAddonInContext, secondAddonInContext) =>
+						parseDate(firstAddonInContext.released_date) -
+						parseDate(secondAddonInContext.released_date)
+				);
+			case "asc":
+				return sorted.sort((firstAddonInContext, secondAddonInContext) =>
+					firstAddonInContext.title.localeCompare(secondAddonInContext.title)
+				);
+			case "desc":
+				return sorted.sort((firstAddonInContext, secondAddonInContext) =>
+					secondAddonInContext.title.localeCompare(firstAddonInContext.title)
+				);
+			default:
+				return sorted;
+		}
+	};
+
+	// Filter Modules by Categories — status + plan are AND; sort applies to the result.
+	const filterModules = (
+		modules,
+		category,
+		showLoading = false,
+		statusFilter = null,
+		planFilter = null,
+		sortFilter = null
+	) => {
 		// Only show loading for category changes, not search operations
 		if (showLoading) {
 			setState((prev) => ({ ...prev, isLoading: true }));
@@ -244,7 +302,7 @@ const Modules = () => {
 				filtered = filtered.filter((mod) => mod.status === currentStatus);
 			}
 
-			// Filter by plan - use passed parameter or current state
+			// Filter by plan - use passed parameter or current state (AND with status)
 			const currentPlan = planFilter !== null ? planFilter : state.selectedPlan;
 			if (currentPlan && currentPlan !== "all") {
 				filtered = filtered.filter((mod) => {
@@ -284,6 +342,9 @@ const Modules = () => {
 		filtered = filtered.filter((mod) =>
 			mod.title.toLowerCase().includes(searchValue)
 		);
+
+		const currentSort = sortFilter !== null ? sortFilter : state.selectedSort;
+		filtered = sortModulesList(filtered, currentSort);
 
 		// Determine which categories contain search results
 		let highlightedCategories = [];
@@ -375,78 +436,6 @@ const Modules = () => {
 		}
 	};
 
-	const parseDate = (dateString) => {
-		// Missing/invalid released_date must not throw — newest/oldest sort would blank the Addons page.
-		if (typeof dateString !== "string" || dateString.trim() === "") {
-			return new Date(0);
-		}
-
-		const parts = dateString.split("/").map(Number);
-		if (parts.length !== 3 || parts.some((part) => Number.isNaN(part))) {
-			return new Date(0);
-		}
-
-		const [day, month, year] = parts;
-		return new Date(year, month - 1, day);
-	};
-
-	const handleSorterChange = (sortType, data) => {
-		switch (sortType) {
-			case "newest":
-				setState((prev) => ({
-					...prev,
-					modules: [...data].sort(
-						(firstAddonInContext, secondAddonInContext) =>
-							parseDate(secondAddonInContext.released_date) -
-							parseDate(firstAddonInContext.released_date)
-					)
-				}));
-
-				break;
-			case "oldest":
-				setState((prev) => ({
-					...prev,
-					modules: [...data].sort(
-						(firstAddonInContext, secondAddonInContext) =>
-							parseDate(firstAddonInContext.released_date) -
-							parseDate(secondAddonInContext.released_date)
-					)
-				}));
-				break;
-			case "asc":
-				setState((prev) => ({
-					...prev,
-					modules: [...data].sort(
-						(firstAddonInContext, secondAddonInContext) =>
-							firstAddonInContext.title.localeCompare(
-								secondAddonInContext.title
-							)
-					)
-				}));
-				break;
-			case "desc":
-				setState((prev) => ({
-					...prev,
-					modules: [...data].sort(
-						(firstAddonInContext, secondAddonInContext) =>
-							secondAddonInContext.title.localeCompare(
-								firstAddonInContext.title
-							)
-					)
-				}));
-				break;
-			case "default":
-				// For "All" sort, just re-apply current filters without sorting
-				filterModules(data, state.selectedCategory, false, state.selectedStatus, state.selectedPlan);
-				break;
-			default:
-				setState((prev) => ({
-					...prev,
-					modulesLoaded: false
-				}));
-		}
-	};
-
 	const bulkOptions = [
 		{ label: __("Activate", "user-registration"), value: "activate" },
 		{ label: __("Deactivate", "user-registration"), value: "deactivate" }
@@ -466,7 +455,7 @@ const Modules = () => {
 		// Clear search input
 		searchItemRef.current = "";
 		// Reset to show all modules with default sorting
-		filterModules(state.originalModules, "All", false, "all", "all");
+		filterModules(state.originalModules, "All", false, "all", "all", "default");
 	};
 
 
@@ -483,20 +472,41 @@ const Modules = () => {
 						selectedStatusValue={selectedStatusValue}
 						selectedPlanValue={selectedPlanValue}
 						onSortChange={(selectedOption) => {
-							setState(prev => ({ ...prev, selectedSort: selectedOption?.value || "default" }));
-							handleSorterChange(selectedOption?.value, state.originalModules);
+							const newSort = selectedOption?.value || "default";
+							setState(prev => ({ ...prev, selectedSort: newSort }));
+							// Re-apply status + plan filters, then sort (AND).
+							filterModules(
+								state.originalModules,
+								state.selectedCategory,
+								false,
+								state.selectedStatus,
+								state.selectedPlan,
+								newSort
+							);
 						}}
 						onStatusChange={(selectedOption) => {
 							const newStatus = selectedOption?.value || "all";
 							setState(prev => ({ ...prev, selectedStatus: newStatus }));
-							// Trigger filtering with the new status value immediately
-							filterModules(state.originalModules, state.selectedCategory, false, newStatus, null);
+							filterModules(
+								state.originalModules,
+								state.selectedCategory,
+								false,
+								newStatus,
+								state.selectedPlan,
+								state.selectedSort
+							);
 						}}
 						onPlanChange={(selectedOption) => {
 							const newPlan = selectedOption?.value || "all";
 							setState(prev => ({ ...prev, selectedPlan: newPlan }));
-							// Trigger filtering with the new plan value immediately
-							filterModules(state.originalModules, state.selectedCategory, false, null, newPlan);
+							filterModules(
+								state.originalModules,
+								state.selectedCategory,
+								false,
+								state.selectedStatus,
+								newPlan,
+								state.selectedSort
+							);
 						}}
 						searchValue={state.searchItem}
 						onSearchChange={handleSearchInputChange}
@@ -510,7 +520,14 @@ const Modules = () => {
 						highlightedCategories={state.highlightedCategories}
 						onCategoryChange={(displayValue, internalValue) => {
 							setState(prev => ({ ...prev, selectedCategory: displayValue }));
-							filterModules(state.originalModules, internalValue, true); // Show loading for category changes
+							filterModules(
+								state.originalModules,
+								internalValue,
+								true,
+								state.selectedStatus,
+								state.selectedPlan,
+								state.selectedSort
+							);
 						}}
 					/>
 						</Box>
