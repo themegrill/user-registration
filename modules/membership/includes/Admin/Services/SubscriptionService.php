@@ -954,6 +954,20 @@ class SubscriptionService {
 			if ( ! isset( $decoded_data['subscription_id'] ) ) {
 				continue;
 			}
+
+			// `urm_next_subscription_data` gets overwritten by ANY later upgrade, so require it to still match this order's own subscription and due date.
+			$decoded_delayed_until = isset( $decoded_data['delayed_until'] ) ? $decoded_data['delayed_until'] : '';
+			if ( empty( $decoded_delayed_until )
+				|| $decoded_delayed_until !== $data['delayed_until']
+				|| (int) $decoded_data['subscription_id'] !== (int) $data['subscription_id']
+			) {
+				ur_get_logger()->notice(
+					sprintf( 'Delayed order #%d skipped: urm_next_subscription_data no longer matches this order (superseded by a later change).', $data['order_id'] ),
+					array( 'source' => 'urm-membership-crons' )
+				);
+				continue;
+			}
+
 			$subscription_id = $decoded_data['subscription_id'];
 			$user            = get_userdata( $decoded_data['member_id'] );
 			if ( $user ) {
@@ -971,9 +985,21 @@ class SubscriptionService {
 					continue;
 				}
 
-				$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
+				$previous_subscription = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
+				$cancel_subscription   = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
 				ur_get_logger()->notice( $cancel_subscription['message'], array( 'source' => 'urm-membership-crons' ) );
-				$previous_subscription             = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
+
+				// This cancel often just hits PayPal's "already cancelled" error (approval already cancelled it) — what matters is whether it's still live.
+				if ( $is_paypal_delayed_checkout && empty( $cancel_subscription['status'] ) && ! empty( $previous_subscription['subscription_id'] )
+					&& ( new NewPaypalService() )->is_paypal_subscription_active( $previous_subscription['subscription_id'] )
+				) {
+					ur_get_logger()->notice(
+						sprintf( 'Scheduled downgrade for user #%d deferred: previous PayPal subscription %s is still active after a failed cancellation.', $user->ID, $previous_subscription['subscription_id'] ),
+						array( 'source' => 'urm-membership-crons' )
+					);
+					continue;
+				}
+
 				$updated_subscription_for_users[]  = $user->user_login;
 				$decoded_data['subscription_data'] = $previous_subscription;
 				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );

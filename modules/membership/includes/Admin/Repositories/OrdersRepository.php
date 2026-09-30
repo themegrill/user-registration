@@ -233,6 +233,36 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * The row's latest completed order for the given item, used to inherit currency/tax config for a renewal.
+	 *
+	 * The plain "latest order" can be an abandoned pending order for a different plan or currency
+	 * (a switch the member started but never paid for) — that must not leak into a real sale's order meta.
+	 *
+	 * @param int $subscription_id Local subscription row ID.
+	 * @param int $item_id         Membership post ID the order must be for.
+	 *
+	 * @return array Empty when none matches.
+	 */
+	public function get_latest_completed_order_by_subscription_and_item( $subscription_id, $item_id ) {
+		$result = $this->wpdb()->get_row(
+			$this->wpdb()->prepare(
+				"
+				SELECT * from $this->table
+				WHERE subscription_id = %d
+				AND item_id = %d
+				AND status = 'completed'
+				ORDER BY ID DESC LIMIT 1
+		",
+				$subscription_id,
+				$item_id
+			),
+			ARRAY_A
+		);
+
+		return ! $result ? array() : $result;
+	}
+
+	/**
 	 * The row's pending, uncharged PayPal order for one specific plan — not just its latest order overall.
 	 *
 	 * A newer, unrelated pending order for a different plan (an abandoned upgrade/downgrade), or a pending
@@ -292,10 +322,13 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table names are fixed internal values, never attacker-influenced; the date value goes through $wpdb->prepare()'s own placeholder.
 		// A row due today or earlier, not an exact-date match: one skipped on its own scheduled day (e.g. the new subscription wasn't active yet) must still be picked up by a later run instead of being dropped permanently.
+		// subscription_id/delayed_until travel with the row so the caller can confirm `urm_next_subscription_data` still belongs to THIS order.
 		$sql = $this->wpdb()->prepare(
 			"
 					SELECT
 					       urmo.ID as order_id,
+					       urmo.subscription_id as subscription_id,
+					       wpom.meta_value as delayed_until,
 					       wpum.meta_value as sub_data
 					FROM {$this->table} urmo
 					         JOIN {$this->orders_meta_table} wpom ON urmo.ID = wpom.order_id

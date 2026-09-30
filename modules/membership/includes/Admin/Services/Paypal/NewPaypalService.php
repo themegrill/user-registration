@@ -362,7 +362,7 @@ class NewPaypalService {
 						$ur_zone_id,
 						$base_membership_amount
 					);
-					$discount_value = max( 0.0, $final_amount - $discounted_local );
+					$discount_value   = max( 0.0, $final_amount - $discounted_local );
 				}
 
 				$final_amount = max( 0.0, (float) user_registration_sanitize_amount( $final_amount - $discount_value ) );
@@ -461,7 +461,6 @@ class NewPaypalService {
 		$context['is_full_discount_sub'] = $context['is_subscription']
 			&& ! empty( $coupon_details )
 			&& 0.0 === (float) $final_amount;
-
 
 		// Prorated upgrade: priced first cycle then plan price, excluding scheduled downgrades and plans with their own trial.
 		$context['is_proration_upgrade'] = $context['is_subscription']
@@ -819,14 +818,14 @@ class NewPaypalService {
 		// Start time. UR-4386: for a 100% coupon the first period is free, so start billing one full
 		// billing period out (nothing charged now); otherwise start almost immediately.
 		if ( ! empty( $context['is_full_discount_sub'] ) ) {
-			$sub_data = ! empty( $context['has_team'] )
+			$sub_data              = ! empty( $context['has_team'] )
 				? array(
 					'duration' => $context['data']['team_data']['team_duration_period'] ?? 'month',
 					'value'    => $context['data']['team_data']['team_duration_value'] ?? 1,
 				)
 				: ( $context['data']['subscription'] ?? array() );
-			$value    = max( 1, (int) ( $sub_data['value'] ?? 1 ) );
-			$duration = strtolower( (string) ( $sub_data['duration'] ?? 'month' ) );
+			$value                 = max( 1, (int) ( $sub_data['value'] ?? 1 ) );
+			$duration              = strtolower( (string) ( $sub_data['duration'] ?? 'month' ) );
 			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', strtotime( "+{$value} {$duration}" ) );
 		} elseif ( $context['is_upgrading'] && ! empty( $context['response_data']['delayed_until'] ) ) {
 			// Scheduled downgrade: the current plan is paid through delayed_until, so billing starts then.
@@ -1254,9 +1253,9 @@ class NewPaypalService {
 						$member_id
 					) . "\n" . wp_json_encode(
 						array(
-							'paypal_order_id'    => $order_token,
-							'expected_order_id'  => $expected_order_id,
-							'member_id'          => $member_id,
+							'paypal_order_id'   => $order_token,
+							'expected_order_id' => $expected_order_id,
+							'member_id'         => $member_id,
 						),
 						JSON_PRETTY_PRINT
 					)
@@ -1319,9 +1318,9 @@ class NewPaypalService {
 			$amount_mismatch   = $expected_amount > 0 && ( $captured_amount + 0.01 ) < $expected_amount;
 			$currency_mismatch = ! empty( $expected_currency ) && ! empty( $captured_currency ) && 0 !== strcasecmp( $expected_currency, $captured_currency );
 
-			$payee_email       = isset( $capture_response['purchase_units'][0]['payee']['email_address'] ) ? $capture_response['purchase_units'][0]['payee']['email_address'] : '';
-			$configured_email  = isset( $paypal_credentials['email'] ) ? $paypal_credentials['email'] : '';
-			$payee_mismatch    = ! empty( $payee_email ) && ! empty( $configured_email ) && 0 !== strcasecmp( $payee_email, $configured_email );
+			$payee_email      = isset( $capture_response['purchase_units'][0]['payee']['email_address'] ) ? $capture_response['purchase_units'][0]['payee']['email_address'] : '';
+			$configured_email = isset( $paypal_credentials['email'] ) ? $paypal_credentials['email'] : '';
+			$payee_mismatch   = ! empty( $payee_email ) && ! empty( $configured_email ) && 0 !== strcasecmp( $payee_email, $configured_email );
 
 			if ( $amount_mismatch || $currency_mismatch || $payee_mismatch ) {
 				PaymentGatewayLogging::log_error(
@@ -1735,6 +1734,26 @@ class NewPaypalService {
 			$upgrade_order               = $this->orders_repository->get_order_by_subscription( $subscription_id );
 			$subscription_data['status'] = 'on' === ( isset( $upgrade_order['trial_status'] ) ? $upgrade_order['trial_status'] : '' ) ? 'trial' : 'active';
 			$this->subscription_repository->update( $subscription_id, $subscription_data );
+		} elseif ( ! empty( $new_subscription_data ) && ! empty( $new_subscription_data['delayed_until'] ) && ! empty( $get_user_old_subscription['subscription_id'] ) ) {
+			// Cancel the old PayPal subscription now (API only, local row untouched) so it doesn't also bill at delayed_until.
+			$cancel_old_subscription = $subscription_service->cancel_subscription( $get_user_old_order, $get_user_old_subscription, true );
+
+			if ( empty( $cancel_old_subscription['status'] ) ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					sprintf(
+						'[Member ID #%s] Failed to cancel previous subscription ahead of a scheduled downgrade.',
+						$member_id
+					) . "\n" . wp_json_encode(
+						array(
+							'member_id'           => $member_id,
+							'old_subscription_id' => $get_user_old_subscription['subscription_id'],
+							'message'             => isset( $cancel_old_subscription['message'] ) ? $cancel_old_subscription['message'] : '',
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+			}
 		}
 
 		$membership_process = urm_get_membership_process( $member_id );
@@ -2247,8 +2266,10 @@ class NewPaypalService {
 		}
 
 		// PayPal doesn't guarantee webhook delivery order, so two events for this row can race here.
+		// Null (no GET_LOCK support) means proceed without a lock, same as SubscriptionService::upgrade_membership() — only false blocks.
 		$lock_name = 'urm_paypal_subscription_webhook_' . $subscription_row_id;
-		if ( true !== $this->members_subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT ) ) {
+		$lock      = $this->members_subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT );
+		if ( false === $lock ) {
 			return false;
 		}
 
@@ -2260,7 +2281,9 @@ class NewPaypalService {
 
 			return $this->process_subscription_webhook_event( $event_type, $member_id, $subscription_row_id, $paypal_subscription_id, $member_subscription );
 		} finally {
-			$this->members_subscription_repository->release_lock( $lock_name );
+			if ( true === $lock ) {
+				$this->members_subscription_repository->release_lock( $lock_name );
+			}
 		}
 	}
 
@@ -2332,6 +2355,29 @@ class NewPaypalService {
 							'event_type'             => $event_type,
 							'paypal_subscription_id' => $paypal_subscription_id,
 							'current_paypal_subscription_id' => $row_paypal_id,
+						),
+						JSON_PRETTY_PRINT
+					),
+					'notice'
+				);
+				return true;
+			}
+		}
+
+		// A CANCELLED/SUSPENDED event for the row's own OLD subscription while a downgrade is scheduled is one we triggered on purpose — ignore it.
+		if ( ! $is_new_subscription && in_array( $event_type, array( 'BILLING.SUBSCRIPTION.CANCELLED', 'BILLING.SUBSCRIPTION.SUSPENDED' ), true ) ) {
+			$pending_switch_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
+			if ( ! empty( $pending_switch_id ) ) {
+				PaymentGatewayLogging::log_general(
+					'paypal',
+					sprintf(
+						'[Member ID #%s] Subscription webhook ignored: expected cancellation of the outgoing PayPal subscription ahead of a scheduled downgrade.',
+						$member_id
+					) . "\n" . wp_json_encode(
+						array(
+							'event_type'             => $event_type,
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'pending_switch_id'      => $pending_switch_id,
 						),
 						JSON_PRETTY_PRINT
 					),
@@ -2672,7 +2718,9 @@ class NewPaypalService {
 		$wpdb      = $this->orders_repository->wpdb();
 		$lock_name = 'urm_paypal_sale_' . md5( $transaction_id );
 
-		if ( true !== $this->orders_repository->acquire_lock( $lock_name, self::SALE_LOCK_TIMEOUT ) ) {
+		// Null (no GET_LOCK support) means proceed without a lock, same as SubscriptionService::upgrade_membership() — only false blocks.
+		$lock = $this->orders_repository->acquire_lock( $lock_name, self::SALE_LOCK_TIMEOUT );
+		if ( false === $lock ) {
 			return false;
 		}
 
@@ -2693,8 +2741,8 @@ class NewPaypalService {
 				),
 			);
 
-			// Inherit currency and tax configuration from the preceding order on this subscription.
-			$previous_order = $this->orders_repository->get_order_by_subscription( $membership_subscription['ID'] );
+			// The latest COMPLETED order, not just the latest order — that could be an abandoned pending one for a different plan/currency.
+			$previous_order = $this->orders_repository->get_latest_completed_order_by_subscription_and_item( $membership_subscription['ID'], $membership_subscription['item_id'] );
 			if ( ! empty( $previous_order['ID'] ) ) {
 				foreach ( array( 'local_currency', 'local_currency_converted_amount', 'tax_data' ) as $meta_key ) {
 					$prev_meta = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $previous_order['ID'], $meta_key );
@@ -2730,7 +2778,9 @@ class NewPaypalService {
 			// A failed insert leaves a stale insert_id behind; require the retrieved order to actually be this sale.
 			return ( ! empty( $order ) && ( $order['transaction_id'] ?? '' ) === $transaction_id ) ? $order : false;
 		} finally {
-			$this->orders_repository->release_lock( $lock_name );
+			if ( true === $lock ) {
+				$this->orders_repository->release_lock( $lock_name );
+			}
 		}
 	}
 
@@ -2801,10 +2851,15 @@ class NewPaypalService {
 			: (string) ( $membership_subscription['next_billing_date'] ?? '' );
 		$table        = TableList::subscriptions_table();
 
+		// Only flip status to active when PayPal itself reports ACTIVE and the computed expiry is genuinely in the future.
+		$paypal_status     = strtoupper( (string) ( $remote['status'] ?? '' ) );
+		$should_activate   = 'ACTIVE' === $paypal_status && strtotime( $expiry_date ) > time();
+		$status_assign_sql = $should_activate ? "status = 'active', " : '';
+
 		// Conditional on status and subscription_id, since either could have changed while PayPal was being asked.
 		$update_result = $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE {$table} SET status = 'active', expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled' AND subscription_id = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE {$table} SET {$status_assign_sql}expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled' AND subscription_id = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				$expiry_date,
 				$next_billing,
 				$membership_subscription['ID'],
@@ -4593,7 +4648,7 @@ class NewPaypalService {
 				$live_state = $sale_details['state'];
 
 				$live_status = $this->map_paypal_sale_state( $live_state );
-				$prev_status  = $existing_payment['status'] ?? '';
+				$prev_status = $existing_payment['status'] ?? '';
 
 				if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $existing_payment['ID'], array( 'status' => $live_status ) ) ) ) {
 					++$count_errors;
