@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile
 /**
  * Regression check for the scheduled-downgrade cron's correlation guard.
  *

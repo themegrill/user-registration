@@ -42,6 +42,9 @@
     "security": [
       "includes/admin/settings/class-ur-settings-security.php",
       "includes/class-ur-install.php"
+    ],
+    "membership": [
+      "modules/membership/**"
     ]
   }
 }

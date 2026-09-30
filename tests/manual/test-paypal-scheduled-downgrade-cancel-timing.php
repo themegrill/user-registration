@@ -1,4 +1,5 @@
 <?php
+// phpcs:ignoreFile
 /**
  * Regression check for scheduled-downgrade double billing.
  *
