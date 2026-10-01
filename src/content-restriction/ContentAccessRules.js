@@ -447,7 +447,9 @@ const ContentAccessRules = () => {
 												"https://wpuserregistration.com/upgrade/",
 												{
 													source: "ur-membership-create",
-													medium: "upgrade-link"
+													medium: "upgrade-link",
+													content:
+														"content-restriction-upgrade"
 												}
 											)}
 										>
