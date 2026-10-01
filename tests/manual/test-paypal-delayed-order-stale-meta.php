@@ -205,6 +205,7 @@ $stale_delayed_meta = $wpdb->get_var(
 check( null === $stale_delayed_meta, 'stale order: superseded delayed_until removed instead of retried forever' );
 
 // --- Cleanup ---
+require_once ABSPATH . 'wp-admin/includes/user.php'; // wp_delete_user() isn't autoloaded by a bare wp-load.php bootstrap.
 foreach ( array( $matching, $stale ) as $fixture ) {
 	$wpdb->delete( $subscriptions_table, array( 'ID' => $fixture['subscription_id'] ) );
 	$wpdb->delete( "{$wpdb->prefix}ur_membership_orders", array( 'ID' => $fixture['order_id'] ) );
