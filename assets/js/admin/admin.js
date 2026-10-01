@@ -2243,4 +2243,31 @@ jQuery(function ($) {
 		"href",
 		"admin.php?page=user-registration"
 	);
+
+	$(document).on(
+		"click",
+		".user-registration-password-input-wrapper .ur-toggle-password, .user-registration-password-input-wrapper .user-registration-password-toggle",
+		function (e) {
+			e.preventDefault();
+			var $btn = $(this);
+			var $input = $btn.siblings("input");
+			if (!$input.length) {
+				$input = $btn.closest(".user-registration-password-input-wrapper").find("input");
+			}
+		if (!$input.length) {
+			return;
+		}
+
+		var isPassword = $input.attr("type") === "password";
+		$input.attr("type", isPassword ? "text" : "password");
+
+		var $icon = $btn.find(".dashicons");
+		if (isPassword) {
+			$icon.removeClass("dashicons-visibility").addClass("dashicons-hidden");
+			$btn.attr("aria-label", $btn.data("hide-text") || "Hide password");
+		} else {
+			$icon.removeClass("dashicons-hidden").addClass("dashicons-visibility");
+			$btn.attr("aria-label", $btn.data("show-text") || "Show password");
+		}
+	});
 });

@@ -150,6 +150,24 @@ export type NewUser = { username: string; email: string; password: string };
  * for payment.
  */
 export async function registerOn(page: Page, url: string, user?: Partial<NewUser>): Promise<NewUser> {
+  const { account } = await openRegistrationForm(page, url, user);
+  await submitRegistration(page);
+  return account;
+}
+
+/**
+ * Open a registration page and fill it, stopping short of the submit.
+ *
+ * Split out of `registerOn` so a spec that has to touch the form between
+ * filling and submitting — seeding a captcha token, say — does not have to
+ * restate which optional fields this product's forms can carry. The two are
+ * the same code path; `registerOn` is this plus the click.
+ */
+export async function openRegistrationForm(
+  page: Page,
+  url: string,
+  user?: Partial<NewUser>,
+): Promise<{ account: NewUser; form: ReturnType<Page["locator"]> }> {
   const account: NewUser = {
     username: user?.username ?? uniqueUsername(),
     email: user?.email ?? uniqueEmail(),
@@ -174,8 +192,13 @@ export async function registerOn(page: Page, url: string, user?: Partial<NewUser
   const privacy = form.locator("input[id^='privacy_policy']");
   if (await privacy.count()) await privacy.first().check();
 
+  return { account, form };
+}
+
+/** Submit the registration form opened by `openRegistrationForm`. */
+export async function submitRegistration(page: Page) {
+  const form = page.locator("div.ur-frontend-form form.register");
   await form.locator("button[type=submit], input[type=submit]").first().click();
-  return account;
 }
 
 /**

@@ -57,7 +57,7 @@ if ( ! function_exists( 'ur_utm_url' ) ) {
 	 *     @type string $source   Required. Granular UI location (lowercase-hyphenated).
 	 *     @type string $medium   Required. One of ur_utm_allowed_mediums(); falls back to button.
 	 *     @type string $campaign Optional. Defaults to UR()->utm_campaign.
-	 *     @type string $content  Optional. What was clicked (addon/feature slug, etc.).
+	 *     @type string $content  Required. What was clicked (addon/feature/button slug).
 	 * }
 	 * @return string
 	 */
@@ -88,13 +88,21 @@ if ( ! function_exists( 'ur_utm_url' ) ) {
 		}
 		$campaign = sanitize_title( $campaign );
 
+		$content = sanitize_title( (string) $args['content'] );
+		if ( '' === $content ) {
+			_doing_it_wrong(
+				__FUNCTION__,
+				esc_html__( 'Outbound marketing links must pass a non-empty content argument for utm_content attribution.', 'user-registration' ),
+				defined( 'UR_VERSION' ) ? UR_VERSION : ''
+			);
+		}
+
 		$query = array(
 			'utm_source'   => $source,
 			'utm_medium'   => $medium,
 			'utm_campaign' => $campaign,
 		);
 
-		$content = sanitize_title( (string) $args['content'] );
 		if ( '' !== $content ) {
 			$query['utm_content'] = $content;
 		}
@@ -527,7 +535,14 @@ function ur_render_premium_feature_gate_template( $args = array() ) {
 	}
 
 	if ( empty( $args['upgrade_url'] ) ) {
-		$args['upgrade_url'] = ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => $args['utm_source'], 'medium' => 'upgrade-link' ) );
+		$args['upgrade_url'] = ur_utm_url(
+			'https://wpuserregistration.com/upgrade/',
+			array(
+				'source'  => $args['utm_source'],
+				'medium'  => 'upgrade-link',
+				'content' => ! empty( $args['template_id'] ) ? $args['template_id'] : 'premium-feature-gate',
+			)
+		);
 	}
 
 	static $rendered_templates = array();
@@ -568,7 +583,14 @@ function ur_render_premium_feature_gate( $args = array() ) {
 		return;
 	}
 
-	$args['upgrade_url'] = ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => $args['utm_source'], 'medium' => 'upgrade-link' ) );
+	$args['upgrade_url'] = ur_utm_url(
+		'https://wpuserregistration.com/upgrade/',
+		array(
+			'source'  => $args['utm_source'],
+			'medium'  => 'upgrade-link',
+			'content' => ! empty( $args['template_id'] ) ? $args['template_id'] : 'premium-feature-gate',
+		)
+	);
 
 	if ( ! empty( $args['render_template'] ) ) {
 		ur_render_premium_feature_gate_template( $args );
@@ -2341,9 +2363,10 @@ function ur_get_recaptcha_node( $context, $recaptcha_enabled = false, $form_id =
 		$recaptcha_site_secret = get_option( 'user_registration_captcha_setting_recaptcha_site_secret_hcaptcha' );
 		$enqueue_script        = 'ur-recaptcha-hcaptcha';
 	} elseif ( 'cloudflare' === $recaptcha_type ) {
+		// Turnstile rejects anything but dark|light|auto, so an unsaved theme must not reach it as false.
 		$recaptcha_site_key    = get_option( 'user_registration_captcha_setting_recaptcha_site_key_cloudflare' );
 		$recaptcha_site_secret = get_option( 'user_registration_captcha_setting_recaptcha_site_secret_cloudflare' );
-		$theme_mod             = get_option( 'user_registration_captcha_setting_recaptcha_cloudflare_theme' );
+		$theme_mod             = get_option( 'user_registration_captcha_setting_recaptcha_cloudflare_theme', 'light' );
 		$enqueue_script        = 'ur-recaptcha-cloudflare';
 	}
 	static $rc_counter = 0;
@@ -5725,17 +5748,27 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 					$data   = json_decode( wp_remote_retrieve_body( $data ) );
 
 					if ( empty( $data->success ) ) {
+						$error_codes  = isset( $data->{'error-codes'} ) ? (array) $data->{'error-codes'} : array();
+						$logged_codes = empty( $error_codes ) ? 'no error code returned' : implode( ', ', $error_codes );
+
 						$logger->error(
-							sprintf( '[Form #%d] Cloudflare Turnstile verification failed. Submission could not be verified.', $form_id ) . "\n  ",
+							sprintf( '[Form #%d] Cloudflare Turnstile verification failed (%s). Submission could not be verified.', $form_id, $logged_codes ) . "\n  ",
 							array(
 								'source'  => 'form-submission',
 								'form_id' => $form_id,
 							)
 						);
 
+						// A token that is merely spent or expired is the visitor's to retry, not the administrator's to fix.
+						if ( in_array( 'timeout-or-duplicate', $error_codes, true ) ) {
+							$message = __( 'Your captcha has expired. Please solve it again and resubmit the form.', 'user-registration' );
+						} else {
+							$message = __( 'Error on Cloudflare Turnstile. Contact your site administrator.', 'user-registration' );
+						}
+
 						wp_send_json_error(
 							array(
-								'message' => __( 'Error on Cloudflare Turnstile. Contact your site administrator.', 'user-registration' ),
+								'message' => $message,
 							)
 						);
 					}
@@ -10631,6 +10664,9 @@ if ( ! function_exists( 'ur_sanitize_value_by_type' ) ) {
 				break;
 			case 'tinymce':
 				$value = wpautop( $raw_value );
+				break;
+			case 'password':
+				$value = is_string( $raw_value ) ? trim( $raw_value ) : '';
 				break;
 
 			default:
