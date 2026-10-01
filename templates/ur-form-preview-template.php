@@ -1,4 +1,10 @@
 <?php
+/**
+ * User registration form preview template.
+ *
+ * @package User registration form preview template.
+ */
+
 defined( 'ABSPATH' ) || exit;
 ?>
 <!DOCTYPE html>
