@@ -211,7 +211,7 @@ class SubscriptionService {
 	 * @return array|bool[]|void
 	 */
 	public function cancel_subscription( $order, $subscription, $force_cancel = false ) {
-		switch ( $order['payment_method'] ) {
+		switch ( $order['payment_method'] ?? '' ) {
 			case 'paypal':
 				$paypal_service = new NewPaypalService();
 
