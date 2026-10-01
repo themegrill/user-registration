@@ -16,14 +16,33 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 	class UR_SDK_Deactivation_Feedback {
 
 		/**
+		 * ThemeGrill SDK product key (folder slug with underscores).
+		 *
+		 * Free folder `user-registration` → `user_registration`.
+		 * Pro folder `user-registration-pro` → `user_registration_pro`.
+		 *
+		 * @var string
+		 */
+		private $product_key;
+
+		/**
+		 * Plugin directory slug (folder name under wp-content/plugins).
+		 *
+		 * @var string
+		 */
+		private $plugin_slug;
+
+		/**
 		 * Registers filters to customize the ThemeGrill SDK deactivation popup for User Registration.
 		 */
 		public function __construct() {
-			add_filter( 'user_registration_feedback_deactivate_button_submit', array( $this, 'button_submit_label' ) );
-			add_filter( 'user_registration_feedback_deactivate_button_cancel', array( $this, 'button_cancel_label' ) );
-			add_filter( 'user_registration_feedback_deactivate_options', array( $this, 'deactivate_options' ) );
-			add_filter( 'user_registration_feedback_deactivate_options_skip_randomize', '__return_true' );
-			//          add_filter( 'themegrill_sdk_labels', array( $this, 'deactivate_options_labels' ), 999, 1 );
+			$this->plugin_slug = defined( 'UR_PLUGIN_BASENAME' ) ? dirname( UR_PLUGIN_BASENAME ) : 'user-registration';
+			$this->product_key = str_replace( '-', '_', strtolower( $this->plugin_slug ) );
+
+			add_filter( $this->product_key . '_feedback_deactivate_button_submit', array( $this, 'button_submit_label' ) );
+			add_filter( $this->product_key . '_feedback_deactivate_button_cancel', array( $this, 'button_cancel_label' ) );
+			add_filter( $this->product_key . '_feedback_deactivate_options', array( $this, 'deactivate_options' ) );
+			add_filter( $this->product_key . '_feedback_deactivate_options_skip_randomize', '__return_true' );
 			add_action( 'init', array( $this, 'patch_sdk_labels_after_init' ), 15 );
 			add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_popup_assets' ), 20 );
 		}
@@ -133,10 +152,11 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 				'urm-deactivation-popup',
 				'urmDeactivationPopup',
 				array(
-					'pluginUrl'     => ur()->plugin_url() . '/',
-					'logoUrl'       => ur()->plugin_url() . '/assets/images/logo.png',
-					'quickFeedback' => __( 'Quick Feedback', 'user-registration' ),
-					'disclaimer'    => __( '* By submitting this form, you will send us non-sensitive diagnostic data, site URL and email.', 'user-registration' ),
+					'pluginUrl'         => ur()->plugin_url() . '/',
+					'logoUrl'           => ur()->plugin_url() . '/assets/images/logo.png',
+					'quickFeedback'     => __( 'Quick Feedback', 'user-registration' ),
+					'disclaimer'        => __( '* By submitting this form, you will send us non-sensitive diagnostic data, site URL and email.', 'user-registration' ),
+					'popupId'          => $this->plugin_slug . '_uninstall_feedback_popup',
 				)
 			);
 		}
@@ -170,10 +190,8 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 				),
 			);
 			if ( isset( \ThemeGrillSDK\Loader::$labels['uninstall']['options'] ) && is_array( \ThemeGrillSDK\Loader::$labels['uninstall']['options'] ) ) {
-				\ThemeGrillSDK\Loader::$labels['uninstall']['options'] = array_merge(
-					\ThemeGrillSDK\Loader::$labels['uninstall']['options'],
-					$our_options
-				);
+				// Keep only our option keys so Pro does not keep default SDK reasons (e.g. temporary deactivation).
+				\ThemeGrillSDK\Loader::$labels['uninstall']['options'] = $our_options;
 			}
 		}
 	}
