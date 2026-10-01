@@ -1862,37 +1862,6 @@ body {
 							}
 						}
 
-						.urm-license-expiry--expired,
-						.urm-license-expiry--expiring {
-							display: flex;
-							flex-wrap: wrap;
-							align-items: center;
-							gap: 8px;
-						}
-
-						.urm-license-badge {
-							display: inline-block;
-							padding: 2px 8px;
-							border-radius: 3px;
-							font-size: 12px;
-							font-weight: 600;
-							line-height: 1.5;
-						}
-
-						.urm-license-badge--expired {
-							background: #fcf0f1;
-							color: #d63638;
-						}
-
-						.urm-license-badge--expiring {
-							background: #fcf9e8;
-							color: #996800;
-						}
-
-						.urm-license-renew-link {
-							font-weight: 600;
-						}
-
 						.user_registration_send_email_test {
 							color: $primary_color;
 							border-color: $primary_color;

@@ -65,23 +65,6 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 		}
 
 		/**
-		 * Mask a license key for display (••••ABCD).
-		 *
-		 * @param string $license_key Raw key.
-		 * @return string
-		 */
-		public static function mask_license_key( $license_key ) {
-			$license_key = (string) $license_key;
-			$length      = strlen( $license_key );
-
-			if ( $length <= 4 ) {
-				return str_repeat( '•', $length );
-			}
-
-			return str_repeat( '•', $length - 4 ) . substr( $license_key, -4 );
-		}
-
-		/**
 		 * Build license settings UI.
 		 *
 		 * @return array
@@ -127,7 +110,7 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 				$settings['sections']['license_options_settings']['before_desc'] = __( 'You\'re using the Pro version, but your license needs to be activated.<br>Enter your license key below to unlock Pro features and receive updates.', 'user-registration' );
 			}
 
-			// When licensed: show masked key, change-key field, deactivate (confirmed), and status panel.
+			// Replace license input box and display deactivate license button when license is activated.
 			if ( $license_key ) {
 				$deactivate_url = wp_nonce_url(
 					remove_query_arg(
@@ -138,34 +121,6 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 				);
 
 				$settings['sections']['license_options_settings']['settings'] = array(
-					array(
-						'title'    => __( 'Active License Key', 'user-registration' ),
-						'desc'     => __( 'Currently activated license key (masked).', 'user-registration' ),
-						'desc_tip' => true,
-						'type'     => 'text',
-						'id'       => 'user-registration_license_key_masked',
-						'default'  => self::mask_license_key( $license_key ),
-						'css'      => '',
-						'custom_attributes' => array(
-							'readonly' => 'readonly',
-							'disabled' => 'disabled',
-						),
-					),
-					array(
-						'title'       => __( 'Change License Key', 'user-registration' ),
-						'desc'        => __( 'Enter a new key and click Activate License to replace the current one without deactivating first.', 'user-registration' ),
-						'id'          => 'user-registration_license_key_replace',
-						'default'     => '',
-						'type'        => 'text',
-						'css'         => '',
-						'desc_tip'    => true,
-						'placeholder' => __( 'Enter a new license key', 'user-registration' ),
-					),
-					array(
-						'id'     => 'ur_license_nonce',
-						'action' => '_ur_license_nonce',
-						'type'   => 'nonce',
-					),
 					array(
 						'title'    => __( 'Deactivate License', 'user-registration' ),
 						'desc'     => '',
@@ -186,7 +141,7 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 						'id'   => 'user_registration_license_section_settings',
 					),
 				);
-				// Keep save button so a replacement key can be activated without deactivating first.
+				$GLOBALS['hide_save_button'] = true;
 			}
 			return $settings;
 		}
@@ -195,7 +150,7 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 		}
 
 		/**
-		 * Render plan / expiry / activations UI.
+		 * Render plan / expiry UI.
 		 *
 		 * @param string $settings Existing HTML.
 		 * @param array  $value    Field config.
@@ -207,10 +162,6 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 			$expires_raw  = ( is_object( $license_data ) && ! empty( $license_data->expires ) ) ? $license_data->expires : '';
 
 			$license_date_formatted = '';
-			$expiry_state_class     = '';
-			$expiry_badge           = '';
-			$renew_html             = '';
-
 			if ( 'lifetime' === $expires_raw ) {
 				$license_date_formatted = __( 'Lifetime', 'user-registration' );
 			} elseif ( '' !== $expires_raw ) {
@@ -219,51 +170,8 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 					$expiry   = new DateTime( $expires_raw, new DateTimeZone( 'UTC' ) );
 					$expiry->setTimezone( $timezone );
 					$license_date_formatted = $expiry->format( 'jS F Y g:i A' );
-
-					$now  = new DateTime( 'now', $timezone );
-					$soon = clone $now;
-					$soon->modify( '+30 days' );
-
-					if ( $expiry < $now ) {
-						$expiry_state_class = 'urm-license-expiry--expired';
-						$expiry_badge       = '<span class="urm-license-badge urm-license-badge--expired">' . esc_html__( 'Expired', 'user-registration' ) . '</span>';
-					} elseif ( $expiry <= $soon ) {
-						$expiry_state_class = 'urm-license-expiry--expiring';
-						$expiry_badge       = '<span class="urm-license-badge urm-license-badge--expiring">' . esc_html__( 'Expiring soon', 'user-registration' ) . '</span>';
-					}
-
-					if ( $expiry < $now || $expiry <= $soon ) {
-						$renew_url  = ur_utm_url(
-							'https://wpuserregistration.com/pricing/',
-							array(
-								'source' => 'ur-license-setting',
-								'medium' => 'renew-link',
-							)
-						);
-						$renew_html = ' <a class="urm-license-renew-link" href="' . esc_url( $renew_url ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'Renew license', 'user-registration' ) . '</a>';
-					}
 				} catch ( Exception $e ) {
 					$license_date_formatted = $expires_raw;
-				}
-			}
-
-			$activations_html = '';
-			if ( is_object( $license_data ) && ( isset( $license_data->site_count ) || isset( $license_data->license_limit ) ) ) {
-				$used  = isset( $license_data->site_count ) ? absint( $license_data->site_count ) : 0;
-				$limit = isset( $license_data->license_limit ) ? absint( $license_data->license_limit ) : 0;
-				if ( $limit > 0 ) {
-					$activations_html = sprintf(
-						/* translators: 1: sites used, 2: site limit */
-						__( 'Used on %1$d of %2$d sites', 'user-registration' ),
-						$used,
-						$limit
-					);
-				} elseif ( $used > 0 ) {
-					$activations_html = sprintf(
-						/* translators: %d: sites used */
-						__( 'Used on %d sites', 'user-registration' ),
-						$used
-					);
 				}
 			}
 
@@ -275,17 +183,9 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 
 			$settings .= '<div class="user-registration-global-settings">';
 			$settings .= '<label for="user-registration_license_expiry">' . esc_html__( 'License Expiry Date', 'user-registration' ) . '</label>';
-			$settings .= '<div id="user-registration_license_expiry" class="user-registration-global-settings--field ' . esc_attr( $expiry_state_class ) . '">';
-			$settings .= esc_html( $license_date_formatted ) . $expiry_badge . $renew_html;
+			$settings .= '<div id="user-registration_license_expiry" class="user-registration-global-settings--field">';
+			$settings .= esc_html( $license_date_formatted );
 			$settings .= '</div></div>';
-
-			if ( $activations_html ) {
-				$settings .= '<div class="user-registration-global-settings">';
-				$settings .= '<label for="user-registration_license_activations">' . esc_html__( 'Activations', 'user-registration' ) . '</label>';
-				$settings .= '<div id="user-registration_license_activations" class="user-registration-global-settings--field">';
-				$settings .= esc_html( $activations_html );
-				$settings .= '</div></div>';
-			}
 
 			return $settings;
 		}

@@ -159,9 +159,7 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 	private function activate_license_request() {
 		$license_key = '';
 
-		if ( ! empty( $_POST[ $this->plugin_slug . '_license_key_replace' ] ) ) {
-			$license_key = sanitize_text_field( wp_unslash( $_POST[ $this->plugin_slug . '_license_key_replace' ] ) );
-		} elseif ( ! empty( $_POST[ $this->plugin_slug . '_license_key' ] ) ) {
+		if ( ! empty( $_POST[ $this->plugin_slug . '_license_key' ] ) ) {
 			$license_key = sanitize_text_field( wp_unslash( $_POST[ $this->plugin_slug . '_license_key' ] ) );
 		}
 
