@@ -144,7 +144,7 @@ class User_Registration_Paypal_Module {
 						'default'  => $test_client_id,
 					),
 					array(
-						'type'     => 'text',
+						'type'     => 'password',
 						'title'    => __( 'Client Secret', 'user-registration' ),
 						'desc'     => __( 'Client Secret for PayPal in sandbox/test mode.', 'user-registration' ),
 						'desc_tip' => true,
@@ -160,7 +160,7 @@ class User_Registration_Paypal_Module {
 						'default'  => $live_client_id,
 					),
 					array(
-						'type'     => 'text',
+						'type'     => 'password',
 						'title'    => __( 'Client Secret', 'user-registration' ),
 						'desc'     => __( 'Your client_secret, Required for subscription related operations.', 'user-registration' ),
 						'desc_tip' => true,

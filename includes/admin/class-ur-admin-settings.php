@@ -746,21 +746,28 @@ class UR_Admin_Settings {
 							// Switch based on type.
 							switch ( $value['type'] ) {
 
-								// Standard text inputs and subtypes like 'number'.
+								// Standard text inputs and subtypes like 'number' and 'password'.
 								case 'text':
 								case 'email':
 								case 'number':
-								case 'password':
 								case 'date':
+								case 'password':
 									$option_value = self::get_option( $value['id'], $value['default'] );
+									$is_password  = 'password' === $value['type'];
 
 									$settings .= '<div class="user-registration-global-settings"' . $display_condition_attrs . $display_condition_style . '>';
 									$settings .= '<label class="ur-label" for="' . esc_attr( $value['id'] ) . '">' . esc_html( $value['title'] ) . ' ' . wp_kses_post( $tooltip_html ) . '</label>';
 									$settings .= '<div class="user-registration-global-settings--field">';
+
+									if ( $is_password ) {
+										$settings .= '<div class="user-registration-password-input-wrapper">';
+									}
+
 									$settings .= '<input
 											name="' . esc_attr( $value['id'] ) . '"
 											id="' . esc_attr( $value['id'] ) . '"
 											type="' . esc_attr( $value['type'] ) . '"
+											' . ( $is_password ? 'autocomplete="new-password"' : '' ) . '
 											style="' . esc_attr( $value['css'] ) . '"
 											value="' . esc_attr( $option_value ) . '"
 											class="' . esc_attr( $value['class'] ) . '"
@@ -768,6 +775,12 @@ class UR_Admin_Settings {
 											max="' . esc_attr( ! empty( $value['max'] ) ? $value['max'] : '' ) . '"
 											placeholder="' . esc_attr( $value['placeholder'] ) . '"
 											' . esc_attr( implode( ' ', $custom_attributes ) ) . '/>';
+
+									if ( $is_password ) {
+										$settings .= '<button type="button" class="user-registration-password-toggle ur-toggle-password" aria-label="' . esc_attr__( 'Show password', 'user-registration' ) . '" data-show-text="' . esc_attr__( 'Show password', 'user-registration' ) . '" data-hide-text="' . esc_attr__( 'Hide password', 'user-registration' ) . '"><span class="dashicons dashicons-visibility" aria-hidden="true"></span></button>';
+										$settings .= '</div>';
+									}
+
 									$settings .= wp_kses_post( $description );
 									$settings .= '</div>';
 									$settings .= '</div>';
