@@ -1912,6 +1912,45 @@
 		}
 	);
 
+	$(document).on("click", ".ur-deactivate-license-confirm", function (e) {
+		e.preventDefault();
+		var href = $(this).attr("href");
+		var i18n =
+			(user_registration_settings_params &&
+				user_registration_settings_params.i18n) ||
+			{};
+		var deleteIcon =
+			(user_registration_settings_params &&
+				user_registration_settings_params.delete_icon) ||
+			"";
+
+		if (typeof Swal === "undefined") {
+			window.location.href = href;
+			return;
+		}
+
+		Swal.fire({
+			title:
+				'<img src="' +
+				deleteIcon +
+				'" id="delete-user-icon">' +
+				(i18n.deactivate_license_title || "Deactivate License"),
+			html:
+				'<p id="html_1">' +
+				(i18n.deactivate_license_prompt || "") +
+				"</p>",
+			showCancelButton: true,
+			confirmButtonText:
+				i18n.deactivate_license_confirm || "Deactivate",
+			cancelButtonText: i18n.i18n_prompt_cancel || "Cancel",
+			allowOutsideClick: false
+		}).then(function (result) {
+			if (result.isConfirmed) {
+				window.location.href = href;
+			}
+		});
+	});
+
 	var searchParams = new URLSearchParams(window.location.search);
 
 	var license_activation_status = ur_get_cookie("urm_license_status");
