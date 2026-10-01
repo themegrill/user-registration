@@ -273,12 +273,10 @@ class UR_Shortcodes {
 
 		if ( is_user_logged_in() || $check_user_state ) {
 
-			$is_membership_module_active = ur_check_module_activation( 'membership' );
-			global $wp_query;
-			$page_id                     = $wp_query->get_queried_object_id();
-			$membership_checkout_page_id = get_option( 'user_registration_member_registration_page_id', false );
+			$is_membership_module_active    = ur_check_module_activation( 'membership' );
+			$has_membership_checkout_intent = isset( $_GET['action'] ) && isset( $_GET['membership_id'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
-			if ( $is_membership_module_active && is_user_logged_in() && $membership_checkout_page_id && $membership_checkout_page_id == $page_id ) {
+			if ( $is_membership_module_active && is_user_logged_in() && $has_membership_checkout_intent ) {
 				$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
 				do_action( 'wp_enqueue_membership_scripts' );
 				wp_enqueue_script( 'user-registration' );
