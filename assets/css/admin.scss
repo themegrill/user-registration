@@ -3791,14 +3791,22 @@ a.button.ur-smart-tags-list-button {
 					}
 
 					&#ur-view-live-button {
+						// Chrome moves onto the inner <a> so the whole visible button is clickable.
 						padding: 0;
+						border: none;
+						background: none;
+						box-shadow: none;
 
 						a {
-							display: flex;
+							display: inline-flex;
 							align-items: center;
 							justify-content: center;
-							width: 100%;
-							height: 100%;
+							min-height: 30px;
+							padding: 0 16px; // Matches WP core's .button-large padding.
+							border: 1px solid $blue-50;
+							border-radius: $border_radius_3;
+							background: $blue-50;
+							box-shadow: 0 1px 0 $blue-50;
 							color: #475bb2;
 						}
 
