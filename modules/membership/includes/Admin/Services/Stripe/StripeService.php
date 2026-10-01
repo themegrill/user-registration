@@ -2693,8 +2693,43 @@ class StripeService {
 
 		// Stop further Stripe billing when this was a recurring subscription.
 		if ( ! empty( $subscription['subscription_id'] ) ) {
-			$this->cancel_subscription( $order, $subscription );
+			// The local cancel already happened, so a Stripe failure must not 500 the webhook or abort a backfill batch.
+			try {
+				$this->cancel_subscription( $order, $subscription );
+			} catch ( \Throwable $e ) {
+				PaymentGatewayLogging::log_error(
+					'stripe',
+					'Failed to cancel Stripe subscription after refund' . "\n" . wp_json_encode(
+						array(
+							'error_code'      => 'STRIPE_REFUND_CANCELLATION_ERROR',
+							'subscription_id' => $subscription['subscription_id'],
+							'order_id'        => $order['ID'],
+							'error_message'   => $e->getMessage(),
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+			}
 		}
+	}
+
+	/**
+	 * Whether a refunded order has nothing left to revoke.
+	 *
+	 * True when the order has no subscription row to cancel, or that subscription is already canceled.
+	 *
+	 * @param array $order Order row from OrdersRepository.
+	 * @return bool
+	 */
+	private function is_refund_subscription_canceled( $order ) {
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		if ( ! $subscription_id ) {
+			return true;
+		}
+
+		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
+
+		return empty( $subscription ) || 'canceled' === ( $subscription['status'] ?? '' );
 	}
 
 	/**
@@ -3780,8 +3815,9 @@ class StripeService {
 
 			$is_fully_refunded = ! empty( $charge->refunded );
 
-			// A partial refund may already have marked the order refunded; the final full refund must still revoke access.
-			if ( 'refunded' === $order['status'] && ! $is_fully_refunded ) {
+			// A partial refund may already have marked the order refunded, so the final full refund must still revoke access, but a fully handled order is a no-op on later runs.
+			$is_already_handled = 'refunded' === $order['status'] && ( ! $is_fully_refunded || $this->is_refund_subscription_canceled( $order ) );
+			if ( $is_already_handled ) {
 				$logger->info(
 					sprintf( '[Backfill][Stripe][Refunds] Order %d already refunded — skipping.', $order['ID'] ),
 					array( 'source' => 'urm-missed-payment-backfill' )

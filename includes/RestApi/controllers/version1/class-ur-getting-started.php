@@ -1757,12 +1757,22 @@ class UR_Getting_Started {
 						continue;
 					}
 
-					$webhook_result = \WPEverest\URMembership\Admin\Services\Stripe\StripeService::create_webhook( $mode );
-					if ( ! empty( $webhook_result['success'] ) && class_exists( '\WPEverest\URMembership\Admin\Services\PaymentGatewayLogging' ) ) {
+					// A webhook can fail on an unreachable site or a bad key for one mode, and that must not fail the wizard save.
+					try {
+						$webhook_result = \WPEverest\URMembership\Admin\Services\Stripe\StripeService::create_webhook( $mode );
+					} catch ( \Throwable $e ) {
+						$webhook_result = array(
+							'success' => false,
+							'message' => $e->getMessage(),
+						);
+					}
+
+					if ( class_exists( '\WPEverest\URMembership\Admin\Services\PaymentGatewayLogging' ) ) {
+						$webhook_created = ! empty( $webhook_result['success'] );
 						\WPEverest\URMembership\Admin\Services\PaymentGatewayLogging::log_general(
 							'stripe',
-							'Webhook created or verified for ' . $mode . ' mode (setup wizard)',
-							'notice',
+							$webhook_created ? 'Webhook created or verified for ' . $mode . ' mode (setup wizard)' : 'Webhook setup failed for ' . $mode . ' mode (setup wizard): ' . ( $webhook_result['message'] ?? 'unknown error' ),
+							$webhook_created ? 'notice' : 'error',
 							array(
 								'event_type' => 'webhook_setup_wizard',
 								'mode'       => $mode,
