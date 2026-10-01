@@ -3791,17 +3791,9 @@ a.button.ur-smart-tags-list-button {
 					}
 
 					&#ur-view-live-button {
-						a {
-							display: flex;
-							align-items: center;
-							justify-content: center;
-							height: 100%;
-							margin: 0 -16px; // Extends the clickable area into the button's own 16px side padding.
-							padding: 0 16px;
-							color: #475bb2;
-						}
+						color: #475bb2;
 
-						a::after {
+						&::after {
 							background-image: url(../images/icons/external-link.svg);
 						}
 					}
