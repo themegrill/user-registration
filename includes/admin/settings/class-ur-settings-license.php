@@ -131,7 +131,7 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 			if ( $license_key ) {
 				$deactivate_url = wp_nonce_url(
 					remove_query_arg(
-						array( 'deactivated_license', 'activated_license', 'refreshed_license' ),
+						array( 'deactivated_license', 'activated_license' ),
 						add_query_arg( 'user-registration_deactivate_license', 1 )
 					),
 					'_ur_license_nonce'
@@ -175,10 +175,9 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 						'css'      => '',
 						'buttons'  => array(
 							array(
-								'title'   => __( 'Deactivate License', 'user-registration' ),
-								'href'    => $deactivate_url,
-								'class'   => 'ur-button ur-button--destructive user_registration-deactivate-license-key ur-deactivate-license-confirm',
-								'onclick' => 'return confirm( ' . wp_json_encode( self::get_deactivate_confirm_message() ) . ' );',
+								'title' => __( 'Deactivate License', 'user-registration' ),
+								'href'  => $deactivate_url,
+								'class' => 'ur-button user_registration-deactivate-license-key ur-deactivate-license-confirm',
 							),
 						),
 					),
@@ -196,7 +195,7 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 		}
 
 		/**
-		 * Render plan / expiry / activations / re-check UI.
+		 * Render plan / expiry / activations UI.
 		 *
 		 * @param string $settings Existing HTML.
 		 * @param array  $value    Field config.
@@ -268,14 +267,6 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 				}
 			}
 
-			$refresh_url = wp_nonce_url(
-				remove_query_arg(
-					array( 'deactivated_license', 'activated_license', 'refreshed_license' ),
-					add_query_arg( 'user-registration_refresh_license', 1 )
-				),
-				'_ur_license_nonce'
-			);
-
 			$settings .= '<div class="user-registration-global-settings">';
 			$settings .= '<label for="user-registration_license_plan">' . esc_html__( 'License Plan', 'user-registration' ) . '</label>';
 			$settings .= '<div id="user-registration_license_plan" class="user-registration-global-settings--field">';
@@ -295,13 +286,6 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 				$settings .= esc_html( $activations_html );
 				$settings .= '</div></div>';
 			}
-
-			$settings .= '<div class="user-registration-global-settings">';
-			$settings .= '<label for="user-registration_license_refresh">' . esc_html__( 'License Status', 'user-registration' ) . '</label>';
-			$settings .= '<div id="user-registration_license_refresh" class="user-registration-global-settings--field">';
-			$settings .= '<a href="' . esc_url( $refresh_url ) . '" class="button ur-button">' . esc_html__( 'Re-check license', 'user-registration' ) . '</a>';
-			$settings .= '<p class="description">' . esc_html__( 'Refresh plan and expiry from the licensing server. Use after renewing or upgrading.', 'user-registration' ) . '</p>';
-			$settings .= '</div></div>';
 
 			return $settings;
 		}

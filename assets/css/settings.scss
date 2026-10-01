@@ -1848,23 +1848,16 @@ body {
 							width: fit-content;
 							text-align: center;
 
-							&.ur-button--destructive,
 							&.user_registration-deactivate-license-key {
-								background: #d63638 !important;
-								border-color: #d63638 !important;
-								color: #fff !important;
+								background: #f25656 !important;
 								border-radius: 3px;
 								font-size: 13px;
 								line-height: 2.15;
 								min-height: 30px;
 
-								&:hover,
 								&:focus {
-									background: #b32d2e !important;
-									border-color: #b32d2e !important;
-									color: #fff !important;
 									outline: none;
-									box-shadow: 0 0 0 1px #fff, 0 0 0 3px #d63638;
+									box-shadow: none;
 								}
 							}
 						}

@@ -88,6 +88,7 @@ class UR_Admin_Settings {
 				'iris',
 				'tooltipster',
 				'ur-snackbar',
+				'sweetalert2',
 			),
 			UR_VERSION,
 			true
@@ -258,6 +259,9 @@ class UR_Admin_Settings {
 					'pro_install_popup_title'            => esc_html__( 'Install User Registration & Membership Pro to Unlock All Features', 'user-registration' ),
 					'will_install_and_activate_pro_text' => esc_html__( 'This will automatically install and activate the User Registration & Membership Pro Plugin for you.', 'user-registration' ),
 					'installing_plugin_text'             => esc_html__( 'Installing Plugin', 'user-registration' ),
+					'deactivate_license_title'           => esc_html__( 'Deactivate License', 'user-registration' ),
+					'deactivate_license_prompt'          => esc_html__( 'Deactivate this license? This site will stop receiving updates and support until a license is activated again.', 'user-registration' ),
+					'deactivate_license_confirm'         => esc_html__( 'Deactivate License', 'user-registration' ),
 					'invalid_stripe_test_publishable_key' => esc_html__( 'Invalid Stripe test publishable key. It must start with pk_test_.', 'user-registration' ),
 					'invalid_stripe_live_publishable_key' => esc_html__( 'Invalid Stripe live publishable key. It must start with pk_live_.', 'user-registration' ),
 					'pro_activated_success_title'        => esc_html__( 'Success!', 'user-registration' ),
