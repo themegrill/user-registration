@@ -4182,10 +4182,13 @@ if ( ! function_exists( 'ur_get_license_plan' ) ) {
 				if ( ! empty( $license_data->item_name ) ) {
 					$license_data->item_plan = strtolower( str_replace( 'LifeTime', '', str_replace( 'User Registration', '', $license_data->item_name ) ) );
 					set_transient( 'ur_pro_license_plan', $license_data, WEEK_IN_SECONDS );
+				} else {
+					// Cache failed/empty lookups briefly so every admin page load does not hit the API.
+					set_transient( 'ur_pro_license_plan', is_object( $license_data ) ? $license_data : (object) array(), HOUR_IN_SECONDS );
 				}
 			}
 
-			return isset( $license_data ) ? $license_data : false;
+			return ! empty( $license_data ) ? $license_data : false;
 		}
 
 		return false;

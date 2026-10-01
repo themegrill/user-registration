@@ -131,24 +131,28 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 		}
 
 		if ( isset( $_POST['ur_license_nonce'] ) ) {
-			if ( ! wp_verify_nonce( $_POST['ur_license_nonce'], '_ur_license_nonce' ) ) {
+			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['ur_license_nonce'] ) ), '_ur_license_nonce' ) ) {
 				return;
 			}
 
 			$this->activate_license_request();
 		}
 		if ( isset( $_GET['_wpnonce'] ) ) {
-			if ( ! wp_verify_nonce( $_GET['_wpnonce'], '_ur_license_nonce' ) ) {
+			if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), '_ur_license_nonce' ) ) {
 				return;
 			}
-			if ( ! empty( $_GET[ $this->plugin_slug . '_deactivate_license' ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			if ( ! empty( $_GET[ $this->plugin_slug . '_deactivate_license' ] ) ) {
 				$this->deactivate_license_request();
-			} elseif ( ! empty( $_GET[ 'dismiss-' . sanitize_title( $this->plugin_slug ) ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			} elseif ( ! empty( $_GET[ $this->plugin_slug . '_refresh_license' ] ) || ! empty( $_GET['user-registration_refresh_license'] ) ) {
+				$this->refresh_license_request();
+			} elseif ( ! empty( $_GET[ 'dismiss-' . sanitize_title( $this->plugin_slug ) ] ) ) {
 				update_option( $this->plugin_slug . '_hide_key_notice', 1 );
-			} elseif ( ! empty( $_GET['activated_license'] ) && $_GET['activated_license'] === $this->plugin_slug ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			} elseif ( ! empty( $_GET['activated_license'] ) && $_GET['activated_license'] === $this->plugin_slug ) {
 				$this->add_notice( array( $this, 'activated_key_notice' ) );
-			} elseif ( ! empty( $_GET['deactivated_license'] ) && $_GET['deactivated_license'] === $this->plugin_slug ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			} elseif ( ! empty( $_GET['deactivated_license'] ) && $_GET['deactivated_license'] === $this->plugin_slug ) {
 				$this->add_notice( array( $this, 'deactivated_key_notice' ) );
+			} elseif ( ! empty( $_GET['refreshed_license'] ) && $_GET['refreshed_license'] === $this->plugin_slug ) {
+				$this->add_notice( array( $this, 'refreshed_key_notice' ) );
 			}
 		}
 	}
@@ -157,18 +161,39 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 	 * Activate a license request.
 	 */
 	private function activate_license_request() {
-		$license_key = sanitize_text_field( $_POST[ $this->plugin_slug . '_license_key' ] ); // phpcs:ignore
+		$license_key = '';
+
+		if ( ! empty( $_POST[ $this->plugin_slug . '_license_key_replace' ] ) ) {
+			$license_key = sanitize_text_field( wp_unslash( $_POST[ $this->plugin_slug . '_license_key_replace' ] ) );
+		} elseif ( ! empty( $_POST[ $this->plugin_slug . '_license_key' ] ) ) {
+			$license_key = sanitize_text_field( wp_unslash( $_POST[ $this->plugin_slug . '_license_key' ] ) );
+		}
 
 		if ( $this->activate_license( $license_key ) ) {
 			if ( ! is_plugin_active( 'user-registration-pro/user-registration.php' ) ) {
 				setcookie( 'urm_license_status', 'license_activated', time() + 300, '/', '', is_ssl(), false );
 			}
-			wp_redirect( remove_query_arg( array( 'deactivated_license', $this->plugin_slug . '_deactivate_license' ), add_query_arg( 'activated_license', $this->plugin_slug ) ) );
+			wp_redirect( remove_query_arg( array( 'deactivated_license', 'refreshed_license', $this->plugin_slug . '_deactivate_license', $this->plugin_slug . '_refresh_license', 'user-registration_refresh_license' ), add_query_arg( 'activated_license', $this->plugin_slug ) ) );
 			exit;
 		} else {
-			wp_redirect( remove_query_arg( array( 'activated_license', 'deactivated_license', $this->plugin_slug . '_deactivate_license' ) ) );
+			wp_redirect( remove_query_arg( array( 'activated_license', 'deactivated_license', 'refreshed_license', $this->plugin_slug . '_deactivate_license', $this->plugin_slug . '_refresh_license', 'user-registration_refresh_license' ) ) );
 			exit;
 		}
+	}
+
+	/**
+	 * Bust license plan cache and re-fetch from the API.
+	 */
+	private function refresh_license_request() {
+		delete_transient( 'ur_pro_license_plan' );
+		ur_get_license_plan();
+		wp_safe_redirect(
+			remove_query_arg(
+				array( 'activated_license', 'deactivated_license', $this->plugin_slug . '_deactivate_license', $this->plugin_slug . '_refresh_license', 'user-registration_refresh_license' ),
+				add_query_arg( 'refreshed_license', $this->plugin_slug )
+			)
+		);
+		exit;
 	}
 
 	/**
@@ -327,7 +352,17 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 		if ( ! $this->api_key ) {
 			$new_actions['activate_license_settings'] = '<a href="' . esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=license' ) ) . '">' . __( 'Activate License', 'user-registration' ) . '</a>';
 		} else {
-			$new_actions['deactivate_license'] = '<a href="' . wp_nonce_url( remove_query_arg( array( 'deactivated_license', 'activated_license' ), add_query_arg( $this->plugin_slug . '_deactivate_license', 1 ) ), '_ur_license_nonce' ) . '" class="deactivate-license" style="color: #a00;" title="' . esc_attr( __( 'Deactivate License Key', 'user-registration' ) ) . '">' . __( 'Deactivate License', 'user-registration' ) . '</a>';
+			$confirm_message = class_exists( 'UR_Settings_License' )
+				? UR_Settings_License::get_deactivate_confirm_message()
+				: __( 'Deactivate this license? This site will stop receiving updates and support until a license is activated again.', 'user-registration' );
+
+			$new_actions['deactivate_license'] = sprintf(
+				'<a href="%1$s" class="deactivate-license delete ur-deactivate-license-confirm" onclick="%2$s" title="%3$s">%4$s</a>',
+				esc_url( wp_nonce_url( remove_query_arg( array( 'deactivated_license', 'activated_license', 'refreshed_license' ), add_query_arg( $this->plugin_slug . '_deactivate_license', 1 ) ), '_ur_license_nonce' ) ),
+				esc_attr( 'return confirm( ' . wp_json_encode( $confirm_message ) . ' );' ),
+				esc_attr__( 'Deactivate License Key', 'user-registration' ),
+				esc_html__( 'Deactivate License', 'user-registration' )
+			);
 		}
 
 		return array_merge( $actions, $new_actions );
@@ -414,6 +449,7 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 
 					update_option( $this->plugin_slug . '_license_key', $this->api_key );
 					delete_option( $this->plugin_slug . '_errors' );
+					delete_transient( 'ur_pro_license_plan' );
 
 					$license_data = json_decode(
 						UR_Updater_Key_API::check(
@@ -484,6 +520,13 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 	 */
 	public function deactivated_key_notice() {
 		include __DIR__ . '/admin/notifications/views/html-notice-key-deactivated.php';
+	}
+
+	/**
+	 * License refresh success notice.
+	 */
+	public function refreshed_key_notice() {
+		echo '<div class="updated notice is-dismissible"><p>' . esc_html__( 'License status refreshed.', 'user-registration' ) . '</p></div>';
 	}
 
 	/**

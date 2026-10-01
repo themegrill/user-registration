@@ -1222,9 +1222,11 @@ class UR_Admin_Settings {
 
 									if ( isset( $value['buttons'] ) && is_array( $value['buttons'] ) ) {
 										foreach ( $value['buttons'] as $button ) {
-											$settings .= '<a
+											$style_attr   = ! empty( $value['css'] ) ? ' style="' . esc_attr( $value['css'] ) . '"' : '';
+											$onclick_attr = ! empty( $button['onclick'] ) ? ' onclick="' . esc_attr( $button['onclick'] ) . '"' : '';
+											$settings    .= '<a
 														href="' . esc_url( $button['href'] ) . '"
-														class="button ' . esc_attr( $button['class'] ) . '" style="' . esc_attr( $value['css'] ) . '">' . esc_html( $button['title'] ) . '</a>';
+														class="button ' . esc_attr( $button['class'] ) . '"' . $style_attr . $onclick_attr . '>' . esc_html( $button['title'] ) . '</a>';
 										}
 									}
 

@@ -1848,18 +1848,56 @@ body {
 							width: fit-content;
 							text-align: center;
 
+							&.ur-button--destructive,
 							&.user_registration-deactivate-license-key {
-								background: #f25656 !important;
+								background: #d63638 !important;
+								border-color: #d63638 !important;
+								color: #fff !important;
 								border-radius: 3px;
 								font-size: 13px;
 								line-height: 2.15;
 								min-height: 30px;
 
+								&:hover,
 								&:focus {
+									background: #b32d2e !important;
+									border-color: #b32d2e !important;
+									color: #fff !important;
 									outline: none;
-									box-shadow: none;
+									box-shadow: 0 0 0 1px #fff, 0 0 0 3px #d63638;
 								}
 							}
+						}
+
+						.urm-license-expiry--expired,
+						.urm-license-expiry--expiring {
+							display: flex;
+							flex-wrap: wrap;
+							align-items: center;
+							gap: 8px;
+						}
+
+						.urm-license-badge {
+							display: inline-block;
+							padding: 2px 8px;
+							border-radius: 3px;
+							font-size: 12px;
+							font-weight: 600;
+							line-height: 1.5;
+						}
+
+						.urm-license-badge--expired {
+							background: #fcf0f1;
+							color: #d63638;
+						}
+
+						.urm-license-badge--expiring {
+							background: #fcf9e8;
+							color: #996800;
+						}
+
+						.urm-license-renew-link {
+							font-weight: 600;
 						}
 
 						.user_registration_send_email_test {
