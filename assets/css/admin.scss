@@ -3791,6 +3791,7 @@ a.button.ur-smart-tags-list-button {
 					}
 
 					&#ur-view-live-button {
+						order: 0; // Counters the generic `--right a { order: 1 }` rule in _navigation.scss.
 						color: #475bb2;
 
 						&::after {
