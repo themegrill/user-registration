@@ -41,11 +41,25 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 		$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 		$subscription_service = new SubscriptionService();
-		// A still-billing subscription only gets a pending-cancel marker, not a status flip, so a retry must check that too.
-		if ( 'canceled' === $subscription['status'] || get_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id, true ) ) {
+		if ( 'canceled' === $subscription['status'] ) {
 			return array(
 				'status'  => false,
 				'message' => esc_html__( 'Subscription is already canceled.', 'user-registration' ),
+			);
+		}
+
+		if ( get_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id, true ) ) {
+			if ( $is_upgrade ) {
+				delete_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id );
+				return array(
+					'status'  => true,
+					'message' => esc_html__( 'Subscription is scheduled to cancel; proceeding with upgrade.', 'user-registration' ),
+				);
+			}
+
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Subscription is already scheduled to cancel.', 'user-registration' ),
 			);
 		}
 

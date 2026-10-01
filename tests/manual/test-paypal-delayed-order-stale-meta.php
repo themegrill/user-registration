@@ -20,14 +20,18 @@
  * Run: php tests/manual/test-paypal-delayed-order-stale-meta.php
  */
 
-define( 'WP_USE_THEMES', false );
-require_once dirname( __DIR__, 5 ) . '/wp-load.php';
+if ( 'cli' !== PHP_SAPI ) { exit; }
+if ( ! defined( 'ABSPATH' ) ) {
+	define( 'WP_USE_THEMES', false );
+	require_once dirname( __DIR__, 5 ) . '/wp-load.php';
+}
 
 use WPEverest\URMembership\Admin\Repositories\SubscriptionRepository;
 use WPEverest\URMembership\Admin\Repositories\OrdersRepository;
 use WPEverest\URMembership\Admin\Services\SubscriptionService;
 use WPEverest\URMembership\TableList;
 
+global $failures, $total;
 $failures = 0;
 $total    = 0;
 
@@ -46,14 +50,13 @@ function check( $condition, $label ) {
 	}
 }
 
-// A real, existing subscription plan post -- prepare_upgrade_subscription_data() reads its meta.
-$membership_id = 5252;
-if ( ! get_post( $membership_id ) ) {
-	fwrite( STDERR, "Fixture membership post #$membership_id not found -- adjust \$membership_id for this site.\n" );
-	exit( 1 );
-}
-
 global $wpdb;
+$wpdb->query( 'START TRANSACTION' );
+register_shutdown_function( function () use ( $wpdb ) { $wpdb->query( 'ROLLBACK' ); } );
+add_filter( 'pre_wp_mail', '__return_true' );
+add_filter( 'pre_http_request', function () { return new WP_Error( 'test_http_blocked', 'No network calls allowed in bank fixtures.' ); } );
+$membership_id = wp_insert_post( array( 'post_type' => 'ur_membership', 'post_status' => 'publish', 'post_title' => 'Delayed order regression fixture' ) );
+update_post_meta( $membership_id, 'ur_membership', wp_json_encode( array( 'type' => 'subscription', 'amount' => 10, 'trial_status' => 'off', 'subscription' => array( 'duration' => 'day', 'value' => 1 ) ) ) );
 $subscriptions_table = TableList::subscriptions_table();
 $subscription_repo    = new SubscriptionRepository();
 $orders_repo          = new OrdersRepository();
@@ -165,6 +168,17 @@ update_user_meta(
 	)
 );
 
+// Exercise the real due-order query, restricting mutation to this runner's fixtures.
+$fixture_orders = new class( array( $matching['order_id'], $stale['order_id'] ) ) extends OrdersRepository {
+	private $ids;
+	public function __construct( $ids ) { parent::__construct(); $this->ids = $ids; }
+	public function get_all_delayed_orders( $date ) {
+		return array_filter( parent::get_all_delayed_orders( $date ), function ( $row ) { return in_array( (int) $row['order_id'], $this->ids, true ); } );
+	}
+};
+$property = new ReflectionProperty( $subscription_service, 'orders_repository' );
+$property->setAccessible( true );
+$property->setValue( $subscription_service, $fixture_orders );
 $subscription_service->run_daily_delayed_membership_subscriptions();
 
 // Scenario 1: the matching row was processed -- switched to the new plan, delayed_until meta cleared.
@@ -181,14 +195,14 @@ check( null === $matching_delayed_meta, 'matching order: delayed_until meta clea
 // Scenario 2: the stale row must be untouched -- still on its original subscription_id, delayed_until meta intact.
 $stale_row = $subscription_repo->retrieve( $stale['subscription_id'] );
 check( 'active' === $stale_row['status'], 'stale order: subscription left active (unmodified)' );
-check( str_starts_with( (string) $stale_row['subscription_id'], 'TEST-OLD-' ), 'stale order: subscription_id NOT switched to the mismatched next_subscription_data' );
+check( 0 === strpos( (string) $stale_row['subscription_id'], 'TEST-OLD-' ), 'stale order: subscription_id NOT switched to the mismatched next_subscription_data' );
 $stale_delayed_meta = $wpdb->get_var(
 	$wpdb->prepare(
 		"SELECT meta_value FROM {$wpdb->prefix}ur_membership_ordermeta WHERE order_id = %d AND meta_key = 'delayed_until'",
 		$stale['order_id']
 	)
 );
-check( null !== $stale_delayed_meta, 'stale order: delayed_until meta left in place for a future retry' );
+check( null === $stale_delayed_meta, 'stale order: superseded delayed_until removed instead of retried forever' );
 
 // --- Cleanup ---
 foreach ( array( $matching, $stale ) as $fixture ) {

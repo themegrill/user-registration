@@ -64,6 +64,15 @@ class NewPaypalService {
 	 */
 	const SCHEDULED_SUBSCRIPTION_META_PREFIX = 'urm_scheduled_paypal_subscription_';
 
+	/** Expected outgoing cancellation, scoped to a scheduled order and PayPal ID. */
+	const EXPECTED_CANCEL_META_PREFIX = 'urm_paypal_expected_cancel_';
+
+	/** Replacement approved, but still awaiting its first successful charge. */
+	const AWAITING_PAYMENT_META_PREFIX = 'urm_paypal_awaiting_payment_';
+
+	/** Lock name prefix for serializing subscription row writes across webhook, checkout, and cron. */
+	const SUBSCRIPTION_ROW_LOCK_PREFIX = 'urm_paypal_subscription_webhook_';
+
 	/**
 	 * How far each backfill re-reads before the last sync time: PayPal lists a new event only some time after
 	 * delivering it, so a window ending "now" can miss a sale that it never looks at again.
@@ -1386,7 +1395,10 @@ class NewPaypalService {
 
 		// REST subscription return.
 		if ( ! empty( $paypal_subscription_id ) && 'subscription' === $membership_type ) {
-			update_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', $paypal_subscription_id );
+			$expected_id = get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true );
+			if ( empty( $expected_id ) || ! hash_equals( (string) $expected_id, (string) $paypal_subscription_id ) ) {
+				return;
+			}
 
 			$subscription_details = $this->get_paypal_subscription(
 				$paypal_subscription_id,
@@ -1411,7 +1423,20 @@ class NewPaypalService {
 				return;
 			}
 
-			$new_status = 'ACTIVE' === strtoupper( isset( $subscription_details['status'] ) ? $subscription_details['status'] : '' ) ? 'active' : 'pending';
+			$paypal_raw_status = strtoupper( isset( $subscription_details['status'] ) ? $subscription_details['status'] : '' );
+			if ( ! in_array( $paypal_raw_status, array( 'ACTIVE', 'APPROVED', 'APPROVAL_PENDING' ), true ) ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					sprintf(
+						'[Member ID #%s] Unexpected PayPal subscription status on redirect: %s.',
+						$member_id,
+						$paypal_raw_status
+					)
+				);
+				return;
+			}
+
+			$new_status = 'ACTIVE' === $paypal_raw_status ? 'active' : 'pending';
 
 			// Try to get the real transaction ID from PayPal's subscription transactions API.
 			$transaction_id     = $paypal_subscription_id;
@@ -1450,11 +1475,10 @@ class NewPaypalService {
 				'subscription_id_placeholder' === $transaction_source ? 'notice' : 'info'
 			);
 
-			// A marker match alone can't tell a late-approved scheduled downgrade apart; also require its start_time to still be future.
-			$scheduled_id    = ! empty( $member_subscription['ID'] ) ? get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true ) : '';
-			$remote_start    = strtotime( (string) ( $subscription_details['start_time'] ?? '' ) );
-			$billing_started = ! $remote_start || $remote_start <= time() + self::DEFERRED_START_THRESHOLD;
-			$is_deferred     = ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id && ! $billing_started;
+			// Even a late approval must leave switching to cron, after outgoing billing is stopped.
+			$scheduled_id = ! empty( $member_subscription['ID'] ) ? get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true ) : '';
+			$is_deferred  = ( ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id )
+				|| get_user_meta( $member_id, self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true );
 
 			// Defer status update on scheduled downgrades; resolve trial or active status for immediate subscriptions.
 			$resolved_status = $is_deferred
@@ -1509,7 +1533,7 @@ class NewPaypalService {
 			$payment_verified = true;
 		}
 
-		if ( ! $payment_verified && ! $is_upgrading ) {
+		if ( ! $payment_verified ) {
 			PaymentGatewayLogging::log_error(
 				'paypal',
 				sprintf(
@@ -1734,25 +1758,9 @@ class NewPaypalService {
 			$upgrade_order               = $this->orders_repository->get_order_by_subscription( $subscription_id );
 			$subscription_data['status'] = 'on' === ( isset( $upgrade_order['trial_status'] ) ? $upgrade_order['trial_status'] : '' ) ? 'trial' : 'active';
 			$this->subscription_repository->update( $subscription_id, $subscription_data );
-		} elseif ( ! empty( $new_subscription_data ) && ! empty( $new_subscription_data['delayed_until'] ) && ! empty( $get_user_old_subscription['subscription_id'] ) ) {
-			// Cancel the old PayPal subscription now (API only, local row untouched) so it doesn't also bill at delayed_until.
-			$cancel_old_subscription = $subscription_service->cancel_subscription( $get_user_old_order, $get_user_old_subscription, true );
-
-			if ( empty( $cancel_old_subscription['status'] ) ) {
-				PaymentGatewayLogging::log_error(
-					'paypal',
-					sprintf(
-						'[Member ID #%s] Failed to cancel previous subscription ahead of a scheduled downgrade.',
-						$member_id
-					) . "\n" . wp_json_encode(
-						array(
-							'member_id'           => $member_id,
-							'old_subscription_id' => $get_user_old_subscription['subscription_id'],
-							'message'             => isset( $cancel_old_subscription['message'] ) ? $cancel_old_subscription['message'] : '',
-						),
-						JSON_PRETTY_PRINT
-					)
-				);
+		} elseif ( ! empty( $new_subscription_data['delayed_until'] ) ) {
+			if ( ! $this->cancel_scheduled_subscription_on_approval( $member_id, $subscription_id ) ) {
+				return;
 			}
 		}
 
@@ -2267,7 +2275,7 @@ class NewPaypalService {
 
 		// PayPal doesn't guarantee webhook delivery order, so two events for this row can race here.
 		// Null (no GET_LOCK support) means proceed without a lock, same as SubscriptionService::upgrade_membership() — only false blocks.
-		$lock_name = 'urm_paypal_subscription_webhook_' . $subscription_row_id;
+		$lock_name = self::SUBSCRIPTION_ROW_LOCK_PREFIX . $subscription_row_id;
 		$lock      = $this->members_subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT );
 		if ( false === $lock ) {
 			return false;
@@ -2328,6 +2336,9 @@ class NewPaypalService {
 
 		$new_status     = isset( $status_map[ $event_type ] ) ? $status_map[ $event_type ] : ( isset( $member_subscription['status'] ) ? $member_subscription['status'] : 'pending' );
 		$current_status = isset( $member_subscription['status'] ) ? $member_subscription['status'] : '';
+		if ( 'active' === $new_status && get_user_meta( $member_id, self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true ) ) {
+			return true; // Only a recorded sale can activate this scheduled replacement.
+		}
 
 		// A trial subscription is ACTIVE at PayPal too; the first paid sale moves the row on to 'active'.
 		if ( 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type && 'trial' === $current_status ) {
@@ -2345,6 +2356,9 @@ class NewPaypalService {
 			// Defer only for this row's own scheduled-downgrade marker, not a time guess near delayed_until.
 			$scheduled_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
 			if ( ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id ) {
+				if ( ! $this->cancel_scheduled_subscription_on_approval( $member_id, $subscription_row_id ) ) {
+					return false;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					sprintf(
@@ -2364,25 +2378,13 @@ class NewPaypalService {
 			}
 		}
 
-		// A CANCELLED/SUSPENDED event for the row's own OLD subscription while a downgrade is scheduled is one we triggered on purpose — ignore it.
-		if ( ! $is_new_subscription && in_array( $event_type, array( 'BILLING.SUBSCRIPTION.CANCELLED', 'BILLING.SUBSCRIPTION.SUSPENDED' ), true ) ) {
-			$pending_switch_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
-			if ( ! empty( $pending_switch_id ) ) {
-				PaymentGatewayLogging::log_general(
-					'paypal',
-					sprintf(
-						'[Member ID #%s] Subscription webhook ignored: expected cancellation of the outgoing PayPal subscription ahead of a scheduled downgrade.',
-						$member_id
-					) . "\n" . wp_json_encode(
-						array(
-							'event_type'             => $event_type,
-							'paypal_subscription_id' => $paypal_subscription_id,
-							'pending_switch_id'      => $pending_switch_id,
-						),
-						JSON_PRETTY_PRINT
-					),
-					'notice'
-				);
+		// Only our confirmed cancellation is expected. An abandoned checkout or a suspension is not.
+		if ( ! $is_new_subscription && 'BILLING.SUBSCRIPTION.CANCELLED' === $event_type ) {
+			$expected = $this->is_expected_scheduled_cancellation( $member_id, $member_subscription['ID'], $paypal_subscription_id );
+			if ( is_wp_error( $expected ) ) {
+				return false;
+			}
+			if ( $expected ) {
 				return true;
 			}
 		}
@@ -2825,7 +2827,8 @@ class NewPaypalService {
 			return false;
 		}
 
-		if ( $this->count_completed_cycles( $remote ) < $this->renewal_min_completed_cycles( $remote ) ) {
+		$awaiting_payment = get_user_meta( $membership_subscription['user_id'], self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true );
+		if ( ! $awaiting_payment && $this->count_completed_cycles( $remote ) < $this->renewal_min_completed_cycles( $remote ) ) {
 			return true;
 		}
 
@@ -2884,6 +2887,9 @@ class NewPaypalService {
 				)
 			);
 			return false;
+		}
+		if ( $awaiting_payment && $should_activate ) {
+			delete_user_meta( $membership_subscription['user_id'], self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id );
 		}
 
 		PaymentGatewayLogging::log_general(
@@ -3591,6 +3597,163 @@ class NewPaypalService {
 	public function is_paypal_subscription_active( $subscription_id ) {
 		$details = $this->get_paypal_subscription( $subscription_id, $this->get_paypal_rest_credentials() );
 		return ! is_wp_error( $details ) && 'ACTIVE' === strtoupper( isset( $details['status'] ) ? $details['status'] : '' );
+	}
+
+	/**
+	 * Read gateway billing evidence before granting a scheduled replacement period.
+	 *
+	 * @param string $subscription_id PayPal subscription ID.
+	 * @return array|WP_Error PayPal details or a retryable lookup error.
+	 */
+	public function get_scheduled_subscription_details( $subscription_id ) {
+		return $this->get_paypal_subscription( $subscription_id, $this->get_paypal_rest_credentials() );
+	}
+
+	/**
+	 * Recognize only the outgoing cancellation for a still-approved, bounded switch.
+	 * Keep this receipt until switching so duplicate webhook/backfill delivery is safe.
+	 *
+	 * @param int    $member_id Member ID.
+	 * @param int    $row_id Local subscription ID.
+	 * @param string $paypal_id Outgoing PayPal ID.
+	 * @return bool|WP_Error Whether cancellation is expected, or verification failed.
+	 */
+	private function is_expected_scheduled_cancellation( $member_id, $row_id, $paypal_id ) {
+		$marker   = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $row_id, true );
+		$expected = get_user_meta( $member_id, self::EXPECTED_CANCEL_META_PREFIX . $paypal_id, true );
+		$next     = json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true );
+		if ( empty( $marker ) || ! is_array( $expected )
+			|| ( $expected['replacement_id'] ?? '' ) !== $marker
+			|| empty( $expected['order_id'] )
+			|| (int) ( $next['order_id'] ?? 0 ) !== (int) $expected['order_id']
+			|| (int) ( $next['subscription_id'] ?? 0 ) !== (int) $row_id
+			|| (int) ( $expected['expires_at'] ?? 0 ) < time()
+		) {
+			return false;
+		}
+		$replacement = $this->get_scheduled_subscription_details( $marker );
+		if ( is_wp_error( $replacement ) ) {
+			return $replacement;
+		}
+		if ( empty( $replacement['status'] ) ) {
+			return new WP_Error( 'paypal_missing_status', 'PayPal replacement status could not be verified.' );
+		}
+		return 'ACTIVE' === strtoupper( $replacement['status'] );
+	}
+
+	/** Show actionable cancellation failures to site administrators. */
+	public static function user_registration_scheduled_cancellation_notice() {
+		$screen = get_current_screen();
+		if ( ! current_user_can( 'manage_options' ) || ! $screen || false === strpos( $screen->id, 'user-registration' ) ) {
+			return;
+		}
+		$members = get_users(
+			array(
+				'number'     => 5,
+				'fields'     => 'ID',
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Bounded admin-only lookup for actionable payment failures.
+					array(
+						'key'         => 'urm_paypal_scheduled_cancel_error_',
+						'compare_key' => 'LIKE',
+						'compare'     => 'EXISTS',
+					),
+				),
+			)
+		);
+		foreach ( $members as $member_id ) {
+			echo '<div class="notice notice-error"><p>';
+			printf(
+				/* translators: %d: member ID. */
+				esc_html__( 'PayPal could not stop the outgoing subscription for member #%d during a scheduled plan change. Both subscriptions may bill. Check the PayPal payment logs and cancel the outgoing agreement in PayPal if necessary; the site will retry the switch.', 'user-registration' ),
+				absint( $member_id )
+			);
+			echo '</p></div>';
+		}
+	}
+
+	/**
+	 * Stop outgoing billing only after the exact scheduled replacement is approved.
+	 *
+	 * Shared by redirect, ACTIVATED webhook and cron. API errors never prove that
+	 * billing stopped. The local paid period and scheduled data remain untouched.
+	 *
+	 * @param int $member_id Member ID.
+	 * @param int $subscription_id Local subscription row ID.
+	 * @return bool Whether outgoing billing is confirmed stopped.
+	 */
+	public function cancel_scheduled_subscription_on_approval( $member_id, $subscription_id ) {
+		$lock_name = 'urm_paypal_scheduled_cancel_' . absint( $subscription_id );
+		$lock      = $this->subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT );
+		if ( false === $lock ) {
+			return false;
+		}
+		try {
+			$next     = json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true );
+			$old      = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
+			$order    = json_decode( get_user_meta( $member_id, 'urm_previous_order_data', true ), true );
+			$marker   = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id, true );
+			$row      = $this->subscription_repository->retrieve( $subscription_id );
+			$checkout = $this->orders_repository->retrieve( $next['order_id'] ?? 0 );
+			if ( empty( $marker ) || empty( $next['delayed_until'] ) || empty( $checkout )
+				|| (int) ( $row['user_id'] ?? 0 ) !== (int) $member_id
+				|| (int) ( $next['subscription_id'] ?? 0 ) !== (int) $subscription_id
+				|| (int) ( $checkout['subscription_id'] ?? 0 ) !== (int) $subscription_id
+				|| (int) ( $checkout['user_id'] ?? 0 ) !== (int) $member_id
+				|| (int) ( $checkout['item_id'] ?? 0 ) !== (int) ( $next['membership'] ?? 0 )
+				|| 'paypal' !== ( $checkout['payment_method'] ?? '' )
+				|| ! $this->is_paypal_subscription_active( $marker )
+			) {
+				return false;
+			}
+			if ( empty( $old['subscription_id'] ) ) {
+				return true; // A previous free/manual plan has no gateway agreement to stop.
+			}
+			if ( $marker === $old['subscription_id'] || (string) ( $row['subscription_id'] ?? '' ) !== (string) $old['subscription_id'] ) {
+				return false;
+			}
+			if ( 'paypal' !== ( $order['payment_method'] ?? '' ) ) {
+				$result = ( new SubscriptionService() )->cancel_subscription( $order, $old, true );
+				return ! empty( $result['status'] );
+			}
+			$options = $this->get_paypal_rest_credentials();
+			$details = $this->get_paypal_subscription( $old['subscription_id'], $options );
+			if ( is_wp_error( $details ) || empty( $details['status'] ) ) {
+				return false;
+			}
+			if ( in_array( strtoupper( $details['status'] ), array( 'CANCELLED', 'EXPIRED' ), true ) ) {
+				return true;
+			}
+			$key      = self::EXPECTED_CANCEL_META_PREFIX . $old['subscription_id'];
+			$expected = array(
+				'replacement_id' => $marker,
+				'order_id'       => (int) $next['order_id'],
+				'expires_at'     => strtotime( $next['delayed_until'] ) + DAY_IN_SECONDS,
+			);
+			// Persist before calling PayPal: its webhook may arrive before the HTTP response.
+			update_user_meta( $member_id, $key, $expected );
+			if ( get_user_meta( $member_id, $key, true ) !== $expected ) {
+				return false;
+			}
+			$result = $this->cancel_subscription( $order, $old, true );
+			if ( ! empty( $result['status'] ) ) {
+				delete_user_meta( $member_id, 'urm_paypal_scheduled_cancel_error_' . $subscription_id );
+				return true;
+			}
+			// A timeout may follow a successful cancel; verify explicitly before retrying.
+			$details = $this->get_paypal_subscription( $old['subscription_id'], $options );
+			if ( ! is_wp_error( $details ) && in_array( strtoupper( $details['status'] ?? '' ), array( 'CANCELLED', 'EXPIRED' ), true ) ) {
+				delete_user_meta( $member_id, 'urm_paypal_scheduled_cancel_error_' . $subscription_id );
+				return true;
+			}
+			delete_user_meta( $member_id, $key );
+			update_user_meta( $member_id, 'urm_paypal_scheduled_cancel_error_' . $subscription_id, $old['subscription_id'] );
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'Scheduled downgrade for member #%d needs attention: outgoing PayPal subscription %s could not be cancelled. Both subscriptions may bill; the switch will be retried.', $member_id, $old['subscription_id'] ) );
+			return false;
+		} finally {
+			if ( true === $lock ) {
+				$this->subscription_repository->release_lock( $lock_name );
+			}
+		}
 	}
 
 	/**
@@ -4315,6 +4478,22 @@ class NewPaypalService {
 			$local_sub_id = $subscription['ID'];
 			$user_id      = $subscription['user_id'];
 			$local_status = $subscription['status'];
+			if ( 'active' === $paypal_status && get_user_meta( $user_id, self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true ) ) {
+				++$count_skipped;
+				continue;
+			}
+			if ( 'CANCELLED' === strtoupper( $paypal_raw_status ) ) {
+				$expected = $this->is_expected_scheduled_cancellation( $user_id, $local_sub_id, $paypal_subscription_id );
+				if ( is_wp_error( $expected ) ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+				if ( $expected ) {
+					++$count_skipped;
+					continue;
+				}
+			}
 
 			// The overlap re-reads old events, so a listed ACTIVE for a canceled row counts only if PayPal still reports it active.
 			if ( 'canceled' === $local_status && 'active' === $paypal_status ) {
@@ -4453,9 +4632,12 @@ class NewPaypalService {
 			}
 
 			if ( 0 === $rows_affected ) {
-				// The row switched subscriptions in the meantime; this event is stale, not an error.
-				++$count_skipped;
-				continue;
+				$fresh_sub = $this->members_subscription_repository->retrieve( $local_sub_id );
+				if ( empty( $fresh_sub ) || (string) ( $fresh_sub['subscription_id'] ?? '' ) !== (string) $paypal_subscription_id ) {
+					// The row switched subscriptions in the meantime; this event is stale, not an error.
+					++$count_skipped;
+					continue;
+				}
 			}
 
 			PaymentGatewayLogging::log_general(

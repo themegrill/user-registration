@@ -244,6 +244,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	 * @return array Empty when none matches.
 	 */
 	public function get_latest_completed_order_by_subscription_and_item( $subscription_id, $item_id ) {
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- Internal table name; all variable values use placeholders.
 		$result = $this->wpdb()->get_row(
 			$this->wpdb()->prepare(
 				"
@@ -258,6 +259,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return ! $result ? array() : $result;
 	}

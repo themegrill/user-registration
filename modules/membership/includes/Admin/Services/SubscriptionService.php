@@ -506,6 +506,34 @@ class SubscriptionService {
 	 * @return array The response from the payment gateway.
 	 */
 	public function upgrade_membership( $data ) {
+		// Serialize checkout writes with scheduled switching and payment webhooks.
+		$lock_name = NewPaypalService::SUBSCRIPTION_ROW_LOCK_PREFIX . absint( $data['current_subscription_id'] ?? 0 );
+		$lock      = $this->subscription_repository->acquire_lock( $lock_name );
+		if ( false === $lock ) {
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => __( 'A membership update is in progress. Please try again.', 'user-registration' ),
+				),
+			);
+		}
+		try {
+			wp_cache_delete( get_current_user_id(), 'user_meta' );
+			return $this->upgrade_membership_under_lock( $data );
+		} finally {
+			if ( true === $lock ) {
+				$this->subscription_repository->release_lock( $lock_name );
+			}
+		}
+	}
+
+	/**
+	 * Execute an upgrade while its subscription row is locked.
+	 *
+	 * @param array $data Checkout data.
+	 * @return array Checkout response.
+	 */
+	private function upgrade_membership_under_lock( $data ) {
 		$order_service = new OrderService();
 
 		$current_subscription_id                   = $data['current_subscription_id'];
@@ -641,7 +669,7 @@ class SubscriptionService {
 
 		if ( isset( $data['upgrade'] ) && $data['upgrade'] && 'subscription' === $current_membership_details['type'] && 'bank' !== $payment_method && 'off' === $selected_membership_details['trial_status'] && ! isset( $upgrade_details['delayed_until'] ) ) {
 
-			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false );
+			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false, true );
 
 			if ( ! $cancel_subscription['status'] ) {
 				$response['status'] = false;
@@ -649,8 +677,6 @@ class SubscriptionService {
 				$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
 
 				return $response;
-			} else {
-				$this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false );
 			}
 		}
 
@@ -923,7 +949,7 @@ class SubscriptionService {
 	}
 
 	public function run_daily_delayed_membership_subscriptions() {
-		$all_delayed_orders = $this->orders_repository->get_all_delayed_orders( date( 'Y-m-d 00:00:00' ) );
+		$all_delayed_orders = $this->orders_repository->get_all_delayed_orders( current_time( 'mysql', true ) );
 
 		ur_get_logger()->notice(
 			sprintf(
@@ -957,6 +983,13 @@ class SubscriptionService {
 
 			// `urm_next_subscription_data` gets overwritten by ANY later upgrade, so require it to still name THIS order (not just the same subscription/date, which a second delayed attempt submitted before either took effect could also share).
 			if ( empty( $decoded_data['order_id'] ) || (int) $decoded_data['order_id'] !== (int) $data['order_id'] ) {
+				// This order can never own the newer checkout's data. Retire only its schedule.
+				$this->orders_repository->delete_order_meta(
+					array(
+						'order_id' => absint( $data['order_id'] ),
+						'meta_key' => 'delayed_until',
+					)
+				);
 				ur_get_logger()->notice(
 					sprintf( 'Delayed order #%d skipped: urm_next_subscription_data no longer matches this order (superseded by a later change).', $data['order_id'] ),
 					array( 'source' => 'urm-membership-crons' )
@@ -967,69 +1000,115 @@ class SubscriptionService {
 			$subscription_id = $decoded_data['subscription_id'];
 			$user            = get_userdata( $decoded_data['member_id'] );
 			if ( $user ) {
-				// Only for a PayPal scheduled downgrade — the marker is PayPal-specific and must not touch a Stripe/bank switch.
-				$is_paypal_delayed_checkout = 'paypal' === ( isset( $decoded_data['payment_method'] ) ? $decoded_data['payment_method'] : '' );
-				$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
-				$new_paypal_subscription_id = $is_paypal_delayed_checkout ? get_user_meta( $user->ID, $scheduled_meta_key, true ) : '';
-
-				// An abandoned scheduled checkout must not cancel the still-current subscription; leave it for a later run.
-				if ( $is_paypal_delayed_checkout && ! empty( $new_paypal_subscription_id ) && ! ( new NewPaypalService() )->is_paypal_subscription_active( $new_paypal_subscription_id ) ) {
-					ur_get_logger()->notice(
-						sprintf( 'Scheduled downgrade for user #%d skipped: PayPal subscription %s is not active yet.', $user->ID, $new_paypal_subscription_id ),
-						array( 'source' => 'urm-membership-crons' )
-					);
+				$lock_name = NewPaypalService::SUBSCRIPTION_ROW_LOCK_PREFIX . $subscription_id;
+				$lock      = $this->subscription_repository->acquire_lock( $lock_name );
+				if ( false === $lock ) {
 					continue;
 				}
+				try {
+					wp_cache_delete( $user->ID, 'user_meta' );
+					$schedule_snapshot = get_user_meta( $user->ID, 'urm_next_subscription_data', true );
+					if ( $schedule_snapshot !== $data['sub_data'] ) {
+						continue;
+					}
+					$previous_snapshot = get_user_meta( $user->ID, 'urm_previous_subscription_data', true );
+					$order_snapshot    = get_user_meta( $user->ID, 'urm_previous_order_data', true );
+					$current_row       = $this->subscription_repository->retrieve( $subscription_id );
+					// Only for a PayPal scheduled downgrade — the marker is PayPal-specific and must not touch a Stripe/bank switch.
+					$is_paypal_delayed_checkout = 'paypal' === ( isset( $decoded_data['payment_method'] ) ? $decoded_data['payment_method'] : '' );
+					$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
+					$new_paypal_subscription_id = $is_paypal_delayed_checkout ? get_user_meta( $user->ID, $scheduled_meta_key, true ) : '';
 
-				$previous_subscription = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
-				$cancel_subscription   = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
-				ur_get_logger()->notice( $cancel_subscription['message'], array( 'source' => 'urm-membership-crons' ) );
+					$paypal_service = new NewPaypalService();
+					// A missing marker or failed verification cannot authorize a switch.
+					if ( $is_paypal_delayed_checkout && ! $paypal_service->cancel_scheduled_subscription_on_approval( $user->ID, $subscription_id ) ) {
+						ur_get_logger()->notice(
+							sprintf( 'Scheduled downgrade for user #%d skipped: PayPal subscription %s is not active yet.', $user->ID, $new_paypal_subscription_id ),
+							array( 'source' => 'urm-membership-crons' )
+						);
+						continue;
+					}
 
-				// This cancel often just hits PayPal's "already cancelled" error (approval already cancelled it) — what matters is whether it's still live.
-				if ( $is_paypal_delayed_checkout && empty( $cancel_subscription['status'] ) && ! empty( $previous_subscription['subscription_id'] )
-					&& ( new NewPaypalService() )->is_paypal_subscription_active( $previous_subscription['subscription_id'] )
-				) {
-					ur_get_logger()->notice(
-						sprintf( 'Scheduled downgrade for user #%d deferred: previous PayPal subscription %s is still active after a failed cancellation.', $user->ID, $previous_subscription['subscription_id'] ),
-						array( 'source' => 'urm-membership-crons' )
-					);
-					continue;
-				}
+					$previous_subscription = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
+					if ( ! $is_paypal_delayed_checkout ) {
+						$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
+						ur_get_logger()->notice( $cancel_subscription['message'], array( 'source' => 'urm-membership-crons' ) );
+					}
 
-				$updated_subscription_for_users[]  = $user->user_login;
-				$decoded_data['subscription_data'] = $previous_subscription;
-				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
-				$subscription_data['status']       = 'active';
-				if ( ! empty( $new_paypal_subscription_id ) ) {
-					$subscription_data['subscription_id'] = $new_paypal_subscription_id;
-				}
-				$row_updated = $this->subscription_repository->update( $subscription_id, $subscription_data );
+					$decoded_data['subscription_data'] = $previous_subscription;
+					$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
+					$subscription_data['status']       = 'active';
+					if ( ! empty( $new_paypal_subscription_id ) ) {
+						$subscription_data['subscription_id'] = $new_paypal_subscription_id;
+						$remote                               = $paypal_service->get_scheduled_subscription_details( $new_paypal_subscription_id );
+						if ( is_wp_error( $remote ) || 'ACTIVE' !== ( $remote['status'] ?? '' ) ) {
+							continue;
+						}
+						$paid_at = strtotime( $remote['billing_info']['last_payment']['time'] ?? '' );
+						$starts  = strtotime( $remote['start_time'] ?? '' );
+						$paid    = $paid_at && $starts && $paid_at >= $starts && (float) ( $remote['billing_info']['last_payment']['amount']['value'] ?? 0 ) > 0;
+						// ACTIVE at PayPal means approved, even while the first charge is failing.
+						// Bind the ID so a later sale can find the row, but grant no unpaid cycle.
+						$subscription_data['status'] = $paid ? 'active' : 'pending';
+						$payment_key                 = NewPaypalService::AWAITING_PAYMENT_META_PREFIX . $new_paypal_subscription_id;
+						if ( ! $paid ) {
+							update_user_meta( $user->ID, $payment_key, (int) $data['order_id'] );
+							if ( (int) get_user_meta( $user->ID, $payment_key, true ) !== (int) $data['order_id'] ) {
+								continue;
+							}
+						}
+						$next_billing                           = strtotime( $remote['billing_info']['next_billing_time'] ?? '' );
+						$subscription_data['expiry_date']       = $paid && $next_billing ? gmdate( 'Y-m-d H:i:s', $next_billing ) : '';
+						$subscription_data['next_billing_date'] = $next_billing ? gmdate( 'Y-m-d H:i:s', $next_billing ) : '';
+					}
+					// Gateway calls can overlap a newer checkout. Never apply its predecessor's snapshot.
+					wp_cache_delete( $user->ID, 'user_meta' );
+					if ( get_user_meta( $user->ID, 'urm_next_subscription_data', true ) !== $schedule_snapshot
+						|| ( $is_paypal_delayed_checkout && get_user_meta( $user->ID, $scheduled_meta_key, true ) !== $new_paypal_subscription_id ) ) {
+						continue;
+					}
+					$row_updated = $this->members_subscription_repository->update_if_subscription_id_matches( $subscription_id, $subscription_data, $current_row['subscription_id'] ?? '' );
 
-				// Only clean up the scheduled markers once the write actually took, so a failed run gets retried next time.
-				if ( false === $row_updated ) {
-					continue;
-				}
+					// Only clean up the scheduled markers once the write took or row is already up-to-date.
+					if ( false === $row_updated ) {
+						continue;
+					}
 
-				if ( ! empty( $new_paypal_subscription_id ) ) {
-					delete_user_meta( $user->ID, $scheduled_meta_key );
+					if ( 0 === $row_updated ) {
+						$fresh_row = $this->subscription_repository->retrieve( $subscription_id );
+						if ( empty( $fresh_row ) || (string) ( $fresh_row['subscription_id'] ?? '' ) !== (string) ( $subscription_data['subscription_id'] ?? '' ) ) {
+							continue;
+						}
+					}
+
+					$updated_subscription_for_users[] = $user->user_login;
+					if ( ! empty( $new_paypal_subscription_id ) ) {
+						delete_user_meta( $user->ID, $scheduled_meta_key, $new_paypal_subscription_id );
+					}
+					delete_user_meta( $user->ID, NewPaypalService::EXPECTED_CANCEL_META_PREFIX . ( $previous_subscription['subscription_id'] ?? '' ) );
+					delete_user_meta( $user->ID, 'urm_paypal_scheduled_cancel_error_' . $subscription_id );
+					// Target the exact order that held delayed_until rather than assuming the newest order overall.
+					$delayed_order_id = ! empty( $data['order_id'] ) ? absint( $data['order_id'] ) : 0;
+					if ( empty( $delayed_order_id ) ) {
+						$last_order       = $this->members_orders_repository->get_member_orders( $user->ID );
+						$delayed_order_id = ! empty( $last_order['ID'] ) ? absint( $last_order['ID'] ) : 0;
+					}
+					if ( ! empty( $delayed_order_id ) ) {
+						$this->orders_repository->delete_order_meta(
+							array(
+								'order_id' => $delayed_order_id,
+								'meta_key' => 'delayed_until',
+							)
+						);
+					}
+					delete_user_meta( $user->ID, 'urm_next_subscription_data', $schedule_snapshot );
+					delete_user_meta( $user->ID, 'urm_previous_subscription_data', $previous_snapshot );
+					delete_user_meta( $user->ID, 'urm_previous_order_data', $order_snapshot );
+				} finally {
+					if ( true === $lock ) {
+						$this->subscription_repository->release_lock( $lock_name );
+					}
 				}
-				// Target the exact order that held delayed_until rather than assuming the newest order overall.
-				$delayed_order_id = ! empty( $data['order_id'] ) ? absint( $data['order_id'] ) : 0;
-				if ( empty( $delayed_order_id ) ) {
-					$last_order       = $this->members_orders_repository->get_member_orders( $user->ID );
-					$delayed_order_id = ! empty( $last_order['ID'] ) ? absint( $last_order['ID'] ) : 0;
-				}
-				if ( ! empty( $delayed_order_id ) ) {
-					$this->orders_repository->delete_order_meta(
-						array(
-							'order_id' => $delayed_order_id,
-							'meta_key' => 'delayed_until',
-						)
-					);
-				}
-				delete_user_meta( $user->ID, 'urm_next_subscription_data' );
-				delete_user_meta( $user->ID, 'urm_previous_subscription_data' );
-				delete_user_meta( $user->ID, 'urm_previous_order_data' );
 			}
 		}
 
@@ -1318,6 +1397,8 @@ class SubscriptionService {
 	 * @return void
 	 */
 	public function daily_membership_expiration_check() {
+		// Resolve due replacements first, even when WP runs expiration before the delayed job.
+		$this->run_daily_delayed_membership_subscriptions();
 		// Grace period gives the hourly missed-payment backfill time to catch a renewal
 		$grace_hours   = (int) apply_filters( 'urm_expiry_grace_hours', 12 );
 		$date          = new \DateTime( "-{$grace_hours} hours" );
