@@ -4184,11 +4184,22 @@ if ( ! function_exists( 'ur_get_license_plan' ) ) {
 					set_transient( 'ur_pro_license_plan', $license_data, WEEK_IN_SECONDS );
 				} else {
 					// Cache failed/empty lookups briefly so every admin page load does not hit the API.
-					set_transient( 'ur_pro_license_plan', is_object( $license_data ) ? $license_data : (object) array(), HOUR_IN_SECONDS );
+					// Use an empty array as the failure sentinel — empty objects are truthy in PHP.
+					set_transient( 'ur_pro_license_plan', array(), HOUR_IN_SECONDS );
+					return false;
 				}
 			}
 
-			return ! empty( $license_data ) ? $license_data : false;
+			// Failure sentinel from a previous empty/failed API lookup.
+			if ( empty( $license_data ) || ( is_array( $license_data ) && empty( $license_data ) ) ) {
+				return false;
+			}
+
+			if ( is_object( $license_data ) && empty( $license_data->item_name ) ) {
+				return false;
+			}
+
+			return $license_data;
 		}
 
 		return false;
