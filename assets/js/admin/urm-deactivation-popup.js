@@ -53,7 +53,6 @@
 			e.stopPropagation();
 			$popup.removeClass("active");
 			$("body").removeClass("tgsdk-feedback-open");
-			$(".tgsdk-feedback-overlay").remove();
 		});
 	}
 
