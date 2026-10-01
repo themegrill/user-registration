@@ -591,7 +591,7 @@ jQuery(function ($) {
 				$(el).hide();
 			});
 
-		form_settings_section.find("#integration-settings").click(function (e) {
+		form_settings_section.find("#integration-settings").on("click", function (e) {
 			e.stopImmediatePropagation();
 
 			$(this)
@@ -1193,7 +1193,7 @@ jQuery(function ($) {
 		} else {
 			akismet_message.hide();
 		}
-		akismet_activate.change(function () {
+		akismet_activate.on("change", function () {
 			if ($(this).is(":checked")) {
 				akismet_message.show();
 			} else {

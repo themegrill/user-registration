@@ -415,7 +415,7 @@ jQuery(function ($) {
 			// Settings addon install actions.
 			$(
 				".user-registration-settings-addon-install, .user-registration-settings-addon-activate"
-			).click(function (e) {
+			).on("click", function (e) {
 				e.preventDefault();
 				ur_setup_actions.install_addon_from_settings($(this));
 			});
@@ -598,7 +598,7 @@ jQuery(function ($) {
 		},
 		title_focus: function () {
 			setTimeout(function () {
-				$("#user-registration-setup-name").focus();
+				$("#user-registration-setup-name").trigger("focus");
 			}, 100);
 		},
 		install_addon_from_settings: function (node) {

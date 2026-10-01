@@ -1,10 +1,10 @@
 <?php
 defined( 'ABSPATH' ) || exit;
-wp_head();
 ?>
 <!DOCTYPE html>
 			<html <?php language_attributes(); ?>>
 				<head>
+					<?php wp_head(); ?>
 					<meta name="viewport" content="width=device-width"/>
 					<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 					<title>
