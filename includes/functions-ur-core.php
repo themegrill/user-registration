@@ -7506,12 +7506,14 @@ if ( ! function_exists( 'user_registration_edit_profile_row_template' ) ) {
 									unset( $attachment_ids[ $attachment_key ] );
 								}
 
+								$original_value = is_array( $field['value'] ) ? implode( ',', $field['value'] ) : (string) $field['value'];
 								$field['value'] = ! empty( $attachment_ids ) ? implode( ',', $attachment_ids ) : '';
 
-								$user_id = get_current_user_id();
+								// Clean the profile owner's meta (not the viewing admin's), and only when a missing file was dropped.
+								$profile_owner_id = is_admin() ? $user_id : get_current_user_id();
 
-								if ( current_user_can( 'edit_user', $user_id ) ) {
-									update_user_meta( $user_id, 'user_registration_' . $single_item->general_setting->field_name, $field['value'] );
+								if ( $original_value !== $field['value'] && current_user_can( 'edit_user', $profile_owner_id ) ) {
+									update_user_meta( $profile_owner_id, 'user_registration_' . $single_item->general_setting->field_name, $field['value'] );
 								}
 							}
 						}
