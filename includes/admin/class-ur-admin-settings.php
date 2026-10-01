@@ -224,6 +224,7 @@ class UR_Admin_Settings {
 			array(
 				'ajax_url'                             => admin_url( 'admin-ajax.php' ),
 				'assets_url'                           => UR_ASSETS_URL,
+				'delete_icon'                          => plugins_url( 'assets/images/users/delete-user-red.svg', UR_PLUGIN_FILE ),
 				'ur_license_nonce'                     => wp_create_nonce( '_ur_license_nonce' ),
 				'ur_updater_nonce'                     => wp_create_nonce( 'updates' ),
 				'user_registration_search_global_settings_nonce' => wp_create_nonce( 'user_registration_search_global_settings' ),
@@ -261,7 +262,7 @@ class UR_Admin_Settings {
 					'installing_plugin_text'             => esc_html__( 'Installing Plugin', 'user-registration' ),
 					'deactivate_license_title'           => esc_html__( 'Deactivate License', 'user-registration' ),
 					'deactivate_license_prompt'          => esc_html__( 'Deactivate this license? This site will stop receiving updates and support until a license is activated again.', 'user-registration' ),
-					'deactivate_license_confirm'         => esc_html__( 'Deactivate License', 'user-registration' ),
+					'deactivate_license_confirm'         => esc_html__( 'Deactivate', 'user-registration' ),
 					'invalid_stripe_test_publishable_key' => esc_html__( 'Invalid Stripe test publishable key. It must start with pk_test_.', 'user-registration' ),
 					'invalid_stripe_live_publishable_key' => esc_html__( 'Invalid Stripe live publishable key. It must start with pk_live_.', 'user-registration' ),
 					'pro_activated_success_title'        => esc_html__( 'Success!', 'user-registration' ),

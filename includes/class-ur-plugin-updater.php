@@ -241,13 +241,14 @@ class UR_Plugin_Updater extends UR_Plugin_Updates {
 				'message'      => class_exists( 'UR_Settings_License' )
 					? UR_Settings_License::get_deactivate_confirm_message()
 					: __( 'Deactivate this license? This site will stop receiving updates and support until a license is activated again.', 'user-registration' ),
-				'confirm_text' => __( 'Deactivate License', 'user-registration' ),
+				'confirm_text' => __( 'Deactivate', 'user-registration' ),
 				'cancel_text'  => __( 'Cancel', 'user-registration' ),
+				'delete_icon'  => plugins_url( 'assets/images/users/delete-user-red.svg', UR_PLUGIN_FILE ),
 			)
 		);
 		wp_add_inline_script(
 			'sweetalert2',
-			'(function($){$(document).on("click",".ur-deactivate-license-confirm",function(e){e.preventDefault();var href=$(this).attr("href");if(typeof Swal==="undefined"){window.location.href=href;return;}var params=(typeof user_registration_license_params!=="undefined")?user_registration_license_params:{};Swal.fire({customClass:"user-registration-swal2-modal user-registration-swal2-modal--centered user-registration-trashed",title:\'<i class="dashicons dashicons-warning"></i><span class="user-registration-swal2-modal__title">\'+(params.title||"Deactivate License")+"</span>",text:params.message||"",showCancelButton:true,confirmButtonText:params.confirm_text||"Deactivate License",confirmButtonColor:"#f25656",cancelButtonText:params.cancel_text||"Cancel",allowOutsideClick:false}).then(function(result){if(result.isConfirmed||result.value){window.location.href=href;}});});})(jQuery);'
+			'(function($){$(document).on("click",".ur-deactivate-license-confirm",function(e){e.preventDefault();var href=$(this).attr("href");if(typeof Swal==="undefined"){window.location.href=href;return;}var params=(typeof user_registration_license_params!=="undefined")?user_registration_license_params:{};Swal.fire({title:\'<img src="\'+(params.delete_icon||"")+\'" id="delete-user-icon">\'+(params.title||"Deactivate License"),html:\'<p id="html_1">\'+(params.message||"")+\'</p>\',showCancelButton:true,confirmButtonText:params.confirm_text||"Deactivate",cancelButtonText:params.cancel_text||"Cancel",allowOutsideClick:false}).then(function(result){if(result.isConfirmed){window.location.href=href;}});});})(jQuery);'
 		);
 	}
 

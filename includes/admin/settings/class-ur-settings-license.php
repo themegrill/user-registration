@@ -172,7 +172,7 @@ if ( ! class_exists( 'UR_Settings_License' ) ) {
 						'desc_tip' => __( 'Deactivate the license of User Registration plugin', 'user-registration' ),
 						'type'     => 'link',
 						'id'       => 'user-registration_deactivate-license_key',
-						'css'      => '',
+						'css'      => 'background:red; border:none; color:white;',
 						'buttons'  => array(
 							array(
 								'title' => __( 'Deactivate License', 'user-registration' ),

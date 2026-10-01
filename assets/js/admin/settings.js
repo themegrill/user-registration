@@ -1919,6 +1919,10 @@
 			(user_registration_settings_params &&
 				user_registration_settings_params.i18n) ||
 			{};
+		var deleteIcon =
+			(user_registration_settings_params &&
+				user_registration_settings_params.delete_icon) ||
+			"";
 
 		if (typeof Swal === "undefined") {
 			window.location.href = href;
@@ -1926,21 +1930,22 @@
 		}
 
 		Swal.fire({
-			customClass:
-				"user-registration-swal2-modal user-registration-swal2-modal--centered user-registration-trashed",
 			title:
-				'<i class="dashicons dashicons-warning"></i><span class="user-registration-swal2-modal__title">' +
-				(i18n.deactivate_license_title || "Deactivate License") +
-				"</span>",
-			text: i18n.deactivate_license_prompt || "",
+				'<img src="' +
+				deleteIcon +
+				'" id="delete-user-icon">' +
+				(i18n.deactivate_license_title || "Deactivate License"),
+			html:
+				'<p id="html_1">' +
+				(i18n.deactivate_license_prompt || "") +
+				"</p>",
 			showCancelButton: true,
 			confirmButtonText:
-				i18n.deactivate_license_confirm || "Deactivate License",
-			confirmButtonColor: "#f25656",
+				i18n.deactivate_license_confirm || "Deactivate",
 			cancelButtonText: i18n.i18n_prompt_cancel || "Cancel",
 			allowOutsideClick: false
 		}).then(function (result) {
-			if (result.isConfirmed || result.value) {
+			if (result.isConfirmed) {
 				window.location.href = href;
 			}
 		});
