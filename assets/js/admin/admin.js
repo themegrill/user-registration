@@ -617,7 +617,7 @@ jQuery(function ($) {
 
 			$(document)
 				.find("#integration_settings_back")
-				.click(function (e) {
+				.on("click", function (e) {
 					$(this)
 						.closest("#ur-tab-field-settings")
 						.find(
@@ -1578,7 +1578,7 @@ jQuery(function ($) {
 	});
 
 	$("#ur-lists-page-settings-button").on("click", function () {
-		$("#show-settings-link").click();
+		$("#show-settings-link").trigger("click");
 	});
 
 	$(document)

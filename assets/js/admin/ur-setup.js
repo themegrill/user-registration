@@ -342,7 +342,7 @@
 						$card
 							.removeClass("plugin-card-update-failed")
 							.find(".column-name a")
-							.focus();
+							.trigger("focus");
 					}, 200);
 				}
 			);
@@ -1247,7 +1247,7 @@ jQuery(function ($) {
 									window.location.href =
 										response.data.redirect;
 								} else {
-									$(".user-registartion-setup-name").focus();
+									$(".user-registartion-setup-name").trigger("focus");
 									Swal.fire({
 										icon: "error",
 										title: "Oops...",
