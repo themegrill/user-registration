@@ -326,7 +326,7 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 			LEFT JOIN $this->users_table wu ON wums.user_id = wu.ID
 			LEFT JOIN $this->posts_table wp ON wums.item_id = wp.ID
 			LEFT JOIN $this->orders_table wo ON wums.ID = wo.subscription_id
-			WHERE (wums.status = 'failed' OR wums.status = 'expired')
+			WHERE wums.status = 'expired'
 			AND wums.updated_at >= '%s'
 			ORDER BY wums.updated_at ASC
 			",
