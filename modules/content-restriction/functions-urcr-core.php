@@ -12,6 +12,45 @@
 
 defined( 'ABSPATH' ) || exit;
 
+/**
+ * Register legacy restriction metadata on every request, including core AJAX.
+ */
+function urcr_register_restriction_meta() {
+	foreach ( array( 'urcr_meta_content', 'urcr_meta_override_global_settings' ) as $key ) {
+		register_meta( 'post', $key, array(
+			'type'              => 'string',
+			'single'            => true,
+			'show_in_rest'      => false,
+			'sanitize_callback' => 'urcr_meta_content' === $key ? 'wp_kses_post' : 'urcr_sanitize_override_meta',
+			'auth_callback'     => 'urcr_authorize_restriction_meta',
+		) );
+	}
+}
+add_action( 'init', 'urcr_register_restriction_meta' );
+
+/**
+ * Normalize the legacy per-post override toggle.
+ *
+ * @param mixed $value Submitted value.
+ * @return string
+ */
+function urcr_sanitize_override_meta( $value ) {
+	return is_scalar( $value ) && ur_string_to_bool( $value ) ? 'on' : '';
+}
+
+/**
+ * Restriction writes require the settings capability and access to the post.
+ *
+ * @param bool   $allowed Default authorization.
+ * @param string $key Meta key.
+ * @param int    $post_id Post ID.
+ * @param int    $user_id Acting user ID.
+ * @return bool
+ */
+function urcr_authorize_restriction_meta( $allowed, $key, $post_id, $user_id ) {
+	return user_can( $user_id, 'manage_options' ) && user_can( $user_id, 'edit_post', $post_id );
+}
+
 function urcr_get_allow_options() {
 	global $wp_roles;
 

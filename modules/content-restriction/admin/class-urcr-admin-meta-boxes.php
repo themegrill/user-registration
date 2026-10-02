@@ -259,6 +259,12 @@ class URCR_Admin_Meta_Box extends UR_Meta_Boxes {
 			return;
 		}
 
+		if ( ! current_user_can( 'manage_options' ) || ! current_user_can( 'edit_post', $post_id )
+			|| empty( $_POST['custom_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['custom_nonce'] ) ), 'custom_nonce_action' )
+			|| wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
+			return;
+		}
+
 		$whole_site_access_restricted = ur_string_to_bool( get_option( 'user_registration_content_restriction_whole_site_access', false ) );
 
 		$checkbox = isset( $_POST['urcr_meta_checkbox'] ) ? $_POST['urcr_meta_checkbox'] : '';
@@ -271,7 +277,7 @@ class URCR_Admin_Meta_Box extends UR_Meta_Boxes {
 
 		$array_of_memberships = isset( $_POST['urcr_meta_memberships'] ) ? $_POST['urcr_meta_memberships'] : '';
 
-		$restricted_message = isset( $_POST['urcr_meta_content'] ) ? wp_kses_post( $_POST['urcr_meta_content'] ) : '';
+		$restricted_message = isset( $_POST['urcr_meta_content'] ) ? wp_kses_post( wp_unslash( $_POST['urcr_meta_content'] ) ) : '';
 
 		if ( ! $whole_site_access_restricted ) {
 			update_post_meta( $post_id, 'urcr_meta_checkbox', $checkbox );
@@ -287,34 +293,7 @@ class URCR_Admin_Meta_Box extends UR_Meta_Boxes {
 
 		update_post_meta( $post_id, 'urcr_meta_content', $restricted_message );
 
-		// Add nonce for security and authentication.
-		$nonce_name   = isset( $_POST['custom_nonce'] ) ? $_POST['custom_nonce'] : '';
-		$nonce_action = 'custom_nonce_action';
 
-		// Check if nonce is set.
-		if ( ! isset( $nonce_name ) ) {
-			return;
-		}
-
-		// Check if nonce is valid.
-		if ( ! wp_verify_nonce( $nonce_name, $nonce_action ) ) {
-			return;
-		}
-
-		// Check if user has permissions to save data.
-		if ( ! current_user_can( 'edit_post', $post_id ) ) {
-			return;
-		}
-
-		// Check if not an autosave.
-		if ( wp_is_post_autosave( $post_id ) ) {
-			return;
-		}
-
-		// Check if not a revision.
-		if ( wp_is_post_revision( $post_id ) ) {
-			return;
-		}
 	}
 }
 

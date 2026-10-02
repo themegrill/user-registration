@@ -183,7 +183,7 @@ class URCR_Shortcodes {
 
 			if ( 'on' === $override_global_settings ) {
 				$urcr_meta_content = get_post_meta( $post->ID, 'urcr_meta_content', true );
-				$message = ! empty( $urcr_meta_content ) ? $urcr_meta_content : '';
+				$message = ! empty( $urcr_meta_content ) ? wp_kses_post( $urcr_meta_content ) : '';
 			} elseif ( isset( $atts['enable_content_restriction'] ) && $atts['enable_content_restriction'] === 'true' ) {
 				$message = isset( $atts['message'] ) ? wp_kses_post( html_entity_decode( $atts['message'] ) ) : $message;
 			}
