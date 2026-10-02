@@ -48,6 +48,21 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 			);
 		}
 
+		if ( get_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id, true ) ) {
+			if ( $is_upgrade ) {
+				delete_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id );
+				return array(
+					'status'  => true,
+					'message' => esc_html__( 'Subscription is scheduled to cancel; proceeding with upgrade.', 'user-registration' ),
+				);
+			}
+
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Subscription is already scheduled to cancel.', 'user-registration' ),
+			);
+		}
+
 		if ( ! $is_upgrade && ( 'free' === ( $order['order_type'] ?? '' ) || 'paid' === ( $order['order_type'] ?? '' ) || empty( $order['payment_method'] ) ) ) {
 			$this->update(
 				$subscription_id,
