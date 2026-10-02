@@ -190,7 +190,7 @@ class UR_Admin_Import_Export_Forms {
 											$meta_value = ur_maybe_unserialize( $meta_value );
 										}
 
-										add_post_meta( $post_id, $meta_key, sanitize_text_field($meta_value) );
+										add_post_meta( $post_id, $meta_key, self::sanitize_meta_value( $meta_value ) );
 									}
 								}
 							}
@@ -236,6 +236,39 @@ class UR_Admin_Import_Export_Forms {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Sanitize a form post meta value being imported.
+	 *
+	 * sanitize_text_field() returns an empty string for anything that isn't a
+	 * scalar, so calling it directly on an unserialized meta value silently
+	 * wipes any array/object meta (field lists, condition rules, etc.) instead
+	 * of sanitizing it. Recurse into arrays/objects and only sanitize their
+	 * scalar leaves.
+	 *
+	 * json_decode() turns a JSON object literal into stdClass, but form meta
+	 * that was ever a plain PHP array (e.g. role_based_redirection) is read
+	 * back elsewhere as an array, not stdClass - so objects are normalized
+	 * back to arrays here rather than preserved as-is.
+	 *
+	 * @param mixed $meta_value Meta value, possibly already unserialized.
+	 * @return mixed Sanitized value; objects are returned as arrays.
+	 */
+	private static function sanitize_meta_value( $meta_value ) {
+		if ( is_object( $meta_value ) ) {
+			$meta_value = (array) $meta_value;
+		}
+
+		if ( is_array( $meta_value ) ) {
+			return array_map( array( __CLASS__, 'sanitize_meta_value' ), $meta_value );
+		}
+
+		if ( is_string( $meta_value ) ) {
+			return sanitize_text_field( $meta_value );
+		}
+
+		return $meta_value;
 	}
 }
 
