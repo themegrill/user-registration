@@ -1296,11 +1296,25 @@ class SubscriptionService {
 			}
 			delete_user_meta( $user_id, 'urm_pending_cancel_' . $subscription_id );
 
-			// The gateway may still be dunning a failed renewal; don't lock the member out while it's still collecting.
+			// Don't lock the member out while Stripe is still collecting (past_due) or still
+			// considers the subscription live (active/trialing). Mika's case: local expiry ran
+			// while Stripe stayed active after a renewal invoice with no payment_intent.
 			if ( ! $pending_cancel_meta && 'stripe' === ( $order['payment_method'] ?? '' ) && ! empty( $subscription['gateway_subscription_id'] ) ) {
-				$gateway_status = ( new StripeService() )->get_subscription_status( $subscription['gateway_subscription_id'] );
+				$stripe_service = new StripeService();
+				$gateway_status = $stripe_service->get_subscription_status( $subscription['gateway_subscription_id'] );
 
-				if ( ! is_wp_error( $gateway_status ) && 'past_due' === $gateway_status ) {
+				if ( ! is_wp_error( $gateway_status ) && in_array( $gateway_status, array( 'past_due', 'active', 'trialing' ), true ) ) {
+					if ( in_array( $gateway_status, array( 'active', 'trialing' ), true ) ) {
+						$stripe_service->sync_local_subscription_from_stripe(
+							$subscription['gateway_subscription_id'],
+							array(
+								'sub_id'  => $subscription_id,
+								'user_id' => $user_id,
+							),
+							'active'
+						);
+					}
+
 					ur_get_logger()->notice(
 						sprintf(
 							'[Member ID #%d] Expiration held - Stripe subscription %s is still %s',
