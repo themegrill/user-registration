@@ -1101,6 +1101,15 @@ body {
 						padding-bottom: $spacing_20px;
 					}
 				}
+
+				&.ur-payment-section-highlight {
+					animation: ur-payment-section-pulse 1.2s ease-in-out 3;
+					box-shadow: 0 0 0 3px rgba(71, 91, 178, 0.55) !important;
+					border-color: #475bb2 !important;
+					border-radius: $border_radius_3;
+					outline: 2px solid rgba(71, 91, 178, 0.45);
+					outline-offset: 2px;
+				}
 			}
 
 			.integration-header-info {
@@ -2900,6 +2909,16 @@ body {
 
 	.integration-action {
 		display: none !important;
+	}
+}
+
+@keyframes ur-payment-section-pulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 3px rgba(71, 91, 178, 0.35);
+	}
+	50% {
+		box-shadow: 0 0 0 6px rgba(71, 91, 178, 0.15);
 	}
 }
 
