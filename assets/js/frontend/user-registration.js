@@ -1239,6 +1239,7 @@
 
 									var data = {
 										action: "user_registration_user_form_submit",
+										ur_frontend_form_nonce: $this.closest("form").find('input[name="ur_frontend_form_nonce"]').val(),
 										form_data: form_data,
 										captchaResponse: captchaResponse,
 										form_id: form_id,
