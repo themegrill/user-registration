@@ -2450,7 +2450,8 @@ body {
 				bottom: 6px;
 				pointer-events: auto;
 
-				.user_registration_profile_picture_upload {
+				.user_registration_profile_picture_upload,
+				.profile-pic-remove {
 					position: relative;
 					width: 32px;
 					height: 32px;
@@ -2469,6 +2470,13 @@ body {
 					&:hover {
 						transform: translateY(-1px);
 					}
+				}
+
+				.profile-pic-remove::before {
+					content: "\00d7";
+					color: #475bb2;
+					font-size: 22px;
+					line-height: 30px;
 				}
 			}
 		}

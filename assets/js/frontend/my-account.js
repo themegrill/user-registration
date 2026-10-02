@@ -28,6 +28,9 @@ jQuery(function ($) {
 				.closest(".button-group")
 				.find(".user_registration_profile_picture_upload");
 			var upload_node_value = upload_node.text();
+			var img_container = $this
+				.closest(".user-registration-profile-header")
+				.find(".user-registration-img-container");
 
 			var file_data = $.ajax({
 				url: url,
@@ -37,15 +40,20 @@ jQuery(function ($) {
 				contentType: false,
 				// tell jQuery not to set contentType
 				beforeSend: function () {
-					upload_node.text(
-						user_registration_params.user_registration_profile_picture_uploading
-					);
+					upload_node
+						.prop("disabled", true)
+						.text(
+							user_registration_params.user_registration_profile_picture_uploading
+						);
+					img_container.addClass("ur-profile-pic-uploading");
 				},
 				complete: function (ajax_response) {
 					var message = "",
 						profile_pic_url = "",
 						attachment_id = "";
 
+					upload_node.prop("disabled", false);
+					img_container.removeClass("ur-profile-pic-uploading");
 					$this.val("");
 
 					var response_obj = JSON.parse(ajax_response.responseText);
@@ -233,8 +241,13 @@ jQuery(function ($) {
 		}
 	};
 
+	$(".profile-pic-remove").on("click", function (e) {
+		e.preventDefault();
+		user_registration_profile_picture_upload.remove_avatar($(this));
+	});
+
 	// Handle profile picture remove event.
-	$(".profile-pic-remove, .uraf-profile-picture-remove").on(
+	$(".uraf-profile-picture-remove").on(
 		"click",
 		function (e) {
 			e.preventDefault();

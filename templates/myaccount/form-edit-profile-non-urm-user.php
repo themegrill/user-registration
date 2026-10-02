@@ -151,6 +151,7 @@ $endpoint_label = isset( $args['endpoint_label'] ) ? $args['endpoint_label'] : '
 												<input type="hidden" name="profile-pic-url" id="profile_pic_url" value="<?php echo esc_attr( get_user_meta( get_current_user_id(), 'user_registration_profile_pic_url', true ) ); ?>" />
 												<input type="hidden" name="profile-default-image" value="<?php echo esc_url( $gravatar_image ); ?>" />
 												<input type="file" id="ur-profile-pic" name="profile-pic" class="profile-pic-upload" accept="image/jpeg,image/gif,image/png" style="display:none" />
+												<button type="button" class="button profile-pic-remove" data-attachment-id="" style="display:none"><?php esc_html_e( 'Remove', 'user-registration' ); ?></button>
 												<?php
 											}
 											?>
