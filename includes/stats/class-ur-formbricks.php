@@ -118,7 +118,7 @@ if ( ! class_exists( 'UR_FORMBRICKS' ) ) {
 			*/
 		public function configure_formbricks( $data, $page_slug ) {
 
-			if ( empty( $page_slug ) ) {
+			if ( empty( $page_slug ) || ! ur_option_checked( 'user_registration_allow_usage_tracking', false ) ) {
 				return $data;
 			}
 			$survey_data = array(
