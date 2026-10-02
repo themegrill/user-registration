@@ -152,19 +152,24 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 				'urm-deactivation-popup',
 				'urmDeactivationPopup',
 				array(
-					'pluginUrl'         => ur()->plugin_url() . '/',
-					'logoUrl'           => ur()->plugin_url() . '/assets/images/logo.png',
-					'quickFeedback'     => __( 'Quick Feedback', 'user-registration' ),
-					'disclaimer'        => __( '* By submitting this form, you will send us non-sensitive diagnostic data, site URL and email.', 'user-registration' ),
-					'popupId'          => $this->plugin_slug . '_uninstall_feedback_popup',
+					'pluginUrl'     => ur()->plugin_url() . '/',
+					'logoUrl'       => ur()->plugin_url() . '/assets/images/logo.png',
+					'quickFeedback' => __( 'Quick Feedback', 'user-registration' ),
+					'disclaimer'    => __( '* By submitting this form, you will send us non-sensitive diagnostic data, site URL and email.', 'user-registration' ),
+					'popupId'       => $this->plugin_slug . '_uninstall_feedback_popup',
 				)
 			);
 		}
 
 		/**
 		 * Patch ThemeGrill SDK labels after init so custom option labels are applied.
+		 *
 		 * The SDK applies themegrill_sdk_labels in Loader::init() on init priority 10.
-		 * This runs at priority 15 and directly sets Loader::$labels so our options show correctly.
+		 * This runs at priority 15 and writes Loader::$labels so our options show correctly.
+		 *
+		 * Intentionally replaces (does not merge) uninstall option labels: the shared
+		 * ThemeGrillSDK::$labels static is used by Free and Pro, and merging would leave
+		 * default SDK reasons (e.g. temporary deactivation) alongside URM's four options.
 		 */
 		public function patch_sdk_labels_after_init() {
 			if ( ! class_exists( 'ThemeGrillSDK\Loader' ) ) {
@@ -190,7 +195,7 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 				),
 			);
 			if ( isset( \ThemeGrillSDK\Loader::$labels['uninstall']['options'] ) && is_array( \ThemeGrillSDK\Loader::$labels['uninstall']['options'] ) ) {
-				// Keep only our option keys so Pro does not keep default SDK reasons (e.g. temporary deactivation).
+				// Replace shared SDK uninstall options with URM's set (see method docblock).
 				\ThemeGrillSDK\Loader::$labels['uninstall']['options'] = $our_options;
 			}
 		}
