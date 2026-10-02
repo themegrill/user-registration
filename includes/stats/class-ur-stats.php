@@ -39,6 +39,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			}
 			add_action( 'init', array( $this, 'init_usage' ), 4 );
 			add_action( 'update_option_user_registration_allow_usage_tracking', array( $this, 'run_on_save' ), 10, 3 );
+			add_filter( 'user_registration_logger_data', array( $this, 'get_logger_data' ) );
 
 			/**
 			 * Enable module tracking.
@@ -56,9 +57,11 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 
 		/**
 		 * Get product license key.
+		 *
+		 * @return string License key, empty string when none is saved.
 		 */
 		public function get_base_product_license() {
-			return get_option( 'user-registration_license_key' );
+			return (string) get_option( 'user-registration_license_key', '' );
 		}
 
 		/**
@@ -85,6 +88,11 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			}
 		}
 
+		/**
+		 * Returns registered user counts per form, split by membership and normal forms.
+		 *
+		 * @return array
+		 */
 		public function get_form_wise_user() {
 			return array(
 				'membership_form_users' => $this->get_form_users_count( true ),
@@ -99,7 +107,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 * from the membership orders table.
 		 *
 		 * @since 1.0.0
-		 * 
+		 *
 		 * @return array An array of payment methods and their corresponding order counts.
 		 */
 		public function get_membership_gateway_usage() {
@@ -112,15 +120,67 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			}
 
 			return $wpdb->get_results(
-				"SELECT payment_method, COUNT(*) AS total FROM {$table} GROUP BY payment_method ORDER BY total DESC",
+				"SELECT payment_method, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_orders GROUP BY payment_method ORDER BY total DESC",
 				ARRAY_A
 			);
 		}
 
 		/**
-		 * @param $type
+		 * Returns 30 day payment health counts plus a current subscription status snapshot.
 		 *
-		 * @return string|null
+		 * @return array
+		 */
+		public function get_payment_health() {
+			global $wpdb;
+
+			$orders = $wpdb->prefix . 'ur_membership_orders';
+			$events = $wpdb->prefix . 'ur_membership_subscription_events';
+
+			// Orders has a foreign key to subscriptions, so this check covers both tables.
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $orders ) ) !== $orders ) {
+				return array();
+			}
+
+			// Scan only the newest 2000 rows per table by primary key so cost stays flat on any site size; counts cap on very busy sites.
+			$min_order = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_orders" ) - 2000 );
+			$min_sub   = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_subscriptions" ) - 2000 );
+			$to_int    = function ( $rows ) {
+				return array_map(
+					function ( $row ) {
+						$row['total'] = (int) $row['total'];
+						return $row;
+					},
+					$rows
+				);
+			};
+
+			$health = array(
+				'orders_30d'           => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT payment_method, order_type, status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY payment_method, order_type, status", $min_order ), ARRAY_A ) ),
+				// 5 minute buckets keep this a single bounded scan; pairs straddling a bucket edge are missed, so it undercounts slightly.
+				'duplicate_orders_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COALESCE( SUM( c - 1 ), 0 ) FROM ( SELECT COUNT(*) AS c FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY user_id, item_id, FLOOR( UNIX_TIMESTAMP( created_at ) / 300 ) HAVING c > 1 ) t", $min_order ) ),
+				'duplicate_txn_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM ( SELECT transaction_id FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND transaction_id <> '' AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY transaction_id HAVING COUNT(*) > 1 ) t", $min_order ) ),
+				'stale_pending_30d'    => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_orders WHERE ID > %d AND status = 'pending' AND created_at >= NOW() - INTERVAL 30 DAY AND created_at < NOW() - INTERVAL 1 DAY", $min_order ) ),
+				// Current snapshot, not windowed, since status mix is a point in time value.
+				'subs_by_status'       => $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d GROUP BY status", $min_sub ), ARRAY_A ) ),
+				// Only renewals due in the last 30 days, so long stale gateway managed rows do not stick to a version.
+				'overdue_renewals_30d' => (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$wpdb->prefix}ur_membership_subscriptions WHERE ID > %d AND status = 'active' AND next_billing_date >= NOW() - INTERVAL 30 DAY AND next_billing_date < NOW() - INTERVAL 2 DAY", $min_sub ) ),
+				'events_30d'           => array(),
+			);
+
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $events ) ) === $events ) {
+				$min_event            = max( 0, (int) $wpdb->get_var( "SELECT MAX(ID) FROM {$wpdb->prefix}ur_membership_subscription_events" ) - 2000 );
+				$health['events_30d'] = $to_int( $wpdb->get_results( $wpdb->prepare( "SELECT event_type, event_status, COUNT(*) AS total FROM {$wpdb->prefix}ur_membership_subscription_events WHERE ID > %d AND created_at >= NOW() - INTERVAL 30 DAY GROUP BY event_type, event_status", $min_event ), ARRAY_A ) );
+			}
+
+			return $health;
+		}
+
+		/**
+		 * Returns registered user counts per form.
+		 *
+		 * @param bool $for_membership Count membership form users when true, other forms otherwise.
+		 *
+		 * @return array
 		 */
 		public function get_form_users_count( $for_membership = false ) {
 			global $wpdb;
@@ -221,17 +281,18 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 
 			$addons_data = array(
 				array(
-					'product_name'          => $base_product_name,
-					'product_version'       => UR()->version,
-					'product_type'          => 'plugin',
-					'product_slug'          => $base_product,
-					'is_premium'            => $is_premium,
-					'license_key'           => $is_premium ? $license_key : '',
-					'total_form_count'      => $this->get_form_count(),
-					'total_user_count'      => $this->get_user_count(),
-					'membership_form_users'   => $form_wise_users['membership_form_users'],
-					'normal_form_users'       => $form_wise_users['normal_form_users'],
+					'product_name'             => $base_product_name,
+					'product_version'          => UR()->version,
+					'product_type'             => 'plugin',
+					'product_slug'             => $base_product,
+					'is_premium'               => $is_premium,
+					'license_key'              => $is_premium ? $license_key : '',
+					'total_form_count'         => $this->get_form_count(),
+					'total_user_count'         => $this->get_user_count(),
+					'membership_form_users'    => $form_wise_users['membership_form_users'],
+					'normal_form_users'        => $form_wise_users['normal_form_users'],
 					'membership_gateway_usage' => $this->get_membership_gateway_usage(),
+					'payment_health'           => wp_doing_cron() ? $this->get_payment_health() : array(),
 				),
 			);
 
@@ -241,7 +302,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				$addon_file_data = get_plugin_data( $addon_file );
 				$plugin_slug     = class_exists( 'UR_Stats_Helpers' ) ? UR_Stats_Helpers::extract_plugin_slug( $plugin ) : ( false !== strpos( $plugin, '/' ) ? explode( '/', $plugin )[0] : $plugin );
 
-				if ( $base_product !== $plugin && strpos( $plugin_slug, 'user-registration-' ) === 0 ) {
+				if ( $base_product !== $plugin_slug && strpos( $plugin_slug, 'user-registration-' ) === 0 ) {
 					$addon_info = array(
 						'product_name'    => isset( $addon_file_data['Name'] ) ? trim( $addon_file_data['Name'] ) : '',
 						'product_version' => isset( $addon_file_data['Version'] ) ? trim( $addon_file_data['Version'] ) : '',
@@ -276,27 +337,29 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				$modules_by_slug = array_column( $our_modules, null, 'slug' );
 
 				foreach ( $enabled_features as $slug ) {
-					if ( isset( $modules_by_slug[ $slug ] ) ) {
-						$module               = $modules_by_slug[ $slug ];
-						$is_moved_addon       = in_array( $slug, $addons_list_moved_into_module, true );
-						$is_standalone_active = $is_moved_addon && in_array( $slug . '/' . $slug . '.php', $active_plugins, true );
-						$product_slug         = $is_standalone_active ? $slug . '/' . $slug . '.php' : $slug;
-						$addon_info           = array(
-							'product_name'    => $module['name'],
-							'product_version' => UR()->version,
-							'product_type'    => $is_standalone_active ? 'plugin' : 'module',
-							'product_slug'    => $product_slug,
-							'is_premium'      => $is_premium,
-						);
-
-						// Add content restriction stats if it's the content-restriction module
-						if ( class_exists( 'UR_Stats_Helpers' ) && $is_premium ) {
-							$addon_info = UR_Stats_Helpers::maybe_add_content_restriction_stats( $addon_info, $slug );
-							$addon_info = UR_Stats_Helpers::maybe_add_email_template_stats( $addon_info, $slug );
-						}
-
-						$addons_data[] = $addon_info;
+					// Report every enabled module, not only those listed in the UI features file, so auto-enabled ones like payment-history are tracked.
+					if ( ! is_string( $slug ) || 0 !== strpos( $slug, 'user-registration-' ) ) {
+						continue;
 					}
+
+					$is_moved_addon       = in_array( $slug, $addons_list_moved_into_module, true );
+					$is_standalone_active = $is_moved_addon && in_array( $slug . '/' . $slug . '.php', $active_plugins, true );
+					$product_slug         = $is_standalone_active ? $slug . '/' . $slug . '.php' : $slug;
+					$addon_info           = array(
+						'product_name'    => isset( $modules_by_slug[ $slug ]['name'] ) ? $modules_by_slug[ $slug ]['name'] : ucwords( str_replace( '-', ' ', $slug ) ),
+						'product_version' => UR()->version,
+						'product_type'    => $is_standalone_active ? 'plugin' : 'module',
+						'product_slug'    => $product_slug,
+						'is_premium'      => $is_premium,
+					);
+
+					// Add content restriction stats if it's the content-restriction module.
+					if ( class_exists( 'UR_Stats_Helpers' ) && $is_premium ) {
+						$addon_info = UR_Stats_Helpers::maybe_add_content_restriction_stats( $addon_info, $slug );
+						$addon_info = UR_Stats_Helpers::maybe_add_email_template_stats( $addon_info, $slug );
+					}
+
+					$addons_data[] = $addon_info;
 				}
 			}
 
@@ -347,6 +410,22 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 */
 		public function is_usage_allowed() {
 			return ur_option_checked( 'user_registration_allow_usage_tracking', false );
+		}
+
+		/**
+		 * Returns the last sent usage report for the SDK logger ping.
+		 *
+		 * @param array $data Logger data.
+		 *
+		 * @return array
+		 */
+		public function get_logger_data( $data ) {
+			// The tracking API keeps only the latest payload per site, so an empty SDK ping would wipe the full report.
+			if ( ! $this->is_usage_allowed() ) {
+				return $data;
+			}
+
+			return get_option( 'user_registration_stats_last_data', $data );
 		}
 
 		/**
@@ -458,7 +537,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					$default_value          = ! empty( $setting['default_value'] ) ? $setting['default_value'] : '';
 					$settings_default_value = is_bool( $default_value ) ? ur_bool_to_string( $default_value ) : $default_value;
 
-					// Convert arrays and other non-scalar values to JSON strings to avoid array to string conversion warnings
+					// Convert arrays and other non-scalar values to JSON strings to avoid array to string conversion warnings.
 					$settings_value_str         = is_scalar( $settings_value ) ? (string) $settings_value : wp_json_encode( $settings_value );
 					$settings_default_value_str = is_scalar( $settings_default_value ) ? (string) $settings_default_value : wp_json_encode( $settings_default_value );
 
@@ -533,6 +612,8 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				'onboarding'        => $this->get_onboarding_data(),
 			);
 
+			update_option( 'user_registration_stats_last_data', $data['data'], false );
+
 			$this->send_request( apply_filters( 'user_registration_tg_tracking_remote_url', $stats_api_url ), $data );
 		}
 
@@ -601,7 +682,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					'body'        => wp_json_encode( $data ),
 				)
 			);
-			ur_get_logger()->notice( print_r( json_decode( wp_remote_retrieve_body( $response ), true ), true ), array( 'source' => 'urm-tg-sdk-logs' ) );
+			ur_get_logger()->notice( wp_remote_retrieve_body( $response ), array( 'source' => 'urm-tg-sdk-logs' ) );
 			ur_get_logger()->debug( '------------- TG SDK API log tracking response received -------------', array( 'source' => 'urm-tg-sdk-logs' ) );
 
 			return json_decode( wp_remote_retrieve_body( $response ), true );
@@ -615,7 +696,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		private function setting_keys() {
 			return array(
 				'user-registration'                => array(
-					// General Settings
+					// General Settings.
 					array( 'user_registration_general_setting_disabled_user_roles', '["subscriber"]' ),
 					array( 'user_registration_myaccount_page_id', '', true ),
 					array( 'user_registration_my_account_layout', 'vertical' ),
@@ -627,7 +708,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_general_setting_uninstall_option', false ),
 					array( 'user_registration_allow_usage_tracking', false ),
 
-					// Login Settings
+					// Login Settings.
 					array( 'user_registration_login_option_hide_show_password', false ),
 					array( 'user_registration_ajax_form_submission_on_edit_profile', false ),
 					array( 'user_registration_disable_profile_picture', false ),
@@ -649,7 +730,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_login_options_login_redirect_url', '', true ),
 					array( 'user_registration_login_options_configured_captcha_type', 'v2' ),
 
-					// Captcha Settings
+					// Captcha Settings.
 					array( 'user_registration_captcha_setting_recaptcha_version', 'v2' ),
 					array( 'user_registration_captcha_setting_recaptcha_site_key', '' ),
 					array( 'user_registration_captcha_setting_recaptcha_site_secret', '' ),
@@ -662,7 +743,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_captcha_setting_invisible_recaptcha_v2', false ),
 					array( 'user_registration_captcha_setting_recaptcha_cloudflare_theme', 'light' ),
 
-					// Email Settings
+					// Email Settings.
 					array( 'user_registration_email_setting_disable_email', false ),
 				),
 				'user-registration-pro'            => array(
@@ -752,7 +833,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 * @since 4.0
 		 */
 		public function get_modules() {
-			$all_modules = file_get_contents( ur()->plugin_path() . '/assets/extensions-json/all-features.json' );
+			$all_modules = file_get_contents( ur()->plugin_path() . '/assets/extensions-json/all-features.json' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Local plugin file, not a remote URL.
 
 			if ( ur_is_json( $all_modules ) ) {
 				$all_modules = json_decode( $all_modules, true );
@@ -762,6 +843,8 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
+		 * Returns the base site info sent with every usage report.
+		 *
 		 * @return array
 		 */
 		public function get_base_info() {
