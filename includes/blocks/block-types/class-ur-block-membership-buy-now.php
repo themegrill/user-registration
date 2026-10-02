@@ -44,6 +44,9 @@ class UR_Block_Membership_Buy_Now extends UR_Block_Abstract {
 	 * Build HTML.
 	 */
 	protected function build_html( $content ) {
+		// This block renders the visitor's own plan state instead of routing through the membership wrapper.
+		UR_Cache_Helper::disable_page_cache( 'membership' );
+
 		wp_register_style(
 			'user-registration-blocks-style',
 			UR()->plugin_url() . '/chunks/blocks.css',

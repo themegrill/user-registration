@@ -265,7 +265,16 @@ class UR_Admin_Settings {
 					'continue_to_dashboard_text'         => esc_html__( 'Continue to dashboard', 'user-registration' ),
 
 					'upgrade_plan'                       => esc_html__( 'Upgrade Plan', 'user-registration' ),
-					'upgrade_link'                       => esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'integration-settings', 'medium' => 'popup' ) ) ),
+					'upgrade_link'                       => esc_url(
+						ur_utm_url(
+							'https://wpuserregistration.com/upgrade/',
+							array(
+								'source'  => 'integration-settings',
+								'medium'  => 'popup',
+								'content' => 'integration-settings-popup',
+							)
+						)
+					),
 				),
 				'is_advanced_field_active'             => is_plugin_active( 'user-registration-advanced-fields/user-registration-advanced-fields.php' ),
 				'reset_keys_icon'                      => plugins_url( 'assets/images/users/reset-keys-red.svg', UR_PLUGIN_FILE ),
@@ -343,6 +352,7 @@ class UR_Admin_Settings {
 			$settings[] = include 'settings/class-ur-settings-security.php';
 			$settings[] = include 'settings/class-ur-settings-advanced.php';
 			$settings[] = include 'settings/class-ur-settings-import-export.php';
+			$settings[] = include 'settings/class-ur-settings-tools.php';
 			$settings[] = include 'settings/class-ur-settings-license.php';
 			/**
 			 * Filter to retrieve settings pages
@@ -625,7 +635,15 @@ class UR_Admin_Settings {
 							$settings .= '<div class="ur-feature__title">';
 							$settings .= esc_html__( $section['title'] . ' payment feature only available in Pro.', 'user-registration' );
 							$settings .= '</div>';
-							$settings .= '<a target="_blank" class="ur-feature__btn" href="' . esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'ur-membership-create', 'medium' => 'upgrade-link' ) ) ) . '">';
+							$payment_upgrade_url = ur_utm_url(
+								'https://wpuserregistration.com/upgrade/',
+								array(
+									'source'  => 'payment-settings',
+									'medium'  => 'upgrade-link',
+									'content' => sanitize_title( $section['id'] ) . '-upsell',
+								)
+							);
+							$settings           .= '<a target="_blank" class="ur-feature__btn" href="' . esc_url( $payment_upgrade_url ) . '">';
 							$settings .= '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"></path><path d="M5 21h14"></path></svg>';
 							$settings .= esc_html__( 'Upgrade to Pro', 'user-registration' );
 							$settings .= '</a>';
@@ -729,21 +747,28 @@ class UR_Admin_Settings {
 							// Switch based on type.
 							switch ( $value['type'] ) {
 
-								// Standard text inputs and subtypes like 'number'.
+								// Standard text inputs and subtypes like 'number' and 'password'.
 								case 'text':
 								case 'email':
 								case 'number':
-								case 'password':
 								case 'date':
+								case 'password':
 									$option_value = self::get_option( $value['id'], $value['default'] );
+									$is_password  = 'password' === $value['type'];
 
 									$settings .= '<div class="user-registration-global-settings"' . $display_condition_attrs . $display_condition_style . '>';
 									$settings .= '<label class="ur-label" for="' . esc_attr( $value['id'] ) . '">' . esc_html( $value['title'] ) . ' ' . wp_kses_post( $tooltip_html ) . '</label>';
 									$settings .= '<div class="user-registration-global-settings--field">';
+
+									if ( $is_password ) {
+										$settings .= '<div class="user-registration-password-input-wrapper">';
+									}
+
 									$settings .= '<input
 											name="' . esc_attr( $value['id'] ) . '"
 											id="' . esc_attr( $value['id'] ) . '"
 											type="' . esc_attr( $value['type'] ) . '"
+											' . ( $is_password ? 'autocomplete="new-password"' : '' ) . '
 											style="' . esc_attr( $value['css'] ) . '"
 											value="' . esc_attr( $option_value ) . '"
 											class="' . esc_attr( $value['class'] ) . '"
@@ -751,6 +776,12 @@ class UR_Admin_Settings {
 											max="' . esc_attr( ! empty( $value['max'] ) ? $value['max'] : '' ) . '"
 											placeholder="' . esc_attr( $value['placeholder'] ) . '"
 											' . esc_attr( implode( ' ', $custom_attributes ) ) . '/>';
+
+									if ( $is_password ) {
+										$settings .= '<button type="button" class="user-registration-password-toggle ur-toggle-password" aria-label="' . esc_attr__( 'Show password', 'user-registration' ) . '" data-show-text="' . esc_attr__( 'Show password', 'user-registration' ) . '" data-hide-text="' . esc_attr__( 'Hide password', 'user-registration' ) . '"><span class="dashicons dashicons-visibility" aria-hidden="true"></span></button>';
+										$settings .= '</div>';
+									}
+
 									$settings .= wp_kses_post( $description );
 									$settings .= '</div>';
 									$settings .= '</div>';

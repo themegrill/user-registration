@@ -206,8 +206,8 @@ if ( ! class_exists( 'UR_Settings_Captcha' ) ) :
 					'show_logo'   => false,
 					'settings'    => array(
 						array(
-							'title'    => __( 'Force Captcha', 'user-registration' ),
-							'desc'     => __( 'Overrides other captchas and enforces URM Captcha on all forms for consistent spam protection.', 'user-registration' ),
+							'title'    => __( 'Prevent Captcha Conflicts', 'user-registration' ),
+							'desc'     => __( "When enabled, removes other plugins' captcha scripts (e.g. WPForms, Contact Form 7) site-wide to prevent duplicate or broken captcha widgets. It does not add or enable a captcha on your own forms - set that up separately for each form.", 'user-registration' ),
 							'id'       => 'urm_enable_no_conflict',
 							'default'  => false,
 							'type'     => 'toggle',
