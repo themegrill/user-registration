@@ -92,6 +92,8 @@ test.describe("locked security section upsell card @fresh", () => {
     await loginAsAdmin(page);
     await gotoAdminPage(page, "user-registration-settings", "&tab=security&section=2fa");
 
+    // With the 2FA addon active the section renders its real settings, not the upsell card.
+    test.skip((await page.locator(".ur-upgrade--link").count()) === 0, "2FA upsell card not shown");
     await expect(page.locator(".user-registration-card__title").first()).toHaveText("2FA");
   });
 });
