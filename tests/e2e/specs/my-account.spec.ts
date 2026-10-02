@@ -156,9 +156,10 @@ test.describe("my account @fresh", () => {
    * @why     The profile picture JS reveals a `.profile-pic-remove` button after an
    *          upload, but no template rendered one, so a wrong pick could not be
    *          undone before saving. Guards that the control exists and is revealed.
-   *          Does not assert the spinner, the disabled state or the revert-on-click
-   *          behaviour: those live in my-account.js, and this suite serves the
-   *          committed my-account.min.js, which a source-only change does not touch.
+   *          Clicking Remove must restore the default avatar, empty the hidden URL and
+   *          bring the edit button back. Those behaviours live in my-account.js, so
+   *          this suite must serve a my-account.min.js built from this source. The
+   *          spinner and disabled state are not asserted.
    */
   test("profile picture upload reveals a Remove control after an image is chosen @fresh @my-account", async ({ page, browser }) => {
     await loginAsAdmin(page);
@@ -188,6 +189,13 @@ test.describe("my account @fresh", () => {
 
     await expect(remove).toBeVisible({ timeout: 20_000 });
     await expect(edit).toBeHidden();
+
+    await remove.click();
+    await expect(remove).toBeHidden();
+    await expect(edit).toBeVisible();
+    await expect(user.locator("#profile_pic_url")).toHaveValue("");
+    const defaultImage = await user.locator('input[name="profile-default-image"]').inputValue();
+    await expect(user.locator("img.profile-preview")).toHaveAttribute("src", defaultImage);
 
     await deleteUserByEmail(page, account.email);
     await visitor.close();

@@ -2305,11 +2305,14 @@
 															.find(
 																".profile-pic-remove"
 															)
-															.data(
-																"attachment-id",
-																response.data
-																	.profile_pic_id
-															);
+															.data({
+																"attachment-id":
+																	response.data
+																		.profile_pic_id,
+																"saved-attachment-id":
+																	response.data
+																		.profile_pic_id
+															});
 													}
 												}
 											}

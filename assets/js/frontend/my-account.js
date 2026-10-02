@@ -167,6 +167,10 @@ jQuery(function ($) {
 				!!el_value ? JSON.parse(el_value) : []
 			);
 			ur_removed_pic.add(attachment_id);
+			// A fresh upload only has a placeholder ID, so also queue the saved picture for deletion.
+			if ($node.data("saved-attachment-id")) {
+				ur_removed_pic.add($node.data("saved-attachment-id"));
+			}
 			$node
 				.closest("form")
 				.find(".ur_removed_profile_pic")
@@ -233,6 +237,17 @@ jQuery(function ($) {
 			);
 		}
 	};
+
+	$(".profile-pic-remove").each(function () {
+		var saved_id = $(this)
+			.closest("form")
+			.find("#profile_pic_url")
+			.val();
+
+		if (/^\d+$/.test(saved_id)) {
+			$(this).data("saved-attachment-id", saved_id);
+		}
+	});
 
 	$(".profile-pic-remove").on("click", function (e) {
 		e.preventDefault();
