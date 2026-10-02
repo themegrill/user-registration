@@ -57,6 +57,7 @@ class UR_Shortcode_My_Account {
 	public static function output( $atts ) {
 
 		global $wp, $post;
+
 		wp_enqueue_script( 'tooltipster' );
 		wp_enqueue_script( 'user-registration' );
 		wp_enqueue_script( 'ur-common' );
