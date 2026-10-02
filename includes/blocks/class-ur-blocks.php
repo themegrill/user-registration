@@ -103,20 +103,25 @@ class UR_Blocks {
 
 		$smart_tag = apply_filters( 'user_registration_thank_you_page_smart_tags', $smart_tag );
 
-		$pages        = get_pages();
-		$page_options = array(
-			array(
-				'label' => __( 'Select a page', 'user-registration' ),
-				'value' => 0,
-			),
+		$pages = array_map(
+			function ( $page ) {
+				return array(
+					'label' => $page->post_title,
+					'value' => $page->ID,
+				);
+			},
+			get_pages()
 		);
 
-		foreach ( $pages as $page ) {
-			$page_options[] = array(
-				'label' => $page->post_title,
-				'value' => $page->ID,
-			);
-		}
+		$page_options = array_merge(
+			array(
+				array(
+					'label' => __( 'Select a page', 'user-registration' ),
+					'value' => 0,
+				),
+			),
+			$pages
+		);
 
 		wp_localize_script(
 			'user-registration-blocks-editor',
@@ -126,14 +131,7 @@ class UR_Blocks {
 				'urRestApiNonce'              => wp_create_nonce( 'wp_rest' ),
 				'isPro'                       => is_plugin_active( 'user-registration-pro/user-registration.php' ),
 				'iscRestrictionActive'        => ur_check_module_activation( 'content-restriction' ),
-				'pages'                       => array_map(
-					function ( $page ) {
-						return array(
-							'label' => $page->post_title,
-							'value' => $page->ID,
-						); },
-					get_pages()
-				),
+				'pages'                       => $pages,
 				'login_page_id'               => get_option( 'user_registration_login_page_id' ),
 				'urcrConfigurl'               => ur_check_module_activation( 'content-restriction' ) ? admin_url( 'admin.php?page=user-registration-content-restriction' ) : '',
 				'urcrGlobalRestrictionMsgUrl' => ur_check_module_activation( 'content-restriction' ) ? admin_url( 'admin.php?page=user-registration-settings&tab=membership&section=content-rules' ) : '',
