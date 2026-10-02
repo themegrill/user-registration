@@ -81,3 +81,17 @@ test.describe("prevent wp dashboard access @fresh", () => {
     await visitor.close();
   });
 });
+
+/**
+ * Regression for themegrill/user-registration-pro#1741 — the Pro upsell card
+ * on a locked section took its heading from the raw slug, so `2fa` rendered
+ * lowercase while the sidebar label read "2FA".
+ */
+test.describe("locked security section upsell card @fresh", () => {
+  test("the 2FA card heading uses the registered label @fresh @security", async ({ page }) => {
+    await loginAsAdmin(page);
+    await gotoAdminPage(page, "user-registration-settings", "&tab=security&section=2fa");
+
+    await expect(page.locator(".user-registration-card__title").first()).toHaveText("2FA");
+  });
+});
