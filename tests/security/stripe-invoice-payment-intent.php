@@ -16,7 +16,13 @@ namespace Stripe {
 			}
 			return new self();
 		}
-		/** Stands in for the SDK's camelCase `toArray()`, which cannot be renamed. */
+		/**
+		 * Stands in for the SDK's camelCase `toArray()`, which cannot be renamed.
+		 *
+		 * @param string $name      Called method name.
+		 * @param array  $arguments Call arguments.
+		 * @return array
+		 */
 		public function __call( $name, $arguments ) {
 			security_assert( 'toArray' === $name, 'Only toArray() is expected on the Invoice double' );
 			return array( 'payments' => array( 'data' => $GLOBALS['stripe_payments'] ) );
