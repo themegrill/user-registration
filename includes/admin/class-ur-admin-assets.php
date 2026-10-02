@@ -27,6 +27,17 @@ class UR_Admin_Assets {
 	}
 
 	/**
+	 * Screen IDs that need the full admin and Form Builder asset bundle.
+	 *
+	 * The WordPress profile screens are left out; they only get the lean assets they use.
+	 *
+	 * @return array
+	 */
+	private function get_builder_screen_ids() {
+		return array_diff( ur_get_screen_ids(), array( 'profile', 'user-edit' ) );
+	}
+
+	/**
 	 * Enqueue styles.
 	 */
 	public function admin_styles() {
@@ -70,7 +81,7 @@ class UR_Admin_Assets {
 		wp_register_style( 'user-registration-admin', UR()->plugin_url() . '/assets/css/admin.css', array( 'nav-menus', 'wp-color-picker' ), UR_VERSION );
 
 		// Admin styles for UR pages only.
-		if ( in_array( $screen_id, ur_get_screen_ids(), true ) ) {
+		if ( in_array( $screen_id, $this->get_builder_screen_ids(), true ) ) {
 			wp_enqueue_style( 'user-registration-admin' );
 
 			if ( strpos( $screen_id, 'user-registration-settings' ) ) {
@@ -92,7 +103,10 @@ class UR_Admin_Assets {
 		}
 		// Enqueue flatpickr on user profile screen.
 		if ( 'user-edit' === $screen_id || 'profile' === $screen_id || 'user-registration-membership_page_add-new-registration' === $screen_id ) {
+			wp_enqueue_style( 'user-registration-admin' );
 			wp_enqueue_style( 'flatpickr' );
+			wp_enqueue_style( 'tooltipster' );
+			wp_enqueue_style( 'tooltipster-borderless-theme' );
 		}
 
 		// Enqueue dashboard widget CSS in dashboard screen only.
@@ -344,7 +358,7 @@ class UR_Admin_Assets {
 		}
 
 		// UserRegistration admin pages.
-		if ( in_array( $screen_id, ur_get_screen_ids(), true ) ) {
+		if ( in_array( $screen_id, $this->get_builder_screen_ids(), true ) ) {
 			wp_enqueue_script( 'user-registration-admin' );
 			wp_enqueue_script( 'user-registration-form-builder' );
 			wp_enqueue_script( 'user-registration-form-settings' );
@@ -529,7 +543,12 @@ class UR_Admin_Assets {
 		if ( 'user-edit' === $screen_id || 'profile' === $screen_id || 'user-registration-membership_page_add-new-registration' === $screen_id ) {
 			wp_enqueue_script( 'flatpickr' );
 			wp_enqueue_media();
+			wp_enqueue_script( 'tooltipster' );
 			wp_enqueue_script( 'ur-my-account' );
+
+			if ( 'user-edit' === $screen_id || 'profile' === $screen_id ) {
+				wp_enqueue_script( 'ur-profile-datepicker', UR()->plugin_url() . '/assets/js/admin/ur-profile-datepicker' . $suffix . '.js', array( 'jquery', 'flatpickr' ), UR_VERSION, true );
+			}
 		}
 
 		if ( 'user-registration-membership_page_user-registration-dashboard' === $screen_id ) {
