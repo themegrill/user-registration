@@ -58,4 +58,20 @@ test.describe("admin surfaces @fresh", () => {
     await page.goto("/wp-admin/edit.php?post_type=user_registration");
     await expect(page.locator("#the-list tr[id^='post-']").first()).toBeVisible();
   });
+
+  test("payment settings masks secret keys with show/hide toggle @fresh @admin", async ({ page }) => {
+    await gotoAdminPage(page, "user-registration-settings", "&tab=payment");
+    const cardHeader = page.locator("#paypal .user-registration-card__header, #stripe .user-registration-card__header, .user-registration-card__header").first();
+    await cardHeader.click();
+
+    const secretInput = page.locator(".user-registration-password-input-wrapper input").first();
+    await expect(secretInput).toHaveAttribute("type", "password");
+
+    const toggleBtn = page.locator(".user-registration-password-input-wrapper .ur-toggle-password").first();
+    await expect(toggleBtn).toBeVisible();
+    await toggleBtn.click();
+    await expect(secretInput).toHaveAttribute("type", "text");
+    await toggleBtn.click();
+    await expect(secretInput).toHaveAttribute("type", "password");
+  });
 });

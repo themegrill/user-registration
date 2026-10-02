@@ -114,24 +114,56 @@ class PaymentService {
 			case 'bank':
 				return $this->build_direct_bank_response( $payment_data, $response_data['subscription_id'], $response_data['member_id'] );
 			default:
-				return $this->build_free_upgrade_response();
+				return $this->build_free_upgrade_response( $response_data );
 		}
 	}
 
 	/**
 	 * Build Free upgrade Response
 	 *
-	 * @param $data
-	 * @param $subscription_id
-	 * @param $member_id
+	 * @param array $response_data
 	 *
 	 * @return array
 	 */
-	public function build_free_upgrade_response() {
+	public function build_free_upgrade_response( $response_data = array() ) {
+		$is_plan_change = ! empty( $response_data['upgrade'] ) && ! empty( $response_data['current_membership_id'] )
+			&& absint( $response_data['current_membership_id'] ) !== absint( $response_data['membership'] ?? 0 )
+			&& empty( $response_data['delayed_until'] )
+			&& $this->is_paid_to_free_change( $response_data['current_membership_id'], $response_data['membership'] ?? 0 );
+
+		if ( $is_plan_change ) {
+			$email_service = new EmailService();
+			$email_service->send_email( $response_data, 'membership_downgraded_free_user' );
+			$email_service->send_email( $response_data, 'membership_downgraded_free_admin' );
+		}
 
 		return array(
 			'thank_you_page_url' => urm_get_thank_you_page(),
 		);
+	}
+
+	/**
+	 * Checks whether a membership change is genuinely from a paid plan to a free one.
+	 *
+	 * @param int $current_membership_id
+	 * @param int $new_membership_id
+	 *
+	 * @return bool
+	 */
+	public function is_paid_to_free_change( $current_membership_id, $new_membership_id ) {
+		$membership_repository = new MembershipRepository();
+
+		$current_membership = $membership_repository->get_single_membership_by_ID( $current_membership_id );
+		$new_membership      = $membership_repository->get_single_membership_by_ID( $new_membership_id );
+
+		if ( empty( $current_membership['meta_value'] ) || empty( $new_membership['meta_value'] ) ) {
+			return false;
+		}
+
+		$current_type = json_decode( wp_unslash( $current_membership['meta_value'] ), true )['type'] ?? '';
+		$new_type     = json_decode( wp_unslash( $new_membership['meta_value'] ), true )['type'] ?? '';
+
+		return 'free' !== $current_type && 'free' === $new_type;
 	}
 
 	/**

@@ -37,6 +37,8 @@ Thumbs.db
 /tests/*
 # The Playwright QA suite is source, not a build artifact — CI runs it.
 !/tests/e2e/
+# Standalone PHP regression checks for pure logic with no WP test harness wired up.
+!/tests/manual/
 
 # act local secrets (do not commit)
 .act/.secrets

@@ -299,7 +299,8 @@ class SubscriptionService {
 
 		$member_id = $current_user_subscription['user_id'];
 
-		$latest_order = $this->members_orders_repository->get_member_orders( $member_id );
+		// Scoped to this subscription, not the member's most recent order overall.
+		$latest_order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 		$membership = $this->membership_repository->get_single_membership_by_ID( $current_user_subscription['item_id'] );
 
@@ -310,6 +311,7 @@ class SubscriptionService {
 
 		$email_data = array(
 			'subscription'     => $subscription,
+			'subscription_id'  => $subscription_id,
 			'order'            => $latest_order,
 			'membership_metas' => $membership_metas,
 			'member_id'        => $member_id,
@@ -346,13 +348,35 @@ class SubscriptionService {
 			}
 		}
 
-		if ( empty( $member_order ) ) {
-			$member_order = $this->members_orders_repository->get_member_orders( $data['member_id'] );
+		if ( isset( $data['subscription']['ID'] ) ) {
+			$subscription_id = $data['subscription']['ID'];
+		} elseif ( ! empty( $data['subscription_id'] ) ) {
+			$subscription_id = $data['subscription_id'];
 		}
 
-		if ( isset( $data['subscription']['ID'] ) ) {
-			$subscription_id = $data['subscription']['ID'] ?? 0;
-		} else {
+		// Trust a caller-supplied order only when it matches the resolved subscription, so a caller's own mis-derived order can't bypass the lookup below.
+		if ( empty( $member_order ) && ! empty( $data['order'] ) ) {
+			$candidate_order = $data['order'];
+			if ( empty( $candidate_order['ID'] ) && ! empty( $candidate_order['order_id'] ) ) {
+				$candidate_order['ID'] = $candidate_order['order_id'];
+			}
+			if ( empty( $subscription_id ) || (int) ( $candidate_order['subscription_id'] ?? 0 ) === (int) $subscription_id ) {
+				$member_order = $candidate_order;
+			}
+		}
+
+		if ( empty( $subscription_id ) && ! empty( $member_order['subscription_id'] ) ) {
+			$subscription_id = $member_order['subscription_id'];
+		}
+
+		// Scope the order lookup to this subscription rather than the member's most recent order.
+		if ( empty( $member_order ) && ! empty( $subscription_id ) ) {
+			$member_order = $this->orders_repository->get_order_by_subscription( $subscription_id );
+		}
+
+		// Only fall back member-wide when no subscription resolved at all - one with no order of its own must not inherit another's data.
+		if ( empty( $member_order ) && empty( $subscription_id ) ) {
+			$member_order    = $this->members_orders_repository->get_member_orders( $data['member_id'] );
 			$subscription_id = ! empty( $member_order ) ? ( $member_order['subscription_id'] ?? '' ) : '';
 		}
 
@@ -362,7 +386,6 @@ class SubscriptionService {
 
 		$membership_metas               = ! empty( $membership['meta_value'] ) ? wp_unslash( json_decode( $membership['meta_value'], true ) ) : array();
 		$membership_metas['post_title'] = $membership['post_title'] ?? '';
-		$member_order                   = $member_order ? $member_order : $this->members_orders_repository->get_member_orders( $data['member_id'] );
 		$order                          = ! empty( $member_order['ID'] ) ? $this->orders_repository->get_order_detail( $member_order['ID'] ) : array();
 		$total                          = $order['total_amount'] ?? 0;
 		$membership_tab_url             = esc_url( ur_get_my_account_url() . 'ur-membership' );
@@ -414,12 +437,12 @@ class SubscriptionService {
 			// New orders have coupon_data meta — total_amount already reflects the actual paid amount.
 		}
 		$billing_cycle = ( 'subscription' === ( $membership_metas['type'] ?? '' ) ) ? ( ( 'day' === $membership_metas['subscription']['duration'] ) ? esc_html( 'Daily', 'user-registration' ) : ( esc_html( ucfirst( $membership_metas['subscription']['duration'] . 'ly' ) ) ) ) : 'N/A';
-		$trial_period  = ( 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === $order['trial_status'] ) ? ( $membership_metas['trial_data']['value'] . ' ' . $membership_metas['trial_data']['duration'] . ( $membership_metas['trial_data']['value'] > 1 ? 's' : '' ) ) : 'N/A';
+		$trial_period  = ( 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === ( $order['trial_status'] ?? '' ) ) ? ( $membership_metas['trial_data']['value'] . ' ' . $membership_metas['trial_data']['duration'] . ( $membership_metas['trial_data']['value'] > 1 ? 's' : '' ) ) : 'N/A';
 
 		$next_billing_date = 'subscription' === ( $membership_metas['type'] ?? '' ) && ! empty( $subscription['next_billing_date'] ) ? date( 'Y, F d', strtotime( $subscription['next_billing_date'] ) ) : 'N/A';
 		$expiry_date       = 'subscription' === ( $membership_metas['type'] ?? '' ) && ! empty( $subscription['expiry_date'] ) ? date( 'Y, F d', strtotime( $subscription['expiry_date'] ) ) : 'N/A';
-		$trial_start_date  = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === $order['trial_status'] && ! empty( $subscription['trial_start_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_start_date'] ) ) : 'N/A';
-		$trial_end_date    = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === $order['trial_status'] && ! empty( $subscription['trial_end_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_end_date'] ) ) : 'N/A';
+		$trial_start_date  = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === ( $order['trial_status'] ?? '' ) && ! empty( $subscription['trial_start_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_start_date'] ) ) : 'N/A';
+		$trial_end_date    = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === ( $order['trial_status'] ?? '' ) && ! empty( $subscription['trial_end_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_end_date'] ) ) : 'N/A';
 		$membership_type   = ucwords( $membership_metas['type'] ?? '' ) == 'Paid' ? __( 'One-Time Payment', 'user-registration' ) : ucwords( $membership_metas['type'] ?? '' );
 
 		$team_data  = null;
@@ -446,7 +469,7 @@ class SubscriptionService {
 			'username'                          => esc_html( ucwords( isset( $data['username'] ) ? $data['username'] : '' ) ),
 			'membership_plan_name'              => esc_html( ucwords( $membership_metas['post_title'] ) ),
 			'membership_plan_type'              => esc_html( $membership_type ),
-			'membership_plan_payment_method'    => esc_html( ucwords( isset( $data['order']['payment_method'] ) ? $data['order']['payment_method'] : ( $data['payment_method'] ?? '' ) ) ),
+			'membership_plan_payment_method'    => esc_html( ucwords( $order['payment_method'] ?? ( $data['payment_method'] ?? '' ) ) ),
 			'membership_plan_trial_status'      => esc_html( ucwords( $order['trial_status'] ?? '' ) ),
 			'membership_plan_trial_start_date'  => esc_html( $trial_start_date ),
 			'membership_plan_trial_end_date'    => esc_html( $trial_end_date ),
@@ -480,6 +503,8 @@ class SubscriptionService {
 			'membership_plan_total'             => ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( $total, 2 ) : number_format( $total, 2 ) . $symbol,
 			'membership_renewal_link'           => "<a href=$membership_tab_url>" . __( 'Renew Now', 'user-registration' ) . '</a>',
 			'membership_plan_transaction_id'    => ! empty( $data['transaction_id'] ) ? $data['transaction_id'] : '',
+			// Raw date for the {{payment_date}} smart tag, so it resolves to this subscription-scoped order instead of falling back to the member's most recent order.
+			'payment_date'                      => ! empty( $order['created_at'] ) ? esc_html( $order['created_at'] ) : '',
 		);
 
 		if ( ! empty( $team_data ) ) {
@@ -519,6 +544,9 @@ class SubscriptionService {
 				),
 			);
 		}
+
+		// Always derive the current membership from the verified subscription, not the client-submitted value.
+		$data['current_membership_id'] = (int) $subscription['item_id'];
 
 		$user                                      = get_userdata( $subscription['user_id'] );
 		$payment_method                            = $data['selected_pg'];
@@ -963,6 +991,14 @@ class SubscriptionService {
 				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
 				$subscription_data['status']       = 'active';
 				$this->subscription_repository->update( $subscription_id, $subscription_data );
+
+				$payment_service = new PaymentService( '', $decoded_data['membership'] ?? 0, $user->user_email );
+				if ( ! empty( $decoded_data['current_membership_id'] ) && $payment_service->is_paid_to_free_change( $decoded_data['current_membership_id'], $decoded_data['membership'] ?? 0 ) ) {
+					$email_service = new EmailService();
+					$email_service->send_email( $decoded_data, 'membership_downgraded_free_user' );
+					$email_service->send_email( $decoded_data, 'membership_downgraded_free_admin' );
+				}
+
 				$last_order = $this->members_orders_repository->get_member_orders( $user->ID );
 				$this->orders_repository->delete_order_meta(
 					array(
@@ -1381,8 +1417,16 @@ class SubscriptionService {
 	 * Payment retry callback for a failed attempt.
 	 */
 	public function failed_payment_retry_callback( $subscription ) {
+		$retry_count     = (int) get_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', true );
+		$max_retry_count = (int) get_option( 'user_registration_payment_retry_count', 3 );
+
+		// Retries already exhausted for this subscription - stop retrying and cancel it instead.
+		if ( $retry_count >= $max_retry_count ) {
+			$this->cancel_subscription_after_retries_exhausted( $subscription );
+			return;
+		}
+
 		// update the counter for failed payment retry.
-		$retry_count = (int) get_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', true );
 		update_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', $retry_count + 1 );
 		switch ( $subscription['payment_method'] ) {
 			case 'paypal':
@@ -1397,6 +1441,55 @@ class SubscriptionService {
 				do_action( 'urm_handle_failed_payment_retry', $subscription );
 				break;
 		}
+	}
+
+	/**
+	 * Cancel a subscription once its configured payment retry attempts are
+	 * exhausted, and notify the member with the "Payment Retry - Final
+	 * Notice" email.
+	 *
+	 * @param array $subscription Row from MembersSubscriptionRepository::get_subscriptions_to_retry().
+	 * @return void
+	 */
+	private function cancel_subscription_after_retries_exhausted( $subscription ) {
+		$subscription_id = $subscription['subscription_id'];
+		$member_id       = $subscription['member_id'];
+
+		$cancel_result = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false );
+
+		if ( empty( $cancel_result['status'] ) ) {
+			// Leave the retry counter as-is so the next daily run retries the cancellation itself.
+			ur_get_logger()->error(
+				sprintf(
+					'[Payment Retry] Retries exhausted for subscription #%d, but cancellation failed: %s.',
+					$subscription_id,
+					$cancel_result['message'] ?? 'unknown error'
+				),
+				array( 'source' => 'urm-payment-retry' )
+			);
+			return;
+		}
+
+		ur_get_logger()->info(
+			sprintf( '[Payment Retry] Retries exhausted for subscription #%d - cancelled.', $subscription_id ),
+			array( 'source' => 'urm-payment-retry' )
+		);
+
+		delete_user_meta( $member_id, 'urm_is_payment_retrying' );
+
+		$latest_order     = $this->orders_repository->get_order_by_subscription( $subscription_id );
+		$membership_id    = $subscription['membership'] ?? ( $latest_order['item_id'] ?? 0 );
+		$membership       = $this->membership_repository->get_single_membership_by_ID( $membership_id );
+		$membership_metas = ! empty( $membership['meta_value'] ) ? wp_unslash( json_decode( $membership['meta_value'], true ) ) : array();
+
+		$email_data = array(
+			'subscription'     => $this->members_subscription_repository->retrieve( $subscription_id ),
+			'order'            => $latest_order,
+			'membership_metas' => $membership_metas,
+			'member_id'        => $member_id,
+		);
+
+		( new EmailService() )->send_email( $email_data, 'payment_retry_cancel' );
 	}
 
 	/**
