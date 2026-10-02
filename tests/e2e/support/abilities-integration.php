@@ -173,6 +173,23 @@ try {
 	// Initialize REST before monitoring SQL so unrelated lazy bootstrap is excluded.
 	rest_get_server();
 	add_filter( 'query', $watch );
+	foreach ( array( 'list-forms', 'list-members', 'get-registration-stats' ) as $name ) {
+		$default_result = wp_get_ability( 'user-registration/' . $name )->execute();
+		abilities_assert( ! is_wp_error( $default_result ), $name . ' accepts omitted input' );
+		abilities_assert( $default_result === abilities_run( $name, array() ), $name . ' omitted input matches explicit empty input' );
+		if ( 'get-registration-stats' !== $name ) {
+			abilities_assert( 1 === $default_result['page'] && 20 === $default_result['per_page'], $name . ' uses default pagination' );
+		} else {
+			abilities_assert( gmdate( 'Y-m-d', strtotime( '-29 days' ) ) === $default_result['date_from'] && gmdate( 'Y-m-d' ) === $default_result['date_to'], 'omitted statistics input uses the last 30 days' );
+		}
+	}
+	foreach ( array( 'get-form', 'get-member' ) as $name ) {
+		abilities_assert( is_wp_error( wp_get_ability( 'user-registration/' . $name )->execute() ), $name . ' still requires an ID when input is omitted' );
+	}
+	$default_request  = new WP_REST_Request( 'GET', '/wp-abilities/v1/abilities/user-registration/get-registration-stats/run' );
+	$default_response = rest_do_request( $default_request );
+	abilities_assert( 200 === $default_response->get_status(), 'native REST statistics accepts no input parameter' );
+	abilities_assert( $default_response->get_data() === abilities_run( 'get-registration-stats', array() ), 'native REST omitted input uses documented defaults' );
 	$forms = abilities_run( 'list-forms', array( 'per_page' => 1 ) );
 	abilities_assert( count( $forms['items'] ) === 1 && $forms['has_more'], 'form pagination' );
 	$form_data = abilities_run( 'get-form', array( 'id' => $form ) );

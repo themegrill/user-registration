@@ -152,6 +152,9 @@ class UR_Abilities {
 		foreach ( $definitions as $name => $definition ) {
 			$input             = self::object_schema( $definition[2] );
 			$input['required'] = $definition[3];
+			if ( empty( $definition[3] ) ) {
+				$input['default'] = array();
+			}
 			wp_register_ability(
 				'user-registration/' . $name,
 				array(

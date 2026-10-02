@@ -15,6 +15,9 @@ or root plugin/Composer changes are needed.
 | `user-registration/list-members` | `page`, `per_page`, `form_id` | Registration/member identity, email, registration date, form and verification/approval status |
 | `user-registration/get-member` | required `id` | Member identity plus membership availability and subscription IDs, plan names, status, start/expiry dates |
 
+Calls to `list-forms`, `list-members`, and `get-registration-stats` may omit input
+entirely; they use the same defaults as an explicit empty input object.
+
 Pagination defaults to page 1 and 20 items, with at most 100 items per page and
 page 10000. Responses contain `items`, `page`, `per_page`, `has_more`. Form pages
 refer to scanned records; inaccessible forms are omitted, so a page can be empty
