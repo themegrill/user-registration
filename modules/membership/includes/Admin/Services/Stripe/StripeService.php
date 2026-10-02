@@ -2328,7 +2328,7 @@ class StripeService {
 		$member_id         = $current_subscription['user_id'];
 		$membership_id     = $current_subscription['item_id'];
 		$invoice_id        = $event['data']['object']['id'];
-		$payment_intent_id = $event['data']['object']['payment_intent'] ?? null;
+		$payment_intent_id = $this->get_invoice_payment_intent_id( $event['data']['object'] );
 		$invoice_amount    = $event['data']['object']['amount_due']; // phpcs:ignore VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable
 
 		// $0 trial invoices have no payment_intent. The initial order was already created
@@ -2460,6 +2460,52 @@ class StripeService {
 		if ( $is_renewing ) {
 			delete_transient( 'urm_pending_login_' . $member_id );
 		}
+	}
+
+	/**
+	 * Resolve the PaymentIntent that paid an invoice, whatever Stripe API version rendered the event.
+	 *
+	 * Events rendered before 2025-03-31.basil carry `payment_intent` on the invoice. Later versions
+	 * drop it and events never expand `payments`, so the invoice is fetched with it expanded.
+	 *
+	 * @param array $invoice Invoice object from a Stripe event.
+	 * @return string PaymentIntent id, or an empty string when no PaymentIntent paid the invoice.
+	 */
+	private function get_invoice_payment_intent_id( $invoice ) {
+		if ( ! empty( $invoice['payment_intent'] ) ) {
+			return $invoice['payment_intent'];
+		}
+
+		try {
+			$payments = \Stripe\Invoice::retrieve(
+				array(
+					'id'     => $invoice['id'],
+					'expand' => array( 'payments' ),
+				)
+			)->toArray()['payments']['data'] ?? array();
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to resolve the PaymentIntent of an invoice' . "\n" . wp_json_encode(
+					array(
+						'error_code'    => 'INVOICE_PAYMENT_LOOKUP_FAILED',
+						'invoice_id'    => $invoice['id'],
+						'error_message' => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			wp_die();
+		}
+
+		foreach ( $payments as $payment ) {
+			if ( 'paid' === ( $payment['status'] ?? '' ) && ! empty( $payment['payment']['payment_intent'] ) ) {
+				return $payment['payment']['payment_intent'];
+			}
+		}
+
+		return '';
 	}
 
 	/**
