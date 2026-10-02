@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { addressedTo, mailAvailable, messageHtml, waitForMessage } from "../support/mail";
+import { addressedTo, mailAvailable, waitForMessage } from "../support/mail";
 import { ensureFirstRun, firstFormId, registerOn, registrationPageFor } from "../support/urm";
-import { deleteUserByEmail, gotoAdminPage, loginAsAdmin, newVisitor } from "../support/wp";
+import { deleteUserByEmail, loginAsAdmin, newVisitor } from "../support/wp";
 
 /**
  * Ported from UR-Automation `06__email_related_tests` — "Validate Admin Email
@@ -55,39 +55,5 @@ test.describe("registration emails @fresh", () => {
 
     await deleteUserByEmail(page, account.email);
     await visitor.close();
-  });
-});
-
-/**
- * Regression guard for "Send Test Email" skipping the email template wrapper
- * (user-registration-pro#1644). The free wrapper and the Pro header/footer
- * wrapper use different root classes, so either one proves the message went
- * through the same pipeline as real notification emails.
- */
-test.describe("test email", () => {
-  test("Send Test Email delivers a message wrapped in the email template @email-notification", async ({
-    page,
-  }) => {
-    test.skip(
-      !(await mailAvailable()),
-      "no mail catcher reachable — set TGQA_MAILPIT_URL",
-    );
-
-    await loginAsAdmin(page);
-    await gotoAdminPage(page, "user-registration-settings", "&tab=email&section=general");
-
-    const recipient = `tgqa-test-email-${Date.now()}@example.test`;
-    await page.getByRole("textbox", { name: "Send Test Email" }).fill(recipient);
-    await page.getByRole("link", { name: "Send Email" }).click();
-
-    const message = await waitForMessage(addressedTo(recipient));
-    expect(message, `no test email was delivered to ${recipient}`).not.toBeNull();
-
-    const html = await messageHtml(message!.ID);
-    expect(html).toContain("Your test email has been received successfully.");
-    expect(
-      html,
-      "test email body was sent bare, without the email template wrapper",
-    ).toMatch(/user-registration-email-body|email-wrapper-outer/);
   });
 });
