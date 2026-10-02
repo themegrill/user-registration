@@ -576,18 +576,18 @@ class UR_AJAX {
 		$sender_email = apply_filters( 'wp_mail_from', get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) ) );
 		$email        = sanitize_email( isset( $_POST['email'] ) ? wp_unslash( $_POST['email'] ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification
 		/* translators: %s - WP mail from name */
-		$subject = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
-		$header  = array(
+		$subject         = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
+		$header          = array(
 			'From:' . $from_name . ' <' . $sender_email . '>',
 			'Reply-To:' . $sender_email,
 			'Content-Type:text/html; charset=UTF-8',
 		);
-		$message =
-			'Congratulations,<br>
-		Your test email has been received successfully.<br>
-		We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.<br>
-		Regards,<br>
-		User Registration & Membership Team';
+		$paragraph_style = 'margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;';
+		$message         = sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'Congratulations,', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'Your test email has been received successfully.', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s<br>%s</p>', $paragraph_style, esc_html__( 'Regards,', 'user-registration' ), esc_html__( 'User Registration & Membership Team', 'user-registration' ) );
+		$message         = user_registration_process_email_content( ur_wrap_email_body_content( $message ) );
 
 		$status = wp_mail( $email, $subject, $message, $header );
 
