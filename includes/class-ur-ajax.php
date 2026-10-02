@@ -582,14 +582,12 @@ class UR_AJAX {
 			'Reply-To:' . $sender_email,
 			'Content-Type:text/html; charset=UTF-8',
 		);
-		$message =
-			'Congratulations,<br>
-		Your test email has been received successfully.<br>
-		We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.<br>
-		Regards,<br>
-		User Registration & Membership Team';
+		$message = '<p>' . esc_html__( 'Congratulations,', 'user-registration' ) . '</p>'
+			. '<p>' . esc_html__( 'Your test email has been received successfully.', 'user-registration' ) . '</p>'
+			. '<p>' . esc_html__( 'We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.', 'user-registration' ) . '</p>'
+			. '<p>' . esc_html__( 'Regards,', 'user-registration' ) . '<br>' . esc_html__( 'User Registration & Membership Team', 'user-registration' ) . '</p>';
 
-		$status = wp_mail( $email, $subject, $message, $header );
+		$status = wp_mail( $email, $subject, user_registration_process_email_content( $message ), $header );
 
 		if ( $status ) {
 			update_option( 'user_registration_successful_test_mail', true );
