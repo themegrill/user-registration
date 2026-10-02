@@ -2,7 +2,7 @@
 /**
  * UR_FORMBRICKS Class to collect formbricks data.
  *
- * Explore more what information is shared https://docs.wpuserregistration.com/docs/miscellaneous-settings/#1-toc-title
+ * Explore more what information is shared https://docs.wpuserregistration.com/global-settings/advanced-settings/#allow-usage-tracking
  *
  * @package User_Registration
  * @since  xx.xx.xx
