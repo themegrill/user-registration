@@ -260,10 +260,20 @@ class SubscriptionService {
 		$period        = get_option( 'user_registration_membership_renewal_reminder_period', 'weeks' );
 		$value_in_days = convert_to_days( $days_before_value, $period );
 
-		$date       = new \DateTime( 'today' );
-		$check_date = $date->modify( "+$value_in_days day" )->format( 'Y-m-d H:i:s' );
+		// Ideal target = today + lead time. Look back so a missed cron day can still catch up;
+		// urm_billing_reminder_sent_for_date_{subscription_id} dedupes per billing cycle (same pattern as ended email).
+		$lookback_days = (int) apply_filters( 'urm_reminder_email_lookback_days', 7 );
+		$lookback_days = max( 0, $lookback_days );
 
-		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $check_date );
+		$window_end   = ( new \DateTime( 'today' ) )->modify( "+{$value_in_days} day" )->format( 'Y-m-d' );
+		$window_start = ( new \DateTime( $window_end ) )->modify( "-{$lookback_days} day" )->format( 'Y-m-d' );
+		// Never remind for billing dates already in the past.
+		$today = ( new \DateTime( 'today' ) )->format( 'Y-m-d' );
+		if ( $window_start < $today ) {
+			$window_start = $today;
+		}
+
+		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $window_start, $window_end );
 
 		if ( empty( $subscriptions ) ) {
 			return;
@@ -277,12 +287,13 @@ class SubscriptionService {
 				continue;
 			}
 
-			$checked_date = get_user_meta( $user_id, 'urm_billing_reminder_sent_for_date', true );
-			if ( $checked_date === $subscription['next_billing_date'] ) {
+			// Keyed per subscription so a user with several subscriptions in the window is not re-sent; legacy user-level key still honored.
+			$sent_key = 'urm_billing_reminder_sent_for_date_' . $subscription['subscription_id'];
+			if ( get_user_meta( $user_id, $sent_key, true ) === $subscription['next_billing_date'] || get_user_meta( $user_id, 'urm_billing_reminder_sent_for_date', true ) === $subscription['next_billing_date'] ) {
 				continue;
 			}
 			$email_service->send_email( $subscription, 'membership_renewal' );
-			update_user_meta( $subscription['member_id'], 'urm_billing_reminder_sent_for_date', $subscription['next_billing_date'] );
+			update_user_meta( $user_id, $sent_key, $subscription['next_billing_date'] );
 		}
 	}
 
@@ -1237,10 +1248,19 @@ class SubscriptionService {
 		}
 		$period        = get_option( 'user_registration_membership_expiring_soon_period', 'weeks' );
 		$value_in_days = convert_to_days( $days_before_value, $period );
-		$date          = new \DateTime( 'today' );
-		$check_date    = $date->modify( "+$value_in_days day" )->format( 'Y-m-d H:i:s' );
 
-		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $check_date );
+		// Same lookback + per-cycle dedup as renewal reminders (see daily_membership_renewal_check).
+		$lookback_days = (int) apply_filters( 'urm_reminder_email_lookback_days', 7 );
+		$lookback_days = max( 0, $lookback_days );
+
+		$window_end   = ( new \DateTime( 'today' ) )->modify( "+{$value_in_days} day" )->format( 'Y-m-d' );
+		$window_start = ( new \DateTime( $window_end ) )->modify( "-{$lookback_days} day" )->format( 'Y-m-d' );
+		$today        = ( new \DateTime( 'today' ) )->format( 'Y-m-d' );
+		if ( $window_start < $today ) {
+			$window_start = $today;
+		}
+
+		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $window_start, $window_end );
 		if ( empty( $subscriptions ) ) {
 			return;
 		}
@@ -1254,13 +1274,13 @@ class SubscriptionService {
 				continue;
 			}
 
-			$checked_date = get_user_meta( $user_id, 'urm_expiring_reminder_sent_for_date', true );
-
-			if ( $checked_date === $subscription['next_billing_date'] ) {
+			// Keyed per subscription so a user with several subscriptions in the window is not re-sent; legacy user-level key still honored.
+			$sent_key = 'urm_expiring_reminder_sent_for_date_' . $subscription['subscription_id'];
+			if ( get_user_meta( $user_id, $sent_key, true ) === $subscription['next_billing_date'] || get_user_meta( $user_id, 'urm_expiring_reminder_sent_for_date', true ) === $subscription['next_billing_date'] ) {
 				continue;
 			}
 			$email_service->send_email( $subscription, 'membership_expiring_soon' );
-			update_user_meta( $subscription['member_id'], 'urm_expiring_reminder_sent_for_date', $subscription['next_billing_date'] );
+			update_user_meta( $user_id, $sent_key, $subscription['next_billing_date'] );
 		}
 	}
 
