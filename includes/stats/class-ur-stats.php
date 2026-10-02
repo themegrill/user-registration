@@ -2,7 +2,7 @@
 /**
  * UR_Stats Class for tracking non-sensitive information about the plugin and add-on usage.
  *
- * Explore more what information is shared https://docs.wpuserregistration.com/docs/miscellaneous-settings/#1-toc-title
+ * Explore more what information is shared https://docs.wpuserregistration.com/global-settings/advanced-settings/#allow-usage-tracking
  *
  * @package User_Registration_Pro
  * @since  1.0.0
