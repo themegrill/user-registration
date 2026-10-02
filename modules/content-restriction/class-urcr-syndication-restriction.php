@@ -4,8 +4,10 @@
  *
  * @package UserRegistrationContentRestriction/Classes
  */
+
 defined( 'ABSPATH' ) || exit;
 
+/** Restrict syndicated content using the shared access decision. */
 class URCR_Syndication_Restriction {
 	/** Register filters before WordPress builds feed queries. */
 	public static function init() {
@@ -37,9 +39,14 @@ class URCR_Syndication_Restriction {
 		if ( ! is_feed() || ! $wp_query instanceof WP_Query || ! $wp_query->is_comment_feed() ) {
 			return;
 		}
-		$wp_query->comments = array_values( array_filter( (array) $wp_query->comments, function ( $comment ) {
-			return urcr_is_content_access_granted( $comment->comment_post_ID );
-		} ) );
+		$wp_query->comments      = array_values(
+			array_filter(
+				(array) $wp_query->comments,
+				function ( $comment ) {
+					return urcr_is_content_access_granted( $comment->comment_post_ID );
+				}
+			)
+		);
 		$wp_query->comment_count = count( $wp_query->comments );
 	}
 
