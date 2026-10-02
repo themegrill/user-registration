@@ -7,7 +7,6 @@
 
 // Test doubles intentionally bypass production-only conventions.
 // phpcs:disable Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, WordPress.Files.FileName.InvalidClassFileName, WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Files.OneObjectStructurePerFile.MultipleFound, Universal.Files.SeparateFunctionsFromOO.Mixed
-
 namespace Stripe {
 	class Invoice {
 		public static function retrieve( $params ) {
@@ -17,7 +16,9 @@ namespace Stripe {
 			}
 			return new self();
 		}
-		public function toArray() {
+		/** Stands in for the SDK's camelCase `toArray()`, which cannot be renamed. */
+		public function __call( $name, $arguments ) {
+			security_assert( 'toArray' === $name, 'Only toArray() is expected on the Invoice double' );
 			return array( 'payments' => array( 'data' => $GLOBALS['stripe_payments'] ) );
 		}
 	}
@@ -32,7 +33,7 @@ namespace {
 		}
 	}
 	function wp_json_encode( $value, $flags = 0 ) {
-		return json_encode( $value, $flags );
+		return 'encoded:' . gettype( $value ) . ':' . (int) $flags;
 	}
 	function wp_die() {
 		throw new SecurityResponse( false, 'wp_die', 500 );
