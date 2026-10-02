@@ -139,7 +139,10 @@ class Frontend {
 		wp_enqueue_script( 'sweetalert2' );
 
 		wp_register_script( 'user-registration-membership-frontend-script', UR()->plugin_url() . '/assets/js/modules/membership/frontend/user-registration-membership-frontend' . $suffix . '.js', array( 'jquery' ), UR_VERSION, true );
-		wp_enqueue_script( 'user-registration-membership-stripe-v3', 'https://js.stripe.com/v3/', array() );
+		$stripe_settings = \WPEverest\URMembership\Admin\Services\Stripe\StripeService::get_stripe_settings();
+		if ( ! empty( $stripe_settings['is_stipe_enabled'] ) && ! empty( $stripe_settings['publishable_key'] ) ) {
+			wp_enqueue_script( 'user-registration-membership-stripe-v3', 'https://js.stripe.com/v3/', array() );
+		}
 		wp_enqueue_script( 'user-registration-membership-frontend-script' );
 		// Enqueue frontend styles here.
 		wp_register_style( 'user-registration-membership-frontend-style', UR()->plugin_url() . '/assets/css/modules/membership/user-registration-membership-frontend.css', array(), UR_VERSION );
