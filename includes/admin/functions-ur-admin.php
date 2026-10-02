@@ -110,7 +110,6 @@ function ur_get_screen_ids() {
 		$ur_screen_id . '_page_user-registration-login-forms',
 		$ur_screen_id . '_page_user-registration-settings',
 		$ur_screen_id . '_page_user-registration-mailchimp',
-		$ur_screen_id . '_page_user-registration-status',
 		$ur_screen_id . '_page_user-registration-addons',
 		$ur_screen_id . '_page_user-registration-export-users',
 		$ur_screen_id . '_page_user-registration-email-templates',

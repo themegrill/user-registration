@@ -352,6 +352,7 @@ class UR_Admin_Settings {
 			$settings[] = include 'settings/class-ur-settings-security.php';
 			$settings[] = include 'settings/class-ur-settings-advanced.php';
 			$settings[] = include 'settings/class-ur-settings-import-export.php';
+			$settings[] = include 'settings/class-ur-settings-tools.php';
 			$settings[] = include 'settings/class-ur-settings-license.php';
 			/**
 			 * Filter to retrieve settings pages

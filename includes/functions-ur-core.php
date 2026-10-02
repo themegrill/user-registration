@@ -8347,7 +8347,7 @@ if ( ! function_exists( 'ur_email_send_failed_handler' ) ) {
 			$error_message = wp_kses_post(
 				sprintf(
 					__( 'Please check the `ur_mail_logs` log under <a target="_blank" href="%s">Status Log</a> section.', 'user-registration' ),
-					admin_url( 'admin.php?page=user-registration-status' )
+					admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' )
 				)
 			);
 		} else {
