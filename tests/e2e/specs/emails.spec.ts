@@ -1,7 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { addressedTo, mailAvailable, waitForMessage } from "../support/mail";
-import { ensureFirstRun, firstFormId, registerOn, registrationPageFor } from "../support/urm";
-import { deleteUserByEmail, loginAsAdmin, newVisitor } from "../support/wp";
+import {
+	ensureFirstRun,
+	firstFormId,
+	registerOn,
+	registrationPageFor
+} from "../support/urm";
+import {
+	deleteUserByEmail,
+	gotoAdminPage,
+	loginAsAdmin,
+	newVisitor
+} from "../support/wp";
 
 /**
  * Ported from UR-Automation `06__email_related_tests` — "Validate Admin Email
@@ -13,47 +23,114 @@ import { deleteUserByEmail, loginAsAdmin, newVisitor } from "../support/wp";
  * red tests.
  */
 test.describe("registration emails @fresh", () => {
-  test("registering sends the user a welcome email and notifies the admin @fresh @email-notification", async ({
-    page,
-    browser,
-  }) => {
-    test.skip(
-      !(await mailAvailable()),
-      "no mail catcher reachable — set TGQA_MAILPIT_URL",
-    );
+	test("send test email blocks repeated clicks while the request is pending @fresh @admin", async ({
+		page
+	}) => {
+		await loginAsAdmin(page);
 
-    await loginAsAdmin(page);
-    await ensureFirstRun(page);
-    const url = await registrationPageFor(page, await firstFormId(page));
+		let sendRequests = 0;
+		let releaseResponse!: () => void;
+		let resolveFirstRequest!: () => void;
+		const firstRequest = new Promise<void>((resolve) => {
+			resolveFirstRequest = resolve;
+		});
 
-    // Anything already in the mailbox predates this; the unique address plus
-    // this cutoff is what isolates the assertion without deleting anyone's mail.
-    const cutoff = Date.now() - 5_000;
+		await page.route("**/wp-admin/admin-ajax.php", async (route) => {
+			const request = route.request();
+			if (
+				request.method() !== "POST" ||
+				!request
+					.postData()
+					?.includes("action=user_registration_send_test_email")
+			) {
+				await route.continue();
+				return;
+			}
 
-    const visitor = await newVisitor(browser);
-    const guest = await visitor.newPage();
-    const account = await registerOn(guest, url);
+			sendRequests++;
+			resolveFirstRequest();
+			await new Promise<void>((release) => {
+				releaseResponse = release;
+			});
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					success: true,
+					data: { message: "Test email sent." }
+				})
+			});
+		});
 
-    const welcome = await waitForMessage(
-      (m) => addressedTo(account.email)(m) && Date.parse(m.Created) >= cutoff,
-    );
-    expect(welcome, `no email was delivered to ${account.email}`).not.toBeNull();
+		await gotoAdminPage(page, "user-registration-settings", "&tab=email");
+		const button = page.locator(".user_registration_send_email_test");
+		await button.click();
+		await firstRequest;
 
-    // The admin notification carries the new username in its subject. Assert on
-    // that rather than on the recipient: Local rewrites the admin address to
-    // dev-email@wpengine.local, and a real site would use its own.
-    const adminNotice = await waitForMessage(
-      (m) =>
-        Date.parse(m.Created) >= cutoff &&
-        m.Subject?.includes(account.username) &&
-        !addressedTo(account.email)(m),
-    );
-    expect(
-      adminNotice,
-      `no admin notification mentioning ${account.username}`,
-    ).not.toBeNull();
+		await expect(button).toHaveClass(/disabled/);
+		await expect(button).toHaveAttribute("aria-disabled", "true");
+		await expect(button.locator(".ur-spinner")).toHaveCount(1);
 
-    await deleteUserByEmail(page, account.email);
-    await visitor.close();
-  });
+		await button.evaluate((element) => {
+			element.click();
+			element.click();
+		});
+		await page.waitForTimeout(250);
+
+		expect(sendRequests).toBe(1);
+		await expect(button.locator(".ur-spinner")).toHaveCount(1);
+
+		releaseResponse();
+		await expect(button).not.toHaveClass(/disabled/);
+		await expect(button).not.toHaveAttribute("aria-disabled", "true");
+		await expect(button.locator(".ur-spinner")).toHaveCount(0);
+	});
+
+	test("registering sends the user a welcome email and notifies the admin @fresh @email-notification", async ({
+		page,
+		browser
+	}) => {
+		test.skip(
+			!(await mailAvailable()),
+			"no mail catcher reachable — set TGQA_MAILPIT_URL"
+		);
+
+		await loginAsAdmin(page);
+		await ensureFirstRun(page);
+		const url = await registrationPageFor(page, await firstFormId(page));
+
+		// Anything already in the mailbox predates this; the unique address plus
+		// this cutoff is what isolates the assertion without deleting anyone's mail.
+		const cutoff = Date.now() - 5_000;
+
+		const visitor = await newVisitor(browser);
+		const guest = await visitor.newPage();
+		const account = await registerOn(guest, url);
+
+		const welcome = await waitForMessage(
+			(m) =>
+				addressedTo(account.email)(m) && Date.parse(m.Created) >= cutoff
+		);
+		expect(
+			welcome,
+			`no email was delivered to ${account.email}`
+		).not.toBeNull();
+
+		// The admin notification carries the new username in its subject. Assert on
+		// that rather than on the recipient: Local rewrites the admin address to
+		// dev-email@wpengine.local, and a real site would use its own.
+		const adminNotice = await waitForMessage(
+			(m) =>
+				Date.parse(m.Created) >= cutoff &&
+				m.Subject?.includes(account.username) &&
+				!addressedTo(account.email)(m)
+		);
+		expect(
+			adminNotice,
+			`no admin notification mentioning ${account.username}`
+		).not.toBeNull();
+
+		await deleteUserByEmail(page, account.email);
+		await visitor.close();
+	});
 });
