@@ -1513,8 +1513,19 @@ jQuery(function ($) {
 	$("input.input-color").wpColorPicker();
 	// send test email message
 	$(".user_registration_send_email_test").on("click", function (e) {
+		var $button = $(this);
 		var email = $("#user_registration_email_send_to").val();
 		e.preventDefault();
+
+		if ($button.data("requestRunning")) {
+			return;
+		}
+
+		$button
+			.data("requestRunning", true)
+			.prop("disabled", true)
+			.attr("aria-disabled", "true")
+			.addClass("disabled");
 		$.ajax({
 			url: user_registration_send_email.ajax_url,
 			data: {
@@ -1526,10 +1537,15 @@ jQuery(function ($) {
 			beforeSend: function () {
 				var spinner =
 					'<span class="ur-spinner is-active" style="margin-left: 20px"></span>';
-				$(".user_registration_send_email_test").append(spinner);
+				$button.append(spinner);
 			},
 			complete: function (response) {
-				$(".ur-spinner").remove();
+				$button.find(".ur-spinner").remove();
+				$button
+					.data("requestRunning", false)
+					.prop("disabled", false)
+					.removeAttr("aria-disabled")
+					.removeClass("disabled");
 				$(
 					".user-registration-membership_page_user-registration-settings .notice"
 				).remove();
