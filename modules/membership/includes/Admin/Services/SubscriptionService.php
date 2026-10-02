@@ -220,7 +220,7 @@ class SubscriptionService {
 			case 'stripe':
 				$stripe_service = new StripeService();
 
-				return $stripe_service->cancel_subscription( $order, $subscription );
+				return $stripe_service->cancel_subscription( $order, $subscription, $force_cancel );
 
 			case 'mollie':
 				$mollie_service = new MollieService();
