@@ -27,7 +27,6 @@ jQuery(function ($) {
 			var upload_node = $this
 				.closest(".button-group")
 				.find(".user_registration_profile_picture_upload");
-			var upload_node_value = upload_node.text();
 			var img_container = $this
 				.closest(".user-registration-profile-header")
 				.find(".user-registration-img-container");
@@ -40,11 +39,7 @@ jQuery(function ($) {
 				contentType: false,
 				// tell jQuery not to set contentType
 				beforeSend: function () {
-					upload_node
-						.prop("disabled", true)
-						.text(
-							user_registration_params.user_registration_profile_picture_uploading
-						);
+					upload_node.prop("disabled", true);
 					img_container.addClass("ur-profile-pic-uploading");
 				},
 				complete: function (ajax_response) {
@@ -82,21 +77,21 @@ jQuery(function ($) {
 							.closest(".user-registration-profile-header")
 							.find(".profile-preview")
 							.attr("src", profile_pic_url);
-					}
 
-					// Shows the remove button and hides the upload and take snapshot buttons after successfull picture upload
-					$this
-						.closest(".button-group")
-						.find(".profile-pic-remove")
-						.data("attachment-id", response_obj.data.attachment_id);
-					$this
-						.closest(".button-group")
-						.find(".profile-pic-remove")
-						.prop("style", false);
-					$this
-						.closest(".button-group")
-						.find(".user_registration_profile_picture_upload")
-						.attr("style", "display:none");
+						// Shows the remove button and hides the upload and take snapshot buttons after successfull picture upload
+						$this
+							.closest(".button-group")
+							.find(".profile-pic-remove")
+							.data("attachment-id", response_obj.data.attachment_id);
+						$this
+							.closest(".button-group")
+							.find(".profile-pic-remove")
+							.prop("style", false);
+						$this
+							.closest(".button-group")
+							.find(".user_registration_profile_picture_upload")
+							.attr("style", "display:none");
+					}
 
 					// Finds and removes any prevaling errors and appends new errors occured during picture upload
 					$this
@@ -110,8 +105,6 @@ jQuery(function ($) {
 								message +
 								"</span>"
 						);
-					upload_node.text(upload_node_value);
-
 					$this
 						.closest(".user-registration-profile-header")
 						.find(".ur-new-profile-image-message")
