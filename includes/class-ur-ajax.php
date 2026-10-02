@@ -576,8 +576,8 @@ class UR_AJAX {
 		$sender_email = apply_filters( 'wp_mail_from', get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) ) );
 		$email        = sanitize_email( isset( $_POST['email'] ) ? wp_unslash( $_POST['email'] ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification
 		/* translators: %s - WP mail from name */
-		$subject = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
-		$header  = array(
+		$subject         = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
+		$header          = array(
 			'From:' . $from_name . ' <' . $sender_email . '>',
 			'Reply-To:' . $sender_email,
 			'Content-Type:text/html; charset=UTF-8',
