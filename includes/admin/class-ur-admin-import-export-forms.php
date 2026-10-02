@@ -155,6 +155,25 @@ class UR_Admin_Import_Export_Forms {
 						} else {
 							$form_datas = $form_datas_obj;
 						}
+						// Validate every form before creating any posts. Import only the export schema.
+						if ( ! is_array( $form_datas->forms ) ) {
+							wp_send_json_error( array( 'message' => __( 'Invalid form data.', 'user-registration' ) ) );
+						}
+						foreach ( $form_datas->forms as $form_data ) {
+							if ( ! is_object( $form_data ) || ! isset( $form_data->form_post ) || ! is_object( $form_data->form_post ) ||
+								! isset( $form_data->form_post->post_title, $form_data->form_post->post_content ) ||
+								! is_string( $form_data->form_post->post_title ) || ! is_string( $form_data->form_post->post_content ) ) {
+								wp_send_json_error( array( 'message' => __( 'Invalid form data.', 'user-registration' ) ) );
+							}
+							$post                 = $form_data->form_post;
+							$form_data->form_post = (object) array(
+								'post_title'   => sanitize_text_field( $post->post_title ),
+								'post_content' => $post->post_content,
+								'post_name'    => isset( $post->post_name ) && is_string( $post->post_name ) ? sanitize_title( $post->post_name ) : '',
+								'post_type'    => 'user_registration',
+								'post_status'  => isset( $post->post_status ) && in_array( $post->post_status, array( 'publish', 'draft', 'pending', 'private' ), true ) ? $post->post_status : 'publish',
+							);
+						}
 						// If Form Title already exist concat it with imported tag.
 						foreach ( $form_datas->forms as $key => $form_data ) {
 							$args  = array( 'post_type' => 'user_registration' );
@@ -166,7 +185,7 @@ class UR_Admin_Import_Export_Forms {
 								}
 							}
 							$form_data->form_post->post_title = sanitize_text_field($form_data->form_post->post_title);
-							$post_id = wp_insert_post( $form_data->form_post );
+							$post_id                          = wp_insert_post( (array) $form_data->form_post, true );
 
 							// Check for any error while inserting.
 							if ( is_wp_error( $post_id ) ) {
@@ -190,7 +209,7 @@ class UR_Admin_Import_Export_Forms {
 											$meta_value = ur_maybe_unserialize( $meta_value );
 										}
 
-										add_post_meta( $post_id, $meta_key, sanitize_text_field($meta_value) );
+										add_post_meta( $post_id, $meta_key, self::sanitize_meta_value( $meta_value ) );
 									}
 								}
 							}
@@ -236,6 +255,39 @@ class UR_Admin_Import_Export_Forms {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Sanitize a form post meta value being imported.
+	 *
+	 * sanitize_text_field() returns an empty string for anything that isn't a
+	 * scalar, so calling it directly on an unserialized meta value silently
+	 * wipes any array/object meta (field lists, condition rules, etc.) instead
+	 * of sanitizing it. Recurse into arrays/objects and only sanitize their
+	 * scalar leaves.
+	 *
+	 * json_decode() turns a JSON object literal into stdClass, but form meta
+	 * that was ever a plain PHP array (e.g. role_based_redirection) is read
+	 * back elsewhere as an array, not stdClass - so objects are normalized
+	 * back to arrays here rather than preserved as-is.
+	 *
+	 * @param mixed $meta_value Meta value, possibly already unserialized.
+	 * @return mixed Sanitized value; objects are returned as arrays.
+	 */
+	private static function sanitize_meta_value( $meta_value ) {
+		if ( is_object( $meta_value ) ) {
+			$meta_value = (array) $meta_value;
+		}
+
+		if ( is_array( $meta_value ) ) {
+			return array_map( array( __CLASS__, 'sanitize_meta_value' ), $meta_value );
+		}
+
+		if ( is_string( $meta_value ) ) {
+			return sanitize_text_field( $meta_value );
+		}
+
+		return $meta_value;
 	}
 }
 

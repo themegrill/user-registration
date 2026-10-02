@@ -199,7 +199,19 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 
 		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
 
-		return ! $result ? array() : $result;
+		if ( ! $result ) {
+			return array();
+		}
+
+		// PHP filter, not a SQL join - the per-subscription usermeta key can't be indexed and forces a full table scan.
+		return array_values(
+			array_filter(
+				$result,
+				function ( $subscription ) {
+					return ! get_user_meta( $subscription['member_id'], 'urm_pending_cancel_' . $subscription['subscription_id'], true );
+				}
+			)
+		);
 	}
 
 	/**
