@@ -147,6 +147,51 @@ test.describe("my account @fresh", () => {
     await deleteUserByEmail(page, account.email);
     await visitor.close();
   });
+
+  /**
+   * @area    my-account
+   * @tier    fresh
+   * @guards  themegrill/user-registration-pro#1648
+   * @source  write-spec 2026-10-02
+   * @why     The profile picture JS reveals a `.profile-pic-remove` button after an
+   *          upload, but no template rendered one, so a wrong pick could not be
+   *          undone before saving. Guards that the control exists and is revealed.
+   *          Does not assert the spinner, the disabled state or the revert-on-click
+   *          behaviour: those live in my-account.js, and this suite serves the
+   *          committed my-account.min.js, which a source-only change does not touch.
+   */
+  test("profile picture upload reveals a Remove control after an image is chosen @fresh @my-account", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+    const url = await registrationPageFor(page, await firstFormId(page));
+
+    const visitor = await newVisitor(browser);
+    const user = await visitor.newPage();
+    const account = await registerOn(user, url);
+    await loginToMyAccount(user, account.username, account.password);
+
+    await user.goto("/my-account/edit-profile/?action=edit", { waitUntil: "domcontentloaded" });
+    const remove = user.locator(".profile-pic-remove");
+    const edit = user.locator(".user_registration_profile_picture_upload");
+    await expect(edit).toBeVisible();
+    await expect(remove).toHaveCount(1);
+    await expect(remove).toBeHidden();
+
+    await user.setInputFiles("#ur-profile-pic", {
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+
+    await expect(remove).toBeVisible({ timeout: 20_000 });
+    await expect(edit).toBeHidden();
+
+    await deleteUserByEmail(page, account.email);
+    await visitor.close();
+  });
 });
 
 /** Reach the Change Password form the way a user does. */
