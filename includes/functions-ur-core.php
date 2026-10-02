@@ -11348,6 +11348,10 @@ if ( ! function_exists( 'urm_process_profile_fields' ) ) {
 					unset( $profile[ $key ] );
 				}
 			}
+			// Preserve fields omitted from a partial profile update.
+			if ( ! array_key_exists( $key, $single_field ) ) {
+				continue;
+			}
 			// Get Value.
 			switch ( $field['type'] ) {
 				case 'checkbox':
@@ -11523,10 +11527,9 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 
 		if ( count( $user_data ) > 0 ) {
 			$user_data['ID'] = $user_id;
-			$result = wp_update_user( $user_data );
+			$result          = wp_update_user( $user_data );
 			if ( is_wp_error( $result ) ) {
 				wp_send_json_error( array( 'message' => $result->get_error_message() ) );
-				return;
 			}
 		}
 
