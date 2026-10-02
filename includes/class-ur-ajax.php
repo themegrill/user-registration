@@ -582,20 +582,29 @@ class UR_AJAX {
 			'Reply-To:' . $sender_email,
 			'Content-Type:text/html; charset=UTF-8',
 		);
-		$message =
-			'Congratulations,<br>
-		Your test email has been received successfully.<br>
-		We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.<br>
-		Regards,<br>
-		User Registration & Membership Team';
+		$message = '
+			<p style="margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;">
+				' . esc_html__( 'Congratulations,', 'user-registration' ) . '
+			</p>
+			<p style="margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;">
+				' . esc_html__( 'Your test email has been received successfully.', 'user-registration' ) . '
+			</p>
+			<p style="margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;">
+				' . esc_html__( 'We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.', 'user-registration' ) . '
+			</p>
+			<p style="margin: 0; color: #000000; font-size: 16px; line-height: 1.6;">
+				' . esc_html__( 'Regards,', 'user-registration' ) . '<br>
+				' . esc_html__( 'User Registration & Membership Team', 'user-registration' ) . '
+			</p>';
 
-		$status = wp_mail( $email, $subject, $message, $header );
+		$status = UR_Emailer::user_registration_process_and_send_email( $email, $subject, $message, $header, array(), '' );
 
 		if ( $status ) {
 			update_option( 'user_registration_successful_test_mail', true );
 			wp_send_json_success( array( 'message' => __( 'Test email was sent successfully! Please check your inbox to make sure it is delivered.', 'user-registration' ) ) );
 		} else {
 			$error_message = apply_filters( 'user_registration_email_send_failed_message', '' );
+			/* translators: %s: Email sending failure details. */
 			wp_send_json_error( array( 'message' => sprintf( __( 'Test email was unsuccessful!. %s', 'user-registration' ), $error_message ) ) );
 		}
 	}
