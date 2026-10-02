@@ -3969,6 +3969,28 @@ body.user-registration-page {
 
 	.user-registration-img-container {
 		width: 100px;
+
+		&.ur-profile-pic-uploading {
+			position: relative;
+
+			.profile-preview {
+				opacity: 0.4;
+			}
+
+			&::after {
+				content: "";
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 24px;
+				height: 24px;
+				margin: -12px 0 0 -12px;
+				border: 3px solid rgba(0, 0, 0, 0.2);
+				border-top-color: #475bb2;
+				border-radius: 50%;
+				animation: lds-dual-ring 0.8s linear infinite;
+			}
+		}
 	}
 
 	h3 {
