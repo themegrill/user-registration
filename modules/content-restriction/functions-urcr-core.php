@@ -17,13 +17,17 @@ defined( 'ABSPATH' ) || exit;
  */
 function urcr_register_restriction_meta() {
 	foreach ( array( 'urcr_meta_content', 'urcr_meta_override_global_settings' ) as $key ) {
-		register_meta( 'post', $key, array(
-			'type'              => 'string',
-			'single'            => true,
-			'show_in_rest'      => false,
-			'sanitize_callback' => 'urcr_meta_content' === $key ? 'wp_kses_post' : 'urcr_sanitize_override_meta',
-			'auth_callback'     => 'urcr_authorize_restriction_meta',
-		) );
+		register_meta(
+			'post',
+			$key,
+			array(
+				'type'              => 'string',
+				'single'            => true,
+				'show_in_rest'      => false,
+				'sanitize_callback' => 'urcr_meta_content' === $key ? 'wp_kses_post' : 'urcr_sanitize_override_meta',
+				'auth_callback'     => 'urcr_authorize_restriction_meta',
+			)
+		);
 	}
 }
 add_action( 'init', 'urcr_register_restriction_meta' );

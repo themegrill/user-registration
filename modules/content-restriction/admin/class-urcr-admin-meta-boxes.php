@@ -177,6 +177,7 @@ class URCR_Admin_Meta_Box extends UR_Meta_Boxes {
 	 * Renders the meta box.
 	 */
 	public function render_metabox( $post ) {
+		wp_nonce_field( 'custom_nonce_action', 'custom_nonce', false );
 		// Get migrated post/page IDs
 		$migrated_ids = get_option( 'urcr_migrated_post_page_ids', array() );
 		$is_migrated = in_array( $post->ID, $migrated_ids, true );
