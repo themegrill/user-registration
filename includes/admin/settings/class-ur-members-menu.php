@@ -1997,9 +1997,10 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 				$meta_value = get_user_meta( $user_id, 'ur_payment_invoices', true );
 
 				if ( 'membership' !== $user_source && ! empty( $meta_value ) && is_array( $meta_value ) ) {
-					foreach ( $meta_value as $values ) {
+					foreach ( $meta_value as $invoice_index => $values ) {
 						$total_items[] = array(
 							'user_id'        => $user_id,
+							'invoice_index'  => $invoice_index,
 							'transaction_id' => $values['invoice_no'] ?? '',
 							'post_title'     => $values['invoice_plan'] ?? '',
 							'status'         => get_user_meta( $user_id, 'ur_payment_status', true ),
@@ -2048,6 +2049,20 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 									$symbol = $currencies[ $currency ]['symbol'];
 									$amount = ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( $amount, 2 ) : number_format( $amount, 2 ) . $symbol;
 
+									// Form payments have no order row — payment history edit expects user_id + type=form.
+									$order_id  = absint( $payment['order_id'] ?? $payment['ID'] ?? $payment['id'] ?? 0 );
+									$edit_id   = $order_id ? $order_id : absint( $payment['user_id'] ?? $user_id );
+									$edit_type = $order_id ? 'order' : 'form';
+									$edit_args = array(
+										'page'   => 'member-payment-history',
+										'action' => 'edit',
+										'id'     => $edit_id,
+										'type'   => $edit_type,
+									);
+									if ( ! $order_id && isset( $payment['invoice_index'] ) ) {
+										$edit_args['invoice'] = absint( $payment['invoice_index'] );
+									}
+
 									?>
 									<tr>
 										<td><?php echo esc_html( $payment['transaction_id'] ?? '' ); ?></td>
@@ -2055,7 +2070,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 										<td><?php echo esc_html( $payment['payment_method'] ); ?></td>
 										<td class="status-<?php echo esc_attr( $payment['status'] ); ?>"><?php echo esc_html( ucfirst( $payment['status'] ) ); ?></td>
 										<td><?php echo ! empty( $payment['created_at'] ) ? esc_html( date_i18n( 'Y-m-d', strtotime( $payment['created_at'] ) ) ) : __( 'N/A', 'user-registration' ); ?></td>
-										<td><a href="<?php echo esc_url( admin_url( 'admin.php?page=member-payment-history&action=edit&id=' . ( $payment['ID'] ?? 0 ) ) ); ?>"><?php esc_html_e( 'View', 'user-registration' ); ?></a></td>
+										<td><a href="<?php echo esc_url( add_query_arg( $edit_args, admin_url( 'admin.php' ) ) ); ?>"><?php esc_html_e( 'View', 'user-registration' ); ?></a></td>
 									</tr>
 									<?php
 								}

@@ -168,7 +168,8 @@ class Orders {
 
 				if ( 'form' === $type ) {
 					$order_service            = new \WPEverest\URMembership\Payment\Admin\OrderService();
-					$order                    = $order_service->get_user_form_order_detail( $id );
+					$invoice_index            = isset( $_GET['invoice'] ) ? absint( $_GET['invoice'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view index, no state change.
+					$order                    = $order_service->get_user_form_order_detail( $id, $invoice_index );
 					$order['order_id']        = 0;
 					$order['is_form_payment'] = true;
 				} else {
