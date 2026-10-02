@@ -2472,11 +2472,27 @@ body {
 					}
 				}
 
-				.profile-pic-remove::before {
-					content: "\00d7";
-					color: #475bb2;
-					font-size: 22px;
-					line-height: 30px;
+				.profile-pic-remove {
+					&::before,
+					&::after {
+						content: "";
+						position: absolute;
+						top: 50%;
+						left: 50%;
+						width: 12px;
+						height: 2px;
+						margin: -1px 0 0 -6px;
+						border-radius: 1px;
+						background: #475bb2;
+					}
+
+					&::before {
+						transform: rotate(45deg);
+					}
+
+					&::after {
+						transform: rotate(-45deg);
+					}
 				}
 			}
 		}
