@@ -21,7 +21,12 @@
       "includes/admin/class-ur-admin-menus.php",
       "includes/admin/class-ur-admin-settings.php",
       "includes/admin/settings/**",
-      "includes/admin/class-ur-admin-assets.php"
+      "includes/admin/class-ur-admin-assets.php",
+      "includes/functions-ur-core.php",
+      "assets/css/settings*",
+      "assets/js/admin/**",
+      "modules/paypal/**",
+      "modules/stripe/**"
     ],
     "registration": [
       "includes/class-ur-form-handler.php",
@@ -42,6 +47,11 @@
     "security": [
       "includes/admin/settings/class-ur-settings-security.php",
       "includes/class-ur-install.php"
+    ],
+    "security-and-captcha": [
+      "assets/js/frontend/user-registration-recaptcha*.js",
+      "includes/admin/settings/class-ur-settings-captcha.php",
+      "includes/class-ur-captcha-conflict-manager.php"
     ]
   }
 }

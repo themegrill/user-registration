@@ -937,7 +937,12 @@
 
 	$(".user-registration #mainform").on("keyup keypress", function (e) {
 		var keyCode = e.keyCode || e.which;
-		if (keyCode === 13) {
+		// Buttons (e.g. the password visibility toggle) rely on native Enter-to-click, and search inputs submit their own search on Enter; only guard other inputs against accidental form submit.
+		if (
+			keyCode === 13 &&
+			e.target.tagName !== "BUTTON" &&
+			$(e.target).attr("type") !== "search"
+		) {
 			e.preventDefault();
 			return false;
 		}
@@ -1835,7 +1840,7 @@
 			section_data[name] = value;
 		});
 
-		if ( setting_id === "stripe" ) {
+		if ( setting_id === "stripe" && section_data["user_registration_stripe_enabled"] ) {
 			var testPubKey = section_data["user_registration_stripe_test_publishable_key"] || "";
 			var livePubKey = section_data["user_registration_stripe_live_publishable_key"] || "";
 

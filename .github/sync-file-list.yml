@@ -1,4 +1,4 @@
-themegrill/user-registration-pro@1516-make-form-payment-fields-legacy-membership-field-becomes-the-only-payment-path-for-new-sites:
+themegrill/user-registration-pro@develop:
     - source: assets
       exclude: |
         js/divi-vb-modules.js

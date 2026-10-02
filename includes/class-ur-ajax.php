@@ -100,7 +100,7 @@ class UR_AJAX {
 			'activate_dependent_module'            => false,
 			'add_membership_field_to_default_form' => false,
 			'update_state_field'                   => true,
-
+			'toggle_logging'                       => false,
 		);
 
 		foreach ( $ajax_events as $ajax_event => $nopriv ) {
@@ -1911,7 +1911,16 @@ class UR_AJAX {
 				$button = '<div class="action-buttons"><a class="button activate-license-now" href="' . esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=license' ) ) . '" rel="noreferrer noopener" target="_blank">' . esc_html__( 'Activate License', 'user-registration' ) . '</a></div>';
 				wp_send_json_success( array( 'action_button' => $button ) );
 			} else {
-				$button = '<div class="action-buttons"><a class="button upgrade-now" href="' . esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'builder-fields', 'medium' => 'popup' ) ) ) . '" rel="noreferrer noopener" target="_blank">' . esc_html__( 'Upgrade Plan', 'user-registration' ) . '</a></div>';
+				$button = '<div class="action-buttons"><a class="button upgrade-now" href="' . esc_url(
+					ur_utm_url(
+						'https://wpuserregistration.com/upgrade/',
+						array(
+							'source'  => 'builder-fields',
+							'medium'  => 'popup',
+							'content' => ! empty( $slug ) ? $slug : 'locked-field',
+						)
+					)
+				) . '" rel="noreferrer noopener" target="_blank">' . esc_html__( 'Upgrade Plan', 'user-registration' ) . '</a></div>';
 				wp_send_json_success( array( 'action_button' => $button ) );
 			}
 		}
@@ -2330,8 +2339,18 @@ class UR_AJAX {
 	}
 
 	public static function get_recent_nonce() {
-		$form_ids = isset( $_POST['form_ids'] ) ? array_filter( explode( ',', sanitize_text_field( $_POST['form_ids'] ) ) ) : array();
-		$for      = isset( $_POST['nonce_for'] ) ? sanitize_text_field( $_POST['nonce_for'] ) : 'registration';
+		// Public forms need public nonce refresh. A request referer is not authorization.
+		if ( ( isset( $_POST['nonce_for'] ) && ! is_string( $_POST['nonce_for'] ) ) ||
+			( isset( $_POST['form_ids'] ) && ! is_string( $_POST['form_ids'] ) ) ) {
+			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Public guest nonce refresh does not require an existing nonce.
+		$for = isset( $_POST['nonce_for'] ) ? sanitize_key( wp_unslash( $_POST['nonce_for'] ) ) : 'registration';
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Public refresh; IDs are strictly validated below.
+		$form_ids = isset( $_POST['form_ids'] ) ? array_unique( array_filter( explode( ',', wp_unslash( $_POST['form_ids'] ) ) ) ) : array();
+		if ( ! in_array( $for, array( 'login', 'registration' ), true ) || count( $form_ids ) > 100 ) {
+			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
+		}
 
 		if ( 'registration' === $for ) {
 
@@ -2343,6 +2362,14 @@ class UR_AJAX {
 				);
 			}
 			foreach ( $form_ids as $form_id ) {
+				if ( ! ctype_digit( $form_id ) || (int) $form_id < 1 ) {
+					wp_send_json_error( array( __( 'Invalid form ID.', 'user-registration' ) ), 400 );
+				}
+				$post = get_post( (int) $form_id );
+				if ( ! $post || 'user_registration' !== $post->post_type ||
+					( 'publish' !== $post->post_status && ! current_user_can( 'edit_post', (int) $form_id ) ) ) {
+					wp_send_json_error( array( __( 'Form not found!', 'user-registration' ) ), 404 );
+				}
 				$form = ur_get_form_fields( $form_id );
 				if ( empty( $form ) ) {
 					wp_send_json_error(
@@ -2354,18 +2381,6 @@ class UR_AJAX {
 			}
 		}
 
-		// Strict referer verification
-		$referer      = wp_get_referer();
-		$allowed_host = parse_url( home_url(), PHP_URL_HOST );
-		$referer_host = parse_url( $referer, PHP_URL_HOST );
-
-		if ( ! $referer || $referer_host !== $allowed_host ) {
-			wp_send_json_error(
-				array(
-					__( 'Invalid form submission source.', 'user-registration' ),
-				)
-			);
-		}
 		$updated_nonce_array = array();
 		switch ( $for ) {
 			case 'registration':
@@ -2854,6 +2869,32 @@ class UR_AJAX {
 			array(
 				'state'     => $option,
 				'has_state' => $has_state,
+			)
+		);
+	}
+
+	/**
+	 * Toggle user registration logging state.
+	 *
+	 * @return void
+	 */
+	public static function toggle_logging() {
+		check_ajax_referer( 'ur_toggle_logging_nonce', 'security' );
+
+		if ( ! current_user_can( 'manage_user_registration' ) && ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'user-registration' ) ) );
+		}
+
+		$enabled = ! empty( $_POST['enabled'] ) && ( 'true' === $_POST['enabled'] || '1' === $_POST['enabled'] );
+		// Store setting compatible with ur_option_checked and Settings page.
+		update_option( 'user_registration_enable_log', $enabled ? 'yes' : 'no' );
+
+		wp_send_json_success(
+			array(
+				'enabled' => $enabled,
+				'message' => $enabled
+					? __( 'Logging enabled.', 'user-registration' )
+					: __( 'Logging disabled.', 'user-registration' ),
 			)
 		);
 	}
