@@ -56,8 +56,6 @@ class EmailService {
 				return self::send_payment_retry_failed_email( $data );
 			case 'payment_retry_cancel': // payment retry exhausted -> final cancellation
 				return self::send_payment_retry_cancel_email( $data );
-			case 'payment_approval': // payment approval message to member.
-				return self::send_payment_approval_email( $data );
 			case 'membership_cancellation_email_user': // membership cancellation email to member.
 				return self::send_membership_cancellation_email_user( $data );
 			case 'membership_cancellation_email_admin': // membership cancellation email to admin.
@@ -361,40 +359,6 @@ class EmailService {
 		return \UR_Emailer::user_registration_process_and_send_email( $email, $subject, $message, $headers, array(), 0 );
 	}
 
-	/**
-	 * Send payment successful email
-	 *
-	 * @param $data
-	 *
-	 * @return bool|mixed|void
-	 */
-	public function send_payment_approval_email( $data ) {
-		// Keeping for backward compatibility need to be removed on future releases.
-		if ( ! ur_string_to_bool( get_option( 'user_registration_enable_payment_approval_email', true ) ) || ! $this->validate_email_fields( $data ) ) {
-			return;
-		}
-		$subject        = __( 'Payment Approved!', 'user-registration' );
-		$currency       = get_option( 'user_registration_payment_currency', 'USD' );
-		$currencies     = ur_payment_integration_get_currencies();
-		$symbol         = $currencies[ $currency ]['symbol'];
-		$message        = sprintf( __( 'Hi <b><i>%1$s</i></b>, Your payment of amount %2$s for the membership: <b>%3$s</b> has been approved by admin.', 'user-registration' ), $data['display_name'] ?? '', number_format( $data['total_amount'], 2 ) . $symbol, $data['post_title'] ?? '' ) . "\n\n";
-		$extra_message  = __( 'You can now login as a member.', 'user-registration' );
-		$final_greeting = __( 'Thank You.', 'user-registration' );
-
-		$template_file = locate_template( 'payment-approval-email.php' );
-
-		if ( ! $template_file ) {
-			$template_file = UR_MEMBERSHIP_DIR . 'includes/Templates/Emails/payment-approval-email.php';
-		}
-		ob_start();
-		require $template_file;
-
-		$message = ob_get_clean();
-		$message = apply_filters( 'ur_membership_payment_successful_email_custom_template', $message, $subject );
-		$headers = \UR_Emailer::ur_get_header();
-
-		return \UR_Emailer::user_registration_process_and_send_email( $data['user_email'], $subject, $message, $headers, array(), 0 );
-	}
 	// **
 	// * Send payment successful email
 	// *
