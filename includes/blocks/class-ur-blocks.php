@@ -110,7 +110,7 @@ class UR_Blocks {
 					'value' => $page->ID,
 				);
 			},
-			get_pages()
+			get_pages() ?: array()
 		);
 
 		$page_options = array_merge(
