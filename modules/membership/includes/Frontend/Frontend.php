@@ -140,7 +140,7 @@ class Frontend {
 
 		wp_register_script( 'user-registration-membership-frontend-script', UR()->plugin_url() . '/assets/js/modules/membership/frontend/user-registration-membership-frontend' . $suffix . '.js', array( 'jquery' ), UR_VERSION, true );
 		$stripe_settings = \WPEverest\URMembership\Admin\Services\Stripe\StripeService::get_stripe_settings();
-		if ( ! empty( $stripe_settings['is_stipe_enabled'] ) && ! empty( $stripe_settings['publishable_key'] ) ) {
+		if ( ur_string_to_bool( $stripe_settings['is_stipe_enabled'] ) && ! empty( $stripe_settings['publishable_key'] ) ) {
 			wp_enqueue_script( 'user-registration-membership-stripe-v3', 'https://js.stripe.com/v3/', array() );
 		}
 		wp_enqueue_script( 'user-registration-membership-frontend-script' );
