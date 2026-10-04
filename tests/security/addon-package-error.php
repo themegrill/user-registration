@@ -44,7 +44,8 @@ security_assert(
 	)['errorCode'],
 	'Unrecognised addon name is reported without reading the missing download_link'
 );
-security_assert( 'addon_not_found' === ur_get_addon_package_error( null )['errorCode'], 'Failed API request (null) is reported' );
+// UR_Updater_Key_API::version() returns false on transport errors, which json_decode() turns into null.
+security_assert( 'updater_unavailable' === ur_get_addon_package_error( json_decode( false ) )['errorCode'], 'A failed updater request is not misreported as an unknown addon' );
 
 security_assert(
 	array() === ur_get_addon_package_error(

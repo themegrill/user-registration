@@ -3520,15 +3520,23 @@ if ( ! function_exists( 'ur_get_addon_package_error' ) ) {
 	/**
 	 * Explains why the updater API response cannot be installed, or returns an empty array when it can.
 	 *
-	 * The API sends an empty `download_link` when no license is set and omits the item
-	 * entirely (empty `name`) when it does not recognise the requested addon name.
+	 * A non-object response means the request failed (version() returns false on transport or
+	 * non-200 errors). The API sends an empty `download_link` when no license is set and omits
+	 * the item entirely (empty `name`) when it does not recognise the requested addon name.
 	 *
 	 * @param mixed $api Decoded response of UR_Updater_Key_API::version().
 	 *
 	 * @return array Empty when installable, otherwise array with `errorCode` and `errorMessage`.
 	 */
 	function ur_get_addon_package_error( $api ) {
-		if ( ! is_object( $api ) || empty( $api->name ) ) {
+		if ( ! is_object( $api ) ) {
+			return array(
+				'errorCode'    => 'updater_unavailable',
+				'errorMessage' => esc_html__( 'Could not reach the update server. Please try again in a moment.', 'user-registration' ),
+			);
+		}
+
+		if ( empty( $api->name ) ) {
 			return array(
 				'errorCode'    => 'addon_not_found',
 				'errorMessage' => esc_html__( 'This addon was not found on the update server. Please download and install it manually.', 'user-registration' ),
@@ -5048,7 +5056,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 					'label'  => esc_html__( 'Two Factor Authentication', 'user-registration' ),
 					'plugin' => 'user-registration-two-factor-authentication',
 					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
-					'name'   => esc_html__( 'User Registration Two Factor Authentication', 'user-registration' ),
+					'name'   => 'User Registration Two Factor Authentication',
 					'upsell' => array(
 						'excerpt'      => 'Verify user logins with one-time passwords.',
 						'description'  => array(
