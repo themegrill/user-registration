@@ -3516,6 +3516,40 @@ if ( ! function_exists( 'user_registration_pro_get_field_data' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_addon_package_error' ) ) {
+	/**
+	 * Explains why the updater API response cannot be installed, or returns an empty array when it can.
+	 *
+	 * The API sends an empty `download_link` when no license is set and omits the item
+	 * entirely (empty `name`) when it does not recognise the requested addon name.
+	 *
+	 * @param mixed $api Decoded response of UR_Updater_Key_API::version().
+	 *
+	 * @return array Empty when installable, otherwise array with `errorCode` and `errorMessage`.
+	 */
+	function ur_get_addon_package_error( $api ) {
+		if ( ! is_object( $api ) || empty( $api->name ) ) {
+			return array(
+				'errorCode'    => 'addon_not_found',
+				'errorMessage' => esc_html__( 'This addon was not found on the update server. Please download and install it manually.', 'user-registration' ),
+			);
+		}
+
+		if ( empty( $api->download_link ) ) {
+			$has_license = ! empty( get_option( 'user-registration_license_key' ) );
+
+			return array(
+				'errorCode'    => 'no_download_link',
+				'errorMessage' => $has_license
+					? esc_html__( 'No download is available for this addon with your current license. Please check your license plan and try again.', 'user-registration' )
+					: esc_html__( 'No valid license found for this addon. Please activate a valid license and try again.', 'user-registration' ),
+			);
+		}
+
+		return array();
+	}
+}
+
 if ( ! function_exists( 'ur_install_extensions' ) ) {
 	/**
 	 * This function return boolean according to string to avoid colision of 1, true, yes.
@@ -3578,6 +3612,15 @@ if ( ! function_exists( 'ur_install_extensions' ) ) {
 
 			if ( is_wp_error( $api ) ) {
 				$status['errorMessage'] = $api->get_error_message();
+
+				/* translators: %1$s: Activation error message */
+				throw new Exception( sprintf( __( '<strong>Activation error:</strong> %1$s', 'user-registration' ), $status['errorMessage'] ) );
+			}
+
+			$package_error = ur_get_addon_package_error( $api );
+
+			if ( ! empty( $package_error ) ) {
+				$status = array_merge( $status, $package_error );
 
 				/* translators: %1$s: Activation error message */
 				throw new Exception( sprintf( __( '<strong>Activation error:</strong> %1$s', 'user-registration' ), $status['errorMessage'] ) );
@@ -5005,7 +5048,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 					'label'  => esc_html__( 'Two Factor Authentication', 'user-registration' ),
 					'plugin' => 'user-registration-two-factor-authentication',
 					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
-					'name'   => esc_html__( 'User Registration - Two Factor Authentication', 'user-registration' ),
+					'name'   => esc_html__( 'User Registration Two Factor Authentication', 'user-registration' ),
 					'upsell' => array(
 						'excerpt'      => 'Verify user logins with one-time passwords.',
 						'description'  => array(

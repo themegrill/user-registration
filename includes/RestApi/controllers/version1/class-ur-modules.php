@@ -742,6 +742,12 @@ class UR_Modules {
 			return $status;
 		}
 
+		$package_error = ur_get_addon_package_error( $api );
+
+		if ( ! empty( $package_error ) ) {
+			return array_merge( $status, array( 'success' => false ), $package_error );
+		}
+
 		$status['pluginName'] = $api->name;
 
 		$skin     = new WP_Ajax_Upgrader_Skin();

@@ -1710,6 +1710,12 @@ class UR_AJAX {
 			wp_send_json_error( $status );
 		}
 
+		$package_error = ur_get_addon_package_error( $api );
+
+		if ( ! empty( $package_error ) ) {
+			wp_send_json_error( array_merge( $status, $package_error ) );
+		}
+
 		$status['pluginName'] = $api->name;
 
 		$skin     = new WP_Ajax_Upgrader_Skin();
