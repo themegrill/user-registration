@@ -359,7 +359,7 @@ class UR_User_Approval {
 					}
 
 					/* translators: %s - Redirect URL. */
-					$message = '<strong>' . __( 'ERROR:', 'user-registration' ) . '</strong> ' . sprintf( get_option( 'user_registration_pro_pending_payment_error_message', __( 'Your account is still pending payment. Process the payment by clicking on this: <a id="payment-link" href="%s">link</a>', 'user-registration' ) ), esc_url( $redirect_url ) );
+					$message = '<strong>' . __( 'ERROR:', 'user-registration' ) . '</strong> ' . str_replace( '%s', esc_url( $redirect_url ), get_option( 'user_registration_pro_pending_payment_error_message', __( 'Your account is still pending payment. Process the payment by clicking on this: <a id="payment-link" href="%s">link</a>', 'user-registration' ) ) );
 				}
 				/**
 				 * Applies a filter before checking the payment status on user login.
