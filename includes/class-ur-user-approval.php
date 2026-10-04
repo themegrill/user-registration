@@ -170,19 +170,20 @@ class UR_User_Approval {
 	 * Fill the admin-edited pending payment message with the payment link.
 	 *
 	 * Not run through sprintf(): the template is free text, so a stray "%" or a second "%s" would be a fatal error.
-	 * "%s" becomes the link and "%%" a literal "%", as sprintf() did before.
+	 * "%s" and "%1$s" become the link and "%%" a literal "%", as sprintf() did before.
 	 *
 	 * @param string $template    Admin-edited message containing a "%s" placeholder.
 	 * @param string $payment_url Escaped payment URL.
 	 *
 	 * @return string
 	 */
-	public static function format_pending_payment_message( $template, $payment_url ) {
+	private static function format_pending_payment_message( $template, $payment_url ) {
 		return strtr(
 			$template,
 			array(
-				'%s' => $payment_url,
-				'%%' => '%',
+				'%s'   => $payment_url,
+				'%1$s' => $payment_url,
+				'%%'   => '%',
 			)
 		);
 	}
