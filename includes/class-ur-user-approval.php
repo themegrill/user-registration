@@ -167,6 +167,27 @@ class UR_User_Approval {
 	}
 
 	/**
+	 * Fill the admin-edited pending payment message with the payment link.
+	 *
+	 * Not run through sprintf(): the template is free text, so a stray "%" or a second "%s" would be a fatal error.
+	 * "%s" becomes the link and "%%" a literal "%", as sprintf() did before.
+	 *
+	 * @param string $template    Admin-edited message containing a "%s" placeholder.
+	 * @param string $payment_url Escaped payment URL.
+	 *
+	 * @return string
+	 */
+	public static function format_pending_payment_message( $template, $payment_url ) {
+		return strtr(
+			$template,
+			array(
+				'%s' => $payment_url,
+				'%%' => '%',
+			)
+		);
+	}
+
+	/**
 	 * Check the status of an user on login.
 	 *
 	 * @param mixed  $user Users.
@@ -359,7 +380,7 @@ class UR_User_Approval {
 					}
 
 					/* translators: %s - Redirect URL. */
-					$message = '<strong>' . __( 'ERROR:', 'user-registration' ) . '</strong> ' . str_replace( '%s', esc_url( $redirect_url ), get_option( 'user_registration_pro_pending_payment_error_message', __( 'Your account is still pending payment. Process the payment by clicking on this: <a id="payment-link" href="%s">link</a>', 'user-registration' ) ) );
+					$message = '<strong>' . __( 'ERROR:', 'user-registration' ) . '</strong> ' . self::format_pending_payment_message( get_option( 'user_registration_pro_pending_payment_error_message', __( 'Your account is still pending payment. Process the payment by clicking on this: <a id="payment-link" href="%s">link</a>', 'user-registration' ) ), esc_url( $redirect_url ) );
 				}
 				/**
 				 * Applies a filter before checking the payment status on user login.
