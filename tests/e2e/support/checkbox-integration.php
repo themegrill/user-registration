@@ -69,14 +69,22 @@ try {
 		array(
 			'Tom & Jerry'           => 'Tom &amp; Jerry',
 			'Tom &amp; Jerry'       => 'Tom &amp; Jerry',
-			"Don't"                => "Don't",
-			'Don&#039;t'           => "Don't",
-			'Say "Hello"'          => 'Say "Hello"',
+			"Don't"                 => "Don't",
+			'Don&#039;t'            => "Don't",
+			'Say "Hello"'           => 'Say "Hello"',
 			'Say &quot;Hello&quot;' => 'Say "Hello"',
 		) as $option => $expected
 	) {
-		$choices = array( $option => $option );
-		$html    = user_registration_form_field( 'check', array( 'type' => 'checkbox', 'label' => 'Check', 'options' => $choices, 'return' => true ) );
+		$choices         = array( $option => $option );
+		$html            = user_registration_form_field(
+			'check',
+			array(
+				'type'    => 'checkbox',
+				'label'   => 'Check',
+				'options' => $choices,
+				'return'  => true,
+			)
+		);
 		$previous_errors = libxml_use_internal_errors( true );
 		$dom->loadHTML( $html );
 		libxml_clear_errors();
@@ -84,7 +92,7 @@ try {
 		$selected = $dom->getElementsByTagName( 'input' )->item( 0 )->getAttribute( 'value' );
 		$check( $expected === $selected, 'Browser submits the decoded choice' );
 		$field->general_setting->options = array( $option );
-		$data->value = wp_json_encode( array( $selected ) );
+		$data->value                     = wp_json_encode( array( $selected ) );
 		UR_Form_Field_Checkbox::get_instance()->validation( $field, $data, 'checkbox_test_message', 0 );
 		$check( '' === apply_filters( 'checkbox_test_message', '' ), 'Rendered entity-containing choice passes validation' );
 		remove_all_filters( 'checkbox_test_message' );
