@@ -948,7 +948,9 @@
 		}
 	});
 
-	$(".user-registration #ur-search-settings").autocomplete({
+	var $search_settings = $(".user-registration #ur-search-settings");
+
+	$search_settings.autocomplete({
 		source: function (request, response) {
 			var search_string = request.term;
 			var form_data = new FormData();
@@ -972,10 +974,8 @@
 				data: form_data,
 				type: "post",
 				complete: function (responsed) {
-					if (responsed.responseJSON.success === true) {
-						var results = responsed.responseJSON.data.results;
-						response(results);
-					}
+					var json = responsed.responseJSON;
+					response(json && json.success === true ? json.data.results : []);
 					$(".user-registration-search-icon").show();
 				}
 			});
@@ -1002,6 +1002,25 @@
 			return false; // Prevent the default behavior of the widget
 		}
 	});
+
+	if ($search_settings.autocomplete("instance")) {
+		$search_settings.autocomplete("instance")._renderItem = function (
+			ul,
+			item
+		) {
+			var $item = $("<div>").text(item.label);
+
+			if (item.location) {
+				$item.append(
+					$("<span>", {
+						class: "ur-search-result-location"
+					}).text(item.location)
+				);
+			}
+
+			return $("<li>").append($item).appendTo(ul);
+		};
+	}
 
 	// Display error when page with our my account or login shortcode is not selected
 	$("#user_registration_myaccount_page_id").on("change", function () {
@@ -1272,43 +1291,40 @@
 		}
 	});
 
-	if (
-		typeof getUrlVars()["searched_option"] != "undefined" ||
-		getUrlVars()["searched_option"] != null
-	) {
-		var $searched_id = $("#" + getUrlVars()["searched_option"]);
-		var wrapper_div = $searched_id.closest(
+	var searched_option = new URLSearchParams(window.location.search).get(
+		"searched_option"
+	);
+
+	if (searched_option) {
+		// Composite fields render as <id>_normal, <id>_line_1 and so on, and custom ones only as a label.
+		var searched_field =
+			document.getElementById(searched_option) ||
+			$(".user-registration-global-settings")
+				.find("[id], label[for]")
+				.filter(function () {
+					return (
+						0 === this.id.indexOf(searched_option + "_") ||
+						this.htmlFor === searched_option
+					);
+				})
+				.get(0);
+		var wrapper_div = $(searched_field).closest(
 			".user-registration-global-settings"
 		);
-		wrapper_div.addClass("ur-searched-settings-focus");
 
-		var offset = $(".ur-searched-settings-focus").offset().top;
-		window.scrollTo({
-			top: offset - 300,
-			behavior: "smooth"
-		});
-		setTimeout(function () {
-			wrapper_div.removeClass("ur-searched-settings-focus");
-		}, 2000);
-	}
+		// Some matches (buttons, custom fields) have no settings wrapper to highlight.
+		if (wrapper_div.length) {
+			wrapper_div.addClass("ur-searched-settings-focus");
 
-	/**
-	 * Get Query String.
-	 *
-	 * @returns
-	 */
-	function getUrlVars() {
-		var vars = [],
-			hash;
-		var hashes = window.location.href
-			.slice(window.location.href.indexOf("?") + 1)
-			.split("&");
-		for (var i = 0; i < hashes.length; i++) {
-			hash = hashes[i].split("=");
-			vars.push(hash[0]);
-			vars[hash[0]] = hash[1];
+			var offset = wrapper_div.first().offset().top;
+			window.scrollTo({
+				top: offset - 300,
+				behavior: "smooth"
+			});
+			setTimeout(function () {
+				wrapper_div.removeClass("ur-searched-settings-focus");
+			}, 2000);
 		}
-		return vars;
 	}
 
 	/**
