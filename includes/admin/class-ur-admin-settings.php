@@ -61,6 +61,20 @@ class UR_Admin_Settings {
 	private const SEARCH_LOCATION_SEPARATOR = ' → ';
 
 	/**
+	 * Fewest characters a settings search needs, matching the minimum the search box enforces.
+	 *
+	 * @var int
+	 */
+	private const SEARCH_MIN_LENGTH = 3;
+
+	/**
+	 * Prefixes shared by nearly every setting id, left out when matching so that typing "user" does not match everything.
+	 *
+	 * @var string[]
+	 */
+	private const SEARCH_ID_PREFIXES = array( 'user_registration_', 'urm_' );
+
+	/**
 	 * Output messages + errors.
 	 *
 	 * @echo string
@@ -2038,7 +2052,7 @@ class UR_Admin_Settings {
 	 */
 	public static function search_settings() {
 		$search_string = isset( $_POST['search_string'] ) ? sanitize_text_field( wp_unslash( $_POST['search_string'] ) ) : ''; //phpcs:ignore;
-		$results       = self::get_search_results( $search_string );
+		$results       = mb_strlen( $search_string ) < self::SEARCH_MIN_LENGTH ? array() : self::get_search_results( $search_string );
 
 		if ( empty( $results ) ) {
 			$results[] = array(
@@ -2099,19 +2113,41 @@ class UR_Admin_Settings {
 	}
 
 	/**
-	 * Get the settings pages that can be searched, which are the ones shown as a tab.
+	 * Get the settings pages that can be searched, which are the ones registered as a tab.
 	 *
 	 * @since xx.xx.xx
 	 *
 	 * @return UR_Settings_Page[]
 	 */
 	private static function get_searchable_pages() {
+		// The pages register their tabs when they are constructed, so they must exist before the tab list is read.
+		$pages = (array) self::get_settings_pages();
+		$tabs  = apply_filters( 'user_registration_settings_tabs_array', array() );
+
 		return array_filter(
-			(array) self::get_settings_pages(),
-			function ( $page ) {
-				return is_object( $page ) && method_exists( $page, 'get_settings' ) && method_exists( $page, 'get_sections' ) && method_exists( $page, 'get_id' ) && method_exists( $page, 'get_default_section' ) && '' !== $page->get_label();
+			$pages,
+			function ( $page ) use ( $tabs ) {
+				return is_object( $page ) && method_exists( $page, 'get_settings' ) && method_exists( $page, 'get_sections' ) && method_exists( $page, 'get_id' ) && method_exists( $page, 'get_default_section' ) && isset( $tabs[ $page->get_id() ] );
 			}
 		);
+	}
+
+	/**
+	 * Remove the prefix nearly every setting id shares, so only the part that tells settings apart is matched.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $id Setting id.
+	 * @return string
+	 */
+	private static function remove_search_id_prefix( $id ) {
+		foreach ( self::SEARCH_ID_PREFIXES as $prefix ) {
+			if ( 0 === strpos( $id, $prefix ) ) {
+				return substr( $id, strlen( $prefix ) );
+			}
+		}
+
+		return $id;
 	}
 
 	/**
@@ -2157,16 +2193,12 @@ class UR_Admin_Settings {
 		ob_start();
 
 		try {
-			switch ( $subsection ) {
-				case 'login-options':
-					$settings = get_login_options_settings();
-					break;
-				case 'frontend-messages':
-					$settings = $page->get_frontend_messages_settings();
-					break;
-				default:
-					$settings = $page->get_settings( $subsection );
-					break;
+			if ( 'login-options' === $subsection && function_exists( 'get_login_options_settings' ) ) {
+				$settings = get_login_options_settings();
+			} elseif ( 'frontend-messages' === $subsection && method_exists( $page, 'get_frontend_messages_settings' ) ) {
+				$settings = $page->get_frontend_messages_settings();
+			} else {
+				$settings = $page->get_settings( $subsection );
 			}
 		} finally {
 			ob_end_clean();
@@ -2247,7 +2279,7 @@ class UR_Admin_Settings {
 				} else {
 					$inner_settings = self::flatten_array( $section );
 					if ( ! empty( $inner_settings ) ) {
-						$settings_array[] = $inner_settings;
+						$settings_array = array_merge( $settings_array, $inner_settings );
 					}
 				}
 			}
@@ -2271,8 +2303,11 @@ class UR_Admin_Settings {
 				continue;
 			}
 
-			foreach ( self::SEARCHABLE_FIELDS as $field ) {
-				if ( isset( $value[ $field ] ) && is_string( $value[ $field ] ) && false !== stripos( $value[ $field ], $string_to_search ) ) {
+			$texts       = array_intersect_key( $value, array_flip( self::SEARCHABLE_FIELDS ) );
+			$texts['id'] = self::remove_search_id_prefix( $value['id'] );
+
+			foreach ( $texts as $text ) {
+				if ( is_string( $text ) && false !== stripos( $text, $string_to_search ) ) {
 					$desc_tip = isset( $value['desc_tip'] ) && is_string( $value['desc_tip'] ) ? $value['desc_tip'] : '';
 					$desc     = isset( $value['desc'] ) && is_string( $value['desc'] ) ? $value['desc'] : '';
 

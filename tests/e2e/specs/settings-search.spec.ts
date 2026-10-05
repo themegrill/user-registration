@@ -45,6 +45,13 @@ test.describe("settings search @fresh", () => {
     }
   });
 
+  test("ignores the prefix every setting id shares, and too-short queries @fresh", async ({ page }) => {
+    for (const term of ["urm_", "ab", ""]) {
+      const results = await search(page, term);
+      expect(results.map((r) => r.value)).toEqual([NO_RESULT_VALUE]);
+    }
+  });
+
   test("never returns a row labelled true @fresh", async ({ page }) => {
     for (const term of ["email", "page", "enable", "secret"]) {
       const labels = (await search(page, term)).map((r) => r.label);
@@ -74,8 +81,8 @@ test.describe("settings search @fresh", () => {
   test("picking a result opens its tab and section and highlights the field @fresh", async ({ page }) => {
     await page.locator("#ur-search-settings").pressSequentially("currency");
 
-    const row = page.locator(".user-registration-ui-autocomplete li").first();
-    await expect(row).toContainText("Payment → Store");
+    const row = page.locator(".user-registration-ui-autocomplete li").filter({ hasText: "Payment → Store" });
+    await expect(row).toHaveCount(1);
     await row.click();
 
     await expect(page).toHaveURL(/tab=payment&section=store&searched_option=/);

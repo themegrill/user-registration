@@ -974,10 +974,8 @@
 				data: form_data,
 				type: "post",
 				complete: function (responsed) {
-					if (responsed.responseJSON.success === true) {
-						var results = responsed.responseJSON.data.results;
-						response(results);
-					}
+					var json = responsed.responseJSON;
+					response(json && json.success === true ? json.data.results : []);
 					$(".user-registration-search-icon").show();
 				}
 			});
@@ -1301,7 +1299,8 @@
 		// Composite fields render as <id>_normal, <id>_line_1 and so on, and custom ones only as a label.
 		var searched_field =
 			document.getElementById(searched_option) ||
-			$("[id], label[for]")
+			$(".user-registration-global-settings")
+				.find("[id], label[for]")
 				.filter(function () {
 					return (
 						0 === this.id.indexOf(searched_option + "_") ||
