@@ -65,6 +65,36 @@ try {
 		$check( ( 0 === $i ) === ( '' === $message ), 'Only configured scalar options accepted' );
 		remove_all_filters( 'checkbox_test_message' );
 	}
+	foreach (
+		array(
+			'Tom & Jerry'           => 'Tom &amp; Jerry',
+			'Tom &amp; Jerry'       => 'Tom &amp; Jerry',
+			"Don't"                => "Don't",
+			'Don&#039;t'           => "Don't",
+			'Say "Hello"'          => 'Say "Hello"',
+			'Say &quot;Hello&quot;' => 'Say "Hello"',
+		) as $option => $expected
+	) {
+		$choices = array( $option => $option );
+		$html    = user_registration_form_field( 'check', array( 'type' => 'checkbox', 'label' => 'Check', 'options' => $choices, 'return' => true ) );
+		$previous_errors = libxml_use_internal_errors( true );
+		$dom->loadHTML( $html );
+		libxml_clear_errors();
+		libxml_use_internal_errors( $previous_errors );
+		$selected = $dom->getElementsByTagName( 'input' )->item( 0 )->getAttribute( 'value' );
+		$check( $expected === $selected, 'Browser submits the decoded choice' );
+		$field->general_setting->options = array( $option );
+		$data->value = wp_json_encode( array( $selected ) );
+		UR_Form_Field_Checkbox::get_instance()->validation( $field, $data, 'checkbox_test_message', 0 );
+		$check( '' === apply_filters( 'checkbox_test_message', '' ), 'Rendered entity-containing choice passes validation' );
+		remove_all_filters( 'checkbox_test_message' );
+		UR_Frontend_Form_Handler::ur_update_user_meta( $user_id, array( $data ), 0 );
+		$check( array( $selected ) === get_user_meta( $user_id, 'user_registration_check', true ), 'Decoded choice is preserved in storage' );
+	}
+	$field->general_setting->options = array( '<strong>Choice</strong>' );
+	UR_Form_Field_Checkbox::get_instance()->validation( $field, (object) array( 'value' => wp_json_encode( array( '<strong>Choice</strong>' ) ) ), 'checkbox_test_message', 0 );
+	$check( '' === apply_filters( 'checkbox_test_message', '' ), 'Permitted option markup uses renderer normalization' );
+	remove_all_filters( 'checkbox_test_message' );
 } finally {
 	require_once ABSPATH . 'wp-admin/includes/user.php';
 	wp_delete_user( $user_id ); }

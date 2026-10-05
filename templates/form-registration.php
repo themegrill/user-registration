@@ -146,7 +146,6 @@ wp_enqueue_style( 'ur-frontend-small-screen' );
 				 */
 				apply_filters( 'user_registration_form_params', '' );  //phpcs:ignore ?> data-captcha-enabled="<?php echo esc_attr( $recaptcha_enabled ); ?>">
 
-				<?php wp_nonce_field( 'user_registration_form_submit', 'ur_frontend_form_nonce', false ); ?>
 				<?php
 				/**
 				 * Action to fire before rendering form field.

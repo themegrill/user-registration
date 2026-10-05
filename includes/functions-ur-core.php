@@ -5650,10 +5650,6 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 	 * @return void
 	 */
 	function ur_process_registration( $nonce_value ) {
-		if ( ! wp_verify_nonce( $nonce_value, 'user_registration_form_submit' ) ) {
-			wp_send_json_error( array( 'message' => __( 'Nonce error, please reload.', 'user-registration' ) ), 403 );
-		}
-
 		/**
 		 * Filter to modify user capability.
 		 * Default value is 'create_users'.

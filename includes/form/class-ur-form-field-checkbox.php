@@ -101,7 +101,13 @@ class UR_Form_Field_Checkbox extends UR_Form_Field {
 		if ( $image_choice && ! empty( $single_form_field->general_setting->image_options ) ) {
 			$options = array_keys( (array) $single_form_field->general_setting->image_options );
 		}
-		$allowed = array_map( 'strval', array_map( 'trim', $options ) );
+		// Match the decoded option value submitted by the browser.
+		$allowed = array_map(
+			function ( $option ) {
+				return html_entity_decode( ur_sanitize_tooltip( trim( (string) $option ) ) );
+			},
+			$options
+		);
 		foreach ( $values as $selected ) {
 			if ( ! is_scalar( $selected ) || ( ! empty( $allowed ) && ! in_array( (string) $selected, $allowed, true ) ) ) {
 				add_filter(

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { runSecurityRegression } from "../support/security";
 
-test("registration rejects invalid nonces before processing @fresh", async () => {
+test("registration does not reject missing or expired cached-page nonces @fresh", async () => {
   await runSecurityRegression("checkbox", 3);
 });
 
@@ -19,5 +19,5 @@ test("checkbox attributes, stored values and configured options @fresh", () => {
     timeout: 60_000,
     env: { ...process.env, UR_SECURITY_DISPOSABLE: "1" },
   });
-  expect(result).toContain("10 assertions passed");
+  expect(result).toContain("29 assertions passed");
 });
