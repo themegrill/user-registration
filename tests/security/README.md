@@ -23,3 +23,8 @@ These are handler regressions with explicit WordPress test doubles, not browser
 journeys or full plugin integration coverage. Targeted PHPCS exceptions in these
 fixtures cover those doubles, intentionally hostile inputs, and CLI/file I/O;
 production code continues to use the repository coding standard.
+
+The security-tax-inputs spec tests shared frontend input construction in Chromium
+using local markup and the installed jQuery dependency. Install Chromium with
+`pnpm exec playwright install chromium`, or set `UR_SECURITY_CHROMIUM_BINARY`
+to an existing Chromium executable.

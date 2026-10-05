@@ -1492,6 +1492,9 @@
 							taxRate = regions.rate;
 						}
 
+						taxRate = Number(taxRate);
+						taxRate = Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100 ? taxRate : 0;
+
 						if (taxRate > 0) {
 							if (tax_calculation_method) {
 								taxAmount = (total * taxRate) / 100;
@@ -1505,19 +1508,14 @@
 
 					$("#ur-tax-details").remove();
 
-					var taxDetailsInput =
-						'<input type="hidden" ' +
-						'id="ur-tax-details" ' +
-						'name="ur_tax_details" ' +
-						'data-tax-rate="' +
-						taxRate +
-						'" ' +
-						'data-tax-calculation-method="' +
-						tax_calculation_method +
-						'" ' +
-						'data-total="' +
-						total +
-						'">';
+					var taxDetailsInput = $("<input>", {
+						type: "hidden",
+						id: "ur-tax-details",
+						name: "ur_tax_details",
+						"data-tax-rate": taxRate,
+						"data-tax-calculation-method": tax_calculation_method,
+						"data-total": total,
+					});
 
 					total_input.after(taxDetailsInput);
 				}
