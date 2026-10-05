@@ -482,23 +482,6 @@ class UR_Getting_Started {
 			'membership_type'      => get_option( 'urm_onboarding_membership_type', '' ),
 			'allow_usage_tracking' => get_option( 'user_registration_allow_usage_tracking', true ),
 			'admin_email'          => get_option( 'user_registration_updates_admin_email', get_option( 'admin_email' ) ),
-			'membership_options'   => array(
-				array(
-					'value'       => 'paid_membership',
-					'label'       => __( 'Paid Membership', 'user-registration' ),
-					'description' => __( 'Charge users to access premium content (you can offer free plans too).', 'user-registration' ),
-				),
-				array(
-					'value'       => 'free_membership',
-					'label'       => __( 'Free Membership', 'user-registration' ),
-					'description' => __( 'Let users register for free and access members-only content.', 'user-registration' ),
-				),
-				array(
-					'value'       => 'normal',
-					'label'       => __( 'Advanced Registration', 'user-registration' ),
-					'description' => __( "Complete registration system to replace WordPress's basic signup. Custom signup fields, login & account pages, and user approval.", 'user-registration' ),
-				),
-			),
 		);
 
 		return new \WP_REST_Response(

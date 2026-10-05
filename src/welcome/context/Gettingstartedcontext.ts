@@ -1,4 +1,4 @@
-export type MembershipSetupType = "paid" | "free" | "other";
+export type MembershipSetupType = "membership" | "registration" | "later";
 export type MembershipPlanType = "free" | "one-time" | "subscription";
 export type BillingCycle = "day" | "week" | "month" | "year";
 
@@ -47,11 +47,6 @@ export interface GettingStartedState {
 	membershipSetupType: MembershipSetupType;
 	allowTracking: boolean;
 	adminEmail: string;
-	membershipOptions: {
-		value: string;
-		label: string;
-		description: string;
-	}[];
 	membershipPlans: MembershipPlan[];
 	paymentSettings: PaymentSettings;
 	registrationSettings: {
@@ -79,19 +74,15 @@ export const getTotalStepsForType = (
 	membershipType: MembershipSetupType
 ): number => {
 	switch (membershipType) {
-		case "paid":
+		case "membership":
 			return 4;
-		case "free":
-			return 3;
-		case "other":
-			return 3;
 		default:
-			return 4;
+			return 3;
 	}
 };
 
 export const DEFAULT_WELCOME_STATE = {
-	membershipSetupType: "paid" as MembershipSetupType,
+	membershipSetupType: "membership" as MembershipSetupType,
 	allowTracking: true
 };
 
@@ -128,26 +119,6 @@ export const initialState: GettingStartedState = {
 	membershipSetupType: DEFAULT_WELCOME_STATE.membershipSetupType,
 	allowTracking: DEFAULT_WELCOME_STATE.allowTracking,
 	adminEmail: "",
-	membershipOptions: [
-		{
-			value: "paid_membership",
-			label: "Paid Membership",
-			description:
-				"Charge users to access premium content (you can offer free plans too)."
-		},
-		{
-			value: "free_membership",
-			label: "Free Membership",
-			description:
-				"Let users register for free and access members-only content."
-		},
-		{
-			value: "normal",
-			label: "Advanced Registration",
-			description:
-				"Complete registration system to replace WordPress's basic signup. Custom signup fields, login & account pages, and user approval."
-		}
-	],
 	membershipPlans: [createDefaultPlan("one-time")],
 	paymentSettings: { ...DEFAULT_PAYMENT_SETTINGS },
 	registrationSettings: { ...DEFAULT_REGISTRATION_SETTINGS }
@@ -220,7 +191,7 @@ export const reducer = (
 
 		case "SET_MEMBERSHIP_SETUP_TYPE":
 			const newDefaultType: MembershipPlanType =
-				action.payload === "paid" ? "one-time" : "free";
+				action.payload === "membership" ? "one-time" : "free";
 
 			const updatedPlansOnTypeChange = state.membershipPlans.map(
 				(plan, index) => {
@@ -245,7 +216,7 @@ export const reducer = (
 
 		case "ADD_MEMBERSHIP_PLAN":
 			const defaultTypeForNewPlan: MembershipPlanType =
-				state.membershipSetupType === "paid" ? "one-time" : "free";
+				state.membershipSetupType === "membership" ? "one-time" : "free";
 			const newPlan = action.payload || {
 				...createDefaultPlan(defaultTypeForNewPlan),
 				isNew: true
@@ -325,7 +296,7 @@ export const reducer = (
 				state.membershipPlans[0].name === ""
 			) {
 				const syncedType: MembershipPlanType =
-					hydratedSetupType === "paid" ? "one-time" : "free";
+					hydratedSetupType === "membership" ? "one-time" : "free";
 				hydratedPlans = state.membershipPlans.map((plan, index) => {
 					if (index === 0 && plan.name === "") {
 						return { ...plan, type: syncedType };
@@ -364,7 +335,7 @@ export const reducer = (
 
 		case "RESET_MEMBERSHIP_DEFAULTS":
 			const defaultPlanType: MembershipPlanType =
-				state.membershipSetupType === "paid" ? "one-time" : "free";
+				state.membershipSetupType === "membership" ? "one-time" : "free";
 			return {
 				...state,
 				membershipPlans: [createDefaultPlan(defaultPlanType)]

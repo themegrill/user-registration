@@ -81,20 +81,9 @@ const MembershipOption: React.FC<MembershipOptionProps> = ({
 	);
 };
 
-const mapApiValueToSetupType = (value: string): MembershipSetupType => {
-	if (value === "paid_membership") return "paid";
-	if (value === "free_membership") return "free";
-	return "other";
-};
-
 const WelcomeStep: React.FC = () => {
 	const { state, dispatch } = useStateValue();
-	const {
-		membershipSetupType,
-		allowTracking,
-		adminEmail,
-		membershipOptions
-	} = state;
+	const { membershipSetupType, allowTracking, adminEmail } = state;
 
 	const [isEditingEmail, setIsEditingEmail] = useState(false);
 	const [tempEmail, setTempEmail] = useState(adminEmail);
@@ -142,39 +131,32 @@ const WelcomeStep: React.FC = () => {
 
 	const emailForDisplay = adminEmail || "admin@example.com";
 
-	const optionsToRender =
-		membershipOptions && membershipOptions.length > 0
-			? membershipOptions.map((opt) => ({
-					value: mapApiValueToSetupType(opt.value),
-					title: opt.label,
-					description: opt.description
-			  }))
-			: [
-					{
-						value: "paid" as MembershipSetupType,
-						title: __("Paid Membership", "user-registration"),
-						description: __(
-							"Charge users to access premium content (you can offer free plans too).",
-							"user-registration"
-						)
-					},
-					{
-						value: "free" as MembershipSetupType,
-						title: __("Free Membership", "user-registration"),
-						description: __(
-							"Let users register for free and access members-only content.",
-							"user-registration"
-						)
-					},
-					{
-						value: "other" as MembershipSetupType,
-						title: __("Advanced Registration", "user-registration"),
-						description: __(
-							"Complete registration system to replace WordPress's basic signup. Custom signup fields, login & account pages, and user approval.",
-							"user-registration"
-						)
-					}
-			  ];
+	const optionsToRender: Omit<MembershipOptionProps, "isSelected">[] = [
+		{
+			value: "membership",
+			title: __("Yes", "user-registration"),
+			description: __(
+				"Create free or paid plans, and restrict content to members.",
+				"user-registration"
+			)
+		},
+		{
+			value: "registration",
+			title: __("No", "user-registration"),
+			description: __(
+				"Registration, login, and account pages only. No plans or payments.",
+				"user-registration"
+			)
+		},
+		{
+			value: "later",
+			title: __("Maybe later", "user-registration"),
+			description: __(
+				"Start with registration and login now. You can add plans and payments anytime.",
+				"user-registration"
+			)
+		}
+	];
 
 	return (
 		<>
@@ -187,14 +169,11 @@ const WelcomeStep: React.FC = () => {
 					letterSpacing="-0.01em"
 					color={textColor}
 				>
-					{__("Welcome 🙂", "user-registration")}
+					{__("Welcome to User Registration & Membership", "user-registration")}
 				</Heading>
-				<Text color={textColor} fontWeight="500" fontSize="14px">
-					{__("Thanks for choosing URM!", "user-registration")}
-				</Text>
 				<Text color={mutedColor} fontSize="14px">
 					{__(
-						"Tell us what you want to do. We'll set up the right pages and features for your site. Don't worry—you can change this anytime.",
+						"Let's get your site set up. You can change any of this later.",
 						"user-registration"
 					)}
 				</Text>
@@ -202,7 +181,10 @@ const WelcomeStep: React.FC = () => {
 
 			<Box mb={10}>
 				<Text fontWeight="600" color={textColor} mb={4} fontSize="16px">
-					{__("Choose your setup:", "user-registration")}
+					{__(
+						"Do you want to offer memberships on your site?",
+						"user-registration"
+					)}
 				</Text>
 				<RadioGroup
 					value={membershipSetupType}
