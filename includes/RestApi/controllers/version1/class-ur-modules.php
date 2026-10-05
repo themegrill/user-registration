@@ -542,7 +542,7 @@ class UR_Modules {
 			);
 			$status      = self::ur_install_individual_addon( $slug, $plugin, $name, $status );
 
-			if ( isset( $status['success'] ) && '' === $status['success'] ) {
+			if ( isset( $status['success'] ) && ! $status['success'] ) {
 				array_push( $failed_addon, $name );
 				continue;
 			}
@@ -740,6 +740,12 @@ class UR_Modules {
 			$status['success']      = false;
 			$status['errorMessage'] = __( 'Couldn\'t fetch addon data at the moment. Please try again later', 'user-registration' );
 			return $status;
+		}
+
+		$package_error = ur_get_addon_package_error( $api );
+
+		if ( ! empty( $package_error ) ) {
+			return array_merge( $status, array( 'success' => false ), $package_error );
 		}
 
 		$status['pluginName'] = $api->name;
