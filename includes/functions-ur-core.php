@@ -12216,7 +12216,17 @@ if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
 }
 
 if ( ! function_exists( 'ur_get_synced_field_value' ) ) {
-	// Shared by every gateway's field-sync (Stripe, Mollie, ...): each lives in its own plugin, so this is the one place the resolution runs.
+	/**
+	 * Resolve the value a member submitted for one or more mapped form fields.
+	 *
+	 * Shared by every gateway's field sync (Stripe, Authorize.Net, Mollie), which each live in their
+	 * own plugin, so this is the one place the resolution runs.
+	 *
+	 * @param int          $member_id Member (user) ID.
+	 * @param string|array $field     Mapped field name, or several names whose values are space-joined.
+	 * @return string The resolved value, or an empty string when the member or the value is missing.
+	 * @since 5.3
+	 */
 	function ur_get_synced_field_value( $member_id, $field ) {
 		$user = get_userdata( $member_id );
 
@@ -12236,7 +12246,7 @@ if ( ! function_exists( 'ur_get_synced_field_value' ) ) {
 			$key   = ur_get_field_name_with_prefix_usermeta( $name );
 			$value = isset( $user->$key ) ? $user->$key : '';
 
-			// Checkbox/multi-select fields store an array; join it instead of dropping the value.
+			// Checkbox and multi-select fields store an array, so join it instead of dropping the value.
 			if ( is_array( $value ) ) {
 				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
 			}
