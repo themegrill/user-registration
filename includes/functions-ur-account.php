@@ -158,11 +158,29 @@ function ur_get_account_menu_items() {
 }
 
 /**
+ * Whether the My Account navigation lists an endpoint.
+ *
+ * @since xx.xx.xx
+ *
+ * @param string $endpoint Endpoint slug.
+ *
+ * @return bool False for the endpoints the navigation always skips.
+ */
+function ur_is_account_endpoint_listed( $endpoint ) {
+	if ( 'edit-password' === $endpoint ) {
+		return false;
+	}
+
+	return ! ( 'dashboard' === $endpoint && ur_string_to_bool( get_option( 'urm_is_new_installation', false ) ) );
+}
+
+/**
  * Get the endpoint whose content a bare My Account URL renders.
  *
  * @since xx.xx.xx
  *
- * @return string 'edit-profile' on new installations, 'dashboard' otherwise, unless filtered.
+ * @return string 'edit-profile' on new installations, 'dashboard' otherwise. A filtered value is used only
+ *                when it is a listed menu item that can render, so the highlighted tab and the content agree.
  */
 function ur_get_account_default_endpoint() {
 	$default_endpoint = ur_string_to_bool( get_option( 'urm_is_new_installation', false ) ) ? 'edit-profile' : 'dashboard';
@@ -170,13 +188,23 @@ function ur_get_account_default_endpoint() {
 	/**
 	 * Filters the endpoint a bare My Account URL shows and highlights.
 	 *
-	 * The endpoint's `user_registration_account_{endpoint}_endpoint` action renders its content.
+	 * The endpoint must be listed in the navigation, and anything other than `edit-profile` or
+	 * `dashboard` needs a `user_registration_account_{endpoint}_endpoint` action to render its content.
+	 * Any other value is ignored.
 	 *
 	 * @since xx.xx.xx
 	 *
 	 * @param string $default_endpoint Default endpoint slug.
 	 */
-	return apply_filters( 'user_registration_account_default_endpoint', $default_endpoint );
+	$filtered = apply_filters( 'user_registration_account_default_endpoint', $default_endpoint );
+
+	if ( $filtered === $default_endpoint || ! is_string( $filtered ) ) {
+		return $default_endpoint;
+	}
+
+	$can_render = in_array( $filtered, array( 'edit-profile', 'dashboard' ), true ) || has_action( 'user_registration_account_' . $filtered . '_endpoint' );
+
+	return $can_render && ur_is_account_endpoint_listed( $filtered ) && isset( ur_get_account_menu_items()[ $filtered ] ) ? $filtered : $default_endpoint;
 }
 
 /**
