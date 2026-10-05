@@ -2073,7 +2073,7 @@ class NewPaypalService {
 	}
 
 	/**
-	 * Handle CUSTOMER.DISPUTE.CREATED: flag member, revoke access, notify admin.
+	 * Handle CUSTOMER.DISPUTE.CREATED: flag member, notify admin and, past the inquiry stage, revoke access.
 	 *
 	 * @param array $resource PayPal dispute resource.
 	 * @return bool
@@ -2098,23 +2098,26 @@ class NewPaypalService {
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $resource['dispute_id'] ?? '' );
 		$already_seen   = $same_dispute;
+		$is_inquiry     = $this->is_paypal_inquiry( $resource );
 		$already_closed = $same_dispute
 			&& ! empty( $existing_flag['status'] )
-			&& 'open' !== $existing_flag['status'];
+			&& $this->is_final_paypal_dispute_status( $existing_flag['status'] );
 
 		if ( ! $already_closed ) {
 			$this->flag_paypal_dispute( $order, $resource, 'open' );
 		}
 
-		$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		if ( ! $is_inquiry && ! $already_closed ) {
+			$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		}
 
 		if ( ! $already_seen ) {
-			$this->notify_admin_paypal_dispute( $order, $resource, 'created' );
+			$this->notify_admin_paypal_dispute( $order, $resource, $is_inquiry ? 'inquiry' : 'created' );
 		}
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'paypal',
-			sprintf( 'PayPal dispute %s: order %d flagged and membership revoked.', $resource['dispute_id'] ?? '', $order['ID'] ),
+			sprintf( $is_inquiry ? 'PayPal inquiry %s: order %d flagged, membership kept.' : 'PayPal dispute %s: order %d flagged and membership revoked.', $resource['dispute_id'] ?? '', $order['ID'] ),
 			array(
 				'order_id'   => $order['ID'],
 				'dispute_id' => $resource['dispute_id'] ?? '',
@@ -2145,18 +2148,19 @@ class NewPaypalService {
 			return false;
 		}
 
-		$dispute_status = isset( $resource['status'] ) ? sanitize_text_field( $resource['status'] ) : 'resolved';
+		$dispute_status = $this->get_paypal_dispute_local_status( $resource );
 		$user_id        = absint( $order['user_id'] ?? 0 );
 		$existing_flag  = get_user_meta( $user_id, 'urm_paypal_dispute', true );
 		$already_closed = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $resource['dispute_id'] ?? '' )
 			&& ! empty( $existing_flag['status'] )
-			&& 'open' !== $existing_flag['status']
 			&& (string) $existing_flag['status'] === (string) $dispute_status;
 
 		$this->flag_paypal_dispute( $order, $resource, $dispute_status );
-		$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		if ( ! $this->is_paypal_inquiry( $resource ) ) {
+			$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		}
 
 		if ( ! $already_closed ) {
 			$this->notify_admin_paypal_dispute( $order, $resource, 'closed' );
@@ -2177,7 +2181,7 @@ class NewPaypalService {
 	}
 
 	/**
-	 * Handle CUSTOMER.DISPUTE.UPDATED: refresh dispute flag without downgrading a closed status.
+	 * Handle CUSTOMER.DISPUTE.UPDATED: refresh the flag until the dispute is resolved, and revoke once an inquiry escalates.
 	 *
 	 * @param array $resource PayPal dispute resource.
 	 * @return bool
@@ -2188,25 +2192,69 @@ class NewPaypalService {
 			return false;
 		}
 
-		$status        = isset( $resource['status'] ) ? sanitize_text_field( $resource['status'] ) : 'open';
+		$status        = $this->get_paypal_dispute_local_status( $resource );
 		$user_id       = absint( $order['user_id'] ?? 0 );
 		$existing_flag = get_user_meta( $user_id, 'urm_paypal_dispute', true );
 		$same_dispute  = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $resource['dispute_id'] ?? '' );
+		// Only a final outcome stops updates; anything else keeps the flag current.
 		$already_closed = $same_dispute
 			&& ! empty( $existing_flag['status'] )
-			&& 'open' !== $existing_flag['status'];
+			&& $this->is_final_paypal_dispute_status( $existing_flag['status'] );
 
 		if ( ! $already_closed ) {
-			$this->flag_paypal_dispute( $order, $resource, strtolower( $status ) );
+			$this->flag_paypal_dispute( $order, $resource, $status );
 		}
 
-		if ( 'RESOLVED' === $status ) {
+		// An inquiry that moved on to a chargeback or later stage, or a resolved real dispute, revokes access.
+		if ( ! $already_closed && ! $this->is_paypal_inquiry( $resource ) && 'refunded' !== ( $order['status'] ?? '' ) ) {
 			$this->revoke_membership_for_paypal_dispute( $order, $resource );
 		}
 
 		return true;
+	}
+
+	/**
+	 * Whether a PayPal dispute is still only an inquiry (no chargeback yet).
+	 *
+	 * @param array $resource Dispute resource.
+	 * @return bool
+	 */
+	private function is_paypal_inquiry( $resource ) {
+		return isset( $resource['dispute_life_cycle_stage'] ) && 'INQUIRY' === strtoupper( (string) $resource['dispute_life_cycle_stage'] );
+	}
+
+	/**
+	 * Whether a stored PayPal dispute status is a final outcome.
+	 *
+	 * @param string $status Local flag status.
+	 * @return bool
+	 */
+	private function is_final_paypal_dispute_status( $status ) {
+		return in_array( strtolower( (string) $status ), array( 'resolved', 'won', 'lost' ), true );
+	}
+
+	/**
+	 * Local lowercase status for a PayPal dispute: won or lost once resolved with a known outcome.
+	 *
+	 * @param array $resource Dispute resource.
+	 * @return string
+	 */
+	private function get_paypal_dispute_local_status( $resource ) {
+		$status = isset( $resource['status'] ) ? strtolower( sanitize_text_field( $resource['status'] ) ) : 'open';
+
+		if ( 'resolved' !== $status ) {
+			return $status;
+		}
+
+		$outcome = isset( $resource['dispute_outcome']['outcome_code'] ) ? strtoupper( (string) $resource['dispute_outcome']['outcome_code'] ) : '';
+		$map     = array(
+			'RESOLVED_SELLER_FAVOUR' => 'won',
+			'RESOLVED_BUYER_FAVOUR'  => 'lost',
+		);
+
+		return isset( $map[ $outcome ] ) ? $map[ $outcome ] : 'resolved';
 	}
 
 	/**
@@ -2255,6 +2303,7 @@ class NewPaypalService {
 			'dispute_id'     => sanitize_text_field( $resource['dispute_id'] ?? '' ),
 			'status'         => sanitize_text_field( $status ),
 			'reason'         => sanitize_text_field( $resource['reason'] ?? '' ),
+			'outcome_code'   => sanitize_text_field( $resource['dispute_outcome']['outcome_code'] ?? '' ),
 			'amount'         => sanitize_text_field( (string) $amount ),
 			'currency'       => sanitize_text_field( $resource['dispute_amount']['currency_code'] ?? '' ),
 			'order_id'       => absint( $order['ID'] ),
@@ -2338,7 +2387,21 @@ class NewPaypalService {
 		$username = $user ? $user->user_login : (string) $user_id;
 		$blogname = wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES );
 
-		if ( 'closed' === $event_kind ) {
+		if ( 'inquiry' === $event_kind ) {
+			$subject = sprintf(
+				/* translators: %s: site name */
+				__( '[%s] PayPal inquiry opened', 'user-registration' ),
+				$blogname
+			);
+			$message = sprintf(
+				/* translators: 1: dispute id, 2: reason, 3: username, 4: order id */
+				__( "A PayPal inquiry was opened against a membership payment.\n\nDispute ID: %1\$s\nReason: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nNo funds were withdrawn and membership access has not been changed. Respond to the inquiry in your PayPal Dashboard; access is revoked if it becomes a chargeback.", 'user-registration' ),
+				$resource['dispute_id'] ?? '',
+				$resource['reason'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		} elseif ( 'closed' === $event_kind ) {
 			$subject = sprintf(
 				/* translators: %s: site name */
 				__( '[%s] PayPal dispute resolved', 'user-registration' ),
@@ -2348,7 +2411,7 @@ class NewPaypalService {
 				/* translators: 1: dispute id, 2: outcome, 3: username, 4: order id */
 				__( "A PayPal dispute has been resolved.\n\nDispute ID: %1\$s\nOutcome: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nReview the member and restore access manually if the dispute was won.", 'user-registration' ),
 				$resource['dispute_id'] ?? '',
-				$resource['status'] ?? '',
+				$this->get_paypal_dispute_local_status( $resource ),
 				$username,
 				absint( $order['ID'] )
 			);
@@ -2369,6 +2432,8 @@ class NewPaypalService {
 		}
 
 		$headers = class_exists( '\UR_Emailer' ) ? \UR_Emailer::ur_get_header() : array();
+		// The header sets an HTML content type, so keep the line breaks of the plain-text body.
+		$message = wpautop( esc_html( $message ) );
 		foreach ( $recipients as $email ) {
 			if ( is_email( $email ) ) {
 				wp_mail( $email, $subject, $message, $headers );

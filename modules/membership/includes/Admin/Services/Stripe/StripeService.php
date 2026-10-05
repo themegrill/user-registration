@@ -173,6 +173,7 @@ class StripeService {
 			'payment_intent.payment_failed',
 			'charge.refunded',
 			'charge.dispute.created',
+			'charge.dispute.updated',
 			'charge.dispute.closed',
 			// Fires when a delayed-start Subscription Schedule (100% coupon) actually starts and
 			// materializes its subscription, so we can back-fill the real subscription id. UR-4386.
@@ -2223,6 +2224,9 @@ class StripeService {
 			case 'charge.dispute.created':
 				$this->handle_dispute_created( $event );
 				break;
+			case 'charge.dispute.updated':
+				$this->handle_dispute_updated( $event );
+				break;
 			case 'charge.dispute.closed':
 				$this->handle_dispute_closed( $event );
 				break;
@@ -2641,7 +2645,9 @@ class StripeService {
 	}
 
 	/**
-	 * Handle charge.dispute.created: flag membership, revoke access, notify admin.
+	 * Handle charge.dispute.created: flag membership, notify admin and, for a real dispute, revoke access.
+	 *
+	 * An inquiry (`warning_*` status) moves no money, so it is only flagged and reported.
 	 *
 	 * @param array $event Stripe event array.
 	 * @return void
@@ -2680,24 +2686,27 @@ class StripeService {
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' );
 		$already_seen  = $same_dispute;
-		// Do not overwrite a later closed outcome if created is replayed out of order.
+		$is_inquiry    = $this->is_inquiry_dispute( $dispute );
+		// Do not overwrite a later outcome if created is replayed out of order.
 		$already_closed = $same_dispute
 			&& ! empty( $existing_flag['status'] )
-			&& 'open' !== $existing_flag['status'];
+			&& $this->is_final_dispute_status( $existing_flag['status'] );
 
 		if ( ! $already_closed ) {
-			$this->flag_order_dispute( $order, $dispute, 'open' );
+			$this->flag_order_dispute( $order, $dispute, $is_inquiry ? $dispute['status'] : 'open' );
 		}
 
-		$this->revoke_membership_for_dispute( $order, $dispute );
+		if ( ! $is_inquiry && ! $already_closed ) {
+			$this->revoke_membership_for_dispute( $order, $dispute );
+		}
 
 		if ( ! $already_seen ) {
-			$this->notify_admin_of_dispute( $order, $dispute, 'created' );
+			$this->notify_admin_of_dispute( $order, $dispute, $is_inquiry ? 'inquiry' : 'created' );
 		}
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
-			sprintf( 'Dispute %s: order %d flagged and membership revoked.', $dispute['id'] ?? '', $order['ID'] ),
+			sprintf( $is_inquiry ? 'Inquiry %s: order %d flagged, membership kept.' : 'Dispute %s: order %d flagged and membership revoked.', $dispute['id'] ?? '', $order['ID'] ),
 			array(
 				'order_id'   => $order['ID'],
 				'dispute_id' => $dispute['id'] ?? '',
@@ -2709,8 +2718,9 @@ class StripeService {
 	/**
 	 * Handle charge.dispute.closed: update flag; ensure access stays revoked.
 	 *
-	 * Always revokes (including won). If created was missed, a won close must still
-	 * cancel access; admins restore manually after a won dispute.
+	 * Revokes for a real dispute (including won). If created was missed, a won close must still
+	 * cancel access; admins restore manually after a won dispute. A closed inquiry
+	 * (`warning_closed`) never revoked and is left alone.
 	 *
 	 * @param array $event Stripe event array.
 	 * @return void
@@ -2749,11 +2759,12 @@ class StripeService {
 			&& ! empty( $existing_flag['dispute_id'] )
 			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' )
 			&& ! empty( $existing_flag['status'] )
-			&& 'open' !== $existing_flag['status']
 			&& (string) $existing_flag['status'] === (string) $dispute_status;
 
 		$this->flag_order_dispute( $order, $dispute, $dispute_status ? $dispute_status : 'closed' );
-		$this->revoke_membership_for_dispute( $order, $dispute );
+		if ( ! $this->is_inquiry_dispute( $dispute ) ) {
+			$this->revoke_membership_for_dispute( $order, $dispute );
+		}
 
 		if ( ! $already_closed ) {
 			$this->notify_admin_of_dispute( $order, $dispute, 'closed' );
@@ -2769,6 +2780,65 @@ class StripeService {
 				'member_id'      => $order['user_id'] ?? 0,
 			)
 		);
+	}
+
+	/**
+	 * Handle charge.dispute.updated: an inquiry that escalates to a real dispute revokes access.
+	 *
+	 * @param array $event Stripe event array.
+	 * @return void
+	 */
+	public function handle_dispute_updated( $event ) {
+		$dispute = isset( $event['data']['object'] ) ? $event['data']['object'] : array();
+		$order   = $this->resolve_order_from_dispute( $dispute );
+
+		if ( empty( $order['ID'] ) || $this->is_inquiry_dispute( $dispute ) || $this->is_final_dispute_status( $dispute['status'] ?? '' ) ) {
+			return;
+		}
+
+		$existing_flag = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
+		$same_dispute  = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' );
+
+		// Only an inquiry that was flagged earlier needs escalating; a real dispute is already revoked.
+		if ( $same_dispute && ! empty( $existing_flag['status'] ) && ! $this->is_inquiry_dispute( array( 'status' => $existing_flag['status'] ) ) ) {
+			return;
+		}
+
+		$this->flag_order_dispute( $order, $dispute, 'open' );
+		$this->revoke_membership_for_dispute( $order, $dispute );
+		$this->notify_admin_of_dispute( $order, $dispute, 'created' );
+
+		PaymentGatewayLogging::log_webhook_processed(
+			'stripe',
+			sprintf( 'Dispute %s escalated: order %d flagged and membership revoked.', $dispute['id'] ?? '', $order['ID'] ),
+			array(
+				'order_id'   => $order['ID'],
+				'dispute_id' => $dispute['id'] ?? '',
+				'member_id'  => $order['user_id'] ?? 0,
+			)
+		);
+	}
+
+	/**
+	 * Whether a Stripe dispute is only an inquiry (early warning, no funds withdrawn).
+	 *
+	 * @param array $dispute Stripe dispute.
+	 * @return bool
+	 */
+	private function is_inquiry_dispute( $dispute ) {
+		return isset( $dispute['status'] ) && 0 === strpos( (string) $dispute['status'], 'warning_' );
+	}
+
+	/**
+	 * Whether a dispute status is a final outcome.
+	 *
+	 * @param string $status Stripe dispute status or local flag status.
+	 * @return bool
+	 */
+	private function is_final_dispute_status( $status ) {
+		return in_array( (string) $status, array( 'won', 'lost', 'warning_closed', 'closed', 'charge_refunded' ), true );
 	}
 
 	/**
@@ -2933,7 +3003,18 @@ class StripeService {
 		$username = $user ? $user->user_login : (string) $user_id;
 		$blogname = wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES );
 
-		if ( 'closed' === $event_kind ) {
+		if ( 'inquiry' === $event_kind ) {
+			/* translators: %s: site name */
+			$subject = sprintf( __( '[%s] Stripe inquiry opened', 'user-registration' ), $blogname );
+			/* translators: 1: dispute id, 2: reason, 3: username, 4: order id */
+			$message = sprintf(
+				__( "A Stripe inquiry was opened against a membership payment.\n\nDispute ID: %1\$s\nReason: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nNo funds were withdrawn and membership access has not been changed. Respond to the inquiry in your Stripe Dashboard; access is revoked if it becomes a dispute.", 'user-registration' ),
+				$dispute['id'] ?? '',
+				$dispute['reason'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		} elseif ( 'closed' === $event_kind ) {
 			/* translators: %s: site name */
 			$subject = sprintf( __( '[%s] Stripe dispute closed', 'user-registration' ), $blogname );
 			/* translators: 1: dispute id, 2: dispute status, 3: username, 4: order id */
@@ -2958,6 +3039,8 @@ class StripeService {
 		}
 
 		$headers = class_exists( '\UR_Emailer' ) ? \UR_Emailer::ur_get_header() : array();
+		// The header sets an HTML content type, so keep the line breaks of the plain-text body.
+		$message = wpautop( esc_html( $message ) );
 
 		foreach ( $recipients as $email ) {
 			if ( is_email( $email ) ) {
@@ -4095,7 +4178,7 @@ class StripeService {
 					'event_type'   => 'backfill_start',
 					'window_start' => gmdate( 'Y-m-d H:i:s', $last_synced ),
 					'window_end'   => gmdate( 'Y-m-d H:i:s' ),
-					'event_types'  => array( 'charge.dispute.created', 'charge.dispute.closed' ),
+					'event_types'  => array( 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed' ),
 				),
 				JSON_PRETTY_PRINT
 			),
@@ -4104,7 +4187,7 @@ class StripeService {
 
 		$events = \Stripe\Event::all(
 			array(
-				'types'   => array( 'charge.dispute.created', 'charge.dispute.closed' ),
+				'types'   => array( 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed' ),
 				'created' => array( 'gte' => $last_synced ),
 				'limit'   => 100,
 			)
@@ -4132,6 +4215,9 @@ class StripeService {
 
 			if ( 'charge.dispute.created' === $event_array['type'] ) {
 				$this->handle_dispute_created( $event_array );
+				++$total_handled;
+			} elseif ( 'charge.dispute.updated' === $event_array['type'] ) {
+				$this->handle_dispute_updated( $event_array );
 				++$total_handled;
 			} elseif ( 'charge.dispute.closed' === $event_array['type'] ) {
 				$this->handle_dispute_closed( $event_array );
