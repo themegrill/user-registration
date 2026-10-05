@@ -1300,13 +1300,15 @@ class SubscriptionService {
 			// considers the subscription live (active/trialing). Mika's case: local expiry ran
 			// while Stripe stayed active after a renewal invoice with no payment_intent.
 			if ( ! $pending_cancel_meta && 'stripe' === ( $order['payment_method'] ?? '' ) && ! empty( $subscription['gateway_subscription_id'] ) ) {
-				$stripe_service = new StripeService();
-				$gateway_status = $stripe_service->get_subscription_status( $subscription['gateway_subscription_id'] );
+				$stripe_service      = new StripeService();
+				$stripe_subscription = $stripe_service->get_subscription( $subscription['gateway_subscription_id'] );
+				$gateway_status      = is_wp_error( $stripe_subscription ) ? $stripe_subscription : (string) ( $stripe_subscription->status ?? '' );
 
 				if ( ! is_wp_error( $gateway_status ) && in_array( $gateway_status, array( 'past_due', 'active', 'trialing' ), true ) ) {
 					if ( in_array( $gateway_status, array( 'active', 'trialing' ), true ) ) {
-						$stripe_service->sync_local_subscription_from_stripe(
-							$subscription['gateway_subscription_id'],
+						// Reuse the subscription already retrieved above rather than asking Stripe a second time.
+						$stripe_service->apply_stripe_subscription_to_local(
+							$stripe_subscription,
 							array(
 								'sub_id'  => $subscription_id,
 								'user_id' => $user_id,

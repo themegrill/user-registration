@@ -2334,14 +2334,25 @@ class StripeService {
 		// $0 invoices (typical first trial invoice) have no payment_intent. Skip duplicate order
 		// creation, but still sync dates/status from Stripe — otherwise a renewal invoice that
 		// arrives without a PI leaves the member expired while Stripe stays active (inflowmind Mika).
+		// A trial or pending subscription keeps its status and expiry until its first paid invoice.
 		if ( empty( $payment_intent_id ) ) {
-			$this->sync_local_subscription_from_stripe( $subscription_id, $current_subscription, $subscription_status );
+			$keeps_trial_state = in_array( $current_subscription['status'] ?? '', array( 'trial', 'pending' ), true );
+
+			if ( $keeps_trial_state ) {
+				$log_message = 'Skipping order creation for zero-amount trial invoice';
+				$log_event   = 'invoice_without_payment_intent_trial_kept';
+			} else {
+				$this->sync_local_subscription_from_stripe( $subscription_id, $current_subscription, $subscription_status );
+
+				$log_message = 'Skipping order creation for invoice without payment_intent; local subscription synced from Stripe';
+				$log_event   = 'invoice_without_payment_intent_synced';
+			}
 
 			PaymentGatewayLogging::log_general(
 				'stripe',
-				'Skipping order creation for invoice without payment_intent; local subscription synced from Stripe' . "\n" . wp_json_encode(
+				$log_message . "\n" . wp_json_encode(
 					array(
-						'event_type'      => 'invoice_without_payment_intent_synced',
+						'event_type'      => $log_event,
 						'subscription_id' => $subscription_id,
 						'invoice_id'      => $invoice_id,
 						'member_id'       => $member_id,
@@ -2929,10 +2940,24 @@ class StripeService {
 	 * @return string|\WP_Error Stripe subscription status, or WP_Error if it could not be read.
 	 */
 	public function get_subscription_status( $stripe_subscription_id ) {
+		$stripe_subscription = $this->get_subscription( $stripe_subscription_id );
+
+		return is_wp_error( $stripe_subscription ) ? $stripe_subscription : (string) ( $stripe_subscription->status ?? '' );
+	}
+
+	/**
+	 * Reads the live Stripe subscription without triggering a retry.
+	 *
+	 * Callers that need both the status and the dates can use the returned object instead of retrieving twice.
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription ID.
+	 * @return \Stripe\Subscription|\WP_Error The Stripe subscription, or WP_Error if it could not be read.
+	 */
+	public function get_subscription( $stripe_subscription_id ) {
 		try {
 			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
 
-			return $stripe_subscription ? $stripe_subscription->status : new \WP_Error( 'urm_stripe_subscription_not_found', __( 'Subscription not found in Stripe', 'user-registration' ) );
+			return $stripe_subscription ? $stripe_subscription : new \WP_Error( 'urm_stripe_subscription_not_found', __( 'Subscription not found in Stripe', 'user-registration' ) );
 		} catch ( \Exception $e ) {
 			return new \WP_Error( 'urm_stripe_status_check_failed', $e->getMessage() );
 		}
@@ -3037,12 +3062,6 @@ class StripeService {
 			$update_data['status'] = sanitize_text_field( $preferred_status );
 		} elseif ( in_array( $stripe_status, array( 'active', 'trialing' ), true ) ) {
 			$update_data['status'] = 'active';
-		} elseif ( 'canceled' !== ( $current_subscription['status'] ?? '' ) && '' !== $stripe_status ) {
-			// Map Stripe past_due/unpaid onto active locally so access is not revoked mid-dunning;
-			// daily expiry holds past_due separately. Only write a clear local status for active/trialing above.
-			if ( in_array( $stripe_status, array( 'past_due', 'unpaid' ), true ) ) {
-				$update_data['status'] = 'active';
-			}
 		}
 
 		if ( empty( $update_data ) ) {
