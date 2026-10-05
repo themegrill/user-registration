@@ -147,6 +147,17 @@ test.describe("my account @fresh", () => {
     await deleteUserByEmail(page, account.email);
     await visitor.close();
   });
+
+  // themegrill/user-registration-pro#1720 — the "setting has moved" notice is for upgraders only.
+  test("a fresh install does not show the My Account page setting moved notice @fresh @my-account", async ({ page }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+
+    await page.goto("/wp-admin/admin.php?page=user-registration-settings&tab=my_account");
+    // Without this the absence below would also pass on a page that never rendered.
+    await expect(page.locator(".user-registration-card__title", { hasText: "General" }).first()).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("My Account page setting has moved");
+  });
 });
 
 /** Reach the Change Password form the way a user does. */
