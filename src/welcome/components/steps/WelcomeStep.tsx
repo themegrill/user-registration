@@ -144,7 +144,7 @@ const WelcomeStep: React.FC = () => {
 			value: "registration",
 			title: __("No", "user-registration"),
 			description: __(
-				"Registration, login, and account pages only. No plans or payments.",
+				"I only need registration, login, and user account pages.",
 				"user-registration"
 			)
 		},
