@@ -840,8 +840,10 @@ body,
 		padding: 0;
 		color: $color_3;
 		cursor: pointer;
+		font-family: inherit;
 		font-size: inherit;
 		font-weight: bold;
+		line-height: inherit;
 	}
 
 	.notice-container.active {

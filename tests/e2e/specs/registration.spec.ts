@@ -44,4 +44,36 @@ test.describe("registration @fresh", () => {
     await deleteUserByEmail(page, account.email);
     await visitor.close();
   });
+
+  /**
+   * @area    registration
+   * @tier    fresh
+   * @guards  #1725
+   * @source  verify-fix 2026-10-05
+   * @why     The required-field asterisk was #ff4f55, 3.23:1 on white, below the
+   *          4.5:1 minimum for body text (WCAG 1.4.3) and the only required cue
+   *          on the form. Computes the ratio against white from the rendered
+   *          colour. Deliberately does not pin the exact hex, and assumes the
+   *          form sits on a white background, as the shipped styles do.
+   */
+  test("required-field asterisks meet the 4.5:1 text contrast minimum @fresh @registration", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+    const url = await registrationPageFor(page, await firstFormId(page));
+
+    const visitor = await newVisitor(browser);
+    const guest = await visitor.newPage();
+    await guest.goto(url);
+
+    const marker = guest.locator(".ur-frontend-form .required").first();
+    await expect(marker).toBeVisible();
+    const ratio = await marker.evaluate((el) => {
+      const [r, g, b] = getComputedStyle(el).color.match(/\d+/g)!.map(Number);
+      const lin = (c: number) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      return 1.05 / (luminance + 0.05);
+    });
+    expect(ratio, "asterisk contrast against white").toBeGreaterThanOrEqual(4.5);
+    await visitor.close();
+  });
 });
