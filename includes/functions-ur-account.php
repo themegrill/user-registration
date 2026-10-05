@@ -162,10 +162,21 @@ function ur_get_account_menu_items() {
  *
  * @since xx.xx.xx
  *
- * @return string 'edit-profile' on new installations, 'dashboard' otherwise.
+ * @return string 'edit-profile' on new installations, 'dashboard' otherwise, unless filtered.
  */
 function ur_get_account_default_endpoint() {
-	return ur_string_to_bool( get_option( 'urm_is_new_installation', false ) ) ? 'edit-profile' : 'dashboard';
+	$default_endpoint = ur_string_to_bool( get_option( 'urm_is_new_installation', false ) ) ? 'edit-profile' : 'dashboard';
+
+	/**
+	 * Filters the endpoint a bare My Account URL shows and highlights.
+	 *
+	 * The endpoint's `user_registration_account_{endpoint}_endpoint` action renders its content.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $default_endpoint Default endpoint slug.
+	 */
+	return apply_filters( 'user_registration_account_default_endpoint', $default_endpoint );
 }
 
 /**

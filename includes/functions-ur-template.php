@@ -1435,7 +1435,16 @@ if ( ! function_exists( 'user_registration_account_content' ) ) {
 			}
 		}
 
-		if ( 'edit-profile' === ur_get_account_default_endpoint() ) {
+		$default_endpoint = ur_get_account_default_endpoint();
+
+		if ( ! in_array( $default_endpoint, array( 'edit-profile', 'dashboard' ), true ) && has_action( 'user_registration_account_' . $default_endpoint . '_endpoint' ) ) {
+			/** This action is documented in includes/functions-ur-template.php. */
+			do_action( 'user_registration_account_' . $default_endpoint . '_endpoint', '' );
+
+			return;
+		}
+
+		if ( 'edit-profile' === $default_endpoint ) {
 			$user_id         = get_current_user_id();
 			$form_id         = ur_get_form_id_by_userid( $user_id );
 			$user_data       = get_userdata( $user_id );
