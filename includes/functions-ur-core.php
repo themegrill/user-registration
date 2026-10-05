@@ -11979,6 +11979,53 @@ if ( ! function_exists( 'ur_should_show_payments_menu' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_synced_field_value' ) ) {
+	/**
+	 * Resolve the value a member submitted for one or more mapped form fields.
+	 *
+	 * Shared by every gateway's field sync (Stripe, Authorize.Net, Mollie), which each live in their
+	 * own plugin, so this is the one place the resolution runs.
+	 *
+	 * @param int          $member_id Member (user) ID.
+	 * @param string|array $field     Mapped field name, or several names whose values are space-joined.
+	 * @return string The resolved value, or an empty string when the member or the value is missing.
+	 * @since 5.3
+	 */
+	function ur_get_synced_field_value( $member_id, $field ) {
+		$user = get_userdata( $member_id );
+
+		if ( ! $user ) {
+			return '';
+		}
+
+		$parts = array();
+
+		foreach ( (array) $field as $name ) {
+			$name = sanitize_text_field( $name );
+
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$key   = ur_get_field_name_with_prefix_usermeta( $name );
+			$value = isset( $user->$key ) ? $user->$key : '';
+
+			// Checkbox and multi-select fields store an array, so join it instead of dropping the value.
+			if ( is_array( $value ) ) {
+				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
+			}
+
+			if ( ! is_scalar( $value ) || '' === (string) $value ) {
+				continue;
+			}
+
+			$parts[] = (string) $value;
+		}
+
+		return trim( implode( ' ', $parts ) );
+	}
+}
+
 if ( ! function_exists( 'ur_should_show_subscriptions_menu' ) ) {
 	/**
 	 * Whether the Subscriptions submenu should be registered.
