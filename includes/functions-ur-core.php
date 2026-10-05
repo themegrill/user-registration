@@ -5142,6 +5142,7 @@ if ( ! function_exists( 'ur_get_premium_settings_tab' ) ) {
 				}
 			} else { // scalar section.
 				$detail = $section_details;
+				$settings['sections']['premium_setting_section']['title'] = $detail['label'];
 				if ( ! empty( $license_plan ) ) {
 					$license_plan = trim( str_replace( 'lifetime', '', strtolower( $license_plan ) ) );
 					if ( 'custom-email' === $current_section ) {
@@ -5260,7 +5261,6 @@ if ( ! function_exists( 'ur_get_premium_settings_tab' ) ) {
 						return array();
 					}
 					$description = esc_html__( 'You are currently using the free version of our plugin. Please upgrade to premium version to use this feature.', 'user-registration' );
-					$settings['sections']['premium_setting_section']['title']       = $detail['label'];
 					$settings['sections']['premium_setting_section']['before_desc'] = $description;
 
 					if ( ! empty( $detail['upsell'] ) ) {
