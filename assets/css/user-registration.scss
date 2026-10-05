@@ -680,7 +680,7 @@ textarea.ur-input-border-red {
 				.required {
 					text-decoration: none;
 					border: none;
-					color: $red;
+					color: $required-red;
 				}
 
 				&.ur-label {
@@ -773,7 +773,7 @@ textarea.ur-input-border-red {
 		abbr.required {
 			text-decoration: none;
 			border: none;
-			color: $red;
+			color: $required-red;
 		}
 	}
 
@@ -3990,5 +3990,16 @@ body.user-registration-page {
 
 	.user-registration-nick-name {
 		color: $color_gray_two;
+	}
+}
+
+// WCAG 2.4.7: !important beats the per-form `outline: none` resets above.
+.ur-frontend-form {
+	input:focus-visible,
+	textarea:focus-visible,
+	select:focus-visible,
+	button:focus-visible {
+		outline: 2px solid var(--ur-primary-color, $primary_color) !important;
+		outline-offset: 2px !important;
 	}
 }

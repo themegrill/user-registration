@@ -830,17 +830,24 @@ body,
 		top: 50px;
 		right: -700px;
 		z-index: 9999;
-		transition: right 0.5s ease;
+		visibility: hidden;
+		transition: right 0.5s ease, visibility 0s linear 0.5s;
 	}
 
 	.close_notice {
+		background: none;
+		border: 0;
+		padding: 0;
 		color: $color_3;
 		cursor: pointer;
+		font-size: inherit;
 		font-weight: bold;
 	}
 
 	.notice-container.active {
 		right: 20px;
+		visibility: visible;
+		transition-delay: 0s;
 	}
 
 	.urm-d-none {
