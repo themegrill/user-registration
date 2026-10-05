@@ -158,6 +158,17 @@ function ur_get_account_menu_items() {
 }
 
 /**
+ * Get the endpoint whose content a bare My Account URL renders.
+ *
+ * @since xx.xx.xx
+ *
+ * @return string 'edit-profile' on new installations, 'dashboard' otherwise.
+ */
+function ur_get_account_default_endpoint() {
+	return ur_string_to_bool( get_option( 'urm_is_new_installation', false ) ) ? 'edit-profile' : 'dashboard';
+}
+
+/**
  * Get account menu item classes.
  *
  * @param  string $endpoint Endpoint.
@@ -174,8 +185,8 @@ function ur_get_account_menu_item_classes( $endpoint ) {
 
 	// Set current item class.
 	$current = isset( $wp->query_vars[ $endpoint ] );
-	if ( 'dashboard' === $endpoint && ( isset( $wp->query_vars['page'] ) || empty( $wp->query_vars ) ) ) {
-		$current = true; // Dashboard is not an endpoint, so needs a custom check.
+	if ( ur_get_account_default_endpoint() === $endpoint && ( isset( $wp->query_vars['page'] ) || empty( $wp->query_vars ) ) ) {
+		$current = true; // The default endpoint has no URL segment, so needs a custom check.
 	}
 
 	if ( $current ) {
