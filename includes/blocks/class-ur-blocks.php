@@ -103,6 +103,8 @@ class UR_Blocks {
 
 		$smart_tag = apply_filters( 'user_registration_thank_you_page_smart_tags', $smart_tag );
 
+		$all_pages = get_pages();
+
 		$pages = array_map(
 			function ( $page ) {
 				return array(
@@ -110,7 +112,7 @@ class UR_Blocks {
 					'value' => $page->ID,
 				);
 			},
-			get_pages() ?: array()
+			is_array( $all_pages ) ? $all_pages : array()
 		);
 
 		$page_options = array_merge(
