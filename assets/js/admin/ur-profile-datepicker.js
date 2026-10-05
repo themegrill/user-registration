@@ -8,6 +8,8 @@ jQuery( function ( $ ) {
 		var $field = $( this );
 
 		if ( ! this._flatpickr ) {
+			// Flatpickr reads data-default-date, which holds a "1"/"true" flag here, not a date.
+			$field.attr( 'data-default-date', $field.val() );
 			$field.flatpickr( {
 				disableMobile: true,
 				onChange: function ( selectedDates, dateString ) {
