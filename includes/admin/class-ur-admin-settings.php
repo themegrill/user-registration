@@ -40,6 +40,27 @@ class UR_Admin_Settings {
 	private static $messages = array();
 
 	/**
+	 * Setting definition keys that the settings search matches against.
+	 *
+	 * @var string[]
+	 */
+	private const SEARCHABLE_FIELDS = array( 'title', 'desc', 'desc_tip', 'id' );
+
+	/**
+	 * Setting types the settings search skips because they are controls, not settings.
+	 *
+	 * @var string[]
+	 */
+	private const NON_SEARCHABLE_TYPES = array( 'button' );
+
+	/**
+	 * Separator between the tab and section names shown with a search result.
+	 *
+	 * @var string
+	 */
+	private const SEARCH_LOCATION_SEPARATOR = ' → ';
+
+	/**
 	 * Output messages + errors.
 	 *
 	 * @echo string
@@ -2013,102 +2034,159 @@ class UR_Admin_Settings {
 	}
 
 	/**
-	 * Search GLobal Settings.
+	 * Search global settings and send the matches as a JSON response.
 	 */
 	public static function search_settings() {
 		$search_string = isset( $_POST['search_string'] ) ? sanitize_text_field( wp_unslash( $_POST['search_string'] ) ) : ''; //phpcs:ignore;
-		$search_url    = '';
-		$found         = false;
+		$results       = self::get_search_results( $search_string );
 
-		// Create an array of results to return as JSON.
-		$autocomplete_results = array();
-		$index                = 0;
+		if ( empty( $results ) ) {
+			$results[] = array(
+				'label'    => __( 'No settings found', 'user-registration' ),
+				'desc'     => '',
+				'location' => '',
+				'value'    => 'no_result_found',
+			);
+		}
 
-		$settings = self::get_settings_pages();
+		wp_send_json_success( array( 'results' => $results ) );
+	}
 
-		if ( ! empty( $settings ) ) {
+	/**
+	 * Collect the settings, across every page and section, that match the search string.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $search_string Text to look for.
+	 * @return array[] Results with label, desc, location and value (target URL) keys.
+	 */
+	private static function get_search_results( $search_string ) {
+		global $current_section;
 
-			foreach ( $settings as $key => $section ) {
-				if ( is_bool( $section ) || ( is_object( $section ) && ! method_exists( $section, 'get_settings' ) ) ) {
-					unset( $settings[ $key ] );
-					continue;
-				}
-				$reflection = new ReflectionProperty( get_class( $section ), 'id' );
+		$previous_section = $current_section;
+		$results          = array();
 
-				if ( ! $reflection->isPublic() ) {
-					unset( $settings[ $key ] );
-					continue;
-				}
-			}
+		try {
+			foreach ( self::get_searchable_pages() as $page ) {
+				$sections = $page->get_sections();
 
-			foreach ( $settings as $section ) {
+				// A page with sections opens on its first one, so the empty section would only repeat it.
+				foreach ( empty( $sections ) ? array( '' ) : array_keys( $sections ) as $subsection ) {
+					// Section-aware pages read the section from this global, not from an argument.
+					$current_section = $subsection;
+					$settings        = self::flatten_array( self::get_section_settings( $page, $subsection ) );
 
-				$subsections = array_values( array_unique( array_merge( array( '' ), array_keys( $section->get_sections() ) ) ) );
+					foreach ( self::search_string_in_array( $search_string, $settings ) as $match ) {
+						$key = $page->get_id() . '|' . $match['id'];
 
-				if ( ! empty( $subsections ) ) {
+						if ( ! isset( $results[ $key ] ) ) {
+							$url = self::get_search_result_url( $page->get_id(), $subsection, $match['id'] );
 
-					foreach ( $subsections as $subsection ) {
-
-						if ( 'user-registration-invite-codes' === $section->id ) {
-							if ( '' !== $subsection ) {
-								$subsection_array = $section->get_settings( $subsection );
-							}
-						} else {
-							switch ( $subsection ) {
-								case 'login-options':
-									$subsection_array = get_login_options_settings();
-									break;
-								case 'frontend-messages':
-									$subsection_array = $section->get_frontend_messages_settings();
-									break;
-								default:
-									$subsection_array = $section->get_settings( $subsection );
-									break;
-							}
-						}
-
-						if ( is_array( $subsection_array ) && ! empty( $subsection_array ) ) {
-							$flattened_array = self::flatten_array( $subsection_array );
-							$result          = self::search_string_in_array( $search_string, $flattened_array );
-							if ( ! empty( $result ) ) {
-								foreach ( $result as $key => $value ) {
-									$match = array_search( $value['title'], array_column( $autocomplete_results, 'label' ), true ); //phpcs:ignore;
-									if ( false === $match ) {
-										$autocomplete_results[ $index ]['label'] = $value['title'];
-										$autocomplete_results[ $index ]['desc']  = $value['desc'];
-										if ( ! empty( $subsection ) ) {
-											$autocomplete_results[ $index ]['value'] = admin_url( 'admin.php?page=user-registration-settings&tab=' . $section->id . '&section=' . $subsection . '&searched_option=' . $value['id'] );
-										} else {
-											$autocomplete_results[ $index ]['value'] = admin_url( 'admin.php?page=user-registration-settings&tab=' . $section->id . '&searched_option=' . $value['id'] );
-										}
-										++$index;
-									}
-								}
-								continue;
-							}
+							$results[ $key ] = array(
+								'label'    => $match['title'],
+								'desc'     => $match['desc'],
+								'location' => self::get_search_result_location( $page, $sections, $subsection ),
+								'value'    => $url,
+							);
 						}
 					}
 				}
 			}
+		} finally {
+			$current_section = $previous_section;
 		}
 
-		if ( ! empty( $autocomplete_results ) ) {
-			wp_send_json_success(
-				array(
-					'results' => $autocomplete_results,
-				)
-			);
-		} else {
-			$autocomplete_results[ $index ]['label'] = __( 'No Search result found !', 'user-registration' );
-			$autocomplete_results[ $index ]['desc']  = '';
-			$autocomplete_results[ $index ]['value'] = 'no_result_found';
+		return array_values( $results );
+	}
 
-			wp_send_json_success(
-				array(
-					'results' => $autocomplete_results,
-				)
-			);
+	/**
+	 * Get the settings pages that can be searched.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return UR_Settings_Page[]
+	 */
+	private static function get_searchable_pages() {
+		return array_filter(
+			(array) self::get_settings_pages(),
+			function ( $page ) {
+				return is_object( $page ) && method_exists( $page, 'get_settings' ) && method_exists( $page, 'get_sections' ) && method_exists( $page, 'get_id' );
+			}
+		);
+	}
+
+	/**
+	 * Get the settings of one section of a page.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param UR_Settings_Page $page       Settings page.
+	 * @param string           $subsection Section id, empty for the page's default.
+	 * @return array
+	 */
+	private static function get_section_settings( $page, $subsection ) {
+		if ( 'user-registration-invite-codes' === $page->get_id() && '' === $subsection ) {
+			return array();
 		}
+
+		switch ( $subsection ) {
+			case 'login-options':
+				$settings = get_login_options_settings();
+				break;
+			case 'frontend-messages':
+				$settings = $page->get_frontend_messages_settings();
+				break;
+			default:
+				$settings = $page->get_settings( $subsection );
+				break;
+		}
+
+		return is_array( $settings ) ? $settings : array();
+	}
+
+	/**
+	 * Build the settings URL a search result links to.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $tab        Settings tab id.
+	 * @param string $subsection Section id, empty for the tab's default.
+	 * @param string $option_id  Id of the matched field.
+	 * @return string
+	 */
+	private static function get_search_result_url( $tab, $subsection, $option_id ) {
+		$args = array(
+			'page' => 'user-registration-settings',
+			'tab'  => $tab,
+		);
+
+		if ( '' !== $subsection ) {
+			$args['section'] = $subsection;
+		}
+
+		$args['searched_option'] = $option_id;
+
+		return add_query_arg( array_map( 'rawurlencode', $args ), admin_url( 'admin.php' ) );
+	}
+
+	/**
+	 * Describe where a result lives, e.g. "Payment → Store".
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param UR_Settings_Page $page       Settings page.
+	 * @param array            $sections   The page's sections, keyed by id.
+	 * @param string           $subsection Section id of the result.
+	 * @return string
+	 */
+	private static function get_search_result_location( $page, $sections, $subsection ) {
+		$parts = array( $page->get_label() );
+
+		if ( isset( $sections[ $subsection ] ) && is_string( $sections[ $subsection ] ) ) {
+			$parts[] = $sections[ $subsection ];
+		}
+
+		return implode( self::SEARCH_LOCATION_SEPARATOR, array_unique( array_filter( $parts, 'is_string' ) ) );
 	}
 
 	/**
@@ -2152,31 +2230,27 @@ class UR_Admin_Settings {
 	 *
 	 * @param string $string_to_search String to Search.
 	 * @param array  $array Search Array.
+	 * @return array[] Matches with id, title and desc keys; settings without a title or id are skipped.
 	 */
 	public static function search_string_in_array( $string_to_search, $array ) {
 		$result = array();
-		if ( is_object( $array ) ) {
-			$array = (array) $array;
-		}
-		$index = 0;
 
-		foreach ( $array as $key => $value ) {
+		foreach ( (array) $array as $value ) {
+			if ( ! is_array( $value ) || ( isset( $value['type'] ) && in_array( $value['type'], self::NON_SEARCHABLE_TYPES, true ) ) || empty( $value['title'] ) || ! is_string( $value['title'] ) || empty( $value['id'] ) || ! is_string( $value['id'] ) ) {
+				continue;
+			}
 
-			if ( is_array( $value ) ) {
+			foreach ( self::SEARCHABLE_FIELDS as $field ) {
+				if ( isset( $value[ $field ] ) && is_string( $value[ $field ] ) && false !== stripos( $value[ $field ], $string_to_search ) ) {
+					$desc_tip = isset( $value['desc_tip'] ) && is_string( $value['desc_tip'] ) ? $value['desc_tip'] : '';
+					$desc     = isset( $value['desc'] ) && is_string( $value['desc'] ) ? $value['desc'] : '';
 
-				foreach ( $value as $text ) {
-					if ( ! is_array( $text ) ) {
-						if ( stripos( $text, $string_to_search ) !== false ) {
-
-							$result[ $index ]['id']    = isset( $value['id'] ) ? $value['id'] : 'true';
-							$result[ $index ]['title'] = isset( $value['title'] ) ? $value['title'] : 'true';
-							$desc_tip                  = isset( $value['desc_tip'] ) && true !== $value['desc_tip'] ? $value['desc_tip'] : '';
-							$desc                      = isset( $value['desc'] ) && true !== $value['desc'] ? $value['desc'] : '';
-							$result[ $index ]['desc']  = ! empty( $desc_tip ) ? $desc_tip : $desc;
-							++$index;
-							break;
-						}
-					}
+					$result[] = array(
+						'id'    => $value['id'],
+						'title' => $value['title'],
+						'desc'  => '' !== $desc_tip ? $desc_tip : $desc,
+					);
+					break;
 				}
 			}
 		}

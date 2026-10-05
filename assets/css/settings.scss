@@ -2143,8 +2143,19 @@ body {
 			&.ui-state-active {
 				color: white;
 				background: #0073aa;
+
+				.ur-search-result-location {
+					color: inherit;
+				}
 			}
 		}
+	}
+
+	.ur-search-result-location {
+		display: block;
+		margin-top: 2px;
+		font-size: 11px;
+		color: #50575e;
 	}
 }
 
