@@ -92,3 +92,118 @@ foreach ( array( null, 'broken', 1 ) as $data ) {
 }
 $captcha->save_captcha_settings( array( 'urm_enable_no_conflict' => array( '1' ) ), 'captcha-settings' );
 security_assert( empty( $GLOBALS['writes'] ), 'Reject non-scalar CAPTCHA values' );
+
+/** Exercise the exact AJAX login handler with its real field definitions. */
+function do_action() {}
+function get_permalink( $id ) {
+	return 'https://example.test/'; }
+function admin_url( $path = '' ) {
+	return 'https://example.test/' . $path; }
+function ur_get_captcha_integrations() {
+	return array(); }
+function ur_login_option_with() {
+	return array( 'username' => 'Username' ); }
+function wp_kses_post( $value ) {
+	return strip_tags( $value, '<strong>' ); }
+function ur_find_my_account_in_page( $id ) {
+	return 42 === $id; }
+function ur_find_lost_password_in_page( $id ) {
+	return '43' === (string) $id; }
+foreach ( array( 'get_login_form_settings', 'get_login_field_settings' ) as $function ) {
+	eval( security_function( $core, $function ) );
+}
+eval( 'class SecurityLoginAjax { public static ' . security_function( 'includes/class-ur-ajax.php', 'login_settings_save_action' ) . ' }' );
+$save_login = function ( $items, $nonce = 'valid', $caps = array( 'manage_options' ) ) {
+	$GLOBALS['writes'] = array();
+	$GLOBALS['caps']   = $caps;
+	$_POST             = array(
+		'security' => $nonce,
+		'data'     => array( 'setting_data' => $items ),
+	);
+	return security_response( array( 'SecurityLoginAjax', 'login_settings_save_action' ) );
+};
+$items      = array();
+foreach ( array(
+	'default_role'                                         => 'administrator',
+	'users_can_register'                                   => '1',
+	'active_plugins'                                       => 'evil',
+	'user_registration_captcha_setting_recaptcha_site_key' => 'cross-section',
+	'user_registration_label_login'                        => '<script>bad</script>Sign in',
+	'user_registration_login_options_remember_me'          => '1',
+) as $key => $value ) {
+	$items[] = array(
+		'option' => $key,
+		'value'  => $value,
+	);
+}
+$response = $save_login( $items );
+security_assert( $response->success, 'Valid login settings save succeeds' );
+security_assert(
+	array(
+		'user_registration_login_options_remember_me' => true,
+		'user_registration_label_login'               => 'badSign in',
+	) === $GLOBALS['writes'],
+	'Only declared login fields are saved and sanitized'
+);
+$response = $save_login( $items, 'expired' );
+security_assert( ! $response->success && empty( $GLOBALS['writes'] ), 'Invalid nonce cannot save login settings' );
+$response = $save_login( $items, 'valid', array( 'manage_user_registration' ) );
+security_assert( ! $response->success && empty( $GLOBALS['writes'] ), 'Login saves require manage_options' );
+foreach ( array(
+	null,
+	'broken',
+	array(
+		null,
+		array(
+			'option' => array( 'default_role' ),
+			'value'  => 'administrator',
+		),
+		array(
+			'option' => 'user_registration_label_login',
+			'value'  => array( 'nested' ),
+		),
+	),
+) as $items ) {
+	$save_login( $items );
+	security_assert( empty( $GLOBALS['writes'] ), 'Malformed login submissions do not write options' );
+}
+$save_login(
+	array(
+		array(
+			'option' => 'user_registration_login_options_login_redirect_url',
+			'value'  => '42',
+		),
+	)
+);
+security_assert( '42' === $GLOBALS['writes']['user_registration_login_page_id'] && '42' === $GLOBALS['writes']['user_registration_login_options_login_redirect_url'], 'Declared login redirect preserves page synchronization' );
+$save_login(
+	array(
+		array(
+			'option' => 'user_registration_login_options_remember_me',
+			'value'  => '',
+		),
+	)
+);
+security_assert( false === $GLOBALS['writes']['user_registration_login_options_remember_me'], 'Login toggle can be disabled' );
+$response = $save_login(
+	array(
+		array(
+			'option' => 'user_registration_login_options_enable_recaptcha',
+			'value'  => '1',
+		),
+	)
+);
+security_assert( ! $response->success && empty( $GLOBALS['writes'] ), 'Login CAPTCHA validation still rejects missing provider' );
+$response = $save_login(
+	array(
+		array(
+			'option' => 'user_registration_login_options_prevent_core_login',
+			'value'  => '1',
+		),
+		array(
+			'option' => 'user_registration_login_options_login_redirect_url',
+			'value'  => '41',
+		),
+	)
+);
+security_assert( ! $response->success && empty( $GLOBALS['writes'] ), 'Core login prevention still validates the destination page' );
