@@ -1817,21 +1817,30 @@ body .notice-container,
   top: 50px;
   right: -700px;
   z-index: 9999;
-  transition: right 0.5s ease;
+  visibility: hidden;
+  transition: right 0.5s ease, visibility 0s linear 0.5s;
 }
 body .close_notice,
 .user-registration-page .close_notice,
 .ur-multi-device-form-preview .close_notice,
 #pg-container .close_notice {
+  background: none;
+  border: 0;
+  padding: 0;
   color: red;
   cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
   font-weight: bold;
+  line-height: inherit;
 }
 body .notice-container.active,
 .user-registration-page .notice-container.active,
 .ur-multi-device-form-preview .notice-container.active,
 #pg-container .notice-container.active {
   right: 20px;
+  visibility: visible;
+  transition-delay: 0s;
 }
 body .urm-d-none,
 .user-registration-page .urm-d-none,
