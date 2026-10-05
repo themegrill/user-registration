@@ -4698,6 +4698,19 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/profile-connect/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'profile-connect' ) ),
 					),
 				),
+				'popup'           => array(
+					'label'  => esc_html__( 'Popups', 'user-registration' ),
+					'plugin' => 'user-registration-pro',
+					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
+					'name'   => esc_html__( 'User Registration Popups', 'user-registration' ),
+					'upsell' => array(
+						'excerpt'     => 'Display registration or login forms in popups.',
+						'description' => array(
+							'Choose between a registration or a login popup',
+							'Customize the popup header, footer, and size',
+						),
+					),
+				),
 				'invite-code'     => array(
 					'label'  => esc_html__( 'Invite Codes', 'user-registration' ),
 					'plugin' => 'user-registration-invite-codes',
@@ -4706,8 +4719,9 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 					'upsell' => array(
 						'excerpt'      => 'Enable invite-only signups using custom codes.',
 						'description'  => array(
-							'Customize popup content and appearance',
-							'Customize layout, colors, and content',
+							'Require a valid invite code to register on selected forms',
+							'Create codes one by one or generate them in bulk with a prefix',
+							'Set an expiry date and user limit for each code',
 						),
 						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/invite-codes/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'invite-codes' ) ),
 					),
@@ -4951,17 +4965,6 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 							'Let users view their order history right from their account page.',
 						),
 						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/woocommerce-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'woocommerce-integration' ) ),
-					),
-				),
-				'popup'           => array(
-					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
-					'plugin' => 'user-registration-pro',
-					'upsell' => array(
-						'excerpt'     => 'Display registration or login forms in popups.',
-						'description' => array(
-							'Customize popup content and appearance',
-							'Control where the popup shows up',
-						),
 					),
 				),
 				'cloud-storage'   => array(
