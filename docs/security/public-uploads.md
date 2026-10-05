@@ -8,7 +8,11 @@ The plugin creates an empty index, Apache `.htaccess`, and IIS `web.config`
 on installation/update and when preparing upload directories. The server rules
 disable directory listings and allow JPEG, PNG, and GIF images while denying
 other file types. Apache also rejects script-like intermediate extensions.
-Existing server configuration files are preserved. Temporary-file cleanup keeps
+The upload root gets only an empty index so that add-on directories such as
+`file-uploads` and `private-notes` do not inherit an image-only policy. On upgrade,
+exact matches for the previous generated root rules are removed and previous
+generated image-directory rules are updated. Administrator-modified server
+configuration files are preserved. Temporary-file cleanup keeps
 these protection files and removes expired uploads when cleanup runs.
 
 These files are defense in depth. Apache must honor `.htaccess`, IIS must allow
@@ -27,5 +31,6 @@ hardening does not make known image URLs private and does not resolve that
 separate product requirement in issue #1693.
 
 Regression test: `php tests/security/upload-directories.php`. This checks generated
-rules, public-image compatibility, preservation of custom rules and cleanup. It
+installation scope, legacy-rule migration, hosting-compatible directives,
+public-image compatibility, preservation of custom rules and cleanup. It
 does not replace testing the effective Apache/IIS/Nginx configuration.

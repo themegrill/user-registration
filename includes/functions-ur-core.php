@@ -4331,23 +4331,15 @@ if ( ! function_exists( 'ur_clean_tmp_files' ) ) {
 	}
 }
 
-if ( ! function_exists( 'ur_protect_public_upload_directory' ) ) {
+if ( ! function_exists( 'ur_get_public_upload_directory_rules' ) ) {
 	/**
-	 * Keep profile images public while denying listings and non-image files.
-	 * Nginx hosts must configure the equivalent static-image-only location.
+	 * Get the generated public-image server rules, including the previous policy for migration.
 	 *
-	 * @param string $directory Public upload directory.
-	 * @return void
+	 * @param bool $legacy Whether to return the previous generated rules.
+	 * @return array
 	 */
-	function ur_protect_public_upload_directory( $directory ) {
-		if ( apply_filters( 'user_registration_install_skip_create_files', false ) ) {
-			return;
-		}
-		if ( ! wp_mkdir_p( $directory ) || ! wp_is_writable( $directory ) ) {
-			return;
-		}
+	function ur_get_public_upload_directory_rules( $legacy = false ) {
 		$apache = <<<'APACHE'
-Options -Indexes
 <IfModule mod_authz_core.c>
     Require all denied
     <FilesMatch "(?i)^(?!.*\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx)(?:\.|$)).+\.(?:jpe?g|png|gif)$">
@@ -4366,7 +4358,6 @@ APACHE;
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration><system.webServer>
 <directoryBrowse enabled="false" />
-<handlers accessPolicy="Read" />
 <security><requestFiltering><fileExtensions allowUnlisted="false">
 <clear /><add fileExtension=".jpg" allowed="true" /><add fileExtension=".jpeg" allowed="true" />
 <add fileExtension=".png" allowed="true" /><add fileExtension=".gif" allowed="true" />
@@ -4374,15 +4365,40 @@ APACHE;
 </system.webServer></configuration>
 IIS;
 
-		$files = array(
+		if ( $legacy ) {
+			$apache = "Options -Indexes\n" . $apache;
+			$iis    = str_replace( '<directoryBrowse enabled="false" />', '<directoryBrowse enabled="false" />' . "\n" . '<handlers accessPolicy="Read" />', $iis );
+		}
+
+		return array(
 			'index.html' => '',
 			'.htaccess'  => $apache,
 			'web.config' => $iis,
 		);
+	}
+}
+
+if ( ! function_exists( 'ur_protect_public_upload_directory' ) ) {
+	/**
+	 * Keep profile images public while denying non-image files.
+	 * Nginx hosts must configure the equivalent static-image-only location.
+	 *
+	 * @param string $directory Public upload directory.
+	 * @return void
+	 */
+	function ur_protect_public_upload_directory( $directory ) {
+		if ( apply_filters( 'user_registration_install_skip_create_files', false ) ) {
+			return;
+		}
+		if ( ! wp_mkdir_p( $directory ) || ! wp_is_writable( $directory ) ) {
+			return;
+		}
+		$files        = ur_get_public_upload_directory_rules();
+		$legacy_files = ur_get_public_upload_directory_rules( true );
 		foreach ( $files as $name => $content ) {
 			$path = trailingslashit( $directory ) . $name;
-			// Do not replace administrator-managed server rules.
-			if ( ! file_exists( $path ) ) {
+			// Only replace an exact match for our previous rules; preserve administrator changes.
+			if ( ! file_exists( $path ) || ( 'index.html' !== $name && file_get_contents( $path ) === $legacy_files[ $name ] ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local generated rules for exact-byte migration.
 				file_put_contents( $path, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 			}
 		}
