@@ -2070,8 +2070,7 @@ class UR_Admin_Settings {
 			foreach ( self::get_searchable_pages() as $page ) {
 				$sections = $page->get_sections();
 
-				// A page with sections opens on its first one, so the empty section would only repeat it.
-				foreach ( empty( $sections ) ? array( '' ) : array_keys( $sections ) as $subsection ) {
+				foreach ( self::get_searchable_sections( $page, $sections ) as $subsection ) {
 					// Section-aware pages read the section from this global, not from an argument.
 					$current_section = $subsection;
 					$settings        = self::flatten_array( self::get_section_settings( $page, $subsection ) );
@@ -2100,7 +2099,7 @@ class UR_Admin_Settings {
 	}
 
 	/**
-	 * Get the settings pages that can be searched.
+	 * Get the settings pages that can be searched, which are the ones shown as a tab.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -2110,7 +2109,32 @@ class UR_Admin_Settings {
 		return array_filter(
 			(array) self::get_settings_pages(),
 			function ( $page ) {
-				return is_object( $page ) && method_exists( $page, 'get_settings' ) && method_exists( $page, 'get_sections' ) && method_exists( $page, 'get_id' );
+				return is_object( $page ) && method_exists( $page, 'get_settings' ) && method_exists( $page, 'get_sections' ) && method_exists( $page, 'get_id' ) && method_exists( $page, 'get_default_section' ) && '' !== $page->get_label();
+			}
+		);
+	}
+
+	/**
+	 * Get the ids of the sections of a page that a result can link to.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param UR_Settings_Page $page     Settings page.
+	 * @param array            $sections The page's sections, keyed by id.
+	 * @return array
+	 */
+	private static function get_searchable_sections( $page, $sections ) {
+		if ( empty( $sections ) ) {
+			return array( '' );
+		}
+
+		$default_section = $page->get_default_section( '' );
+
+		// The empty section has no URL of its own: it opens the default section, so only the default may use it.
+		return array_filter(
+			array_keys( $sections ),
+			function ( $section ) use ( $default_section ) {
+				return '' !== $section || '' === $default_section;
 			}
 		);
 	}
@@ -2129,16 +2153,23 @@ class UR_Admin_Settings {
 			return array();
 		}
 
-		switch ( $subsection ) {
-			case 'login-options':
-				$settings = get_login_options_settings();
-				break;
-			case 'frontend-messages':
-				$settings = $page->get_frontend_messages_settings();
-				break;
-			default:
-				$settings = $page->get_settings( $subsection );
-				break;
+		// Some pages print their section markup while building settings; it must not reach the JSON response.
+		ob_start();
+
+		try {
+			switch ( $subsection ) {
+				case 'login-options':
+					$settings = get_login_options_settings();
+					break;
+				case 'frontend-messages':
+					$settings = $page->get_frontend_messages_settings();
+					break;
+				default:
+					$settings = $page->get_settings( $subsection );
+					break;
+			}
+		} finally {
+			ob_end_clean();
 		}
 
 		return is_array( $settings ) ? $settings : array();
@@ -2186,7 +2217,7 @@ class UR_Admin_Settings {
 			$parts[] = $sections[ $subsection ];
 		}
 
-		return implode( self::SEARCH_LOCATION_SEPARATOR, array_unique( array_filter( $parts, 'is_string' ) ) );
+		return implode( self::SEARCH_LOCATION_SEPARATOR, array_unique( array_filter( $parts ) ) );
 	}
 
 	/**

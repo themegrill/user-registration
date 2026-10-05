@@ -1293,12 +1293,23 @@
 		}
 	});
 
-	if (
-		typeof getUrlVars()["searched_option"] != "undefined" ||
-		getUrlVars()["searched_option"] != null
-	) {
-		var $searched_id = $("#" + getUrlVars()["searched_option"]);
-		var wrapper_div = $searched_id.closest(
+	var searched_option = new URLSearchParams(window.location.search).get(
+		"searched_option"
+	);
+
+	if (searched_option) {
+		// Composite fields render as <id>_normal, <id>_line_1 and so on, and custom ones only as a label.
+		var searched_field =
+			document.getElementById(searched_option) ||
+			$("[id], label[for]")
+				.filter(function () {
+					return (
+						0 === this.id.indexOf(searched_option + "_") ||
+						this.htmlFor === searched_option
+					);
+				})
+				.get(0);
+		var wrapper_div = $(searched_field).closest(
 			".user-registration-global-settings"
 		);
 
@@ -1315,25 +1326,6 @@
 				wrapper_div.removeClass("ur-searched-settings-focus");
 			}, 2000);
 		}
-	}
-
-	/**
-	 * Get Query String.
-	 *
-	 * @returns
-	 */
-	function getUrlVars() {
-		var vars = [],
-			hash;
-		var hashes = window.location.href
-			.slice(window.location.href.indexOf("?") + 1)
-			.split("&");
-		for (var i = 0; i < hashes.length; i++) {
-			hash = hashes[i].split("=");
-			vars.push(hash[0]);
-			vars[hash[0]] = hash[1];
-		}
-		return vars;
 	}
 
 	/**

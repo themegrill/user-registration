@@ -58,6 +58,19 @@ test.describe("settings search @fresh", () => {
     expect(results[0]).toMatchObject({ label: "No settings found", value: NO_RESULT_VALUE });
   });
 
+  test("finds the sections only Pro adds, even though one of them prints markup while loading @fresh", async ({ page }) => {
+    // Pro's Popups section echoes a table while its settings are built; that output once corrupted the JSON.
+    await gotoAdminPage(page, "user-registration-settings", "&tab=payment");
+    const proSectionsPresent = (await page.locator("a[href*='section=payment-retry']").count()) > 0;
+    test.skip(!proSectionsPresent, "needs the Pro Payment sections");
+
+    const tax = await search(page, "tax");
+    expect(tax.map((r) => `${r.label} | ${r.location}`)).toContain("Calculate tax at checkout | Payment → Tax & VAT");
+
+    const retry = await search(page, "retry");
+    expect(retry.map((r) => `${r.label} | ${r.location}`)).toContain("Enable Payment Retry | Payment → Payment Retry & Dunning");
+  });
+
   test("picking a result opens its tab and section and highlights the field @fresh", async ({ page }) => {
     await page.locator("#ur-search-settings").pressSequentially("currency");
 
