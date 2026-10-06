@@ -2746,6 +2746,42 @@ class UR_AJAX {
 	}
 
 	/**
+	 * Option name used as the lock that serializes linking of existing users.
+	 */
+	const LINK_USERS_LOCK = 'ur_link_existing_users_lock';
+
+	/**
+	 * Take the lock that stops two requests from linking users at the same time and adding duplicate ur_form_id rows.
+	 *
+	 * The unique option name makes creating the row atomic, as WordPress core does for its own locks.
+	 * A lock older than a minute is treated as left over from a failed request and taken over.
+	 *
+	 * @return bool True if this request now holds the lock.
+	 */
+	private static function acquire_link_users_lock() {
+		global $wpdb;
+
+		$now = time();
+
+		if ( add_option( self::LINK_USERS_LOCK, $now, '', 'no' ) ) {
+			return true;
+		}
+
+		$held_since = (int) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::LINK_USERS_LOCK ) );
+
+		if ( ! $held_since ) {
+			return add_option( self::LINK_USERS_LOCK, $now, '', 'no' );
+		}
+
+		if ( ( $now - $held_since ) < MINUTE_IN_SECONDS ) {
+			return false;
+		}
+
+		// Compare and swap, so only one request can take over a stale lock.
+		return 1 === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", $now, self::LINK_USERS_LOCK, $held_since ) );
+	}
+
+	/**
 	 * Migrate unlinked users to a designated registration form in bounded chunks.
 	 *
 	 * @return void
@@ -2770,6 +2806,14 @@ class UR_AJAX {
 			);
 		}
 
+		if ( ! self::acquire_link_users_lock() ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Users are already being linked. Please try again in a moment.', 'user-registration' ),
+				)
+			);
+		}
+
 		$current_user_id = get_current_user_id();
 
 		// Exclude acting admin via query args so fresh single-admin sites don't flag the installer's account.
@@ -2781,6 +2825,7 @@ class UR_AJAX {
 		$user_ids = array_slice( $user_ids, 0, $chunk_size );
 
 		if ( empty( $user_ids ) ) {
+			delete_option( self::LINK_USERS_LOCK );
 			// Another admin may have linked everyone, so this admin's cached count is stale.
 			ur_clear_unlinked_users_count_cache( $current_user_id );
 			wp_send_json_success(
@@ -2801,6 +2846,7 @@ class UR_AJAX {
 			}
 		}
 
+		delete_option( self::LINK_USERS_LOCK );
 		ur_clear_unlinked_users_count_cache( $current_user_id );
 
 		wp_send_json_success(

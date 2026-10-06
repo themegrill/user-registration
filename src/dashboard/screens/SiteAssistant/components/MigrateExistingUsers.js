@@ -416,8 +416,12 @@ const MigrateExistingUsers = ({ isOpen, onToggle, onMigrated, numbering }) => {
 						divider={<StackDivider borderColor="gray.200" />}
 					>
 						{previewUsers.length > 0 && (
-							<HStack spacing="3">
-								<AvatarGroup size="sm" spacing="-2">
+							<HStack spacing="3" align="flex-start">
+								<AvatarGroup
+									size="sm"
+									spacing="-2"
+									flexShrink={0}
+								>
 									{previewUsers.map((user) => (
 										<Avatar
 											key={user.id}
@@ -427,7 +431,12 @@ const MigrateExistingUsers = ({ isOpen, onToggle, onMigrated, numbering }) => {
 										/>
 									))}
 								</AvatarGroup>
-								<Text fontSize="14px" color="gray.700">
+								<Text
+									fontSize="14px"
+									color="gray.700"
+									minW="0"
+									overflowWrap="anywhere"
+								>
 									{getPreviewNamesText(
 										previewUsers,
 										unlinkedCount

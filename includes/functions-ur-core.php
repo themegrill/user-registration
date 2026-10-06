@@ -11366,7 +11366,8 @@ if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
 		foreach ( $users as $user ) {
 			$preview[] = array(
 				'id'     => (int) $user->ID,
-				'name'   => '' !== trim( (string) $user->display_name ) ? (string) $user->display_name : (string) $user->user_login,
+				// WordPress stores display names HTML-escaped and React escapes again, so decode here.
+				'name'   => wp_specialchars_decode( '' !== trim( (string) $user->display_name ) ? (string) $user->display_name : (string) $user->user_login, ENT_QUOTES ),
 				'avatar' => (string) get_avatar_url( (int) $user->ID, array( 'size' => 64 ) ),
 			);
 		}
