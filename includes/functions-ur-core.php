@@ -11222,12 +11222,14 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 		foreach ( (array) $all_published_forms as $form_id => $form_title ) {
 			$forms_list[] = array(
 				'id'    => (int) $form_id,
-				'title' => (string) $form_title,
+				// The form list is already HTML-escaped and React escapes again, so decode it here.
+				'title' => wp_specialchars_decode( (string) $form_title, ENT_QUOTES ),
 			);
 		}
 
-		$unlinked_users_count   = ur_get_unlinked_users_count();
-		$unlinked_users_handled = ur_is_unlinked_users_handled( $unlinked_users_count );
+		$unlinked_users_count = ur_get_unlinked_users_count();
+		// With no published form there is nothing to link to, so the step is not pending (the card needs a form to render).
+		$unlinked_users_handled = empty( $forms_list ) || ur_is_unlinked_users_handled( $unlinked_users_count );
 
 		// Validate default form: only use default_form_id if it exists in published forms, otherwise fall back to first published form.
 		$validated_default_form_id = 0;
@@ -11324,7 +11326,7 @@ if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
 	 * @param int $limit Maximum number of users to return.
 	 * @return array[] List of arrays with 'id', 'name' and 'avatar' keys.
 	 */
-	function ur_get_unlinked_users_preview( $limit = 4 ) {
+	function ur_get_unlinked_users_preview( $limit = 3 ) {
 		global $wpdb;
 
 		$users = $wpdb->get_results(

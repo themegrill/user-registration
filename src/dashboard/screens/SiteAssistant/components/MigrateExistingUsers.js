@@ -86,6 +86,17 @@ const getPreviewNamesText = (users, total) => {
 	);
 };
 
+/**
+ * Site Assistant step that links users created outside User Registration to a registration form.
+ *
+ * @param {Object} props Component props.
+ * @param {boolean} props.isOpen Whether the card body is expanded.
+ * @param {Function} props.onToggle Toggles the card body.
+ * @param {Function} props.onMigrated Called once the users are linked (or none were left to link).
+ * @param {Function} props.onSkipped Called once the step is skipped.
+ * @param {number} props.numbering Position of this step in the checklist.
+ * @return {JSX.Element} The step card.
+ */
 const MigrateExistingUsers = ({
 	isOpen,
 	onToggle,
@@ -224,6 +235,25 @@ const MigrateExistingUsers = ({
 					duration: 5000,
 					isClosable: true
 				});
+				return;
+			}
+
+			// Another admin may have linked everyone since this page loaded.
+			if (totalLinked === 0) {
+				toast({
+					title: __("Nothing to link", "user-registration"),
+					description: __(
+						"These users are already linked to a registration form.",
+						"user-registration"
+					),
+					status: "info",
+					duration: 5000,
+					isClosable: true
+				});
+
+				if (onMigrated) {
+					onMigrated();
+				}
 				return;
 			}
 

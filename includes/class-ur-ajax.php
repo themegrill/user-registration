@@ -2795,9 +2795,13 @@ class UR_AJAX {
 				AND u.ID != %d
 				LIMIT %d",
 				$current_user_id,
-				$chunk_size
+				$chunk_size + 1
 			)
 		);
+
+		// The extra row only signals that another batch is needed, so it is not linked in this one.
+		$has_more = count( $user_ids ) > $chunk_size;
+		$user_ids = array_slice( $user_ids, 0, $chunk_size );
 
 		if ( empty( $user_ids ) ) {
 			delete_option( 'user_registration_migrate_users_skipped' );
@@ -2817,23 +2821,6 @@ class UR_AJAX {
 			if ( $added ) {
 				$migrated_count++;
 			}
-		}
-
-		// Check if any further unlinked accounts remain.
-		$has_more = false;
-		if ( count( $user_ids ) === $chunk_size ) {
-			$remaining_id = $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT u.ID
-					FROM {$wpdb->users} u
-					LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
-					WHERE um.user_id IS NULL
-					AND u.ID != %d
-					LIMIT 1",
-					$current_user_id
-				)
-			);
-			$has_more     = ! empty( $remaining_id );
 		}
 
 		// Invalidate cached unlinked users count.
