@@ -90,6 +90,27 @@ test.describe("my account profile fields @demo", () => {
 });
 
 test.describe("my account @fresh", () => {
+  test("bare My Account URL highlights the tab whose content it shows @fresh @my-account", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+    const url = await registrationPageFor(page, await firstFormId(page));
+
+    const visitor = await newVisitor(browser);
+    const user = await visitor.newPage();
+    const account = await registerOn(user, url);
+    await loginToMyAccount(user, account.username, account.password);
+
+    // A new install hides Dashboard and renders Profile Details at the bare
+    // URL, so Profile Details is the tab that must be active — not none.
+    await user.goto("/my-account/", { waitUntil: "domcontentloaded" });
+    const active = user.locator(".user-registration-MyAccount-navigation li.is-active");
+    await expect(active).toHaveCount(1);
+    await expect(active).toHaveClass(/user-registration-MyAccount-navigation-link--edit-profile/);
+
+    await deleteUserByEmail(page, account.email);
+    await visitor.close();
+  });
+
   test("change password rejects reusing the current password @fresh @my-account", async ({ page, browser }) => {
     await loginAsAdmin(page);
     await ensureFirstRun(page);
@@ -199,6 +220,17 @@ test.describe("my account @fresh", () => {
 
     await deleteUserByEmail(page, account.email);
     await visitor.close();
+  });
+
+  // themegrill/user-registration-pro#1720 — the "setting has moved" notice is for upgraders only.
+  test("a fresh install does not show the My Account page setting moved notice @fresh @my-account", async ({ page }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+
+    await page.goto("/wp-admin/admin.php?page=user-registration-settings&tab=my_account");
+    // Without this the absence below would also pass on a page that never rendered.
+    await expect(page.locator(".user-registration-card__title", { hasText: "General" }).first()).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("My Account page setting has moved");
   });
 });
 

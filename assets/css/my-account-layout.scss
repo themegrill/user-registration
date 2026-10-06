@@ -1643,11 +1643,13 @@
 										font-weight: 600;
 									}
 
+									&--payment {
+										vertical-align: middle;
+										line-height: 20px;
+									}
+
 									&--status {
-										display: flex;
-										flex-direction: column;
-										align-items: flex-start;
-										gap: 4px;
+										vertical-align: middle;
 
 										span {
 											display: inline-block !important;
