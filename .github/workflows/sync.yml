@@ -2,7 +2,7 @@ name: Sync Files To Pro
 on:
     push:
         branches:
-            - 1516-make-form-payment-fields-legacy-membership-field-becomes-the-only-payment-path-for-new-sites
+            - develop
         workflow_dispatch:
 jobs:
     sync:
