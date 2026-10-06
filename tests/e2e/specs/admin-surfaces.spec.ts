@@ -34,6 +34,29 @@ test.describe("admin surfaces @fresh", () => {
     }
   });
 
+  /**
+   * @area    admin
+   * @tier    fresh
+   * @guards  #1718
+   * @source  write-spec 2026-10-05
+   * @why     Invite Codes showed the Popups bullets and Popups showed only the generic
+   *          upgrade notice. Guards each locked section rendering its own teaser; does
+   *          not assert exact bullet wording, which product copy may change.
+   */
+  test("locked Registration & Login sections each show their own upgrade teaser @fresh @admin", async ({ page }) => {
+    const teaser = page.locator(".user-registration-upsell");
+
+    await gotoAdminPage(page, "user-registration-settings", "&tab=registration_login&section=popup");
+    await expect(teaser).toContainText(/popup/i);
+    await expect(teaser.locator("li")).not.toHaveCount(0);
+    await expect(page.getByText("To unlock this setting, consider upgrading")).toHaveCount(0);
+
+    await gotoAdminPage(page, "user-registration-settings", "&tab=registration_login&section=invite-code");
+    await expect(teaser).toContainText(/invite/i);
+    await expect(teaser.locator("li")).not.toHaveCount(0);
+    await expect(teaser).not.toContainText(/popup/i);
+  });
+
   test("security tab exposes Prevent WP Dashboard Access @fresh @admin", async ({ page }) => {
     await gotoAdminPage(page, "user-registration-settings", "&tab=security");
     await expect(page.getByText("Prevent WP Dashboard Access")).toBeVisible();

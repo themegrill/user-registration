@@ -134,7 +134,7 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 				'UR_Settings_Confirm_Email_Address_Change_Email',
 			);
 
-			if ( ur_check_module_activation( 'membership' ) || ur_check_module_activation( 'payments' ) || is_plugin_active( 'user-registration-stripe/user-registration-stripe.php' ) || is_plugin_active( 'user-registration-authorize-net/user-registration-authorize-net.php' ) ) {
+			if ( ur_check_module_activation( 'membership' ) || ur_check_module_activation( 'payments' ) || ur_check_module_activation( 'stripe' ) || is_plugin_active( 'user-registration-stripe/user-registration-stripe.php' ) || is_plugin_active( 'user-registration-authorize-net/user-registration-authorize-net.php' ) ) {
 				$email_classes = array_merge(
 					$email_classes,
 					array(

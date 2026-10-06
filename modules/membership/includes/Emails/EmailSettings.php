@@ -5,7 +5,9 @@ namespace WPEverest\URMembership\Emails;
 use WPEverest\URMembership\Admin\Repositories\MembershipRepository;
 use WPEverest\URMembership\Admin\Services\SubscriptionService;
 use WPEverest\URMembership\Emails\Admin\UR_Settings_Membership_Cancellation_Admin_Email;
+use WPEverest\URMembership\Emails\Admin\UR_Settings_Membership_Downgraded_Free_Admin_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Cancellation_User_Email;
+use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Downgraded_Free_User_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Ended_User_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Expiring_Soon_User_Email;
 use WPEverest\URMembership\Emails\User\UR_Settings_Membership_Renewal_Reminder_User_Email;
@@ -46,6 +48,9 @@ class EmailSettings {
 				$new_emails['UR_Settings_Membership_Expiring_Soon_User_Email'] = new UR_Settings_Membership_Expiring_Soon_User_Email();
 			}
 			$new_emails['UR_Settings_Membership_Ended_User_Email'] = new UR_Settings_Membership_Ended_User_Email();
+
+			$new_emails['UR_Settings_Membership_Downgraded_Free_User_Email']  = new UR_Settings_Membership_Downgraded_Free_User_Email();
+			$new_emails['UR_Settings_Membership_Downgraded_Free_Admin_Email'] = new UR_Settings_Membership_Downgraded_Free_Admin_Email();
 		}
 
 		return array_merge( $emails, $new_emails );
