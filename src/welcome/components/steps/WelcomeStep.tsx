@@ -134,25 +134,28 @@ const WelcomeStep: React.FC = () => {
 	const optionsToRender: Omit<MembershipOptionProps, "isSelected">[] = [
 		{
 			value: "membership",
-			title: __("Yes", "user-registration"),
+			title: __(
+				"Yes — Membership Plans & Content Restriction",
+				"user-registration"
+			),
 			description: __(
-				"Create free or paid plans, and restrict content to members.",
+				"Create free or paid plans, accept payments, and restrict content to members.",
 				"user-registration"
 			)
 		},
 		{
 			value: "registration",
-			title: __("No", "user-registration"),
+			title: __("No — Registration & Account Pages", "user-registration"),
 			description: __(
-				"I only need registration, login, and user account pages.",
+				"Set up custom registration, login, and account pages. No plans or payment steps are created for now.",
 				"user-registration"
 			)
 		},
 		{
 			value: "later",
-			title: __("Maybe later", "user-registration"),
+			title: __("Maybe later — Start Simple", "user-registration"),
 			description: __(
-				"Start with registration and login now. You can add plans and payments anytime.",
+				"Set up registration and login now. You can add membership plans and payments whenever you're ready.",
 				"user-registration"
 			)
 		}
@@ -169,11 +172,14 @@ const WelcomeStep: React.FC = () => {
 					letterSpacing="-0.01em"
 					color={textColor}
 				>
-					{__("Welcome to User Registration & Membership", "user-registration")}
+					{__(
+						"Welcome to User Registration & Membership",
+						"user-registration"
+					)}
 				</Heading>
 				<Text color={mutedColor} fontSize="14px">
 					{__(
-						"Let's get your site set up. You can change any of this later.",
+						"Let's configure your site. You can change this anytime.",
 						"user-registration"
 					)}
 				</Text>
@@ -182,7 +188,7 @@ const WelcomeStep: React.FC = () => {
 			<Box mb={10}>
 				<Text fontWeight="600" color={textColor} mb={4} fontSize="16px">
 					{__(
-						"Do you want to offer memberships on your site?",
+						"Do you want to offer membership plans on your site?",
 						"user-registration"
 					)}
 				</Text>
