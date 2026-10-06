@@ -288,8 +288,11 @@ if ( ! class_exists( 'UR_Settings_Page', false ) ) :
 			global $current_section;
 			global $current_tab;
 			add_filter( 'user_registration_settings_hide_save_button', '__return_true' );
-			$title   = ucwords( str_replace( '-', ' ', $current_section ?? '' ) );
-			$setting = ucwords( str_replace( '_', ' ', $current_tab ?? '' ) );
+			$sections = $this->get_sections();
+			$title    = ! empty( $sections[ $current_section ] ) && is_string( $sections[ $current_section ] )
+				? $sections[ $current_section ]
+				: ucwords( str_replace( '-', ' ', $current_section ?? '' ) );
+			$setting  = ucwords( str_replace( '_', ' ', $current_tab ?? '' ) );
 
 			$default = array(
 				'title'    => '',

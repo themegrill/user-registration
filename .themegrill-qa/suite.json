@@ -20,10 +20,12 @@
     "admin": [
       "includes/admin/class-ur-admin-menus.php",
       "includes/admin/class-ur-admin-settings.php",
+      "includes/admin/class-ur-sdk-deactivation-feedback.php",
       "includes/admin/settings/**",
       "includes/admin/class-ur-admin-assets.php",
       "includes/functions-ur-core.php",
       "assets/css/settings*",
+      "assets/css/urm-deactivation-popup*",
       "assets/js/admin/**",
       "modules/paypal/**",
       "modules/stripe/**"
