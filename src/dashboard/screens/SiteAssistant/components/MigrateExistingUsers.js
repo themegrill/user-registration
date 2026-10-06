@@ -1,13 +1,15 @@
 import {
+	Badge,
 	Box,
 	Button,
 	Collapse,
 	Flex,
+	FormControl,
+	FormLabel,
 	HStack,
 	Heading,
 	Icon,
 	IconButton,
-	Link,
 	Select,
 	Stack,
 	Text,
@@ -31,17 +33,20 @@ const MigrateExistingUsers = ({
 	const siteAssistantData = window._UR_DASHBOARD_?.site_assistant_data || {};
 	const unlinkedCount = siteAssistantData.unlinked_users_count || 0;
 	const forms = siteAssistantData.registration_forms || [];
-	const initialFormId =
-		siteAssistantData.default_form_id ||
-		(forms.length > 0 ? forms[0].id : "");
+	const formExists = forms.some(
+		(form) => form.id === Number(siteAssistantData.default_form_id)
+	);
+	const initialFormId = formExists
+		? siteAssistantData.default_form_id
+		: forms.length > 0
+			? forms[0].id
+			: "";
 
 	const [selectedFormId, setSelectedFormId] = useState(initialFormId);
 
 	const defaultFormTitle =
 		forms.find((form) => form.id === Number(selectedFormId))?.title ||
-		(forms.length > 0
-			? forms[0].title
-			: __("Default Registration Form", "user-registration"));
+		(forms.length > 0 ? forms[0].title : "");
 
 	const handleMigrate = async () => {
 		if (!selectedFormId) {
@@ -52,7 +57,7 @@ const MigrateExistingUsers = ({
 					"user-registration"
 				),
 				status: "warning",
-				duration: 3000,
+				duration: 5000,
 				isClosable: true
 			});
 			return;
@@ -64,42 +69,81 @@ const MigrateExistingUsers = ({
 			const adminURL =
 				window._UR_DASHBOARD_?.adminURL ||
 				`${window.location.origin}/wp-admin/`;
-			const response = await fetch(`${adminURL}admin-ajax.php`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded"
-				},
-				body: new URLSearchParams({
-					action: "user_registration_migrate_existing_users",
-					form_id: selectedFormId,
-					security: window._UR_DASHBOARD_?.urRestApiNonce || ""
-				})
-			});
 
-			const result = await response.json();
+			let totalLinked = 0;
+			let hasMore = true;
 
-			if (result.success) {
-				toast({
-					title: __("Users Linked", "user-registration"),
-					description:
-						result.data?.message ||
-						__(
-							"Existing users have been successfully linked to the registration form.",
-							"user-registration"
-						),
-					status: "success",
-					duration: 3000,
-					isClosable: true
+			while (hasMore) {
+				const response = await fetch(`${adminURL}admin-ajax.php`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/x-www-form-urlencoded"
+					},
+					body: new URLSearchParams({
+						action: "user_registration_migrate_existing_users",
+						form_id: selectedFormId,
+						security: window._UR_DASHBOARD_?.urRestApiNonce || ""
+					})
 				});
 
-				if (onMigrated) {
-					onMigrated();
+				if (!response.ok) {
+					throw new Error(
+						sprintf(
+							/* translators: %d: HTTP status code */
+							__("Request failed with status %d.", "user-registration"),
+							response.status
+						)
+					);
 				}
-			} else {
-				throw new Error(
-					result.data?.message ||
-						__("Failed to link users.", "user-registration")
-				);
+
+				let result;
+				try {
+					result = await response.json();
+				} catch {
+					throw new Error(
+						__(
+							"Received an invalid response from the server.",
+							"user-registration"
+						)
+					);
+				}
+
+				if (!result.success) {
+					throw new Error(
+						result.data?.message ||
+							__("Failed to link users.", "user-registration")
+					);
+				}
+
+				const count = result.data?.count || 0;
+				totalLinked += count;
+				hasMore = Boolean(result.data?.has_more);
+
+				// Guard against potential infinite loop if no accounts could be linked in a batch.
+				if (hasMore && count === 0) {
+					break;
+				}
+			}
+
+			toast({
+				title: __("Users Linked", "user-registration"),
+				description: sprintf(
+					/* translators: %d: number of users linked */
+					_n(
+						"%d user successfully linked to registration form.",
+						"%d users successfully linked to registration form.",
+						totalLinked,
+						"user-registration"
+					),
+					totalLinked
+				),
+				status: "success",
+				duration: 5000,
+				isClosable: true
+			});
+
+			if (onMigrated) {
+				onMigrated();
 			}
 		} catch (error) {
 			toast({
@@ -111,7 +155,7 @@ const MigrateExistingUsers = ({
 						"user-registration"
 					),
 				status: "error",
-				duration: 3000,
+				duration: 5000,
 				isClosable: true
 			});
 		} finally {
@@ -138,7 +182,27 @@ const MigrateExistingUsers = ({
 				})
 			});
 
-			const result = await response.json();
+			if (!response.ok) {
+				throw new Error(
+					sprintf(
+						/* translators: %d: HTTP status code */
+						__("Request failed with status %d.", "user-registration"),
+						response.status
+					)
+				);
+			}
+
+			let result;
+			try {
+				result = await response.json();
+			} catch {
+				throw new Error(
+					__(
+						"Received an invalid response from the server.",
+						"user-registration"
+					)
+				);
+			}
 
 			if (result.success) {
 				toast({
@@ -150,7 +214,7 @@ const MigrateExistingUsers = ({
 							"user-registration"
 						),
 					status: "success",
-					duration: 3000,
+					duration: 5000,
 					isClosable: true
 				});
 
@@ -173,7 +237,7 @@ const MigrateExistingUsers = ({
 						"user-registration"
 					),
 				status: "error",
-				duration: 3000,
+				duration: 5000,
 				isClosable: true
 			});
 		} finally {
@@ -193,8 +257,9 @@ const MigrateExistingUsers = ({
 			<HStack
 				justify={"space-between"}
 				onClick={onToggle}
-				borderBottom={isOpen && "1px solid #dcdcde"}
-				paddingBottom={isOpen && 5}
+				borderBottom={isOpen ? "1px solid" : undefined}
+				borderColor={isOpen ? "gray.200" : undefined}
+				paddingBottom={isOpen ? 5 : undefined}
 				_hover={{
 					cursor: "pointer"
 				}}
@@ -210,16 +275,14 @@ const MigrateExistingUsers = ({
 							") " +
 							__("Link Existing Users", "user-registration")}
 					</Heading>
-					<Box
+					<Badge
+						colorScheme="orange"
+						variant="subtle"
+						borderRadius="full"
 						px={2.5}
 						py={0.5}
-						borderRadius="full"
-						bgColor="orange.50"
-						border="1px"
-						borderColor="orange.200"
 						fontSize="xs"
 						fontWeight="semibold"
-						color="orange.800"
 					>
 						{sprintf(
 							/* translators: %d: number of unlinked users */
@@ -231,10 +294,14 @@ const MigrateExistingUsers = ({
 							),
 							unlinkedCount
 						)}
-					</Box>
+					</Badge>
 				</HStack>
 				<IconButton
-					aria-label={"migrateUsers"}
+					aria-label={__(
+						"Toggle link existing users section",
+						"user-registration"
+					)}
+					aria-expanded={isOpen}
 					icon={
 						<Icon
 							as={isOpen ? BiChevronUp : BiChevronDown}
@@ -258,8 +325,8 @@ const MigrateExistingUsers = ({
 						{sprintf(
 							/* translators: %d: number of unlinked users */
 							_n(
-								"We detected %d existing user account created outside User Registration. Link it to a registration form so this user can view and update their profile details on your frontend account page.",
-								"We detected %d existing user accounts created outside User Registration. Link them to a registration form so they can view and update their profile details on your frontend account page.",
+								"We detected %d existing user account created outside User Registration (such as administrators or WooCommerce customers). Link it to a registration form so this user can view and update profile details on your frontend account page.",
+								"We detected %d existing user accounts created outside User Registration (such as administrators or WooCommerce customers). Link them to a registration form so they can view and update profile details on your frontend account page.",
 								unlinkedCount,
 								"user-registration"
 							),
@@ -269,54 +336,60 @@ const MigrateExistingUsers = ({
 
 					{forms.length > 1 ? (
 						<Box
-							bg="#f9fafc"
+							bg="gray.50"
 							p="4"
 							borderRadius="md"
 							border="1px"
 							borderColor="gray.200"
 						>
-							<Text
-								fontSize="14px"
-								fontWeight="bold"
-								color="gray.800"
-								mb={1}
-							>
-								{__(
-									"Select Registration Form",
-									"user-registration"
-								)}
-							</Text>
-							<Text fontSize="13px" color="gray.600" mb={3}>
-								{__(
-									"Choose which form fields will be available when these users edit their profile:",
-									"user-registration"
-								)}
-							</Text>
-							<Select
-								value={selectedFormId}
-								onChange={(e) =>
-									setSelectedFormId(e.target.value)
-								}
-								bg="white"
-								size="sm"
-								borderRadius="base"
-								maxW="400px"
-							>
-								{forms.map((form) => (
-									<option key={form.id} value={form.id}>
-										{form.title} (ID: {form.id})
-									</option>
-								))}
-							</Select>
+							<FormControl maxW="400px">
+								<FormLabel
+									htmlFor="ur-migrate-form-select"
+									fontSize="14px"
+									fontWeight="bold"
+									color="gray.800"
+									mb={1}
+								>
+									{__(
+										"Select Registration Form",
+										"user-registration"
+									)}
+								</FormLabel>
+								<Text fontSize="13px" color="gray.600" mb={3}>
+									{__(
+										"Choose which form fields will be available when these users edit their profile:",
+										"user-registration"
+									)}
+								</Text>
+								<Select
+									id="ur-migrate-form-select"
+									aria-label={__(
+										"Select Registration Form",
+										"user-registration"
+									)}
+									value={selectedFormId}
+									onChange={(e) =>
+										setSelectedFormId(e.target.value)
+									}
+									bg="white"
+									size="sm"
+									borderRadius="base"
+								>
+									{forms.map((form) => (
+										<option key={form.id} value={form.id}>
+											{form.title}
+										</option>
+									))}
+								</Select>
+							</FormControl>
 						</Box>
 					) : (
 						<Flex
-							bg="#f9fafc"
+							bg="gray.50"
 							p="4"
 							borderRadius="md"
 							border="1px"
 							borderColor="gray.200"
-							justify="space-between"
 							align="center"
 						>
 							<Box>
@@ -345,7 +418,7 @@ const MigrateExistingUsers = ({
 
 					<Text fontSize="12px" color="gray.500">
 						{__(
-							"Existing passwords, user roles, and account data remain completely unchanged. No notification emails will be sent.",
+							"Existing passwords, user roles, and account data remain completely unchanged. This association links form fields and cannot be undone automatically.",
 							"user-registration"
 						)}
 					</Text>
@@ -360,6 +433,7 @@ const MigrateExistingUsers = ({
 							size={"sm"}
 							fontSize="14px"
 							isLoading={isMigrating}
+							isDisabled={isMigrating || isSkipping}
 							loadingText={__("Linking...", "user-registration")}
 						>
 							{sprintf(
@@ -374,20 +448,21 @@ const MigrateExistingUsers = ({
 							)}
 						</Button>
 
-						<Link
+						<Button
+							variant="link"
 							fontSize="14px"
+							fontWeight="normal"
 							color="gray.500"
 							textDecoration="underline"
 							onClick={handleSkip}
 							cursor="pointer"
 							width="fit-content"
-							opacity={isSkipping ? 0.6 : 1}
-							pointerEvents={isSkipping ? "none" : "auto"}
+							isLoading={isSkipping}
+							isDisabled={isMigrating || isSkipping}
+							loadingText={__("Skipping...", "user-registration")}
 						>
-							{isSkipping
-								? __("Skipping...", "user-registration")
-								: __("Skip this step", "user-registration")}
-						</Link>
+							{__("Skip this step", "user-registration")}
+						</Button>
 					</HStack>
 				</Stack>
 			</Collapse>

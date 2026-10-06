@@ -2755,7 +2755,7 @@ class UR_AJAX {
 	}
 
 	/**
-	 * Migrate unlinked users to a designated registration form.
+	 * Migrate unlinked users to a designated registration form in bounded chunks.
 	 *
 	 * @return void
 	 */
@@ -2783,23 +2783,28 @@ class UR_AJAX {
 
 		$current_user_id = get_current_user_id();
 
-		// Fetch unlinked user IDs excluding the current administrator who is running the migration.
-		$user_ids = $wpdb->get_col(
+		// Fetch unlinked user IDs in bounded chunks to avoid execution timeouts on large databases.
+		$chunk_size = 500;
+		$user_ids   = $wpdb->get_col(
 			$wpdb->prepare(
 				"SELECT u.ID
 				FROM {$wpdb->users} u
 				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
 				WHERE um.user_id IS NULL
-				AND u.ID != %d",
-				$current_user_id
+				AND u.ID != %d
+				LIMIT %d",
+				$current_user_id,
+				$chunk_size
 			)
 		);
 
 		if ( empty( $user_ids ) ) {
+			delete_option( 'user_registration_migrate_users_skipped' );
 			wp_send_json_success(
 				array(
-					'message' => __( 'No unlinked users found to link.', 'user-registration' ),
-					'count'   => 0,
+					'message'  => __( 'No unlinked users found to link.', 'user-registration' ),
+					'count'    => 0,
+					'has_more' => false,
 				)
 			);
 		}
@@ -2813,14 +2818,39 @@ class UR_AJAX {
 			}
 		}
 
-		// Clear skip option when users are successfully linked.
-		delete_option( 'user_registration_migrate_users_skipped' );
+		// Check if any further unlinked accounts remain.
+		$has_more = false;
+		if ( count( $user_ids ) === $chunk_size ) {
+			$remaining_id = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT u.ID
+					FROM {$wpdb->users} u
+					LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
+					WHERE um.user_id IS NULL
+					AND u.ID != %d
+					LIMIT 1",
+					$current_user_id
+				)
+			);
+			$has_more     = ! empty( $remaining_id );
+		}
+
+		// Invalidate cached unlinked users count.
+		if ( function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
+			ur_clear_unlinked_users_count_cache( $current_user_id );
+		}
+
+		if ( ! $has_more ) {
+			// Clear skip option when all users are successfully linked.
+			delete_option( 'user_registration_migrate_users_skipped' );
+		}
 
 		wp_send_json_success(
 			array(
 				/* translators: %d: number of users migrated */
-				'message' => sprintf( _n( '%d user successfully linked to registration form.', '%d users successfully linked to registration form.', $migrated_count, 'user-registration' ), $migrated_count ),
-				'count'   => $migrated_count,
+				'message'  => sprintf( _n( '%d user successfully linked to registration form.', '%d users successfully linked to registration form.', $migrated_count, 'user-registration' ), $migrated_count ),
+				'count'    => $migrated_count,
+				'has_more' => $has_more,
 			)
 		);
 	}

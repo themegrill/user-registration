@@ -11209,24 +11209,37 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 
 		$membership_field_handled = ( ! $membership_enabled ) || $default_form_has_membership || $membership_field_skipped;
 
-		$has_legacy_payment_fields      = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
-		$legacy_payment_fields_handled  = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
+		$has_legacy_payment_fields     = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
+		$legacy_payment_fields_handled = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
 
 		// Single-form sites without multiple registration go straight to that form, same as the builder's own redirect; everyone else lands on the forms list.
-		$legacy_payment_fields_forms   = ur_get_all_user_registration_form();
-		$legacy_payment_fields_url     = ( ! empty( $legacy_payment_fields_forms ) && count( $legacy_payment_fields_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
-			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $legacy_payment_fields_forms ) )
+		$all_published_forms       = ur_get_all_user_registration_form();
+		$legacy_payment_fields_url = ( ! empty( $all_published_forms ) && count( $all_published_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
+			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $all_published_forms ) )
 			: admin_url( 'admin.php?page=user-registration' );
 
-		$unlinked_users_count   = ur_get_unlinked_users_count();
-		$unlinked_users_handled = ur_is_unlinked_users_handled();
-
 		$forms_list = array();
-		foreach ( (array) $legacy_payment_fields_forms as $form_id => $form_title ) {
+		foreach ( (array) $all_published_forms as $form_id => $form_title ) {
 			$forms_list[] = array(
 				'id'    => (int) $form_id,
 				'title' => (string) $form_title,
 			);
+		}
+
+		$is_migration_skipped = ur_string_to_bool( get_option( 'user_registration_migrate_users_skipped', false ) );
+		if ( $is_migration_skipped ) {
+			$unlinked_users_count   = 0;
+			$unlinked_users_handled = true;
+		} else {
+			$unlinked_users_count   = ur_get_unlinked_users_count();
+			$unlinked_users_handled = ( 0 === $unlinked_users_count );
+		}
+
+		// Validate default form: only use default_form_id if it exists in published forms, otherwise fall back to first published form.
+		$validated_default_form_id = 0;
+		if ( ! empty( $forms_list ) ) {
+			$form_ids                  = wp_list_pluck( $forms_list, 'id' );
+			$validated_default_form_id = in_array( (int) $default_form_id, $form_ids, true ) ? (int) $default_form_id : (int) $forms_list[0]['id'];
 		}
 
 		$site_assistant_data = array(
@@ -11247,7 +11260,7 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'unlinked_users_count'              => $unlinked_users_count,
 			'unlinked_users_handled'            => $unlinked_users_handled,
 			'registration_forms'                => $forms_list,
-			'default_form_id'                   => $default_form_id ? $default_form_id : ( ! empty( $forms_list ) ? $forms_list[0]['id'] : 0 ),
+			'default_form_id'                   => $validated_default_form_id,
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
@@ -11257,13 +11270,27 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
 	/**
 	 * Get count of users without an associated registration form, excluding current user.
+	 * Memoized per request and cached via transient to prevent expensive admin queries.
 	 *
 	 * @return int Number of unlinked user accounts.
 	 */
 	function ur_get_unlinked_users_count() {
-		global $wpdb;
+		static $memoized_count = null;
+
+		if ( null !== $memoized_count ) {
+			return $memoized_count;
+		}
 
 		$current_user_id = get_current_user_id();
+		$transient_key   = 'ur_unlinked_users_count_' . $current_user_id;
+		$cached_count    = get_transient( $transient_key );
+
+		if ( false !== $cached_count ) {
+			$memoized_count = absint( $cached_count );
+			return $memoized_count;
+		}
+
+		global $wpdb;
 
 		$count = $wpdb->get_var(
 			$wpdb->prepare(
@@ -11276,7 +11303,23 @@ if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
 			)
 		);
 
-		return absint( $count );
+		$memoized_count = absint( $count );
+		set_transient( $transient_key, $memoized_count, 5 * MINUTE_IN_SECONDS );
+
+		return $memoized_count;
+	}
+}
+
+if ( ! function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
+	/**
+	 * Clear cached count of unlinked users.
+	 *
+	 * @param int $user_id Optional user ID to clear cache for, defaults to current user.
+	 * @return void
+	 */
+	function ur_clear_unlinked_users_count_cache( $user_id = 0 ) {
+		$target_id = $user_id ? (int) $user_id : get_current_user_id();
+		delete_transient( 'ur_unlinked_users_count_' . $target_id );
 	}
 }
 
@@ -11284,16 +11327,19 @@ if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
 	/**
 	 * Check if unlinked users migration step has been completed or skipped.
 	 *
+	 * @param int|null $unlinked_count Optional known count of unlinked users.
 	 * @return bool True if handled or no unlinked users exist, false otherwise.
 	 */
-	function ur_is_unlinked_users_handled() {
+	function ur_is_unlinked_users_handled( $unlinked_count = null ) {
 		$is_skipped = ur_string_to_bool( get_option( 'user_registration_migrate_users_skipped', false ) );
 
 		if ( $is_skipped ) {
 			return true;
 		}
 
-		return 0 === ur_get_unlinked_users_count();
+		$count = null !== $unlinked_count ? (int) $unlinked_count : ur_get_unlinked_users_count();
+
+		return 0 === $count;
 	}
 }
 
@@ -11518,19 +11564,11 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 	function ur_should_show_site_assistant_menu() {
 		$site_assistant_data = ur_get_site_assistant_data();
 
-		$has_membership_issues = (
-			$site_assistant_data['has_default_form']
-			&& $site_assistant_data['membership_enabled']
-			&& $site_assistant_data['has_membership_plans']
-			&& ! $site_assistant_data['membership_field_handled']
-		);
-
 		return (
 			! $site_assistant_data['users_can_register']
 			|| ! $site_assistant_data['has_default_form']
 			|| ! empty( $site_assistant_data['missing_pages'] )
 			|| ( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 )
-			|| $has_membership_issues
 			|| ! $site_assistant_data['disabled_emails_handled']
 			|| ! $site_assistant_data['test_email_sent']
 			|| ! $site_assistant_data['spam_protection_handled']
@@ -11550,19 +11588,11 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 	function ur_site_assistant_config_count() {
 		$site_assistant_data = ur_get_site_assistant_data();
 
-		$has_membership_issues = (
-			$site_assistant_data['has_default_form']
-			&& $site_assistant_data['membership_enabled']
-			&& $site_assistant_data['has_membership_plans']
-			&& ! $site_assistant_data['membership_field_handled']
-		);
-
 		$checks = array(
 			! $site_assistant_data['users_can_register'],
 			! $site_assistant_data['has_default_form'],
 			! empty( $site_assistant_data['missing_pages'] ),
 			( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 ),
-			$has_membership_issues,
 			! $site_assistant_data['disabled_emails_handled'],
 			! $site_assistant_data['test_email_sent'],
 			! $site_assistant_data['spam_protection_handled'],
