@@ -11838,6 +11838,62 @@ if ( ! function_exists( 'ur_has_membership_plans' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_payment_gateway_label' ) ) {
+	/**
+	 * Human-readable label for a payment gateway slug.
+	 *
+	 * Prefer this over ucfirst( $slug ): brands like PayPal need mid-word capitals.
+	 *
+	 * @param string $gateway Gateway slug (e.g. paypal, stripe, bank).
+	 * @return string Translated label, or a safe fallback.
+	 * @since x.x.x
+	 */
+	function ur_get_payment_gateway_label( $gateway ) {
+		// Callers may pass display-formatted slugs like 'paypal standard'; sanitize_key() would drop the space.
+		$gateway = strtolower( sanitize_key( str_replace( ' ', '_', trim( (string) $gateway ) ) ) );
+
+		if ( '' === $gateway ) {
+			return '';
+		}
+
+		$labels = array(
+			'paypal'          => __( 'PayPal', 'user-registration' ),
+			'paypal_standard' => __( 'PayPal Standard', 'user-registration' ),
+			'stripe'          => __( 'Stripe', 'user-registration' ),
+			'credit_card'     => __( 'Stripe (Credit Card)', 'user-registration' ),
+			'bank'            => __( 'Bank Transfer', 'user-registration' ),
+			'authorize'       => __( 'Authorize.Net', 'user-registration' ),
+			'mollie'          => __( 'Mollie', 'user-registration' ),
+			'manual'          => __( 'Manual', 'user-registration' ),
+			'free'            => __( 'Free', 'user-registration' ),
+		);
+
+		/**
+		 * Filter payment gateway display labels keyed by slug.
+		 *
+		 * @param array  $labels  Map of slug => label.
+		 * @param string $gateway Requested gateway slug.
+		 */
+		$labels = apply_filters( 'user_registration_payment_gateway_labels', $labels, $gateway );
+
+		if ( isset( $labels[ $gateway ] ) ) {
+			return $labels[ $gateway ];
+		}
+
+		$membership_gateways = get_option( 'ur_membership_payment_gateways', array() );
+		if ( is_array( $membership_gateways ) && isset( $membership_gateways[ $gateway ] ) ) {
+			return $membership_gateways[ $gateway ];
+		}
+
+		$payment_gateways = get_option( 'ur_payment_gateways', array() );
+		if ( is_array( $payment_gateways ) && isset( $payment_gateways[ $gateway ] ) ) {
+			return $payment_gateways[ $gateway ];
+		}
+
+		return ucfirst( str_replace( '_', ' ', $gateway ) );
+	}
+}
+
 if ( ! function_exists( 'ur_has_payment_entries' ) ) {
 	/**
 	 * Check whether the Payments page has at least one record to display.
