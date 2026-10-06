@@ -129,6 +129,21 @@ class UR_Modules {
 		$features_lists   = $section_data->features;
 		$enabled_features = get_option( 'user_registration_enabled_features', array() );
 
+		// Stripe ships built in now and PayPal's form-level path is frozen with the rest of legacy
+		// payment fields, so a new site has no use for either tile. A site that already had one
+		// enabled keeps seeing both, unaffected.
+		if ( function_exists( 'ur_legacy_ecommerce_addons_enabled' ) && ! ur_legacy_ecommerce_addons_enabled() ) {
+			$legacy_ecommerce_slugs = array( 'user-registration-stripe', 'user-registration-payments' );
+			$features_lists         = array_values(
+				array_filter(
+					$features_lists,
+					function ( $feature ) use ( $legacy_ecommerce_slugs ) {
+						return ! in_array( $feature->slug, $legacy_ecommerce_slugs, true );
+					}
+				)
+			);
+		}
+
 		foreach ( $features_lists as $key => $feature ) {
 			if ( in_array( $feature->slug, $enabled_features, true ) ) {
 				$feature->status = 'active';

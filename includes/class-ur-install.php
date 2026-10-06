@@ -55,6 +55,10 @@ class UR_Install {
 			'ur_update_162_db_version',
 			'ur_update_162_meta_key',
 		),
+		'5.2.9'   => array(
+			'ur_update_529_legacy_payment_fields_flag',
+			'ur_update_529_db_version',
+		),
 	);
 
 	/**
@@ -164,6 +168,20 @@ class UR_Install {
 				|| '' !== get_option( 'user_registration_global_paypal_cancel_url', '' )
 				|| '' !== get_option( 'user_registration_global_paypal_return_url', '' );
 			add_option( 'urm_is_legacy_paypal_user', $has_legacy_paypal_data ? 1 : 0 );
+		}
+
+		if ( null === get_option( 'urm_is_legacy_payment_fields_user', null ) ) {
+			add_option( 'urm_is_legacy_payment_fields_user', ur_site_has_any_frozen_payment_field() ? 1 : 0 );
+		}
+
+		if ( null === get_option( 'urm_is_legacy_ecommerce_addons_user', null ) ) {
+			if ( ! function_exists( 'is_plugin_active' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			}
+			$has_legacy_ecommerce_addons = ur_check_module_activation( 'stripe' )
+				|| ur_check_module_activation( 'payments' )
+				|| is_plugin_active( 'user-registration-stripe/user-registration-stripe.php' );
+			add_option( 'urm_is_legacy_ecommerce_addons_user', $has_legacy_ecommerce_addons ? 1 : 0 );
 		}
 
 		self::create_files();
