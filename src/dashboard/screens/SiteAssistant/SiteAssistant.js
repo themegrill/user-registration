@@ -194,7 +194,7 @@ const SiteAssistant = () => {
 	// State to track if all components are completed
 	const [allCompleted, setAllCompleted] = useState(false);
 
-	// Callback to handle when existing users migration is completed or skipped
+	// Callback to handle when existing users are linked
 	const handleUsersMigrationHandled = useCallback(() => {
 		setUsersMigrationHandled(true);
 	}, []);
@@ -449,7 +449,6 @@ const SiteAssistant = () => {
 								isOpen={open.migrateUsers}
 								onToggle={() => toggleOpen("migrateUsers")}
 								onMigrated={handleUsersMigrationHandled}
-								onSkipped={handleUsersMigrationHandled}
 								numbering={++config_number}
 							/>
 						)}

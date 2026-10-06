@@ -36,31 +36,4 @@ test.describe("Site Assistant: Link Existing Users @fresh @admin", () => {
 		expect(response.success).toBe(false);
 		expect(response.data?.message).toMatch(/Invalid or unpublished registration form selected/i);
 	});
-
-	test("Site Assistant skip_site_assistant_section handles migrate_users action @fresh @admin", async ({
-		page,
-	}) => {
-		const nonce = await restNonce(page);
-
-		const response = await page.evaluate(async (nonce) => {
-			const body = new URLSearchParams({
-				action: "user_registration_skip_site_assistant_section",
-				section: "migrate_users",
-				security: nonce,
-			});
-
-			const res = await fetch("/wp-admin/admin-ajax.php", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded",
-				},
-				body: body.toString(),
-			});
-
-			return await res.json();
-		}, nonce);
-
-		expect(response.success).toBe(true);
-		expect(response.data?.message).toMatch(/Step skipped\. It will come back if more users need linking/i);
-	});
 });

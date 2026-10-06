@@ -93,20 +93,12 @@ const getPreviewNamesText = (users, total) => {
  * @param {boolean} props.isOpen Whether the card body is expanded.
  * @param {Function} props.onToggle Toggles the card body.
  * @param {Function} props.onMigrated Called once the users are linked (or none were left to link).
- * @param {Function} props.onSkipped Called once the step is skipped.
  * @param {number} props.numbering Position of this step in the checklist.
  * @return {JSX.Element} The step card.
  */
-const MigrateExistingUsers = ({
-	isOpen,
-	onToggle,
-	onMigrated,
-	onSkipped,
-	numbering
-}) => {
+const MigrateExistingUsers = ({ isOpen, onToggle, onMigrated, numbering }) => {
 	const toast = useToast();
 	const [isMigrating, setIsMigrating] = useState(false);
-	const [isSkipping, setIsSkipping] = useState(false);
 	const [linkedSoFar, setLinkedSoFar] = useState(0);
 
 	const siteAssistantData = window._UR_DASHBOARD_?.site_assistant_data || {};
@@ -146,12 +138,13 @@ const MigrateExistingUsers = ({
 		setIsMigrating(true);
 		setLinkedSoFar(0);
 
+		let totalLinked = 0;
+
 		try {
 			const adminURL =
 				window._UR_DASHBOARD_?.adminURL ||
 				`${window.location.origin}/wp-admin/`;
 
-			let totalLinked = 0;
 			let hasMore = true;
 			let isStalled = false;
 
@@ -284,105 +277,35 @@ const MigrateExistingUsers = ({
 				onMigrated();
 			}
 		} catch (error) {
+			const reason =
+				error.message ||
+				__(
+					"Failed to link users. Please try again.",
+					"user-registration"
+				);
+
 			toast({
 				title: __("Couldn't link users", "user-registration"),
 				description:
-					error.message ||
-					__(
-						"Failed to link users. Please try again.",
-						"user-registration"
-					),
+					totalLinked > 0
+						? sprintf(
+								/* translators: 1: number of users already linked, 2: error message */
+								_n(
+									"%1$s user was linked before this error. %2$s",
+									"%1$s users were linked before this error. %2$s",
+									totalLinked,
+									"user-registration"
+								),
+								formatCount(totalLinked),
+								reason
+							)
+						: reason,
 				status: "error",
 				duration: 5000,
 				isClosable: true
 			});
 		} finally {
 			setIsMigrating(false);
-		}
-	};
-
-	const handleSkip = async () => {
-		setIsSkipping(true);
-
-		try {
-			const adminURL =
-				window._UR_DASHBOARD_?.adminURL ||
-				`${window.location.origin}/wp-admin/`;
-			const response = await fetch(`${adminURL}admin-ajax.php`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/x-www-form-urlencoded"
-				},
-				body: new URLSearchParams({
-					action: "user_registration_skip_site_assistant_section",
-					section: "migrate_users",
-					security: window._UR_DASHBOARD_?.urRestApiNonce || ""
-				})
-			});
-
-			if (!response.ok) {
-				throw new Error(
-					sprintf(
-						/* translators: %d: HTTP status code */
-						__(
-							"Request failed with status %d.",
-							"user-registration"
-						),
-						response.status
-					)
-				);
-			}
-
-			let result;
-			try {
-				result = await response.json();
-			} catch {
-				throw new Error(
-					__(
-						"Received an invalid response from the server.",
-						"user-registration"
-					)
-				);
-			}
-
-			if (result.success) {
-				toast({
-					title: __("Skipped", "user-registration"),
-					description:
-						result.data?.message ||
-						__(
-							"Step skipped. It will come back if more users need linking.",
-							"user-registration"
-						),
-					status: "success",
-					duration: 5000,
-					isClosable: true
-				});
-
-				if (onSkipped) {
-					onSkipped();
-				}
-			} else {
-				throw new Error(
-					result.data?.message ||
-						__("Failed to skip step.", "user-registration")
-				);
-			}
-		} catch (error) {
-			toast({
-				title: __("Couldn't skip this step", "user-registration"),
-				description:
-					error.message ||
-					__(
-						"Failed to skip step. Please try again.",
-						"user-registration"
-					),
-				status: "error",
-				duration: 5000,
-				isClosable: true
-			});
-		} finally {
-			setIsSkipping(false);
 		}
 	};
 
@@ -564,59 +487,40 @@ const MigrateExistingUsers = ({
 						</FormControl>
 					</Stack>
 
-					<HStack justify="space-between" align="center">
-						<Button
-							colorScheme={"primary"}
-							rounded="base"
-							onClick={handleMigrate}
-							size={"sm"}
-							fontSize="14px"
-							py={5}
-							isLoading={isMigrating}
-							isDisabled={isMigrating || isSkipping}
-							loadingText={
-								linkedSoFar > 0
-									? sprintf(
-											/* translators: 1: users linked so far, 2: total users to link */
-											__(
-												"Linking %1$s of %2$s...",
-												"user-registration"
-											),
-											formatCount(linkedSoFar),
-											formatCount(unlinkedCount)
-										)
-									: __("Linking...", "user-registration")
-							}
-						>
-							{sprintf(
-								/* translators: %s: number of unlinked users */
-								_n(
-									"Link %s User",
-									"Link %s Users",
-									unlinkedCount,
-									"user-registration"
-								),
-								formatCount(unlinkedCount)
-							)}
-						</Button>
-
-						<Button
-							variant="link"
-							fontSize="14px"
-							fontWeight="normal"
-							color="gray.500"
-							textDecoration="none"
-							_hover={{ textDecoration: "underline" }}
-							onClick={handleSkip}
-							cursor="pointer"
-							width="fit-content"
-							isLoading={isSkipping}
-							isDisabled={isMigrating || isSkipping}
-							loadingText={__("Skipping...", "user-registration")}
-						>
-							{__("Skip Setup", "user-registration")}
-						</Button>
-					</HStack>
+					<Button
+						colorScheme={"primary"}
+						rounded="base"
+						alignSelf="flex-start"
+						onClick={handleMigrate}
+						size={"sm"}
+						fontSize="14px"
+						py={5}
+						isLoading={isMigrating}
+						loadingText={
+							linkedSoFar > 0
+								? sprintf(
+										/* translators: 1: users linked so far, 2: total users to link */
+										__(
+											"Linking %1$s of %2$s...",
+											"user-registration"
+										),
+										formatCount(linkedSoFar),
+										formatCount(unlinkedCount)
+									)
+								: __("Linking...", "user-registration")
+						}
+					>
+						{sprintf(
+							/* translators: %s: number of unlinked users */
+							_n(
+								"Link %s User",
+								"Link %s Users",
+								unlinkedCount,
+								"user-registration"
+							),
+							formatCount(unlinkedCount)
+						)}
+					</Button>
 				</Stack>
 			</Collapse>
 		</Stack>

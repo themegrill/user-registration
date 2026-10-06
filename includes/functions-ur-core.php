@@ -11308,7 +11308,7 @@ if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
 
 if ( ! function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
 	/**
-	 * Clear cached count of unlinked users.
+	 * Clear cached counts of users without a registration form, including the one behind the Profile Connect notice.
 	 *
 	 * @param int $user_id Optional user ID to clear cache for, defaults to current user.
 	 * @return void
@@ -11316,6 +11316,7 @@ if ( ! function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
 	function ur_clear_unlinked_users_count_cache( $user_id = 0 ) {
 		$target_id = $user_id ? (int) $user_id : get_current_user_id();
 		delete_transient( 'ur_unlinked_users_count_' . $target_id );
+		delete_transient( 'urm_users_not_from_urm_forms' );
 	}
 }
 
@@ -11358,18 +11359,15 @@ if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
 
 if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
 	/**
-	 * Check if unlinked users migration step has been completed, or skipped with no new unlinked users since.
+	 * Check if the unlinked users step is done, meaning no unlinked users are left.
 	 *
 	 * @param int|null $unlinked_count Optional known count of unlinked users.
-	 * @return bool True if no unlinked users exist or none were added after the step was skipped, false otherwise.
+	 * @return bool True if no unlinked users exist, false otherwise.
 	 */
 	function ur_is_unlinked_users_handled( $unlinked_count = null ) {
 		$count = null !== $unlinked_count ? (int) $unlinked_count : ur_get_unlinked_users_count();
 
-		// ponytail: compares counts only, so one user linked elsewhere plus one new user keeps the step hidden.
-		$skipped_count = absint( get_option( 'user_registration_migrate_users_skipped', 0 ) );
-
-		return 0 === $count || ( $skipped_count > 0 && $count <= $skipped_count );
+		return 0 === $count;
 	}
 }
 

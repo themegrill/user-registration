@@ -2739,16 +2739,6 @@ class UR_AJAX {
 				);
 				break;
 
-			case 'migrate_users':
-				// Store the count being skipped so the step returns once more users need linking.
-				update_option( 'user_registration_migrate_users_skipped', max( 1, ur_get_unlinked_users_count() ) );
-				wp_send_json_success(
-					array(
-						'message' => __( 'Step skipped. It will come back if more users need linking.', 'user-registration' ),
-					)
-				);
-				break;
-
 			default:
 				wp_send_json_error( array( 'message' => __( 'Invalid section specified.', 'user-registration' ) ) );
 				break;
@@ -2804,7 +2794,8 @@ class UR_AJAX {
 		$user_ids = array_slice( $user_ids, 0, $chunk_size );
 
 		if ( empty( $user_ids ) ) {
-			delete_option( 'user_registration_migrate_users_skipped' );
+			// Another admin may have linked everyone, so this admin's cached count is stale.
+			ur_clear_unlinked_users_count_cache( $current_user_id );
 			wp_send_json_success(
 				array(
 					'message'  => __( 'No unlinked users found to link.', 'user-registration' ),
@@ -2823,17 +2814,7 @@ class UR_AJAX {
 			}
 		}
 
-		// Invalidate cached unlinked users count.
-		if ( function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
-			ur_clear_unlinked_users_count_cache( $current_user_id );
-		}
-		// Also drop the non-URM users count behind the Profile Connect notice so it doesn't show a stale total.
-		delete_transient( 'urm_users_not_from_urm_forms' );
-
-		if ( ! $has_more ) {
-			// Clear skip option when all users are successfully linked.
-			delete_option( 'user_registration_migrate_users_skipped' );
-		}
+		ur_clear_unlinked_users_count_cache( $current_user_id );
 
 		wp_send_json_success(
 			array(
