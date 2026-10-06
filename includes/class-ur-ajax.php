@@ -1039,28 +1039,29 @@ class UR_AJAX {
 			wp_send_json_error( array( 'message' => __( 'You do not have permission.', 'user-registration' ) ) );
 		}
 
-		$settings_data = $_POST['data']['setting_data'];
-
-		$settings_data = array_values(
-			array_filter(
-				$settings_data,
-				function ( $item ) {
-					return isset( $item['option'] ) && $item['option'] !== 'user_registration_form_setting_general_advanced';
+		$settings_data = isset( $_POST['data']['setting_data'] ) && is_array( $_POST['data']['setting_data'] ) ? wp_unslash( $_POST['data']['setting_data'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Values are sanitized against declared field types before saving.
+		$login_section = array( 'settings' => array() );
+		foreach ( array( get_login_form_settings(), get_login_field_settings() ) as $definition ) {
+			foreach ( $definition['sections'] as $section ) {
+				foreach ( $section['settings'] as $field ) {
+					if ( ! empty( $field['id'] ) && isset( $field['type'] ) && 'button' !== $field['type'] ) {
+						$login_section['settings'][] = $field;
+					}
 				}
-			)
-		);
-
-		$output = array();
+			}
+		}
+		$allowed_keys = array_column( $login_section['settings'], 'id' );
+		$output       = array();
 		foreach ( $settings_data as $item ) {
-			if ( isset( $item['option'] ) ) {
-				$output[ $item['option'] ] = isset( $item['value'] ) ? $item['value'] : '';
+			if ( is_array( $item ) && isset( $item['option'], $item['value'] ) && is_string( $item['option'] ) && is_scalar( $item['value'] ) && in_array( $item['option'], $allowed_keys, true ) ) {
+				$output[ $item['option'] ] = $item['value'];
 			}
 		}
 
 		do_action( 'user_registration_validation_before_login_form_save', $output );
 
-		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ) ) {
-			if ( '' === $output['user_registration_login_options_configured_captcha_type'] || ! $output['user_registration_login_options_configured_captcha_type'] ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ?? false ) ) {
+			if ( empty( $output['user_registration_login_options_configured_captcha_type'] ) ) {
 				wp_send_json_error(
 					array(
 						'message' => esc_html__( "Seems like you haven't selected the reCAPTCHA type (Configured Captcha).", 'user-registration' ),
@@ -1069,7 +1070,7 @@ class UR_AJAX {
 			}
 		}
 
-		if ( ur_string_to_bool( $output['user_registration_login_options_prevent_core_login'] ) ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_prevent_core_login'] ?? false ) ) {
 
 			$login_redirect_value = isset( $output['user_registration_login_options_login_redirect_url'] ) ? $output['user_registration_login_options_login_redirect_url'] : '';
 			if ( empty( $login_redirect_value ) || ! is_numeric( $login_redirect_value ) ) {
@@ -1102,7 +1103,7 @@ class UR_AJAX {
 		}
 
 		// check for valid lost password and reset password page.
-		if ( ur_string_to_bool( $output['user_registration_login_options_lost_password'] ) ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_lost_password'] ?? false ) ) {
 
 			if ( ! empty( $output['user_registration_lost_password_page_id'] ) && ( is_numeric( $output['user_registration_lost_password_page_id'] ) ) ) {
 				$is_page_lost_password_page = ur_find_lost_password_in_page( sanitize_text_field( wp_unslash( $output['user_registration_lost_password_page_id'] ) ) );
@@ -1145,14 +1146,16 @@ class UR_AJAX {
 					update_option( 'user_registration_login_options_login_redirect_url', $settings );
 				}
 			}
-			update_option( $key, $settings );
+			$output[ $key ] = $settings;
 		}
+
+		ur_save_settings_options( $login_section, $output );
 
 		/**
 		 * Action after form setting save.
 		 * Default is the $_POST['data'].
 		 */
-		do_action( 'user_registration_after_login_form_settings_save', wp_unslash( $settings_data ) ); //phpcs:ignore
+		do_action( 'user_registration_after_login_form_settings_save', $settings_data );
 
 		wp_send_json_success(
 			array()
