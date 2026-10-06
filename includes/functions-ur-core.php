@@ -11518,10 +11518,19 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 	function ur_should_show_site_assistant_menu() {
 		$site_assistant_data = ur_get_site_assistant_data();
 
+		$has_membership_issues = (
+			$site_assistant_data['has_default_form']
+			&& $site_assistant_data['membership_enabled']
+			&& $site_assistant_data['has_membership_plans']
+			&& ! $site_assistant_data['membership_field_handled']
+		);
+
 		return (
 			! $site_assistant_data['users_can_register']
 			|| ! $site_assistant_data['has_default_form']
 			|| ! empty( $site_assistant_data['missing_pages'] )
+			|| ( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 )
+			|| $has_membership_issues
 			|| ! $site_assistant_data['disabled_emails_handled']
 			|| ! $site_assistant_data['test_email_sent']
 			|| ! $site_assistant_data['spam_protection_handled']
@@ -11529,7 +11538,6 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 			|| ! $site_assistant_data['legacy_payment_fields_handled']
 		);
 	}
-
 }
 
 if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
@@ -11537,15 +11545,24 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 	 * Check if site assistant menu should be shown.
 	 * Returns false if all options are handled and set.
 	 *
-	 * @return bool
+	 * @return int
 	 */
 	function ur_site_assistant_config_count() {
 		$site_assistant_data = ur_get_site_assistant_data();
+
+		$has_membership_issues = (
+			$site_assistant_data['has_default_form']
+			&& $site_assistant_data['membership_enabled']
+			&& $site_assistant_data['has_membership_plans']
+			&& ! $site_assistant_data['membership_field_handled']
+		);
 
 		$checks = array(
 			! $site_assistant_data['users_can_register'],
 			! $site_assistant_data['has_default_form'],
 			! empty( $site_assistant_data['missing_pages'] ),
+			( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 ),
+			$has_membership_issues,
 			! $site_assistant_data['disabled_emails_handled'],
 			! $site_assistant_data['test_email_sent'],
 			! $site_assistant_data['spam_protection_handled'],
