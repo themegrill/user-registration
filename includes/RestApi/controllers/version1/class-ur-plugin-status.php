@@ -138,6 +138,25 @@ class UR_Plugin_Status {
 			$plugin_statuses['user-registration-payments'] = 'not-installed';
 		}
 
+		/*
+		 * Stripe: templates still list the retired addon slug.
+		 * - Legacy: addon plugin active → already marked above.
+		 * - Core: only when Stripe lives in Pro (version gate) and either the
+		 *   retirement option / new-install option is set, or the addon is not active.
+		 */
+		$stripe_core_available = defined( 'UR_VERSION' ) && version_compare( UR_VERSION, '6.2.0', '>=' );
+		$use_core_stripe       = $stripe_core_available && (
+			ur_string_to_bool( get_option( 'urm_stripe_addon_retired', false ) )
+			|| ur_string_to_bool( get_option( 'urm_is_new_installation', false ) )
+			|| ( function_exists( 'ur_is_stripe_addon_active' ) && ! ur_is_stripe_addon_active() )
+		);
+
+		if ( function_exists( 'ur_is_stripe_addon_active' ) && ur_is_stripe_addon_active() ) {
+			$plugin_statuses['user-registration-stripe'] = 'active';
+		} elseif ( $use_core_stripe && ur_check_module_activation( 'stripe' ) ) {
+			$plugin_statuses['user-registration-stripe'] = 'active';
+		}
+
 		return new WP_REST_Response(
 			array(
 				'success'       => true,
@@ -245,6 +264,20 @@ class UR_Plugin_Status {
 		$addon = $request->get_param( 'addonData' );
 
 		if ( isset( $addon['slug'] ) && 'user-registration-payments' === $addon['slug'] ) {
+			$addon['type'] = 'feature';
+		}
+
+		if (
+			isset( $addon['slug'] )
+			&& 'user-registration-stripe' === $addon['slug']
+			&& defined( 'UR_VERSION' )
+			&& version_compare( UR_VERSION, '6.2.0', '>=' )
+			&& (
+				ur_string_to_bool( get_option( 'urm_stripe_addon_retired', false ) )
+				|| ur_string_to_bool( get_option( 'urm_is_new_installation', false ) )
+				|| ( function_exists( 'ur_is_stripe_addon_active' ) && ! ur_is_stripe_addon_active() )
+			)
+		) {
 			$addon['type'] = 'feature';
 		}
 

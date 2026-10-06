@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { addressedTo, mailAvailable, waitForMessage } from "../support/mail";
+import { addressedTo, mailAvailable, messageHtml, waitForMessage } from "../support/mail";
 import { ensureFirstRun, firstFormId, registerOn, registrationPageFor } from "../support/urm";
-import { deleteUserByEmail, loginAsAdmin, newVisitor } from "../support/wp";
+import { uniqueEmail } from "../support/env";
+import { deleteUserByEmail, gotoAdminPage, loginAsAdmin, newVisitor } from "../support/wp";
 
 /**
  * Ported from UR-Automation `06__email_related_tests` — "Validate Admin Email
@@ -55,5 +56,39 @@ test.describe("registration emails @fresh", () => {
 
     await deleteUserByEmail(page, account.email);
     await visitor.close();
+  });
+
+  /**
+   * Regression for themegrill/user-registration-pro#1644: "Send Test Email" used
+   * to hand a bare string to wp_mail(), so the email wrapper, header and footer
+   * configured for real notifications never applied.
+   */
+  test("Send Test Email is wrapped in the notification email template @fresh @email-notification", async ({
+    page,
+  }) => {
+    test.skip(
+      !(await mailAvailable()),
+      "no mail catcher reachable — set TGQA_MAILPIT_URL",
+    );
+
+    await loginAsAdmin(page);
+    await gotoAdminPage(page, "user-registration-settings", "&tab=email");
+
+    const recipient = uniqueEmail("testmail");
+    const cutoff = Date.now() - 5_000;
+    await page.fill("#user_registration_email_send_to", recipient);
+    await page.click(".user_registration_send_email_test");
+    await expect(page.locator(".notice-success")).toBeVisible();
+
+    const sent = await waitForMessage(
+      (m) => addressedTo(recipient)(m) && Date.parse(m.Created) >= cutoff,
+    );
+    expect(sent, `no test email was delivered to ${recipient}`).not.toBeNull();
+
+    const html = await messageHtml(sent!.ID);
+    expect(html, "the delivered message has no HTML body").not.toBeNull();
+    expect(html).toContain("email-wrapper-outer");
+    expect(html).toContain("email-body");
+    expect(html).toMatch(/<p style="[^"]+">Your test email has been received successfully\.<\/p>/);
   });
 });

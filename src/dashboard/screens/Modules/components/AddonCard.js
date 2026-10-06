@@ -147,7 +147,8 @@ const AddonCard = ({ addon, showToast }) => {
 		if (upgradeURL) {
 			const plan_upgrade_url = urUtmUrl(upgradeURL, {
 				source: "dashboard-all-features",
-				medium: "upgrade-link"
+				medium: "upgrade-link",
+				content: addon.slug || "addon-card-upgrade"
 			});
 			window.open(plan_upgrade_url, "_blank");
 		}

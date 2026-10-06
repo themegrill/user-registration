@@ -38,8 +38,12 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 			add_action( 'admin_menu', array( $this, 'admin_menu' ), 1 );
 			add_action( 'admin_menu', array( $this, 'settings_menu' ), 20 );
 			add_action( 'admin_menu', array( $this, 'add_registration_menu' ), 8 );
-			add_action( 'admin_menu', array( $this, 'status_menu' ), 75 );
 			add_action( 'admin_menu', array( $this, 'dashboard_menu' ), 3 );
+			// Fires right where WP core is about to wp_die() an unregistered
+			// admin page (wp-admin/includes/menu.php), before admin_init
+			// even runs — the old Tools page slug is unregistered now, so
+			// this is the earliest point that can still redirect it.
+			add_action( 'admin_page_access_denied', array( $this, 'redirect_legacy_tools_page' ) );
 			// add_action('admin_head', array($this, 'remove_duplicate_menu_items'));
 
 			if ( is_plugin_active( 'user-registration-pro/user-registration.php' ) && empty( get_option( 'user-registration_license_key', '' ) ) ) {
@@ -127,6 +131,11 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					if ( ! defined( 'LEARNDASH_VERSION' ) ) {
 						continue;
 					}
+				}
+
+				// Stripe is core now; an active module means the real field class loads on demand, so this stale addon-upsell should not show.
+				if ( 'user_registration_stripe_gateway' === $field['id'] && function_exists( 'ur_check_module_activation' ) && ur_check_module_activation( 'stripe' ) ) {
+					continue;
 				}
 
 				if ( ! class_exists( $field['field_class'] ) ) {
@@ -415,8 +424,15 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 				),
 			);
 
+			$form_id = isset( $_GET['edit-registration'] ) ? absint( wp_unslash( $_GET['edit-registration'] ) ) : 0; //phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
 			foreach ( $field_sections as $section ) {
 				$class_to_check = $section['fields_parent_class'];
+
+				// Payment fields are frozen per form, so new sites are not upsold them either - a legacy site's other forms stay frozen too.
+				if ( 'User_Registration_Payments_Admin' === $class_to_check && ! ur_legacy_payment_fields_enabled( $form_id ) ) {
+					continue;
+				}
 
 				if ( ! class_exists( $class_to_check ) ) {
 					$fields       = $section['fields'];
@@ -753,73 +769,53 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		}
 
 		/**
-		 * Add status menu item.
+		 * Redirect every legacy `?page=user-registration-status` URL (the old
+		 * standalone Tools page) into its new location inside Settings, so
+		 * old bookmarks, support links and the log delete-action redirects
+		 * keep working after Tools moved into the Settings rail.
+		 *
+		 * Hooked to `admin_page_access_denied` rather than `admin_init`:
+		 * WP core's own wp-admin/includes/menu.php denies (and wp_die()s)
+		 * access to an unregistered admin page during menu building, which
+		 * happens before `admin_init` ever fires — so `admin_init` alone
+		 * can never catch this URL now that the page is gone.
 		 */
-		public function status_menu() {
-			add_submenu_page(
-				'user-registration',
-				__( 'User Registration Tools', 'user-registration' ),
-				__( 'Tools', 'user-registration' ),
-				'manage_user_registration',
-				'user-registration-status',
-				array(
-					$this,
-					'status_page',
-				)
+		public function redirect_legacy_tools_page() {
+			if ( empty( $_GET['page'] ) || 'user-registration-status' !== sanitize_text_field( wp_unslash( $_GET['page'] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+				return;
+			}
+
+			if ( ! current_user_can( 'manage_user_registration' ) ) {
+				return;
+			}
+
+			$tab = empty( $_REQUEST['tab'] ) ? 'logs' : sanitize_title( wp_unslash( $_REQUEST['tab'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+
+			if ( 'setup_wizard' === $tab ) {
+				wp_safe_redirect( admin_url( 'admin.php?page=user-registration-welcome&tab=setup-wizard' ) );
+				exit;
+			}
+
+			// Any other tab — logs, system_info, or an add-on-registered
+			// slug (see UR_Settings_Tools::get_sections_callback()) — maps
+			// directly onto the matching Tools section by the same name.
+			$query_args = array(
+				'page'    => 'user-registration-settings',
+				'tab'     => 'tools',
+				'section' => $tab,
 			);
 
-			if ( isset( $_GET['page'] ) && in_array(
-					$_GET['page'],
-					array(
-						'user-registration-status',
-						'user-registration-status&tab=logs',
-						'user-registration-status&tab=system_info',
-					)
-				) ) {
-
-				add_submenu_page(
-					'user-registration',
-					__( 'Logs', 'user-registration' ),
-					'↳ ' . __( 'Logs', 'user-registration' ),
-					'manage_user_registration',
-					'user-registration-status&tab=logs',
-					array(
-						$this,
-						'status_page',
-					),
-					76
-				);
-
-				add_submenu_page(
-					'user-registration',
-					__( 'System Info', 'user-registration' ),
-					'↳ ' . __( 'System Info', 'user-registration' ),
-					'manage_user_registration',
-					'user-registration-status&tab=system_info',
-					array(
-						$this,
-						'status_page',
-					),
-					77
-				);
-
-				$is_new_installation = ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) );
-
-				if ( $is_new_installation ) {
-					add_submenu_page(
-						'user-registration',
-						__( 'Setup Wizard', 'user-registration' ),
-						'↳ ' . __( 'Setup Wizard', 'user-registration' ),
-						'manage_user_registration',
-						'user-registration-welcome&tab=setup-wizard',
-						array(
-							$this,
-							'status_page',
-						),
-						78
-					);
+			// Preserve the specific query args the Logs view and its delete
+			// actions rely on (the "View" form submits log_file via POST;
+			// nothing else from the old URL is forwarded).
+			foreach ( array( 'log_file', 'handle', 'handle_all', '_wpnonce' ) as $key ) {
+				if ( isset( $_REQUEST[ $key ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+					$query_args[ $key ] = sanitize_text_field( wp_unslash( $_REQUEST[ $key ] ) ); // phpcs:ignore WordPress.Security.NonceVerification
 				}
 			}
+
+			wp_safe_redirect( add_query_arg( $query_args, admin_url( 'admin.php' ) ) );
+			exit;
 		}
 
 		/**
@@ -919,7 +915,16 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					esc_html__( 'Upgrade to Pro', 'user-registration' )
 				),
 				'manage_options',
-				esc_url_raw( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'ur-submenu', 'medium' => 'upgrade-link' ) ) )
+				esc_url_raw(
+					ur_utm_url(
+						'https://wpuserregistration.com/upgrade/',
+						array(
+							'source'  => 'ur-submenu',
+							'medium'  => 'upgrade-link',
+							'content' => 'submenu-upgrade',
+						)
+					)
+				)
 			);
 		}
 
@@ -1163,7 +1168,17 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 					 *
 					 * @param string Upgrade URL
 					 */
-					'upgrade_url'                  => apply_filters( 'user_registration_upgrade_url', ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'form-template', 'medium' => 'button' ) ) ),
+					'upgrade_url'                  => apply_filters(
+						'user_registration_upgrade_url',
+						ur_utm_url(
+							'https://wpuserregistration.com/upgrade/',
+							array(
+								'source'  => 'form-template',
+								'medium'  => 'button',
+								'content' => 'form-template-menus',
+							)
+						)
+					),
 					'upgrade_button'               => esc_html__( 'Upgrade Plan', 'user-registration' ),
 					'upgrade_message'              => esc_html__( 'This template requires premium addons. Please upgrade to the Premium plan to unlock all these awesome Templates.', 'user-registration' ),
 					'upgrade_title'                => esc_html__( 'is a Premium Template', 'user-registration' ),
@@ -1208,13 +1223,6 @@ if ( ! class_exists( 'UR_Admin_Menus', false ) ) :
 		 */
 		public function settings_page() {
 			UR_Admin_Settings::output();
-		}
-
-		/**
-		 * Init the status page.
-		 */
-		public function status_page() {
-			UR_Admin_Status::output();
 		}
 
 		/**

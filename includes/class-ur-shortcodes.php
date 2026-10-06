@@ -62,6 +62,9 @@ class UR_Shortcodes {
 			'after'  => null,
 		)
 	) {
+		// Every shortcode routed through here renders differently per user, so none of it is cacheable.
+		UR_Cache_Helper::disable_page_cache( 'shortcode' );
+
 		ob_start();
 		include_once UR_ABSPATH . 'includes/functions-ur-notice.php';
 		$wrap_before = empty( $wrapper['before'] ) ? '<div id="user-registration" class="' . esc_attr( $wrapper['class'] ) . '">' : $wrapper['before'];
@@ -265,6 +268,9 @@ class UR_Shortcodes {
 	 * @param mixed $atts Extra attributes.
 	 */
 	public static function form( $atts ) {
+		// Several branches below return before the form template runs, so the template action is not enough.
+		UR_Cache_Helper::disable_page_cache( 'registration' );
+
 		$check_user_state = isset( $atts['userState'] ) && 'logged_in' === $atts['userState'];
 
 		if ( ! is_user_logged_in() && ! $check_user_state && ! ur_users_can_register() ) {
@@ -273,12 +279,10 @@ class UR_Shortcodes {
 
 		if ( is_user_logged_in() || $check_user_state ) {
 
-			$is_membership_module_active = ur_check_module_activation( 'membership' );
-			global $wp_query;
-			$page_id                     = $wp_query->get_queried_object_id();
-			$membership_checkout_page_id = get_option( 'user_registration_member_registration_page_id', false );
+			$is_membership_module_active    = ur_check_module_activation( 'membership' );
+			$has_membership_checkout_intent = isset( $_GET['action'] ) && isset( $_GET['membership_id'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
-			if ( $is_membership_module_active && is_user_logged_in() && $membership_checkout_page_id && $membership_checkout_page_id == $page_id ) {
+			if ( $is_membership_module_active && is_user_logged_in() && $has_membership_checkout_intent ) {
 				$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
 				do_action( 'wp_enqueue_membership_scripts' );
 				wp_enqueue_script( 'user-registration' );
