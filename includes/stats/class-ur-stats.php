@@ -425,7 +425,9 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				return $data;
 			}
 
-			return get_option( 'user_registration_stats_last_data', $data );
+			$last_data = get_option( 'user_registration_stats_last_data', $data );
+
+			return is_array( $last_data ) ? $last_data : $data;
 		}
 
 		/**
@@ -449,6 +451,11 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 * @return mixed
 		 */
 		public function run_on_save( $old_value, $value, $option ) {
+			// Opting out removes the stored copy of the last report.
+			if ( ! ur_string_to_bool( $value ) ) {
+				delete_option( 'user_registration_stats_last_data' );
+			}
+
 			if ( $value !== $old_value && $value && ( false === get_option( self::LAST_RUN_STAMP ) ) ) {
 				$this->process();
 			}
@@ -612,7 +619,10 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				'onboarding'        => $this->get_onboarding_data(),
 			);
 
-			update_option( 'user_registration_stats_last_data', $data['data'], false );
+			// Only the cron run builds the full report; module and opt-in saves send an empty payment health block.
+			if ( wp_doing_cron() ) {
+				update_option( 'user_registration_stats_last_data', $data['data'], false );
+			}
 
 			$this->send_request( apply_filters( 'user_registration_tg_tracking_remote_url', $stats_api_url ), $data );
 		}
@@ -730,16 +740,16 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					array( 'user_registration_login_options_login_redirect_url', '', true ),
 					array( 'user_registration_login_options_configured_captcha_type', 'v2' ),
 
-					// Captcha Settings.
+					// Captcha Settings. Secrets carry the third element so only 1 (set) is reported, never the value.
 					array( 'user_registration_captcha_setting_recaptcha_version', 'v2' ),
 					array( 'user_registration_captcha_setting_recaptcha_site_key', '' ),
-					array( 'user_registration_captcha_setting_recaptcha_site_secret', '' ),
+					array( 'user_registration_captcha_setting_recaptcha_site_secret', '', true ),
 					array( 'user_registration_captcha_setting_recaptcha_site_key_v3', '' ),
-					array( 'user_registration_captcha_setting_recaptcha_site_secret_v3', '' ),
+					array( 'user_registration_captcha_setting_recaptcha_site_secret_v3', '', true ),
 					array( 'user_registration_captcha_setting_recaptcha_site_key_hcaptcha', '' ),
-					array( 'user_registration_captcha_setting_recaptcha_site_secret_hcaptcha', '' ),
+					array( 'user_registration_captcha_setting_recaptcha_site_secret_hcaptcha', '', true ),
 					array( 'user_registration_captcha_setting_recaptcha_site_key_cloudflare', '' ),
-					array( 'user_registration_captcha_setting_recaptcha_site_secret_cloudflare', '' ),
+					array( 'user_registration_captcha_setting_recaptcha_site_secret_cloudflare', '', true ),
 					array( 'user_registration_captcha_setting_invisible_recaptcha_v2', false ),
 					array( 'user_registration_captcha_setting_recaptcha_cloudflare_theme', 'light' ),
 
