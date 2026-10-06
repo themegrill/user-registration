@@ -14,6 +14,59 @@ import { deleteUserByEmail, gotoAdminPage, loginAsAdmin, newVisitor } from "../s
  * red tests.
  */
 test.describe("registration emails @fresh", () => {
+  test("send test email blocks repeated clicks while the request is pending @fresh @admin", async ({ page }) => {
+    await loginAsAdmin(page);
+
+    let sendRequests = 0;
+    let releaseResponse!: () => void;
+    let resolveFirstRequest!: () => void;
+    const firstRequest = new Promise<void>((resolve) => {
+      resolveFirstRequest = resolve;
+    });
+
+    await page.route("**/wp-admin/admin-ajax.php", async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST" || !request.postData()?.includes("action=user_registration_send_test_email")) {
+        await route.continue();
+        return;
+      }
+
+      sendRequests++;
+      resolveFirstRequest();
+      await new Promise<void>((release) => {
+        releaseResponse = release;
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, data: { message: "Test email sent." } }),
+      });
+    });
+
+    await gotoAdminPage(page, "user-registration-settings", "&tab=email");
+    const button = page.locator(".user_registration_send_email_test");
+    await button.click();
+    await firstRequest;
+
+    await expect(button).toHaveClass(/disabled/);
+    await expect(button).toHaveAttribute("aria-disabled", "true");
+    await expect(button.locator(".ur-spinner")).toHaveCount(1);
+
+    await button.evaluate((element) => {
+      element.click();
+      element.click();
+    });
+    await page.waitForTimeout(250);
+
+    expect(sendRequests).toBe(1);
+    await expect(button.locator(".ur-spinner")).toHaveCount(1);
+
+    releaseResponse();
+    await expect(button).not.toHaveClass(/disabled/);
+    await expect(button).not.toHaveAttribute("aria-disabled", "true");
+    await expect(button.locator(".ur-spinner")).toHaveCount(0);
+  });
+
   test("registering sends the user a welcome email and notifies the admin @fresh @email-notification", async ({
     page,
     browser,
