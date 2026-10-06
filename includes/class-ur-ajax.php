@@ -2743,7 +2743,7 @@ class UR_AJAX {
 				update_option( 'user_registration_migrate_users_skipped', true );
 				wp_send_json_success(
 					array(
-						'message' => __( 'Existing users migration step has been skipped.', 'user-registration' ),
+						'message' => __( 'Linking existing users step has been skipped.', 'user-registration' ),
 					)
 				);
 				break;
@@ -2765,16 +2765,16 @@ class UR_AJAX {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error(
 				array(
-					'message' => __( 'You do not have permission to migrate users.', 'user-registration' ),
+					'message' => __( 'You do not have permission to link users.', 'user-registration' ),
 				)
 			);
 		}
 
 		$form_id = isset( $_POST['form_id'] ) ? absint( $_POST['form_id'] ) : 0;
-		if ( ! $form_id || 'user_registration' !== get_post_type( $form_id ) ) {
+		if ( ! $form_id || 'user_registration' !== get_post_type( $form_id ) || 'publish' !== get_post_status( $form_id ) ) {
 			wp_send_json_error(
 				array(
-					'message' => __( 'Invalid registration form selected.', 'user-registration' ),
+					'message' => __( 'Invalid or unpublished registration form selected.', 'user-registration' ),
 				)
 			);
 		}
@@ -2798,7 +2798,7 @@ class UR_AJAX {
 		if ( empty( $user_ids ) ) {
 			wp_send_json_success(
 				array(
-					'message' => __( 'No unlinked users found to migrate.', 'user-registration' ),
+					'message' => __( 'No unlinked users found to link.', 'user-registration' ),
 					'count'   => 0,
 				)
 			);
@@ -2806,8 +2806,11 @@ class UR_AJAX {
 
 		$migrated_count = 0;
 		foreach ( $user_ids as $user_id ) {
-			update_user_meta( (int) $user_id, 'ur_form_id', $form_id );
-			$migrated_count++;
+			// Atomically link only if not already associated by a concurrent process.
+			$added = add_user_meta( (int) $user_id, 'ur_form_id', $form_id, true );
+			if ( $added ) {
+				$migrated_count++;
+			}
 		}
 
 		// Clear skip option when users are successfully linked.

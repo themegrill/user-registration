@@ -178,8 +178,16 @@ const SiteAssistant = () => {
 		initialUsersMigrationHandled
 	);
 
+	const registrationForms =
+		(typeof _UR_DASHBOARD_ !== "undefined" &&
+			_UR_DASHBOARD_.site_assistant_data &&
+			_UR_DASHBOARD_.site_assistant_data.registration_forms) ||
+		[];
+
 	const shouldShowUsersMigration =
-		unlinkedUsersCount > 0 && !usersMigrationHandled;
+		unlinkedUsersCount > 0 &&
+		registrationForms.length > 0 &&
+		!usersMigrationHandled;
 
 	// State to track if all components are completed
 	const [allCompleted, setAllCompleted] = useState(false);

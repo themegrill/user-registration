@@ -80,7 +80,7 @@ const MigrateExistingUsers = ({
 
 			if (result.success) {
 				toast({
-					title: __("Users Migrated", "user-registration"),
+					title: __("Users Linked", "user-registration"),
 					description:
 						result.data?.message ||
 						__(
@@ -98,7 +98,7 @@ const MigrateExistingUsers = ({
 			} else {
 				throw new Error(
 					result.data?.message ||
-						__("Failed to migrate users.", "user-registration")
+						__("Failed to link users.", "user-registration")
 				);
 			}
 		} catch (error) {
@@ -107,7 +107,7 @@ const MigrateExistingUsers = ({
 				description:
 					error.message ||
 					__(
-						"Failed to migrate users. Please try again.",
+						"Failed to link users. Please try again.",
 						"user-registration"
 					),
 				status: "error",
@@ -146,7 +146,7 @@ const MigrateExistingUsers = ({
 					description:
 						result.data?.message ||
 						__(
-							"User migration step has been skipped.",
+							"Linking existing users step has been skipped.",
 							"user-registration"
 						),
 					status: "success",
@@ -208,7 +208,7 @@ const MigrateExistingUsers = ({
 					>
 						{numbering +
 							") " +
-							__("Migrate Existing Users", "user-registration")}
+							__("Link Existing Users", "user-registration")}
 					</Heading>
 					<Box
 						px={2.5}
@@ -258,7 +258,7 @@ const MigrateExistingUsers = ({
 						{sprintf(
 							/* translators: %d: number of unlinked users */
 							_n(
-								"We detected %d existing user account created outside User Registration. Link it to a registration form so they can view and update their profile details on your frontend account page.",
+								"We detected %d existing user account created outside User Registration. Link it to a registration form so this user can view and update their profile details on your frontend account page.",
 								"We detected %d existing user accounts created outside User Registration. Link them to a registration form so they can view and update their profile details on your frontend account page.",
 								unlinkedCount,
 								"user-registration"
@@ -320,17 +320,18 @@ const MigrateExistingUsers = ({
 							align="center"
 						>
 							<Box>
-								<Text
-									fontSize="14px"
-									fontWeight="bold"
-									color="gray.800"
-									mb={0.5}
-								>
+								<Text fontSize="14px" color="gray.700" mb={0.5}>
 									{__(
 										"Associated Form:",
 										"user-registration"
 									)}{" "}
-									{defaultFormTitle}
+									<Text
+										as="span"
+										fontWeight="bold"
+										color="gray.800"
+									>
+										{defaultFormTitle}
+									</Text>
 								</Text>
 								<Text fontSize="13px" color="gray.600">
 									{__(
@@ -344,16 +345,12 @@ const MigrateExistingUsers = ({
 
 					<Text fontSize="12px" color="gray.500">
 						{__(
-							"🔒 Existing passwords, user roles, and account data remain completely unchanged. No notification emails will be sent.",
+							"Existing passwords, user roles, and account data remain completely unchanged. No notification emails will be sent.",
 							"user-registration"
 						)}
 					</Text>
 
-					<HStack
-						justifyContent="space-between"
-						alignItems={"center"}
-						pt={2}
-					>
+					<HStack spacing={4} alignItems="center" pt={2}>
 						<Button
 							colorScheme={"primary"}
 							rounded="base"
@@ -363,16 +360,13 @@ const MigrateExistingUsers = ({
 							size={"sm"}
 							fontSize="14px"
 							isLoading={isMigrating}
-							loadingText={__(
-								"Migrating...",
-								"user-registration"
-							)}
+							loadingText={__("Linking...", "user-registration")}
 						>
 							{sprintf(
 								/* translators: %d: number of unlinked users */
 								_n(
-									"Migrate %d User",
-									"Migrate %d Users",
+									"Link %d User",
+									"Link %d Users",
 									unlinkedCount,
 									"user-registration"
 								),
