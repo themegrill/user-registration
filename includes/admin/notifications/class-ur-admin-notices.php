@@ -37,7 +37,6 @@ class UR_Admin_Notices
 	 * @var array
 	 */
 	private static $core_notices = array(
-		'update'                => 'update_notice',
 		'install'               => 'install_notice',
 		'continue_setup_wizard' => 'continue_setup_wizard_notice',
 	);
@@ -831,25 +830,6 @@ class UR_Admin_Notices
 					}
 				}
 			}
-		}
-	}
-
-	/**
-	 * If we need to update, include a message with the update button.
-	 */
-	public static function update_notice()
-	{
-
-		if (version_compare(get_option('user_registration_db_version'), UR_VERSION, '<')) {
-			$updater = new UR_Background_Updater();
-
-			if ($updater->is_updating() || ! empty($_GET['do_update_user_registration'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-				include 'views/html-notice-updating.php';
-			} else {
-				include 'views/html-notice-update.php';
-			}
-		} else {
-			include 'views/html-notice-updated.php';
 		}
 	}
 
