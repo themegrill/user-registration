@@ -3848,7 +3848,7 @@
 										$(".user-registration-membership-notice__container").length === 0
 									) {
 										$("body").append(
-											'<div class="user-registration-membership-notice__container urm-notice-error" style="display:none;"><span class="user-registration-membership-notice__message"></span><button type="button" class="user-registration-membership__close_notice" aria-label="' + urmf_data.labels.i18n_dismiss + '">&times;</button></div>'
+											'<div class="user-registration-membership-notice__container urm-notice-error" style="display:none;"><span class="user-registration-membership-notice__message"></span><button type="button" class="user-registration-membership__close_notice" aria-label="' + (urmf_data.labels.i18n_dismiss || "Dismiss") + '">&times;</button></div>'
 										);
 									}
 									$(document).trigger("urm_show_action_message", {
@@ -3914,7 +3914,7 @@
 									$(document)
 										.find(".user-registration-page")
 										.prepend(
-											'<div class="user-registration-membership-notice__container"><div class="ur-toaster urm-error user-registration-membership-notice__red"><span class="user-registration-membership-notice__message"></span><button type="button" class="user-registration-membership__close_notice" aria-label="' + urmf_data.labels.i18n_dismiss + '">&times;</button></div></div>'
+											'<div class="user-registration-membership-notice__container"><div class="ur-toaster urm-error user-registration-membership-notice__red"><span class="user-registration-membership-notice__message"></span><button type="button" class="user-registration-membership__close_notice" aria-label="' + (urmf_data.labels.i18n_dismiss || "Dismiss") + '">&times;</button></div></div>'
 										);
 								}
 								$(document).trigger("urm_show_action_message", {
