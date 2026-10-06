@@ -208,10 +208,15 @@
 }
 
 .user-registration-membership__close_notice {
+	background: none;
+	border: 0;
 	color: red;
 	cursor: pointer;
+	font-family: inherit;
+	font-size: inherit;
 	font-weight: bold;
-	padding-left: 16px;
+	line-height: inherit;
+	padding: 0 0 0 16px;
 }
 
 input.ur-input-border-green:not([type="range"]),

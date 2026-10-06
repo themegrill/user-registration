@@ -2136,7 +2136,7 @@ body .membership-upgrade-container .authorize-net-container abbr.required,
 .user-registration-page .membership-upgrade-container .authorize-net-container abbr.required,
 .ur-multi-device-form-preview .membership-upgrade-container .authorize-net-container abbr.required,
 #pg-container .membership-upgrade-container .authorize-net-container abbr.required {
-  color: red;
+  color: #c0262b;
 }
 body .membership-upgrade-container .authorize-net-container abbr[title],
 .user-registration-page .membership-upgrade-container .authorize-net-container abbr[title],
