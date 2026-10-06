@@ -3976,6 +3976,7 @@ body.user-registration-page {
 			&::after {
 				content: "";
 				position: absolute;
+				box-sizing: border-box;
 				top: 50%;
 				left: 50%;
 				width: 24px;

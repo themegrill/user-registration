@@ -2455,6 +2455,7 @@ body {
 				.user_registration_profile_picture_upload,
 				.profile-pic-remove {
 					position: relative;
+					box-sizing: border-box;
 					width: 32px;
 					height: 32px;
 					padding: 0 !important;
@@ -2472,6 +2473,12 @@ body {
 					&:hover {
 						transform: translateY(-1px);
 					}
+				}
+
+				.profile-pic-remove {
+					display: inline-flex;
+					align-items: center;
+					justify-content: center;
 				}
 			}
 		}
