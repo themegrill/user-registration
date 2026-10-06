@@ -2053,6 +2053,7 @@ class StripeService {
 		);
 
 		$stripe_subscription_id = $subscription['subscription_id'];
+		$deleted_sub            = null;
 
 		try {
 			// Delayed-start checkouts store a schedule id until the webhook back-fills the real subscription id.
@@ -2091,6 +2092,14 @@ class StripeService {
 			}
 
 			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+
+			// Already canceled at Stripe: nothing left to stop, so this counts as success.
+			if ( $force_cancel && $stripe_subscription && 'canceled' === $stripe_subscription->status ) {
+				$response['status'] = true;
+
+				return $response;
+			}
+
 			if ( $stripe_subscription ) {
 				if ( $force_cancel ) {
 					$deleted_sub = $stripe_subscription->cancel();

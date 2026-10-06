@@ -16,6 +16,7 @@ class Subscriptions {
 	private function init_hooks() {
 		add_filter( 'user_registration_notice_excluded_pages', array( $this, 'add_excluded_page' ) );
 		add_action( 'admin_init', array( $this, 'delete_subscription' ) );
+		add_action( 'admin_notices', array( $this, 'render_cancel_failed_notice' ) );
 	}
 
 	public function delete_subscription() {
@@ -29,6 +30,10 @@ class Subscriptions {
 			return;
 		}
 
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to delete subscriptions.', 'user-registration' ), '', array( 'response' => 403 ) );
+		}
+
 		check_admin_referer( isset( $_GET['bulk_action'] ) ? 'bulk-subscriptions' : 'ur_subscription_delete' );
 		$ids = array();
 
@@ -38,19 +43,75 @@ class Subscriptions {
 			$ids = array( absint( wp_unslash( $_GET['id'] ?? 0 ) ) );
 		}
 
-		$repo = new SubscriptionRepository();
+		// Each id can make a remote gateway call, so a bulk delete may outlast the default time limit.
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Disabled on some hosts.
+		}
+
+		$repo   = new SubscriptionRepository();
+		$failed = 0;
 		foreach ( $ids as $id ) {
 			if ( $id <= 0 ) {
 				continue;
 			}
 
+			$subscription         = $repo->retrieve( $id );
+			$needs_gateway_cancel = is_array( $subscription ) && ! empty( $subscription['subscription_id'] ) && 'canceled' !== ( $subscription['status'] ?? '' );
+
 			// Cancel at the gateway first (force for PayPal/Stripe) so delete does not leave live billing.
-			// send_email=false: admin cleanup should not email members. Ignore cancel result so
-			// already-canceled / bank / missing gateway id rows can still be removed locally.
-			$repo->cancel_subscription_by_id( $id, false, false, true );
+			// send_email=false: admin cleanup should not email members. A failed cancel does not block the
+			// local delete (already-canceled / bank / unconfigured gateway rows must stay removable), but it is
+			// counted so the admin is told to cancel it in the gateway dashboard.
+			try {
+				$result = $repo->cancel_subscription_by_id( $id, false, false, true );
+			} catch ( \Exception $e ) {
+				$result = array( 'status' => false );
+			}
+
+			if ( $needs_gateway_cancel && empty( $result['status'] ) ) {
+				++$failed;
+			}
+
 			$repo->delete( $id );
 		}
-		wp_safe_redirect( admin_url( 'admin.php?page=user-registration-subscriptions&deleted=1' ) );
+
+		$redirect = admin_url( 'admin.php?page=user-registration-subscriptions&deleted=1' );
+		if ( $failed > 0 ) {
+			$redirect = add_query_arg( 'cancel_failed', $failed, $redirect );
+		}
+
+		wp_safe_redirect( $redirect );
+		exit;
+	}
+
+	/**
+	 * Warn that deleted subscriptions could not be cancelled at their gateway.
+	 *
+	 * @since 5.3
+	 */
+	public function render_cancel_failed_notice() {
+		$page   = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$failed = isset( $_GET['cancel_failed'] ) ? absint( $_GET['cancel_failed'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( 'user-registration-subscriptions' !== $page || ! $failed || ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
+			esc_html(
+				sprintf(
+					/* translators: %d: number of subscriptions */
+					_n(
+						'%d deleted subscription could not be cancelled at its payment gateway. It may still be billing, so cancel it in the gateway dashboard.',
+						'%d deleted subscriptions could not be cancelled at their payment gateway. They may still be billing, so cancel them in the gateway dashboard.',
+						$failed,
+						'user-registration'
+					),
+					$failed
+				)
+			)
+		);
 	}
 
 	public function add_excluded_page( $excluded_pages ) {
