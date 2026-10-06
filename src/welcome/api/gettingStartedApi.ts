@@ -70,26 +70,16 @@ export const mapSetupToApiType = (type: MembershipSetupType): string => {
 };
 
 export const mapSetupToInterest = (type: MembershipSetupType): string => {
-	switch (type) {
-		case "membership":
-			return "yes";
-		case "later":
-			return "later";
-		default:
-			return "no";
-	}
+	return type === "membership" ? "yes" : "no";
 };
 
-export const mapApiToSetupType = (
-	apiType: string,
-	interest?: string
-): MembershipSetupType => {
+export const mapApiToSetupType = (apiType: string): MembershipSetupType => {
 	switch (apiType) {
 		case "paid_membership":
 		case "free_membership":
 			return "membership";
 		default:
-			return interest === "later" ? "later" : "registration";
+			return "registration";
 	}
 };
 

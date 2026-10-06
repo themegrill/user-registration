@@ -122,10 +122,7 @@ const SetupWizard: React.FC = () => {
 					payload: {
 						currentStep: wizard.current_step || 1,
 						membershipSetupType: wizard.membership_type
-							? mapApiToSetupType(
-									wizard.membership_type,
-									welcome?.membership_interest
-							  )
+							? mapApiToSetupType(wizard.membership_type)
 							: state.membershipSetupType,
 						allowTracking:
 							typeof welcome?.allow_usage_tracking === "boolean"

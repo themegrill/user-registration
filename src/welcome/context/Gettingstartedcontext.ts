@@ -1,4 +1,4 @@
-export type MembershipSetupType = "membership" | "registration" | "later";
+export type MembershipSetupType = "membership" | "registration";
 export type MembershipPlanType = "free" | "one-time" | "subscription";
 export type BillingCycle = "day" | "week" | "month" | "year";
 
