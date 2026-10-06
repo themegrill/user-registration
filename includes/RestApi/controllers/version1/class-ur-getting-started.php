@@ -67,13 +67,6 @@ class UR_Getting_Started {
 	 */
 	const OPTION_ONBOARDING_SNAPSHOT = 'urm_onboarding_snapshot';
 
-	/**
-	 * Option key for the raw answer to the welcome question: yes, no or later.
-	 *
-	 * @since x.x.x
-	 */
-	const OPTION_MEMBERSHIP_INTEREST = 'urm_onboarding_membership_interest';
-
 
 	/**
 	 * Register all REST API routes for the getting started wizard.
@@ -111,12 +104,6 @@ class UR_Getting_Started {
 							'type'              => 'string',
 							'required'          => true,
 							'enum'              => array( 'paid_membership', 'free_membership', 'normal' ),
-							'sanitize_callback' => 'sanitize_text_field',
-						),
-						'membership_interest'  => array(
-							'type'              => 'string',
-							'required'          => false,
-							'enum'              => array( 'yes', 'no', 'later' ),
 							'sanitize_callback' => 'sanitize_text_field',
 						),
 						'allow_usage_tracking' => array(
@@ -492,7 +479,6 @@ class UR_Getting_Started {
 
 		$data = array(
 			'membership_type'      => get_option( 'urm_onboarding_membership_type', '' ),
-			'membership_interest'  => get_option( self::OPTION_MEMBERSHIP_INTEREST, '' ),
 			'allow_usage_tracking' => get_option( 'user_registration_allow_usage_tracking', true ),
 			'admin_email'          => get_option( 'user_registration_updates_admin_email', get_option( 'admin_email' ) ),
 		);
@@ -529,23 +515,7 @@ class UR_Getting_Started {
 			);
 		}
 
-		$membership_interest = self::resolve_membership_interest(
-			$membership_type,
-			isset( $request['membership_interest'] ) ? sanitize_text_field( $request['membership_interest'] ) : ''
-		);
-
-		if ( '' === $membership_interest ) {
-			return new \WP_REST_Response(
-				array(
-					'success' => false,
-					'message' => __( 'The membership choice does not match the selected membership type.', 'user-registration' ),
-				),
-				400
-			);
-		}
-
 		update_option( 'urm_onboarding_membership_type', $membership_type );
-		update_option( self::OPTION_MEMBERSHIP_INTEREST, $membership_interest );
 
 		$tracking_value = ur_string_to_bool( $allow_usage_tracking ) ? true : false;
 		update_option( 'user_registration_allow_usage_tracking', $tracking_value );
@@ -573,28 +543,6 @@ class UR_Getting_Started {
 			),
 			200
 		);
-	}
-
-	/**
-	 * Resolve the welcome answer (yes, no or later) for a membership type.
-	 *
-	 * Yes pairs with the membership types; No and Later pair with normal. A missing answer
-	 * (older clients) falls back to yes or no from the type.
-	 *
-	 * @since x.x.x
-	 *
-	 * @param string $membership_type Selected membership type.
-	 * @param string $interest        Submitted answer, or an empty string.
-	 * @return string The answer to store, or an empty string when it does not match the type.
-	 */
-	protected static function resolve_membership_interest( $membership_type, $interest ) {
-		$allowed = in_array( $membership_type, array( 'paid_membership', 'free_membership' ), true ) ? array( 'yes' ) : array( 'no', 'later' );
-
-		if ( '' === $interest ) {
-			return $allowed[0];
-		}
-
-		return in_array( $interest, $allowed, true ) ? $interest : '';
 	}
 
 	/**
@@ -2270,7 +2218,6 @@ class UR_Getting_Started {
 
 				'welcome'      => array(
 					'membership_type'      => get_option( 'urm_onboarding_membership_type', '' ),
-					'membership_interest'  => get_option( self::OPTION_MEMBERSHIP_INTEREST, '' ),
 					'allow_usage_tracking' => (bool) get_option( 'user_registration_allow_usage_tracking', true ),
 					'admin_email'          => get_option(
 						'user_registration_updates_admin_email',

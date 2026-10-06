@@ -7,8 +7,7 @@ import {
 	apiPost,
 	mapApiToSetupType,
 	mapPaymentSettingsToApi,
-	mapSetupToApiType,
-	mapSetupToInterest
+	mapSetupToApiType
 } from "../api/gettingStartedApi";
 import {
 	MembershipPlan,
@@ -168,9 +167,6 @@ const SetupWizard: React.FC = () => {
 			if (currentStepId === "welcome") {
 				await apiPost("/welcome", {
 					membership_type: mapSetupToApiType(
-						state.membershipSetupType
-					),
-					membership_interest: mapSetupToInterest(
 						state.membershipSetupType
 					),
 					allow_usage_tracking: state.allowTracking,
