@@ -11226,14 +11226,8 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			);
 		}
 
-		$is_migration_skipped = ur_string_to_bool( get_option( 'user_registration_migrate_users_skipped', false ) );
-		if ( $is_migration_skipped ) {
-			$unlinked_users_count   = 0;
-			$unlinked_users_handled = true;
-		} else {
-			$unlinked_users_count   = ur_get_unlinked_users_count();
-			$unlinked_users_handled = ( 0 === $unlinked_users_count );
-		}
+		$unlinked_users_count   = ur_get_unlinked_users_count();
+		$unlinked_users_handled = ur_is_unlinked_users_handled( $unlinked_users_count );
 
 		// Validate default form: only use default_form_id if it exists in published forms, otherwise fall back to first published form.
 		$validated_default_form_id = 0;
@@ -11259,6 +11253,7 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'legacy_payment_fields_url'         => $legacy_payment_fields_url,
 			'unlinked_users_count'              => $unlinked_users_count,
 			'unlinked_users_handled'            => $unlinked_users_handled,
+			'unlinked_users_preview'            => $unlinked_users_handled ? array() : ur_get_unlinked_users_preview(),
 			'registration_forms'                => $forms_list,
 			'default_form_id'                   => $validated_default_form_id,
 		);
@@ -11323,23 +11318,57 @@ if ( ! function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
 	}
 }
 
-if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
+if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
 	/**
-	 * Check if unlinked users migration step has been completed or skipped.
+	 * Get display names and avatars for a few users without an associated registration form, excluding current user.
 	 *
-	 * @param int|null $unlinked_count Optional known count of unlinked users.
-	 * @return bool True if handled or no unlinked users exist, false otherwise.
+	 * @param int $limit Maximum number of users to return.
+	 * @return array[] List of arrays with 'id', 'name' and 'avatar' keys.
 	 */
-	function ur_is_unlinked_users_handled( $unlinked_count = null ) {
-		$is_skipped = ur_string_to_bool( get_option( 'user_registration_migrate_users_skipped', false ) );
+	function ur_get_unlinked_users_preview( $limit = 4 ) {
+		global $wpdb;
 
-		if ( $is_skipped ) {
-			return true;
+		$users = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT u.ID, u.display_name, u.user_login
+				FROM {$wpdb->users} u
+				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
+				WHERE um.user_id IS NULL
+				AND u.ID != %d
+				ORDER BY u.ID DESC
+				LIMIT %d",
+				get_current_user_id(),
+				absint( $limit )
+			)
+		);
+
+		$preview = array();
+		foreach ( (array) $users as $user ) {
+			$preview[] = array(
+				'id'     => (int) $user->ID,
+				'name'   => '' !== trim( (string) $user->display_name ) ? (string) $user->display_name : (string) $user->user_login,
+				'avatar' => (string) get_avatar_url( (int) $user->ID, array( 'size' => 64 ) ),
+			);
 		}
 
+		return $preview;
+	}
+}
+
+if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
+	/**
+	 * Check if unlinked users migration step has been completed, or skipped with no new unlinked users since.
+	 *
+	 * @param int|null $unlinked_count Optional known count of unlinked users.
+	 * @return bool True if no unlinked users exist or none were added after the step was skipped, false otherwise.
+	 */
+	function ur_is_unlinked_users_handled( $unlinked_count = null ) {
 		$count = null !== $unlinked_count ? (int) $unlinked_count : ur_get_unlinked_users_count();
 
-		return 0 === $count;
+		// ponytail: compares counts only, so one user linked elsewhere plus one new user keeps the step hidden.
+		$skipped_count = absint( get_option( 'user_registration_migrate_users_skipped', 0 ) );
+
+		return 0 === $count || ( $skipped_count > 0 && $count <= $skipped_count );
 	}
 }
 

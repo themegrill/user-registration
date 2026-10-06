@@ -61,6 +61,6 @@ test.describe("Site Assistant: Link Existing Users @fresh @admin", () => {
 		}, nonce);
 
 		expect(response.success).toBe(true);
-		expect(response.data?.message).toMatch(/Linking existing users step has been skipped/i);
+		expect(response.data?.message).toMatch(/Step skipped\. It will come back if more users need linking/i);
 	});
 });

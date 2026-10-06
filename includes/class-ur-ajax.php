@@ -2740,10 +2740,11 @@ class UR_AJAX {
 				break;
 
 			case 'migrate_users':
-				update_option( 'user_registration_migrate_users_skipped', true );
+				// Store the count being skipped so the step returns once more users need linking.
+				update_option( 'user_registration_migrate_users_skipped', max( 1, ur_get_unlinked_users_count() ) );
 				wp_send_json_success(
 					array(
-						'message' => __( 'Linking existing users step has been skipped.', 'user-registration' ),
+						'message' => __( 'Step skipped. It will come back if more users need linking.', 'user-registration' ),
 					)
 				);
 				break;

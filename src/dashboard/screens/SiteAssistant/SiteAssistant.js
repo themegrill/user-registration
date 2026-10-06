@@ -35,6 +35,8 @@ const submitReviewUrl =
 	"https://wordpress.org/support/plugin/user-registration/reviews/?rate=5#new-post";
 const ticketUrl =
 	"https://wordpress.org/support/plugin/user-registration/#new-topic-0";
+// Long enough for the last step's 5s result toast to be read before leaving the page.
+const SETUP_COMPLETE_REDIRECT_DELAY_MS = 5000;
 
 const SiteAssistant = () => {
 	const [open, setOpen] = useState({
@@ -308,7 +310,7 @@ const SiteAssistant = () => {
 				window.location.href =
 					window._UR_DASHBOARD_?.adminURL +
 					"admin.php?page=user-registration";
-			}, 2000);
+			}, SETUP_COMPLETE_REDIRECT_DELAY_MS);
 		}
 
 		const site_config_array = [

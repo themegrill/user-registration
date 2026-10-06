@@ -1,6 +1,7 @@
 import {
+	Avatar,
+	AvatarGroup,
 	Badge,
-	Box,
 	Button,
 	Collapse,
 	Flex,
@@ -12,12 +13,63 @@ import {
 	IconButton,
 	Select,
 	Stack,
+	StackDivider,
 	Text,
 	useToast
 } from "@chakra-ui/react";
+import { createInterpolateElement } from "@wordpress/element";
 import { __, _n, sprintf } from "@wordpress/i18n";
 import React, { useState } from "react";
 import { BiChevronDown, BiChevronUp } from "react-icons/bi";
+
+/**
+ * Format a count with the site locale's digit grouping, e.g. 1250 → "1,250".
+ *
+ * @param {number} count Number to format.
+ * @return {string} Formatted number.
+ */
+const formatCount = (count) => {
+	try {
+		return new Intl.NumberFormat(
+			document.documentElement.lang || undefined
+		).format(count);
+	} catch {
+		return String(count);
+	}
+};
+
+/**
+ * Build a short, readable list of unlinked user names, e.g. "Ann, Bob and 3 more".
+ *
+ * @param {Array<{name: string}>} users Preview users, newest first.
+ * @param {number} total Total number of unlinked users.
+ * @return {string} Names sentence.
+ */
+const getPreviewNamesText = (users, total) => {
+	const [first, second] = users.map((user) => user.name);
+
+	if (total === 1 || !second) {
+		return first;
+	}
+
+	if (total === 2) {
+		/* translators: 1: first user name, 2: second user name */
+		return sprintf(__("%1$s and %2$s", "user-registration"), first, second);
+	}
+
+	return sprintf(
+		/* translators: 1: first user name, 2: second user name, 3: number of other users */
+		_n(
+			"%1$s, %2$s and %3$s more",
+			"%1$s, %2$s and %3$s more",
+			total - 2,
+			"user-registration"
+		),
+		first,
+		second,
+		formatCount(total - 2)
+	);
+};
 
 const MigrateExistingUsers = ({
 	isOpen,
@@ -33,6 +85,7 @@ const MigrateExistingUsers = ({
 	const siteAssistantData = window._UR_DASHBOARD_?.site_assistant_data || {};
 	const unlinkedCount = siteAssistantData.unlinked_users_count || 0;
 	const forms = siteAssistantData.registration_forms || [];
+	const previewUsers = siteAssistantData.unlinked_users_preview || [];
 	const formExists = forms.some(
 		(form) => form.id === Number(siteAssistantData.default_form_id)
 	);
@@ -44,14 +97,14 @@ const MigrateExistingUsers = ({
 
 	const [selectedFormId, setSelectedFormId] = useState(initialFormId);
 
-	const defaultFormTitle =
+	const selectedFormTitle =
 		forms.find((form) => form.id === Number(selectedFormId))?.title ||
 		(forms.length > 0 ? forms[0].title : "");
 
 	const handleMigrate = async () => {
 		if (!selectedFormId) {
 			toast({
-				title: __("Selection Required", "user-registration"),
+				title: __("Selection required", "user-registration"),
 				description: __(
 					"Please select a registration form to link users to.",
 					"user-registration"
@@ -72,6 +125,7 @@ const MigrateExistingUsers = ({
 
 			let totalLinked = 0;
 			let hasMore = true;
+			let isStalled = false;
 
 			while (hasMore) {
 				const response = await fetch(`${adminURL}admin-ajax.php`, {
@@ -90,7 +144,10 @@ const MigrateExistingUsers = ({
 					throw new Error(
 						sprintf(
 							/* translators: %d: HTTP status code */
-							__("Request failed with status %d.", "user-registration"),
+							__(
+								"Request failed with status %d.",
+								"user-registration"
+							),
 							response.status
 						)
 					);
@@ -121,21 +178,54 @@ const MigrateExistingUsers = ({
 
 				// Guard against potential infinite loop if no accounts could be linked in a batch.
 				if (hasMore && count === 0) {
+					isStalled = true;
 					break;
 				}
 			}
 
+			if (isStalled) {
+				toast({
+					title: __("Linking incomplete", "user-registration"),
+					description:
+						totalLinked > 0
+							? sprintf(
+									/* translators: %s: number of users linked */
+									_n(
+										"Linked %s user, but some accounts couldn't be linked. Please try again.",
+										"Linked %s users, but some accounts couldn't be linked. Please try again.",
+										totalLinked,
+										"user-registration"
+									),
+									formatCount(totalLinked)
+								)
+							: __(
+									"No users could be linked. Please try again.",
+									"user-registration"
+								),
+					status: "warning",
+					duration: 5000,
+					isClosable: true
+				});
+				return;
+			}
+
 			toast({
-				title: __("Users Linked", "user-registration"),
+				title: _n(
+					"User linked",
+					"Users linked",
+					totalLinked,
+					"user-registration"
+				),
 				description: sprintf(
-					/* translators: %d: number of users linked */
+					/* translators: 1: number of users linked, 2: registration form title */
 					_n(
-						"%d user successfully linked to registration form.",
-						"%d users successfully linked to registration form.",
+						"%1$s user linked to “%2$s”.",
+						"%1$s users linked to “%2$s”.",
 						totalLinked,
 						"user-registration"
 					),
-					totalLinked
+					formatCount(totalLinked),
+					selectedFormTitle
 				),
 				status: "success",
 				duration: 5000,
@@ -147,7 +237,7 @@ const MigrateExistingUsers = ({
 			}
 		} catch (error) {
 			toast({
-				title: __("Error", "user-registration"),
+				title: __("Couldn't link users", "user-registration"),
 				description:
 					error.message ||
 					__(
@@ -186,7 +276,10 @@ const MigrateExistingUsers = ({
 				throw new Error(
 					sprintf(
 						/* translators: %d: HTTP status code */
-						__("Request failed with status %d.", "user-registration"),
+						__(
+							"Request failed with status %d.",
+							"user-registration"
+						),
 						response.status
 					)
 				);
@@ -210,7 +303,7 @@ const MigrateExistingUsers = ({
 					description:
 						result.data?.message ||
 						__(
-							"Linking existing users step has been skipped.",
+							"Step skipped. It will come back if more users need linking.",
 							"user-registration"
 						),
 					status: "success",
@@ -229,7 +322,7 @@ const MigrateExistingUsers = ({
 			}
 		} catch (error) {
 			toast({
-				title: __("Error", "user-registration"),
+				title: __("Couldn't skip this step", "user-registration"),
 				description:
 					error.message ||
 					__(
@@ -285,14 +378,14 @@ const MigrateExistingUsers = ({
 						fontWeight="semibold"
 					>
 						{sprintf(
-							/* translators: %d: number of unlinked users */
+							/* translators: %s: number of unlinked users */
 							_n(
-								"%d unlinked",
-								"%d unlinked",
+								"%s unlinked",
+								"%s unlinked",
 								unlinkedCount,
 								"user-registration"
 							),
-							unlinkedCount
+							formatCount(unlinkedCount)
 						)}
 					</Badge>
 				</HStack>
@@ -322,129 +415,128 @@ const MigrateExistingUsers = ({
 			<Collapse in={isOpen}>
 				<Stack gap={5}>
 					<Text fontWeight={"light"} fontSize={"15px !important"}>
-						{sprintf(
-							/* translators: %d: number of unlinked users */
-							_n(
-								"We detected %d existing user account created outside User Registration (such as administrators or WooCommerce customers). Link it to a registration form so this user can view and update profile details on your frontend account page.",
-								"We detected %d existing user accounts created outside User Registration (such as administrators or WooCommerce customers). Link them to a registration form so they can view and update profile details on your frontend account page.",
-								unlinkedCount,
-								"user-registration"
+						{createInterpolateElement(
+							sprintf(
+								/* translators: %s: number of unlinked users */
+								_n(
+									"<strong>%s user</strong> didn't register through your registration form. Link this user so they can use your form's fields on their frontend profile page.",
+									"<strong>%s users</strong> didn't register through your registration form. Link them so they can use your form's fields on their frontend profile page.",
+									unlinkedCount,
+									"user-registration"
+								),
+								formatCount(unlinkedCount)
 							),
-							unlinkedCount
+							{
+								strong: (
+									<Text
+										as="strong"
+										fontWeight="600 !important"
+									/>
+								)
+							}
 						)}
 					</Text>
 
-					{forms.length > 1 ? (
-						<Box
-							bg="gray.50"
-							p="4"
-							borderRadius="md"
-							border="1px"
-							borderColor="gray.200"
-						>
-							<FormControl maxW="400px">
-								<FormLabel
-									htmlFor="ur-migrate-form-select"
-									fontSize="14px"
-									fontWeight="bold"
-									color="gray.800"
-									mb={1}
-								>
-									{__(
-										"Select Registration Form",
-										"user-registration"
-									)}
-								</FormLabel>
-								<Text fontSize="13px" color="gray.600" mb={3}>
-									{__(
-										"Choose which form fields will be available when these users edit their profile:",
-										"user-registration"
+					<Stack
+						bg="#f9fafc"
+						p="4"
+						borderRadius="md"
+						spacing="4"
+						divider={<StackDivider borderColor="gray.200" />}
+					>
+						{previewUsers.length > 0 && (
+							<HStack spacing="3">
+								<AvatarGroup size="sm" spacing="-2">
+									{previewUsers.map((user) => (
+										<Avatar
+											key={user.id}
+											name={user.name}
+											src={user.avatar}
+											borderColor="white"
+										/>
+									))}
+								</AvatarGroup>
+								<Text fontSize="14px" color="gray.700">
+									{getPreviewNamesText(
+										previewUsers,
+										unlinkedCount
 									)}
 								</Text>
-								<Select
-									id="ur-migrate-form-select"
-									aria-label={__(
-										"Select Registration Form",
-										"user-registration"
-									)}
-									value={selectedFormId}
-									onChange={(e) =>
-										setSelectedFormId(e.target.value)
-									}
-									bg="white"
-									size="sm"
-									borderRadius="base"
-								>
-									{forms.map((form) => (
-										<option key={form.id} value={form.id}>
-											{form.title}
-										</option>
-									))}
-								</Select>
-							</FormControl>
-						</Box>
-					) : (
-						<Flex
-							bg="gray.50"
-							p="4"
-							borderRadius="md"
-							border="1px"
-							borderColor="gray.200"
-							align="center"
-						>
-							<Box>
-								<Text fontSize="14px" color="gray.700" mb={0.5}>
+							</HStack>
+						)}
+
+						<FormControl>
+							{forms.length > 1 ? (
+								<Flex align="center" wrap="wrap" gap="3">
+									<FormLabel
+										fontSize={"15px !important"}
+										fontWeight="medium"
+										whiteSpace="nowrap"
+										mb={0}
+										me={0}
+									>
+										{__(
+											"Use profile fields from",
+											"user-registration"
+										)}
+									</FormLabel>
+									<Select
+										value={selectedFormId}
+										onChange={(e) =>
+											setSelectedFormId(e.target.value)
+										}
+										bg="white"
+										size="sm"
+										borderRadius="base"
+										flex="1"
+										minW="200px"
+										maxW="320px"
+									>
+										{forms.map((form) => (
+											<option
+												key={form.id}
+												value={form.id}
+											>
+												{form.title}
+											</option>
+										))}
+									</Select>
+								</Flex>
+							) : (
+								<Text fontSize={"15px !important"}>
 									{__(
-										"Associated Form:",
+										"Use profile fields from",
 										"user-registration"
 									)}{" "}
-									<Text
-										as="span"
-										fontWeight="bold"
-										color="gray.800"
-									>
-										{defaultFormTitle}
+									<Text as="span" fontWeight="600 !important">
+										{selectedFormTitle}
 									</Text>
 								</Text>
-								<Text fontSize="13px" color="gray.600">
-									{__(
-										"All existing accounts will be linked to this form's profile fields.",
-										"user-registration"
-									)}
-								</Text>
-							</Box>
-						</Flex>
-					)}
+							)}
+						</FormControl>
+					</Stack>
 
-					<Text fontSize="12px" color="gray.500">
-						{__(
-							"Existing passwords, user roles, and account data remain completely unchanged. This association links form fields and cannot be undone automatically.",
-							"user-registration"
-						)}
-					</Text>
-
-					<HStack spacing={4} alignItems="center" pt={2}>
+					<HStack justify="space-between" align="center">
 						<Button
 							colorScheme={"primary"}
 							rounded="base"
-							width={"fit-content"}
 							onClick={handleMigrate}
-							py={5}
 							size={"sm"}
 							fontSize="14px"
+							py={5}
 							isLoading={isMigrating}
 							isDisabled={isMigrating || isSkipping}
 							loadingText={__("Linking...", "user-registration")}
 						>
 							{sprintf(
-								/* translators: %d: number of unlinked users */
+								/* translators: %s: number of unlinked users */
 								_n(
-									"Link %d User",
-									"Link %d Users",
+									"Link %s User",
+									"Link %s Users",
 									unlinkedCount,
 									"user-registration"
 								),
-								unlinkedCount
+								formatCount(unlinkedCount)
 							)}
 						</Button>
 
@@ -453,7 +545,8 @@ const MigrateExistingUsers = ({
 							fontSize="14px"
 							fontWeight="normal"
 							color="gray.500"
-							textDecoration="underline"
+							textDecoration="none"
+							_hover={{ textDecoration: "underline" }}
 							onClick={handleSkip}
 							cursor="pointer"
 							width="fit-content"
@@ -461,7 +554,7 @@ const MigrateExistingUsers = ({
 							isDisabled={isMigrating || isSkipping}
 							loadingText={__("Skipping...", "user-registration")}
 						>
-							{__("Skip this step", "user-registration")}
+							{__("Skip Setup", "user-registration")}
 						</Button>
 					</HStack>
 				</Stack>
