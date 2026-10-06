@@ -73,14 +73,20 @@ class URCR_REST_Restriction {
 	/**
 	 * Remove restricted product objects, including nested Store API cart items.
 	 *
-	 * @param array $data REST response data.
+	 * @param array $data                  REST response data.
+	 * @param bool  $restricted_cart_items Whether a restricted cart item was found.
+	 * @param bool  $cart_item             Whether this object is a cart item.
 	 * @return array|null Null for a restricted product.
 	 */
-	private static function restrict_product_data( $data ) {
+	private static function restrict_product_data( $data, &$restricted_cart_items, $cart_item = false ) {
+		// Product response objects are identified by both id and sku, including an empty SKU.
 		if ( isset( $data['id'] ) && array_key_exists( 'sku', $data ) ) {
 			$post = get_post( $data['id'] );
 			if ( $post instanceof WP_Post && in_array( $post->post_type, array( 'product', 'product_variation' ), true ) ) {
 				if ( ! self::is_product_access_granted( $post ) ) {
+					if ( $cart_item ) {
+						$restricted_cart_items = true;
+					}
 					return null;
 				}
 
@@ -107,7 +113,7 @@ class URCR_REST_Restriction {
 			if ( ! is_array( $value ) ) {
 				continue;
 			}
-			$value = self::restrict_product_data( $value );
+			$value = self::restrict_product_data( $value, $restricted_cart_items, 'items' === $key || ( $is_list && $cart_item ) );
 			if ( null === $value ) {
 				unset( $data[ $key ] );
 			} else {
@@ -139,13 +145,19 @@ class URCR_REST_Restriction {
 		}
 		$response = rest_ensure_response( $response );
 		$data     = $response->get_data();
-		if ( $response->get_status() >= 400 || ! is_array( $data ) ) {
+		if ( $response->get_status() >= 400 || ( ! is_array( $data ) && ! is_object( $data ) ) ) {
 			return $response;
 		}
 
-		$restricted_data = self::restrict_product_data( $data );
+		// Store API checkout and variation responses contain nested stdClass objects.
+		$data = json_decode( wp_json_encode( $data ), true );
+		if ( ! is_array( $data ) ) {
+			return new WP_Error( 'urcr_rest_invalid_response', __( 'Unable to read product response.', 'user-registration' ), array( 'status' => 500 ) );
+		}
+		$restricted_cart_items = false;
+		$restricted_data       = self::restrict_product_data( $data, $restricted_cart_items );
 		// Do not return a partial cart with totals which no longer match its items.
-		if ( $restricted_data !== $data && preg_match( '#^/wc/store(?:/v[0-9]+)?/(?:cart|checkout)(?:/|$)#', $route ) ) {
+		if ( $restricted_cart_items && preg_match( '#^/wc/store(?:/v[0-9]+)?/(?:cart|checkout)(?:/|$)#', $route ) ) {
 			return new WP_Error( 'urcr_rest_product_restricted', __( 'You do not have access to a product in this cart.', 'user-registration' ), array( 'status' => 403 ) );
 		}
 		$data = $restricted_data;

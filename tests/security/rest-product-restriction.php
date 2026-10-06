@@ -53,6 +53,9 @@ class WC_Product {
 	public function get_id() {
 		return $this->id; }
 }
+function wp_json_encode( $data ) {
+	return json_encode( $data );
+}
 function get_post( $id ) {
 	return $GLOBALS['security_posts'][ (int) $id ] ?? null; }
 function urcr_is_content_access_granted( $post ) {
@@ -176,6 +179,49 @@ security_assert(
 	) === $ordinary['content'] && 'Public title' === $ordinary['title'],
 	'Existing non-product redaction is preserved'
 );
+// WooCommerce uses objects for checkout cart data and variation references.
+$object_linked               = $linked;
+$object_linked['variations'] = array(
+	(object) array(
+		'id'         => 4,
+		'attributes' => array( 'PRIVATE_ATTRIBUTE' ),
+	),
+	(object) array( 'id' => 3 ),
+	(object) array( 'id' => 2 ),
+);
+$filtered                    = product_response( '/wc/store/v1/products/2', $object_linked )->get_data();
+security_assert( array( array( 'id' => 2 ) ) === $filtered['variations'], 'Object variation entries are checked by their real IDs without mutation' );
+assert_private_absent( new WP_REST_Response( $filtered ) );
+$checkout = (object) array(
+	'__experimentalCart' => (object) array(
+		'items'  => array( (object) $private, (object) $public ),
+		'totals' => (object) array( 'total_price' => '1000' ),
+	),
+);
+$response = product_response( '/wc/store/v1/checkout', $checkout );
+security_assert( $response instanceof WP_Error && 403 === $response->data['status'], 'Nested object checkout refuses restricted cart items' );
+assert_private_absent( $response );
+foreach ( array( '/wc/store/v1/cart/add-item', '/wc/store/v1/cart', '/wc/store/v1/checkout' ) as $route ) {
+	$cart     = array(
+		'items'       => array( (object) $public ),
+		'cross_sells' => array( (object) $private, (object) $public ),
+		'totals'      => array( 'total_price' => '1000' ),
+	);
+	$body     = false !== strpos( $route, 'checkout' ) ? array( '__experimentalCart' => (object) $cart ) : $cart;
+	$response = product_response( $route, $body );
+	security_assert( $response instanceof WP_REST_Response, 'Restricted recommendations do not reject a public cart: ' . $route );
+	$filtered      = $response->get_data();
+	$filtered_cart = $filtered['__experimentalCart'] ?? $filtered;
+	security_assert( array( $public ) === $filtered_cart['items'] && $cart['totals'] === $filtered_cart['totals'], 'Public cart items and totals remain intact' );
+	security_assert( array( $public ) === $filtered_cart['cross_sells'], 'Restricted cross-sells disappear silently' );
+	assert_private_absent( $response );
+	$cart['items'][] = (object) $private;
+	$body            = false !== strpos( $route, 'checkout' ) ? array( '__experimentalCart' => (object) $cart ) : $cart;
+	security_assert( product_response( $route, $body ) instanceof WP_Error, 'Restricted cart items still reject a cart which also contains recommendations' );
+}
 $GLOBALS['authorized'] = true;
 security_assert( $private === product_response( '/wc/store/v1/products/1', $private )->get_data(), 'Authorized readers retain full data' );
 security_assert( $variation === product_response( '/wc/v3/products/1/variations/3', $variation )->get_data(), 'Authorized readers retain variations' );
+
+$authorized_checkout = product_response( '/wc/store/v1/checkout', $checkout );
+security_assert( $authorized_checkout instanceof WP_REST_Response && json_decode( wp_json_encode( $checkout ), true ) === $authorized_checkout->get_data(), 'Authorized checkout retains every nested product field' );
