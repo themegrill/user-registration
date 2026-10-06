@@ -11263,6 +11263,34 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_unlinked_users_query_args' ) ) {
+	/**
+	 * Build get_users() arguments for users of the current site that have no registration form.
+	 *
+	 * The acting admin is left out on purpose, so a site with a single admin does not get a step for its own account.
+	 * get_users() only returns members of the current site on multisite, unlike a raw query on the shared users table.
+	 *
+	 * @param array $args Arguments that override the defaults, such as number or fields.
+	 * @return array Arguments for get_users() or WP_User_Query.
+	 */
+	function ur_get_unlinked_users_query_args( $args = array() ) {
+		return wp_parse_args(
+			$args,
+			array(
+				'fields'     => 'ID',
+				'exclude'    => array( get_current_user_id() ),
+				'orderby'    => 'ID',
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					array(
+						'key'     => 'ur_form_id',
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			)
+		);
+	}
+}
+
 if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
 	/**
 	 * Get count of users without an associated registration form, excluding current user.
@@ -11286,20 +11314,16 @@ if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
 			return $memoized_count;
 		}
 
-		global $wpdb;
-
-		$count = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(u.ID)
-				FROM {$wpdb->users} u
-				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
-				WHERE um.user_id IS NULL
-				AND u.ID != %d",
-				$current_user_id
+		$query = new WP_User_Query(
+			ur_get_unlinked_users_query_args(
+				array(
+					'number'      => 1,
+					'count_total' => true,
+				)
 			)
 		);
 
-		$memoized_count = absint( $count );
+		$memoized_count = absint( $query->get_total() );
 		set_transient( $transient_key, $memoized_count, 5 * MINUTE_IN_SECONDS );
 
 		return $memoized_count;
@@ -11328,24 +11352,18 @@ if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
 	 * @return array[] List of arrays with 'id', 'name' and 'avatar' keys.
 	 */
 	function ur_get_unlinked_users_preview( $limit = 3 ) {
-		global $wpdb;
-
-		$users = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT u.ID, u.display_name, u.user_login
-				FROM {$wpdb->users} u
-				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
-				WHERE um.user_id IS NULL
-				AND u.ID != %d
-				ORDER BY u.ID DESC
-				LIMIT %d",
-				get_current_user_id(),
-				absint( $limit )
+		$users = get_users(
+			ur_get_unlinked_users_query_args(
+				array(
+					'fields' => array( 'ID', 'display_name', 'user_login' ),
+					'number' => absint( $limit ),
+					'order'  => 'DESC',
+				)
 			)
 		);
 
 		$preview = array();
-		foreach ( (array) $users as $user ) {
+		foreach ( $users as $user ) {
 			$preview[] = array(
 				'id'     => (int) $user->ID,
 				'name'   => '' !== trim( (string) $user->display_name ) ? (string) $user->display_name : (string) $user->user_login,

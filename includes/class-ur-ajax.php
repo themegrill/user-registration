@@ -2770,24 +2770,11 @@ class UR_AJAX {
 			);
 		}
 
-		global $wpdb;
-
 		$current_user_id = get_current_user_id();
 
-		// Fetch unlinked user IDs in bounded chunks to avoid execution timeouts on large databases.
+		// Exclude acting admin via query args so fresh single-admin sites don't flag the installer's account.
 		$chunk_size = 500;
-		$user_ids   = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT u.ID
-				FROM {$wpdb->users} u
-				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
-				WHERE um.user_id IS NULL
-				AND u.ID != %d
-				LIMIT %d",
-				$current_user_id,
-				$chunk_size + 1
-			)
-		);
+		$user_ids   = get_users( ur_get_unlinked_users_query_args( array( 'number' => $chunk_size + 1 ) ) );
 
 		// The extra row only signals that another batch is needed, so it is not linked in this one.
 		$has_more = count( $user_ids ) > $chunk_size;
