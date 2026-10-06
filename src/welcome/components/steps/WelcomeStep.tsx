@@ -7,6 +7,7 @@ import {
 	Link,
 	Radio,
 	RadioGroup,
+	SimpleGrid,
 	Text,
 	useColorModeValue,
 	VStack
@@ -19,64 +20,63 @@ import { useStateValue } from "../../context/StateProvider";
 interface MembershipOptionProps {
 	value: MembershipSetupType;
 	title: string;
-	description: string;
-	isSelected: boolean;
 }
+
+const BRAND_COLOR = "#475BB2";
+const BRAND_TINT = "#F5F7FD";
 
 const MembershipOption: React.FC<MembershipOptionProps> = ({
 	value,
-	title,
-	description,
-	isSelected
+	title
 }) => {
-	const selectedBorder = "#475BB2";
-	const defaultBorder = useColorModeValue("#F4F4F4", "gray.600");
+	// gray.300 keeps the unselected card edge above the 3:1 non-text contrast minimum (WCAG 1.4.11).
+	const defaultBorder = useColorModeValue("gray.300", "gray.600");
+	const hoverBorder = useColorModeValue("gray.400", "gray.500");
+	const selectedBg = useColorModeValue(BRAND_TINT, "whiteAlpha.100");
 	const titleColor = useColorModeValue("gray.800", "white");
-	const descColor = useColorModeValue("gray.600", "gray.400");
 
+	// Card styles live on this wrapper: Chakra's Radio forwards most style props to its hidden input, not its root label.
 	return (
 		<Box
-			as="label"
-			cursor="pointer"
-			w="100%"
-			p={4}
-			borderRadius="4px"
+			borderRadius="6px"
 			borderWidth="2px"
-			borderColor={isSelected ? selectedBorder : defaultBorder}
-			bg={"transparent"}
-			transition="all 0.2s ease"
+			borderColor={defaultBorder}
+			transition="border-color 0.15s ease, background-color 0.15s ease"
+			_hover={{ borderColor: hoverBorder }}
+			sx={{
+				"&:has(input:checked)": {
+					borderColor: BRAND_COLOR,
+					bg: selectedBg
+				},
+				"&:has(input:focus-visible)": {
+					outline: `2px solid ${BRAND_COLOR}`,
+					outlineOffset: "2px"
+				},
+				"& .chakra-radio": {
+					display: "flex",
+					alignItems: "center",
+					w: "100%",
+					minH: "52px",
+					px: 4,
+					py: 3,
+					cursor: "pointer"
+				},
+				"& .chakra-radio__control[data-checked]": {
+					bg: BRAND_COLOR,
+					borderColor: BRAND_COLOR
+				},
+				"& .chakra-radio__label": {
+					ml: 3,
+					fontWeight: 600,
+					fontSize: "15px",
+					lineHeight: "22px",
+					color: titleColor
+				}
+			}}
 		>
-			<HStack align="flex-start" spacing={3}>
-				<Radio
-					value={value}
-					colorScheme="blue"
-					mt="3px"
-					sx={{
-						"&[data-checked]": {
-							bg: "#475BB2",
-							borderColor: "#475BB2"
-						}
-					}}
-				/>
-				<Box>
-					<Text
-						fontWeight="600"
-						color={titleColor}
-						fontSize="14px"
-						lineHeight="20px"
-					>
-						{title}
-					</Text>
-					<Text
-						fontSize="sm"
-						color={descColor}
-						mt={1}
-						lineHeight="22px"
-					>
-						{description}
-					</Text>
-				</Box>
-			</HStack>
+			<Radio value={value} colorScheme="blue">
+				{title}
+			</Radio>
 		</Box>
 	);
 };
@@ -90,7 +90,7 @@ const WelcomeStep: React.FC = () => {
 
 	const textColor = useColorModeValue("gray.800", "white");
 	const mutedColor = useColorModeValue("gray.600", "gray.400");
-	const linkColor = "#475BB2";
+	const linkColor = BRAND_COLOR;
 	const inputBg = useColorModeValue("white", "gray.700");
 	const inputBorder = useColorModeValue("gray.300", "gray.600");
 
@@ -131,33 +131,14 @@ const WelcomeStep: React.FC = () => {
 
 	const emailForDisplay = adminEmail || "admin@example.com";
 
-	const optionsToRender: Omit<MembershipOptionProps, "isSelected">[] = [
+	const optionsToRender: MembershipOptionProps[] = [
 		{
 			value: "membership",
-			title: __(
-				"Yes — Membership Plans & Content Restriction",
-				"user-registration"
-			),
-			description: __(
-				"Create free or paid plans, accept payments, and restrict content to members.",
-				"user-registration"
-			)
+			title: __("Yes", "user-registration")
 		},
 		{
 			value: "registration",
-			title: __("No — Registration & Account Pages", "user-registration"),
-			description: __(
-				"Set up custom registration, login, and account pages. No plans or payment steps are created for now.",
-				"user-registration"
-			)
-		},
-		{
-			value: "later",
-			title: __("Maybe later — Start Simple", "user-registration"),
-			description: __(
-				"Set up registration and login now. You can add membership plans and payments whenever you're ready.",
-				"user-registration"
-			)
+			title: __("Not now", "user-registration")
 		}
 	];
 
@@ -185,8 +166,15 @@ const WelcomeStep: React.FC = () => {
 				</Text>
 			</VStack>
 
-			<Box mb={10}>
-				<Text fontWeight="600" color={textColor} mb={4} fontSize="16px">
+			<Box mb={8}>
+				<Text
+					id="urm-membership-question"
+					fontWeight="600"
+					color={textColor}
+					fontSize="16px"
+					lineHeight="24px"
+					mb={4}
+				>
 					{__(
 						"Do you want to offer membership plans on your site?",
 						"user-registration"
@@ -195,20 +183,17 @@ const WelcomeStep: React.FC = () => {
 				<RadioGroup
 					value={membershipSetupType}
 					onChange={handleMembershipChange as any}
+					aria-labelledby="urm-membership-question"
 				>
-					<VStack spacing={4} align="stretch">
+					<SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
 						{optionsToRender.map((option) => (
 							<MembershipOption
 								key={option.value}
 								value={option.value}
 								title={option.title}
-								description={option.description}
-								isSelected={
-									membershipSetupType === option.value
-								}
 							/>
 						))}
-					</VStack>
+					</SimpleGrid>
 				</RadioGroup>
 			</Box>
 
