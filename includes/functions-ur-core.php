@@ -11253,7 +11253,6 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'legacy_payment_fields_url'         => $legacy_payment_fields_url,
 			'unlinked_users_count'              => $unlinked_users_count,
 			'unlinked_users_handled'            => $unlinked_users_handled,
-			'unlinked_users_preview'            => $unlinked_users_handled ? array() : ur_get_unlinked_users_preview(),
 			'registration_forms'                => $forms_list,
 			'default_form_id'                   => $validated_default_form_id,
 		);

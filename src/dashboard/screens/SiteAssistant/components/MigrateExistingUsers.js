@@ -48,8 +48,23 @@ const formatCount = (count) => {
 const getPreviewNamesText = (users, total) => {
 	const [first, second] = users.map((user) => user.name);
 
-	if (total === 1 || !second) {
+	if (total <= 1) {
 		return first;
+	}
+
+	// The count is cached briefly, so the live preview can hold fewer names than it.
+	if (!second) {
+		return sprintf(
+			/* translators: 1: user name, 2: number of other users */
+			_n(
+				"%1$s and %2$s more",
+				"%1$s and %2$s more",
+				total - 1,
+				"user-registration"
+			),
+			first,
+			formatCount(total - 1)
+		);
 	}
 
 	if (total === 2) {
@@ -81,6 +96,7 @@ const MigrateExistingUsers = ({
 	const toast = useToast();
 	const [isMigrating, setIsMigrating] = useState(false);
 	const [isSkipping, setIsSkipping] = useState(false);
+	const [linkedSoFar, setLinkedSoFar] = useState(0);
 
 	const siteAssistantData = window._UR_DASHBOARD_?.site_assistant_data || {};
 	const unlinkedCount = siteAssistantData.unlinked_users_count || 0;
@@ -117,6 +133,7 @@ const MigrateExistingUsers = ({
 		}
 
 		setIsMigrating(true);
+		setLinkedSoFar(0);
 
 		try {
 			const adminURL =
@@ -174,6 +191,7 @@ const MigrateExistingUsers = ({
 
 				const count = result.data?.count || 0;
 				totalLinked += count;
+				setLinkedSoFar(totalLinked);
 				hasMore = Boolean(result.data?.has_more);
 
 				// Guard against potential infinite loop if no accounts could be linked in a batch.
@@ -526,7 +544,19 @@ const MigrateExistingUsers = ({
 							py={5}
 							isLoading={isMigrating}
 							isDisabled={isMigrating || isSkipping}
-							loadingText={__("Linking...", "user-registration")}
+							loadingText={
+								linkedSoFar > 0
+									? sprintf(
+											/* translators: 1: users linked so far, 2: total users to link */
+											__(
+												"Linking %1$s of %2$s...",
+												"user-registration"
+											),
+											formatCount(linkedSoFar),
+											formatCount(unlinkedCount)
+										)
+									: __("Linking...", "user-registration")
+							}
 						>
 							{sprintf(
 								/* translators: %s: number of unlinked users */

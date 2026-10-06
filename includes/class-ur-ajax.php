@@ -2840,6 +2840,8 @@ class UR_AJAX {
 		if ( function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
 			ur_clear_unlinked_users_count_cache( $current_user_id );
 		}
+		// Also drop the non-URM users count behind the Profile Connect notice so it doesn't show a stale total.
+		delete_transient( 'urm_users_not_from_urm_forms' );
 
 		if ( ! $has_more ) {
 			// Clear skip option when all users are successfully linked.
