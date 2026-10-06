@@ -271,13 +271,16 @@ class UR_Install {
 	 *
 	 * Also clears any leftover `update` admin notice from older releases.
 	 *
-	 * @since 5.2.9
+	 * @since 5.3
 	 */
 	public static function sync_legacy_db_updates() {
 		self::init_background_updater();
 
 		if ( self::needs_db_update() ) {
-			self::update();
+			// install() and maybe_run_migrations() both sync in one request; do not queue the same batch twice.
+			if ( ! self::$background_updater->is_updating() ) {
+				self::update();
+			}
 		} else {
 			$current_db_version = get_option( 'user_registration_db_version', null );
 			if ( is_null( $current_db_version ) || version_compare( $current_db_version, UR()->version, '<' ) ) {
@@ -440,7 +443,15 @@ class UR_Install {
 				'ur_update_125_db_version',
 			);
 		}
-		return $updates;
+
+		// Callbacks for a release that has not shipped yet would be queued again on every sync, because the updater records the running version.
+		return array_filter(
+			$updates,
+			function ( $version ) {
+				return version_compare( $version, UR()->version, '<=' );
+			},
+			ARRAY_FILTER_USE_KEY
+		);
 	}
 
 	/**
