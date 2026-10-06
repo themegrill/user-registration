@@ -11218,6 +11218,17 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $legacy_payment_fields_forms ) )
 			: admin_url( 'admin.php?page=user-registration' );
 
+		$unlinked_users_count   = ur_get_unlinked_users_count();
+		$unlinked_users_handled = ur_is_unlinked_users_handled();
+
+		$forms_list = array();
+		foreach ( (array) $legacy_payment_fields_forms as $form_id => $form_title ) {
+			$forms_list[] = array(
+				'id'    => (int) $form_id,
+				'title' => (string) $form_title,
+			);
+		}
+
 		$site_assistant_data = array(
 			'users_can_register'                => ur_users_can_register(),
 			'has_default_form'                  => ! empty( $default_form_post ),
@@ -11231,11 +11242,58 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'default_form_has_membership_field' => $default_form_has_membership,
 			'membership_field_handled'          => $membership_field_handled,
 			'has_membership_plans'              => $has_membership_plans,
-			'legacy_payment_fields_handled'      => $legacy_payment_fields_handled,
-			'legacy_payment_fields_url'          => $legacy_payment_fields_url,
+			'legacy_payment_fields_handled'     => $legacy_payment_fields_handled,
+			'legacy_payment_fields_url'         => $legacy_payment_fields_url,
+			'unlinked_users_count'              => $unlinked_users_count,
+			'unlinked_users_handled'            => $unlinked_users_handled,
+			'registration_forms'                => $forms_list,
+			'default_form_id'                   => $default_form_id ? $default_form_id : ( ! empty( $forms_list ) ? $forms_list[0]['id'] : 0 ),
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
+	/**
+	 * Get count of users without an associated registration form, excluding current user.
+	 *
+	 * @return int Number of unlinked user accounts.
+	 */
+	function ur_get_unlinked_users_count() {
+		global $wpdb;
+
+		$current_user_id = get_current_user_id();
+
+		$count = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(u.ID)
+				FROM {$wpdb->users} u
+				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
+				WHERE um.user_id IS NULL
+				AND u.ID != %d",
+				$current_user_id
+			)
+		);
+
+		return absint( $count );
+	}
+}
+
+if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
+	/**
+	 * Check if unlinked users migration step has been completed or skipped.
+	 *
+	 * @return bool True if handled or no unlinked users exist, false otherwise.
+	 */
+	function ur_is_unlinked_users_handled() {
+		$is_skipped = ur_string_to_bool( get_option( 'user_registration_migrate_users_skipped', false ) );
+
+		if ( $is_skipped ) {
+			return true;
+		}
+
+		return 0 === ur_get_unlinked_users_count();
 	}
 }
 

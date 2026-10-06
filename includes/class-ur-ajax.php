@@ -96,6 +96,7 @@ class UR_AJAX {
 			'handle_default_wordpress_login'       => false,
 			'enable_emails'                        => false,
 			'skip_site_assistant_section'          => false,
+			'migrate_existing_users'               => false,
 			'login_settings_page_validation'       => false,
 			'activate_dependent_module'            => false,
 			'add_membership_field_to_default_form' => false,
@@ -2738,10 +2739,87 @@ class UR_AJAX {
 				);
 				break;
 
+			case 'migrate_users':
+				update_option( 'user_registration_migrate_users_skipped', true );
+				wp_send_json_success(
+					array(
+						'message' => __( 'Existing users migration step has been skipped.', 'user-registration' ),
+					)
+				);
+				break;
+
 			default:
 				wp_send_json_error( array( 'message' => __( 'Invalid section specified.', 'user-registration' ) ) );
 				break;
 		}
+	}
+
+	/**
+	 * Migrate unlinked users to a designated registration form.
+	 *
+	 * @return void
+	 */
+	public static function migrate_existing_users() {
+		check_ajax_referer( 'wp_rest', 'security' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'You do not have permission to migrate users.', 'user-registration' ),
+				)
+			);
+		}
+
+		$form_id = isset( $_POST['form_id'] ) ? absint( $_POST['form_id'] ) : 0;
+		if ( ! $form_id || 'user_registration' !== get_post_type( $form_id ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Invalid registration form selected.', 'user-registration' ),
+				)
+			);
+		}
+
+		global $wpdb;
+
+		$current_user_id = get_current_user_id();
+
+		// Fetch unlinked user IDs excluding the current administrator who is running the migration.
+		$user_ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT u.ID
+				FROM {$wpdb->users} u
+				LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'ur_form_id'
+				WHERE um.user_id IS NULL
+				AND u.ID != %d",
+				$current_user_id
+			)
+		);
+
+		if ( empty( $user_ids ) ) {
+			wp_send_json_success(
+				array(
+					'message' => __( 'No unlinked users found to migrate.', 'user-registration' ),
+					'count'   => 0,
+				)
+			);
+		}
+
+		$migrated_count = 0;
+		foreach ( $user_ids as $user_id ) {
+			update_user_meta( (int) $user_id, 'ur_form_id', $form_id );
+			$migrated_count++;
+		}
+
+		// Clear skip option when users are successfully linked.
+		delete_option( 'user_registration_migrate_users_skipped' );
+
+		wp_send_json_success(
+			array(
+				/* translators: %d: number of users migrated */
+				'message' => sprintf( _n( '%d user successfully linked to registration form.', '%d users successfully linked to registration form.', $migrated_count, 'user-registration' ), $migrated_count ),
+				'count'   => $migrated_count,
+			)
+		);
 	}
 
 	public static function login_settings_page_validation() {
