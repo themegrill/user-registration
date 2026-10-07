@@ -100,6 +100,10 @@ test.describe("admin surfaces @fresh", () => {
   });
 
   test("setup wizard payment step reveals secret keys with a show/hide toggle @fresh @admin", async ({ page }) => {
+    // The wizard is a React bundle; a checkout that was never built serves an HTML page for it.
+    const bundle = await page.request.get("/wp-content/plugins/user-registration/chunks/welcome.js");
+    test.skip(!(bundle.headers()["content-type"] ?? "").includes("javascript"), "chunks/welcome.js is not built on this site; run pnpm build first");
+
     await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
     await page.getByRole("button", { name: "Next" }).click();
     await expect(page.getByRole("heading", { name: "Create Membership" })).toBeVisible();
