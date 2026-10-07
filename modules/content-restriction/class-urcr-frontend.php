@@ -41,6 +41,7 @@ class URCR_Frontend {
 		}
 
 		add_filter( 'woocommerce_is_purchasable', array( $this, 'is_wc_purchasable' ), 99999, 2 );
+		add_filter( 'woocommerce_get_price_html', array( $this, 'hide_wc_price_if_restricted' ), 99999, 2 );
 
 		add_action( 'elementor/frontend/before_render', array( $this, 'urcr_elementor_before_section_render' ) );
 		add_action( 'elementor/frontend/after_render', array( $this, 'urcr_elementor_after_section_render' ) );
@@ -752,6 +753,21 @@ class URCR_Frontend {
 		}
 
 		return $this->ur_user_can_purchase_woocommerce_product( $product->get_id() );
+	}
+
+	/**
+	 * Hide the price of a WooCommerce product the current user is not allowed to purchase.
+	 *
+	 * @param string     $price_html Price HTML.
+	 * @param WC_Product $product    Product being priced.
+	 * @return string
+	 */
+	public function hide_wc_price_if_restricted( $price_html, $product ) {
+		if ( current_user_can( 'edit_post', $product->get_id() ) ) {
+			return $price_html;
+		}
+
+		return $this->ur_user_can_purchase_woocommerce_product( $product->get_id() ) ? $price_html : '';
 	}
 
 	/**
