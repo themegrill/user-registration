@@ -1734,6 +1734,7 @@ class SubscriptionService {
 							$stripe_service->run_missed_payment_backfill( $last_synced );
 							$stripe_service->run_missed_onetime_payment_backfill( $last_synced );
 							$stripe_service->run_missed_refund_backfill( $last_synced );
+							$stripe_service->run_missed_dispute_backfill( $last_synced );
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(
@@ -1780,6 +1781,7 @@ class SubscriptionService {
 							$paypal_service->run_missed_payment_backfill( $paypal_last_synced, $now );
 							$paypal_service->run_missed_onetime_payment_backfill( $paypal_last_synced, $now );
 							$paypal_service->run_missed_refund_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_dispute_backfill( $paypal_last_synced, $now );
 							if ( $paypal_service->has_backfill_failure() ) {
 								ur_get_logger()->warning(
 									'[Backfill][PayPal] A fetch or update failed; the PayPal sync time is kept and this window is searched again next run.',

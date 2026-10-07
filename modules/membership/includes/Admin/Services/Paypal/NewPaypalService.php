@@ -1831,6 +1831,18 @@ class NewPaypalService {
 				$result = $this->handle_refund_webhook_event( $event_type, $resource );
 				break;
 
+			case 'CUSTOMER.DISPUTE.CREATED':
+				$result = $this->handle_paypal_dispute_created( $resource );
+				break;
+
+			case 'CUSTOMER.DISPUTE.RESOLVED':
+				$result = $this->handle_paypal_dispute_resolved( $resource );
+				break;
+
+			case 'CUSTOMER.DISPUTE.UPDATED':
+				$result = $this->handle_paypal_dispute_updated( $resource );
+				break;
+
 			case 'BILLING.SUBSCRIPTION.CREATED':
 			case 'BILLING.SUBSCRIPTION.ACTIVATED':
 			case 'BILLING.SUBSCRIPTION.UPDATED':
@@ -2185,6 +2197,375 @@ class NewPaypalService {
 		);
 
 		return true;
+	}
+
+	/**
+	 * Handle CUSTOMER.DISPUTE.CREATED: flag member, notify admin and, past the inquiry stage, revoke access.
+	 *
+	 * @param array $resource PayPal dispute resource.
+	 * @return bool
+	 */
+	private function handle_paypal_dispute_created( $resource ) {
+		$order = $this->resolve_order_from_paypal_dispute( $resource );
+		if ( empty( $order['ID'] ) ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'CUSTOMER.DISPUTE.CREATED: no local order for dispute.',
+				array(
+					'error_code' => 'ORDER_NOT_FOUND',
+					'dispute_id' => $resource['dispute_id'] ?? '',
+				)
+			);
+			return false;
+		}
+
+		$user_id        = absint( $order['user_id'] ?? 0 );
+		$existing_flag  = get_user_meta( $user_id, 'urm_paypal_dispute', true );
+		$same_dispute   = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) ( $resource['dispute_id'] ?? '' ) === (string) $existing_flag['dispute_id'];
+		$already_seen   = $same_dispute;
+		$is_inquiry     = $this->is_paypal_inquiry( $resource );
+		$already_closed = $same_dispute
+			&& ! empty( $existing_flag['status'] )
+			&& $this->is_final_paypal_dispute_status( $existing_flag['status'] );
+
+		if ( ! $already_closed ) {
+			$this->flag_paypal_dispute( $order, $resource, 'open' );
+		}
+
+		if ( ! $is_inquiry && ! $already_closed ) {
+			$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		}
+
+		if ( ! $already_seen ) {
+			$this->notify_admin_paypal_dispute( $order, $resource, $is_inquiry ? 'inquiry' : 'created' );
+		}
+
+		PaymentGatewayLogging::log_webhook_processed(
+			'paypal',
+			sprintf( $is_inquiry ? 'PayPal inquiry %s: order %d flagged, membership kept.' : 'PayPal dispute %s: order %d flagged and membership revoked.', $resource['dispute_id'] ?? '', $order['ID'] ),
+			array(
+				'order_id'   => $order['ID'],
+				'dispute_id' => $resource['dispute_id'] ?? '',
+				'member_id'  => $user_id,
+			)
+		);
+
+		return true;
+	}
+
+	/**
+	 * Handle CUSTOMER.DISPUTE.RESOLVED: update flag and ensure access stays revoked.
+	 *
+	 * @param array $resource PayPal dispute resource.
+	 * @return bool
+	 */
+	private function handle_paypal_dispute_resolved( $resource ) {
+		$order = $this->resolve_order_from_paypal_dispute( $resource );
+		if ( empty( $order['ID'] ) ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'CUSTOMER.DISPUTE.RESOLVED: no local order for dispute.',
+				array(
+					'error_code' => 'ORDER_NOT_FOUND',
+					'dispute_id' => $resource['dispute_id'] ?? '',
+				)
+			);
+			return false;
+		}
+
+		$dispute_status = $this->get_paypal_dispute_local_status( $resource );
+		$user_id        = absint( $order['user_id'] ?? 0 );
+		$existing_flag  = get_user_meta( $user_id, 'urm_paypal_dispute', true );
+		$already_closed = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) ( $resource['dispute_id'] ?? '' ) === (string) $existing_flag['dispute_id']
+			&& ! empty( $existing_flag['status'] )
+			&& (string) $existing_flag['status'] === (string) $dispute_status;
+
+		$this->flag_paypal_dispute( $order, $resource, $dispute_status );
+		if ( ! $this->is_paypal_inquiry( $resource ) ) {
+			$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		}
+
+		if ( ! $already_closed ) {
+			$this->notify_admin_paypal_dispute( $order, $resource, 'closed' );
+		}
+
+		PaymentGatewayLogging::log_webhook_processed(
+			'paypal',
+			sprintf( 'PayPal dispute %s resolved as %s for order %d.', $resource['dispute_id'] ?? '', $dispute_status, $order['ID'] ),
+			array(
+				'order_id'       => $order['ID'],
+				'dispute_id'     => $resource['dispute_id'] ?? '',
+				'dispute_status' => $dispute_status,
+				'member_id'      => $user_id,
+			)
+		);
+
+		return true;
+	}
+
+	/**
+	 * Handle CUSTOMER.DISPUTE.UPDATED: refresh the flag until the dispute is resolved, and revoke once an inquiry escalates.
+	 *
+	 * @param array $resource PayPal dispute resource.
+	 * @return bool
+	 */
+	private function handle_paypal_dispute_updated( $resource ) {
+		$order = $this->resolve_order_from_paypal_dispute( $resource );
+		if ( empty( $order['ID'] ) ) {
+			return false;
+		}
+
+		$status        = $this->get_paypal_dispute_local_status( $resource );
+		$user_id       = absint( $order['user_id'] ?? 0 );
+		$existing_flag = get_user_meta( $user_id, 'urm_paypal_dispute', true );
+		$same_dispute  = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) ( $resource['dispute_id'] ?? '' ) === (string) $existing_flag['dispute_id'];
+		// Only a final outcome stops updates; anything else keeps the flag current.
+		$already_closed = $same_dispute
+			&& ! empty( $existing_flag['status'] )
+			&& $this->is_final_paypal_dispute_status( $existing_flag['status'] );
+
+		if ( ! $already_closed ) {
+			$this->flag_paypal_dispute( $order, $resource, $status );
+		}
+
+		// An inquiry that moved on to a chargeback or later stage, or a resolved real dispute, revokes access.
+		if ( ! $already_closed && ! $this->is_paypal_inquiry( $resource ) && 'refunded' !== ( $order['status'] ?? '' ) ) {
+			$this->revoke_membership_for_paypal_dispute( $order, $resource );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Whether a PayPal dispute is still only an inquiry (no chargeback yet).
+	 *
+	 * @param array $resource Dispute resource.
+	 * @return bool
+	 */
+	private function is_paypal_inquiry( $resource ) {
+		return isset( $resource['dispute_life_cycle_stage'] ) && 'INQUIRY' === strtoupper( (string) $resource['dispute_life_cycle_stage'] );
+	}
+
+	/**
+	 * Whether a stored PayPal dispute status is a final outcome.
+	 *
+	 * @param string $status Local flag status.
+	 * @return bool
+	 */
+	private function is_final_paypal_dispute_status( $status ) {
+		return in_array( strtolower( (string) $status ), array( 'resolved', 'won', 'lost' ), true );
+	}
+
+	/**
+	 * Local lowercase status for a PayPal dispute: won or lost once resolved with a known outcome.
+	 *
+	 * @param array $resource Dispute resource.
+	 * @return string
+	 */
+	private function get_paypal_dispute_local_status( $resource ) {
+		$status = isset( $resource['status'] ) ? strtolower( sanitize_text_field( $resource['status'] ) ) : 'open';
+
+		if ( 'resolved' !== $status ) {
+			return $status;
+		}
+
+		$outcome = isset( $resource['dispute_outcome']['outcome_code'] ) ? strtoupper( (string) $resource['dispute_outcome']['outcome_code'] ) : '';
+		$map     = array(
+			'RESOLVED_SELLER_FAVOUR' => 'won',
+			'RESOLVED_BUYER_FAVOUR'  => 'lost',
+		);
+
+		return isset( $map[ $outcome ] ) ? $map[ $outcome ] : 'resolved';
+	}
+
+	/**
+	 * Resolve local order from a PayPal dispute resource.
+	 *
+	 * @param array $resource Dispute resource.
+	 * @return array
+	 */
+	private function resolve_order_from_paypal_dispute( $resource ) {
+		$transactions = isset( $resource['disputed_transactions'] ) ? $resource['disputed_transactions'] : array();
+		if ( empty( $transactions ) || ! is_array( $transactions ) ) {
+			return array();
+		}
+
+		foreach ( $transactions as $txn ) {
+			$transaction_id = isset( $txn['seller_transaction_id'] ) ? $txn['seller_transaction_id'] : '';
+			if ( empty( $transaction_id ) ) {
+				continue;
+			}
+
+			$order = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
+			if ( ! empty( $order ) ) {
+				return is_array( $order ) ? $order : array();
+			}
+		}
+
+		return array();
+	}
+
+	/**
+	 * Store PayPal dispute flag on the member.
+	 *
+	 * @param array  $order    Local order.
+	 * @param array  $resource Dispute resource.
+	 * @param string $status   Local status label.
+	 * @return void
+	 */
+	private function flag_paypal_dispute( $order, $resource, $status ) {
+		$user_id = absint( $order['user_id'] ?? 0 );
+		if ( ! $user_id ) {
+			return;
+		}
+
+		$amount = isset( $resource['dispute_amount']['value'] ) ? $resource['dispute_amount']['value'] : '';
+		$flag   = array(
+			'dispute_id'     => sanitize_text_field( $resource['dispute_id'] ?? '' ),
+			'status'         => sanitize_text_field( $status ),
+			'reason'         => sanitize_text_field( $resource['reason'] ?? '' ),
+			'outcome_code'   => sanitize_text_field( $resource['dispute_outcome']['outcome_code'] ?? '' ),
+			'amount'         => sanitize_text_field( (string) $amount ),
+			'currency'       => sanitize_text_field( $resource['dispute_amount']['currency_code'] ?? '' ),
+			'order_id'       => absint( $order['ID'] ),
+			'transaction_id' => sanitize_text_field( $order['transaction_id'] ?? '' ),
+			'updated_at'     => gmdate( 'Y-m-d H:i:s' ),
+		);
+
+		update_user_meta( $user_id, 'urm_paypal_dispute', $flag );
+	}
+
+	/**
+	 * Mark order refunded and cancel membership for a PayPal dispute.
+	 *
+	 * @param array $order    Local order.
+	 * @param array $resource Dispute resource.
+	 * @return void
+	 */
+	private function revoke_membership_for_paypal_dispute( $order, $resource ) {
+		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		if ( ! $subscription_id ) {
+			return;
+		}
+
+		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
+		if ( empty( $subscription ) ) {
+			return;
+		}
+
+		if ( 'canceled' !== ( $subscription['status'] ?? '' ) ) {
+			$this->members_subscription_repository->update(
+				$subscription_id,
+				array(
+					'status' => 'canceled',
+				)
+			);
+		}
+
+		if ( ! empty( $subscription['subscription_id'] ) ) {
+			$this->cancel_subscription( $order, $subscription, true );
+		}
+
+		if ( ! empty( $order['user_id'] ) ) {
+			delete_transient( 'urm_pending_login_' . absint( $order['user_id'] ) );
+		}
+
+		PaymentGatewayLogging::log_general(
+			'paypal',
+			sprintf( 'PayPal dispute revoke: order %d refunded; subscription %d canceled.', $order['ID'], $subscription_id ) . "\n" . wp_json_encode(
+				array(
+					'event_type'      => 'dispute_revoke',
+					'order_id'        => $order['ID'],
+					'subscription_id' => $subscription_id,
+					'dispute_id'      => $resource['dispute_id'] ?? '',
+					'member_id'       => $order['user_id'] ?? 0,
+				),
+				JSON_PRETTY_PRINT
+			),
+			'notice'
+		);
+	}
+
+	/**
+	 * Email payment admins about a PayPal dispute.
+	 *
+	 * @param array  $order      Local order.
+	 * @param array  $resource   Dispute resource.
+	 * @param string $event_kind created|closed.
+	 * @return void
+	 */
+	private function notify_admin_paypal_dispute( $order, $resource, $event_kind ) {
+		$recipients = get_option( 'user_registration_payments_admin_email_receipents', get_option( 'admin_email' ) );
+		$recipients = array_filter( array_map( 'trim', explode( ',', (string) $recipients ) ) );
+		if ( empty( $recipients ) ) {
+			return;
+		}
+
+		$user_id  = absint( $order['user_id'] ?? 0 );
+		$user     = $user_id ? get_user_by( 'ID', $user_id ) : false;
+		$username = $user ? $user->user_login : (string) $user_id;
+		$blogname = wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES );
+
+		if ( 'inquiry' === $event_kind ) {
+			$subject = sprintf(
+				/* translators: %s: site name */
+				__( '[%s] PayPal inquiry opened', 'user-registration' ),
+				$blogname
+			);
+			$message = sprintf(
+				/* translators: 1: dispute id, 2: reason, 3: username, 4: order id */
+				__( "A PayPal inquiry was opened against a membership payment.\n\nDispute ID: %1\$s\nReason: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nNo funds were withdrawn and membership access has not been changed. Respond to the inquiry in your PayPal Dashboard; access is revoked if it becomes a chargeback.", 'user-registration' ),
+				$resource['dispute_id'] ?? '',
+				$resource['reason'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		} elseif ( 'closed' === $event_kind ) {
+			$subject = sprintf(
+				/* translators: %s: site name */
+				__( '[%s] PayPal dispute resolved', 'user-registration' ),
+				$blogname
+			);
+			$message = sprintf(
+				/* translators: 1: dispute id, 2: outcome, 3: username, 4: order id */
+				__( "A PayPal dispute has been resolved.\n\nDispute ID: %1\$s\nOutcome: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nReview the member and restore access manually if the dispute was won.", 'user-registration' ),
+				$resource['dispute_id'] ?? '',
+				$this->get_paypal_dispute_local_status( $resource ),
+				$username,
+				absint( $order['ID'] )
+			);
+		} else {
+			$subject = sprintf(
+				/* translators: %s: site name */
+				__( '[%s] PayPal dispute opened — membership revoked', 'user-registration' ),
+				$blogname
+			);
+			$message = sprintf(
+				/* translators: 1: dispute id, 2: reason, 3: username, 4: order id */
+				__( "A PayPal dispute was opened against a membership payment.\n\nDispute ID: %1\$s\nReason: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nMembership access has been revoked. Respond to the dispute in your PayPal Dashboard.", 'user-registration' ),
+				$resource['dispute_id'] ?? '',
+				$resource['reason'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		}
+
+		$headers = class_exists( '\UR_Emailer' ) ? \UR_Emailer::ur_get_header() : array();
+		// The header sets an HTML content type, so keep the line breaks of the plain-text body.
+		$message = wpautop( esc_html( $message ) );
+		foreach ( $recipients as $email ) {
+			if ( is_email( $email ) ) {
+				wp_mail( $email, $subject, $message, $headers );
+			}
+		}
 	}
 
 	/**
@@ -5433,6 +5814,88 @@ class NewPaypalService {
 		$logger->info( '[Backfill][PayPal][Refunds] ======= ENDED =======', array( 'source' => 'urm-missed-payment-backfill' ) );
 	}
 
+	/**
+	 * Backfill PayPal dispute events missed by webhooks.
+	 *
+	 * @param int $last_synced Unix timestamp of the previous sync.
+	 * @param int $now         Current Unix timestamp.
+	 * @return void
+	 */
+	public function run_missed_dispute_backfill( $last_synced, $now ) {
+		$logger = ur_get_logger();
+
+		if ( ! $this->has_rest_credentials() ) {
+			return;
+		}
+
+		$paypal_options  = $this->get_paypal_rest_credentials();
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
+		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
+		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
+
+		$logger->info( '[Backfill][PayPal][Disputes] ======= STARTED =======', array( 'source' => 'urm-missed-payment-backfill' ) );
+
+		$all_events = array();
+		foreach ( array( 'CUSTOMER.DISPUTE.CREATED', 'CUSTOMER.DISPUTE.RESOLVED', 'CUSTOMER.DISPUTE.UPDATED' ) as $event_type ) {
+			$events = $this->get_paypal_webhook_events( $event_type, $start_time, $end_time, $paypal_options );
+			if ( is_wp_error( $events ) ) {
+				$logger->info(
+					'[Backfill][PayPal][Disputes] API error fetching ' . $event_type . ' events.' . "\n" . wp_json_encode(
+						array( 'error' => $events->get_error_message() ),
+						JSON_PRETTY_PRINT
+					),
+					array( 'source' => 'urm-missed-payment-backfill' )
+				);
+				// Keep the sync time so this window is searched again on the next run.
+				$this->backfill_failed = true;
+			} else {
+				$all_events = array_merge( $all_events, $events );
+			}
+		}
+
+		usort(
+			$all_events,
+			static function ( $a, $b ) {
+				$time_a = isset( $a['create_time'] ) ? strtotime( $a['create_time'] ) : 0;
+				$time_b = isset( $b['create_time'] ) ? strtotime( $b['create_time'] ) : 0;
+				return $time_a <=> $time_b;
+			}
+		);
+
+		$total_handled = 0;
+		foreach ( $all_events as $event ) {
+			$event_type = isset( $event['event_type'] ) ? $event['event_type'] : '';
+			$resource   = isset( $event['resource'] ) ? $event['resource'] : array();
+			if ( empty( $event_type ) || empty( $resource ) ) {
+				continue;
+			}
+
+			if ( 'CUSTOMER.DISPUTE.CREATED' === $event_type ) {
+				$this->handle_paypal_dispute_created( $resource );
+				++$total_handled;
+			} elseif ( 'CUSTOMER.DISPUTE.RESOLVED' === $event_type ) {
+				$this->handle_paypal_dispute_resolved( $resource );
+				++$total_handled;
+			} elseif ( 'CUSTOMER.DISPUTE.UPDATED' === $event_type ) {
+				$this->handle_paypal_dispute_updated( $resource );
+				++$total_handled;
+			}
+		}
+
+		$logger->info(
+			'[Backfill][PayPal][Disputes] Done.' . "\n" . wp_json_encode(
+				array(
+					'event_type'    => 'backfill_done',
+					'total_found'   => count( $all_events ),
+					'total_handled' => $total_handled,
+				),
+				JSON_PRETTY_PRINT
+			),
+			array( 'source' => 'urm-missed-payment-backfill' )
+		);
+		$logger->info( '[Backfill][PayPal][Disputes] ======= ENDED =======', array( 'source' => 'urm-missed-payment-backfill' ) );
+	}
+
 	// -------------------------------------------------------------------------
 
 	public function get_webhook_url() {
@@ -5463,6 +5926,9 @@ class NewPaypalService {
 			array( 'name' => 'BILLING.SUBSCRIPTION.SUSPENDED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.CANCELLED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.EXPIRED' ),
+			array( 'name' => 'CUSTOMER.DISPUTE.CREATED' ),
+			array( 'name' => 'CUSTOMER.DISPUTE.RESOLVED' ),
+			array( 'name' => 'CUSTOMER.DISPUTE.UPDATED' ),
 		);
 
 		PaymentGatewayLogging::log_general(
