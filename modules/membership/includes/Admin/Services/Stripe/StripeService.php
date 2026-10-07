@@ -3036,6 +3036,33 @@ class StripeService {
 	}
 
 	/**
+	 * Get the end of the current billing period of a Stripe subscription as a timestamp.
+	 *
+	 * Since Stripe API 2025-03-31.basil `current_period_end` is on each subscription item; older versions
+	 * have it on the subscription. The account's API version decides, so both are read.
+	 *
+	 * @param object $stripe_subscription Stripe Subscription object.
+	 * @return int Zero when Stripe sent no period end.
+	 */
+	private function get_stripe_subscription_period_end( $stripe_subscription ) {
+		$ends = array();
+
+		if ( isset( $stripe_subscription->current_period_end ) ) {
+			$ends[] = (int) $stripe_subscription->current_period_end;
+		}
+
+		if ( isset( $stripe_subscription->items->data ) && is_iterable( $stripe_subscription->items->data ) ) {
+			foreach ( $stripe_subscription->items->data as $item ) {
+				if ( isset( $item->current_period_end ) ) {
+					$ends[] = (int) $item->current_period_end;
+				}
+			}
+		}
+
+		return $ends ? max( $ends ) : 0;
+	}
+
+	/**
 	 * Write period end / status from an already-retrieved Stripe subscription onto the local row.
 	 *
 	 * @param object $stripe_subscription  Stripe Subscription object.
@@ -3050,7 +3077,7 @@ class StripeService {
 
 		$update_data = array();
 
-		$current_period_end = isset( $stripe_subscription->current_period_end ) ? (int) $stripe_subscription->current_period_end : 0;
+		$current_period_end = $this->get_stripe_subscription_period_end( $stripe_subscription );
 		if ( $current_period_end > 0 ) {
 			$next_billing_date                = gmdate( 'Y-m-d H:i:s', $current_period_end );
 			$update_data['next_billing_date'] = $next_billing_date;
@@ -3580,8 +3607,8 @@ class StripeService {
 					'status' => $subscription->status,
 				);
 
-				$current_period_end = $subscription->current_period_end ?? null;
-				if ( ! empty( $current_period_end ) ) {
+				$current_period_end = $this->get_stripe_subscription_period_end( $subscription );
+				if ( $current_period_end > 0 ) {
 					$next_billing_date                = gmdate( 'Y-m-d H:i:s', $current_period_end );
 					$update_data['next_billing_date'] = $next_billing_date;
 					$update_data['expiry_date']       = $next_billing_date;
