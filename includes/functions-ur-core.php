@@ -3839,25 +3839,28 @@ if ( ! function_exists( 'ur_delete_user_files_on_user_delete' ) ) {
 		if ( class_exists( 'URFU_Uploaded_Data' ) ) {
 			$post = get_post( ur_get_form_id_by_userid( $user_id ) );
 
-			$form_data_object = json_decode( $post->post_content );
+			// Skip file cleanup if the registration form was deleted after the user registered.
+			if ( $post ) {
+				$form_data_object = json_decode( $post->post_content );
 
-			$file_fields = URFU_Uploaded_Data::get_file_field( $form_data_object );
+				$file_fields = URFU_Uploaded_Data::get_file_field( $form_data_object );
 
-			foreach ( $file_fields as $field ) {
+				foreach ( $file_fields as $field ) {
 
-				$meta_key = isset( $field['key'] ) ? $field['key'] : '';
+					$meta_key = isset( $field['key'] ) ? $field['key'] : '';
 
-				$attachment_ids = get_user_meta( $user->ID, 'user_registration_' . $meta_key, true );
+					$attachment_ids = get_user_meta( $user->ID, 'user_registration_' . $meta_key, true );
 
-				if ( is_string( $attachment_ids ) ) {
-					$attachment_ids = explode( ',', $attachment_ids );
-				}
+					if ( is_string( $attachment_ids ) ) {
+						$attachment_ids = explode( ',', $attachment_ids );
+					}
 
-				foreach ( $attachment_ids as $attachment_id ) {
-					$file_path = get_attached_file( $attachment_id );
+					foreach ( $attachment_ids as $attachment_id ) {
+						$file_path = get_attached_file( $attachment_id );
 
-					if ( file_exists( $file_path ) ) {
-						unlink( $file_path );
+						if ( file_exists( $file_path ) ) {
+							unlink( $file_path );
+						}
 					}
 				}
 			}
