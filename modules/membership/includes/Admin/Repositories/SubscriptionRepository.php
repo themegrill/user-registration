@@ -29,14 +29,22 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	/**
 	 * cancel_subscription_by_id
 	 *
-	 * @param $subscription_id
-	 * @param $send_email
-	 * @param $is_upgrade
+	 * @param int  $subscription_id Subscription ID.
+	 * @param bool $send_email      Whether to send cancellation emails.
+	 * @param bool $is_upgrade      Whether this cancel is part of an upgrade.
+	 * @param bool $force_cancel    Force immediate gateway cancel (PayPal cancel vs suspend; Stripe cancel now vs period end).
 	 *
 	 * @return array|bool[]|mixed|null
 	 */
-	public function cancel_subscription_by_id( $subscription_id, $send_email = true, $is_upgrade = false ) {
+	public function cancel_subscription_by_id( $subscription_id, $send_email = true, $is_upgrade = false, $force_cancel = false ) {
 		$subscription = $this->retrieve( $subscription_id );
+
+		if ( empty( $subscription ) || ! is_array( $subscription ) ) {
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Subscription not found.', 'user-registration' ),
+			);
+		}
 
 		$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
@@ -99,15 +107,45 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 				}
 			}
 
-			$cancel_sub = $subscription_service->cancel_subscription( $order, $subscription );
+			$orders_to_try = array( $order );
+
+			// A pending renewal on another gateway may not own the stored gateway id yet, so try the last completed order's gateway first.
+			if ( ! $is_upgrade && 'pending' === ( $order['status'] ?? '' ) ) {
+				$completed_order = $this->orders_repository->get_order_by_subscription( $subscription_id, 'completed' );
+
+				if ( ! empty( $completed_order['payment_method'] ) && 'bank' !== $completed_order['payment_method'] && $completed_order['payment_method'] !== $order['payment_method'] ) {
+					// A pending bank renewal never owns a gateway id, and its no-op success must not mask a failed gateway cancel.
+					$orders_to_try = 'bank' === ( $order['payment_method'] ?? '' ) ? array( $completed_order ) : array( $completed_order, $order );
+				}
+			}
+
+			$cancel_sub = array( 'status' => false );
+			foreach ( $orders_to_try as $order_to_try ) {
+				// A gateway rejects an id it does not own, so the first success is the owning gateway.
+				try {
+					$cancel_sub = $subscription_service->cancel_subscription( $order_to_try, $subscription, $force_cancel );
+				} catch ( \Exception $e ) {
+					// Some gateway SDKs (e.g. Mollie) throw on a foreign id instead of failing; only swallow it when another gateway is still to be tried.
+					if ( 1 === count( $orders_to_try ) ) {
+						throw $e;
+					}
+					$cancel_sub = array( 'status' => false );
+				}
+
+				if ( ! empty( $cancel_sub['status'] ) ) {
+					break;
+				}
+			}
 
 			if ( $cancel_sub['status'] ) {
 				$expiry_date = $subscription['expiry_date'] ?? '';
 
-				if ( ! empty( $expiry_date ) && strtotime( $expiry_date ) > time() ) {
+				// Force cancel ends billing now — mark canceled locally even if expiry is still in the future.
+				if ( ! $force_cancel && ! empty( $expiry_date ) && strtotime( $expiry_date ) > time() ) {
 					update_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id, $expiry_date );
 				} else {
 					$this->update( $subscription_id, array( 'status' => 'canceled' ) );
+					delete_user_meta( $subscription['user_id'], 'urm_pending_cancel_' . $subscription_id );
 				}
 				if ( $send_email ) {
 					$subscription_service->send_cancel_emails( $subscription_id );

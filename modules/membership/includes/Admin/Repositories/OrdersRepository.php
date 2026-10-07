@@ -212,19 +212,23 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	/**
 	 * Get specific order by their subscription ID
 	 *
-	 * @param $subscription_id
+	 * @param int    $subscription_id Local subscription ID.
+	 * @param string $status          Optional order status to match; empty matches any.
 	 *
 	 * @return array|mixed|object|\stdClass|void
 	 */
-	public function get_order_by_subscription( $subscription_id ) {
+	public function get_order_by_subscription( $subscription_id, $status = '' ) {
 		$result = $this->wpdb()->get_row(
 			$this->wpdb()->prepare(
 				"
 				SELECT * from $this->table
 				WHERE subscription_id = %d
+				AND ( '' = %s OR status = %s )
 				ORDER BY ID DESC LIMIT 1
 		",
-				$subscription_id
+				$subscription_id, // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				$status, // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				$status // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
 			),
 			ARRAY_A
 		);
