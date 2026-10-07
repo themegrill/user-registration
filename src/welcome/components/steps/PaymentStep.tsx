@@ -5,7 +5,11 @@ import {
 	Heading,
 	HStack,
 	Icon,
+	IconButton,
 	Input,
+	InputGroup,
+	InputProps,
+	InputRightElement,
 	Popover,
 	PopoverArrow,
 	PopoverBody,
@@ -19,6 +23,7 @@ import {
 	useColorModeValue,
 	VStack
 } from "@chakra-ui/react";
+import { ViewIcon, ViewOffIcon } from "@chakra-ui/icons";
 import { __ } from "@wordpress/i18n";
 import React, { useEffect, useState } from "react";
 import {
@@ -209,6 +214,33 @@ const FieldRow: React.FC<FieldRowProps> = ({
 			</HStack>
 			<Box flex={CONTENT_FLEX}>{children}</Box>
 		</Flex>
+	);
+};
+
+/**
+ * Password-masked input with an eye button that reveals or hides the value.
+ */
+const SecretInput: React.FC<InputProps> = (props) => {
+	const [isVisible, setIsVisible] = useState(false);
+
+	return (
+		<InputGroup>
+			<Input {...props} type={isVisible ? "text" : "password"} pr={10} />
+			<InputRightElement>
+				<IconButton
+					variant="ghost"
+					size="sm"
+					aria-label={
+						isVisible
+							? __("Hide secret", "user-registration")
+							: __("Show secret", "user-registration")
+					}
+					aria-pressed={isVisible}
+					icon={isVisible ? <ViewOffIcon /> : <ViewIcon />}
+					onClick={() => setIsVisible((visible) => !visible)}
+				/>
+			</InputRightElement>
+		</InputGroup>
 	);
 };
 
@@ -609,8 +641,7 @@ const PaymentStep: React.FC = () => {
 										"user-registration"
 									)}
 								>
-									<Input
-										type="password"
+									<SecretInput
 										value={paymentSettings.paypalTestClientSecret || ""}
 										onChange={(e) =>
 											handlePaymentSettingChange(
@@ -673,8 +704,7 @@ const PaymentStep: React.FC = () => {
 										"user-registration"
 									)}
 								>
-									<Input
-										type="password"
+									<SecretInput
 										value={paymentSettings.paypalProductionClientSecret || ""}
 										onChange={(e) =>
 											handlePaymentSettingChange(
@@ -764,8 +794,7 @@ const PaymentStep: React.FC = () => {
 										"user-registration"
 									)}
 								>
-									<Input
-										type="password"
+									<SecretInput
 										value={
 											paymentSettings.stripeTestSecretKey ||
 											""
@@ -818,8 +847,7 @@ const PaymentStep: React.FC = () => {
 										"user-registration"
 									)}
 								>
-									<Input
-										type="password"
+									<SecretInput
 										value={
 											paymentSettings.stripeLiveSecretKey ||
 											""
