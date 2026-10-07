@@ -2074,7 +2074,7 @@ class StripeService {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
-				$customer =\Stripe\Customer::retrieve( $customer_id );
+				$customer = \Stripe\Customer::retrieve( $customer_id );
 				$customer->delete();
 			}
 
