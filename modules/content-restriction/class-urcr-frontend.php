@@ -931,7 +931,7 @@ class URCR_Frontend {
 	 * @param int $product_id ID of the WooCommerce product.
 	 * @return bool
 	 */
-	function wc_advanced_restriction_with_access_rule( $product_id ) {
+	public function wc_advanced_restriction_with_access_rule( $product_id ) {
 		$can_view_purchase = true;
 
 		if ( is_super_admin() ) {
@@ -940,6 +940,11 @@ class URCR_Frontend {
 
 		// urcr_is_target_post() matches post types and IDs against a post object, not a bare ID.
 		$product_post = get_post( $product_id );
+
+		// Rules target the parent product, never its variations.
+		if ( $product_post instanceof WP_Post && 'product_variation' === $product_post->post_type ) {
+			$product_post = get_post( $product_post->post_parent );
+		}
 
 		if ( ! $product_post instanceof WP_Post ) {
 			return $can_view_purchase;

@@ -1,4 +1,4 @@
-<?php
+<?php // phpcs:ignore WordPress.Files.FileName.InvalidClassFileName -- WP_Post test double shares this fixture.
 /**
  * Isolated regression: content rules must decide WooCommerce product visibility and purchase.
  *
@@ -6,19 +6,24 @@
  */
 
 // Test doubles and fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.Files.FileName.InvalidClassFileName, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.WP.AlternativeFunctions.file_system_read_fwrite, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 
 require __DIR__ . '/bootstrap.php';
 
 class WP_Post {
 	public $ID;
-	public $post_type = 'product';
-	public function __construct( $id ) {
-		$this->ID = $id; }
+	public $post_type   = 'product';
+	public $post_parent = 0;
+	public function __construct( $id, $post_type = 'product', $post_parent = 0 ) {
+		$this->ID          = $id;
+		$this->post_type   = $post_type;
+		$this->post_parent = $post_parent; }
 }
 function is_super_admin() {
 	return false; }
 function get_post( $id ) {
+	if ( 756 === $id ) {
+		return new WP_Post( 756, 'product_variation', 755 ); }
 	return 755 === $id ? new WP_Post( $id ) : null; }
 function is_singular( $type ) {
 	return false; }
@@ -54,7 +59,14 @@ function product_rule( $target_type, $enabled = true, $control = 'access', $valu
 			'type'       => 'group',
 			'conditions' => array( array( 'type' => 'membership' ) ),
 		),
-		'target_contents' => array( array_filter( array( 'type' => $target_type, 'value' => $value ) ) ),
+		'target_contents' => array(
+			array_filter(
+				array(
+					'type'  => $target_type,
+					'value' => $value,
+				)
+			),
+		),
 		'actions'         => array(
 			array(
 				'type'           => 'message',
@@ -63,11 +75,11 @@ function product_rule( $target_type, $enabled = true, $control = 'access', $valu
 		),
 	);
 }
-function product_allowed( $rules, $user_matches ) {
+function product_allowed( $rules, $user_matches, $product_id = 755 ) {
 	$GLOBALS['user_matches_rule'] = $user_matches;
 	$runner                       = new ProductRestrictionRunner();
 	$runner->rules                = $rules;
-	return $runner->wc_advanced_restriction_with_access_rule( 755 );
+	return $runner->wc_advanced_restriction_with_access_rule( $product_id );
 }
 
 $post_type_rule = product_rule( 'post_types' );
@@ -85,6 +97,9 @@ try {
 	security_assert( true === product_allowed( array( product_rule( 'post_types', true, 'restrict' ) ), false ), 'Restrict rule leaves non-matching users alone' );
 	security_assert( false === product_allowed( array( product_rule( 'post_types', true, 'restrict' ) ), true ), 'Restrict rule blocks matching users' );
 	security_assert( true === product_allowed( array( product_rule( 'post_types', true, 'restrict' ), $post_type_rule ), true ), 'A rule that grants access wins over one that restricts' );
+	security_assert( false === product_allowed( array( $post_type_rule ), false, 756 ), 'A variation of a restricted product must be restricted through its parent' );
+	security_assert( true === product_allowed( array( $post_type_rule ), true, 756 ), 'A member can still buy a variation of a restricted product' );
+	security_assert( true === product_allowed( array( $post_type_rule ), false, 999 ), 'A missing product is left open' );
 } catch ( Throwable $e ) {
 	fwrite( STDERR, $e->getMessage() . "\n" );
 	exit( 1 );
