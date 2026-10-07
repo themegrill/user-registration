@@ -24,6 +24,8 @@ require UR_ABSPATH . 'includes/functions-ur-page.php';
 require UR_ABSPATH . 'includes/functions-ur-account.php';
 require UR_ABSPATH . 'includes/functions-ur-deprecated.php';
 
+UR_Abilities::init();
+
 /**
  * Define a constant if it is not already defined.
  *
