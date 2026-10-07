@@ -98,4 +98,30 @@ test.describe("admin surfaces @fresh", () => {
     await toggleBtn.click();
     await expect(secretInput).toHaveAttribute("type", "password");
   });
+
+  test("setup wizard payment step reveals secret keys with a show/hide toggle @fresh @admin", async ({ page }) => {
+    await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(page.getByRole("heading", { name: "Create Membership" })).toBeVisible();
+    // The Payment tab ignores clicks until the Membership step has finished mounting.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Go to Payment" }).click();
+      await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+
+    const paypalSwitch = page.getByText(/^pays?pal$/i).locator("xpath=following::label[contains(@class,'chakra-switch')][1]");
+    await expect(paypalSwitch).toBeVisible();
+    const showSecret = page.getByRole("button", { name: "Show secret" });
+    // A clean install has the gateways off, so the secret fields only render once PayPal is on.
+    if (!(await paypalSwitch.locator("input").isChecked())) await paypalSwitch.click();
+
+    const secretGroup = page.locator(".chakra-input__group").filter({ has: showSecret }).first();
+    const secretInput = secretGroup.locator("input");
+    await expect(secretInput).toHaveAttribute("type", "password");
+
+    await showSecret.first().click();
+    await expect(secretInput).toHaveAttribute("type", "text");
+    await secretGroup.getByRole("button", { name: "Hide secret" }).click();
+    await expect(secretInput).toHaveAttribute("type", "password");
+  });
 });
