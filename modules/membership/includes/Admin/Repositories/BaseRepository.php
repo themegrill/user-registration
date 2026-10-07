@@ -2,6 +2,8 @@
 
 namespace WPEverest\URMembership\Admin\Repositories;
 
+use WPEverest\URMembership\TableList;
+
 class BaseRepository implements \WPEverest\URMembership\Admin\Interfaces\BaseInterface {
 	protected $table;
 
@@ -61,11 +63,18 @@ class BaseRepository implements \WPEverest\URMembership\Admin\Interfaces\BaseInt
 	 * @return bool|int|mixed|\mysqli_result|null
 	 */
 	public function update( $id, $data ) {
-		return $this->wpdb()->update(
+		$result = $this->wpdb()->update(
 			$this->table,
 			$data,
 			array( 'ID' => $id )
 		);
+
+		// Every order status change lands here, so a coupon use claimed at checkout is settled in one place.
+		if ( false !== $result && isset( $data['status'] ) && TableList::orders_table() === $this->table ) {
+			( new OrdersRepository() )->settle_coupon_claim( $id, $data['status'] );
+		}
+
+		return $result;
 	}
 
 	/**

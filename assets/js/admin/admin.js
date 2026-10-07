@@ -76,7 +76,8 @@ jQuery(function ($) {
 					user_registration_form_builder_data.form_membership_field_disabled_message;
 			} else if ($(this).hasClass("ur-no-membership-available")) {
 				message =
-					user_registration_form_builder_data.i18n_admin.i18n_prompt_no_membership_available;
+					user_registration_form_builder_data.i18n_admin
+						.i18n_prompt_no_membership_available;
 			} else {
 				message =
 					user_registration_form_builder_data.form_one_time_draggable_fields_locked_message.replace(
@@ -226,25 +227,74 @@ jQuery(function ($) {
 		var icon =
 			'<i class="dashicons dashicons-lock" style="color:#72aee6; border-color: #72aee6;"></i>';
 
-		var plan = $this.data("plan");
-		var name = $this.data("name");
+		var plan = $this.data("plan") || "free";
+		var name =
+			$this.data("name") ||
+			(typeof user_registration_all_forms !== "undefined" &&
+				user_registration_all_forms.i18n_default_addon) ||
+			"User Registration - Multiple Registration";
 		var slug = $this.data("slug");
 
 		if (!slug) {
 			return;
 		}
 
+		var isInstalled = $this.data("installed");
+		if (typeof isInstalled === "undefined") {
+			var action = $this.data("action");
+			// Check if action explicitly specifies install or if built-in module.
+			isInstalled = action !== "install";
+		} else {
+			isInstalled =
+				isInstalled === true ||
+				isInstalled === "true" ||
+				isInstalled === 1 ||
+				isInstalled === "1";
+		}
+
+		var modalTitle;
+		var modalMsgTemplate;
+		var confirmBtn;
+		if (isInstalled) {
+			modalTitle =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_title_activate) ||
+				"Activate Dependent Module";
+			modalMsgTemplate =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_message_activate) ||
+				"To add multiple forms you need to activate %s module.";
+			confirmBtn =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_button_activate) ||
+				"Activate Module";
+		} else {
+			modalTitle =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_title_install) ||
+				"Install & Activate Dependent Module";
+			modalMsgTemplate =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_modal_message_install) ||
+				"To add multiple forms you need to install & activate %s module.";
+			confirmBtn =
+				(typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.i18n_button_install_activate) ||
+				"Install & Activate";
+		}
+		var modalMsg = modalMsgTemplate.replace(
+			/%1\$s|%s/,
+			"<strong>" + name + "</strong>"
+		);
+
 		Swal.fire({
-			title: icon + " Install dependent addon",
-			html:
-				"To add multiple forms you need to install <strong>" +
-				name +
-				"</strong> module.",
+			title: icon + " " + modalTitle,
+			html: modalMsg,
 			customClass:
 				"user-registration-swal2-modal user-registration-swal2-modal--centered user-registration-locked-field",
 			showCloseButton: true,
 			showConfirmButton: true,
-			confirmButtonText: "Activate Module",
+			confirmButtonText: confirmBtn,
 			showLoaderOnConfirm: true,
 			allowOutsideClick: function () {
 				return !Swal.isLoading();
@@ -271,19 +321,41 @@ jQuery(function ($) {
 				})
 					.then(function (response) {
 						if (!response.success) {
-							throw new Error(
-								response.data || "Activation failed"
-							);
+							var failMsg =
+								(typeof user_registration_all_forms !==
+									"undefined" &&
+									user_registration_all_forms.i18n_activation_failed) ||
+								"Activation failed";
+							throw new Error(response.data || failMsg);
 						}
 						return response;
 					})
 					.fail(function () {
-						Swal.showValidationMessage("Something went wrong");
+						var errorMsg =
+							(typeof user_registration_all_forms !==
+								"undefined" &&
+								user_registration_all_forms.i18n_error) ||
+							"Something went wrong";
+						Swal.showValidationMessage(errorMsg);
 					});
 			}
 		}).then(function (result) {
 			if (result.isConfirmed) {
-				window.location.reload();
+				var urlParams = new URLSearchParams(window.location.search);
+				var currentPage = urlParams.get("page") || "";
+
+				// If activating from Login Form, stay on Login Form; otherwise redirect to Add New Registration.
+				if ("user-registration-login-forms" === currentPage) {
+					window.location.reload();
+				} else if (
+					typeof user_registration_all_forms !== "undefined" &&
+					user_registration_all_forms.add_new_url
+				) {
+					window.location.href =
+						user_registration_all_forms.add_new_url;
+				} else {
+					window.location.reload();
+				}
 			}
 		});
 	});
@@ -583,7 +655,7 @@ jQuery(function ($) {
 				$(el).hide();
 			});
 
-		form_settings_section.find("#integration-settings").click(function (e) {
+		form_settings_section.find("#integration-settings").on("click", function (e) {
 			e.stopImmediatePropagation();
 
 			$(this)
@@ -609,7 +681,7 @@ jQuery(function ($) {
 
 			$(document)
 				.find("#integration_settings_back")
-				.click(function (e) {
+				.on("click", function (e) {
 					$(this)
 						.closest("#ur-tab-field-settings")
 						.find(
@@ -1211,7 +1283,7 @@ jQuery(function ($) {
 		} else {
 			akismet_message.hide();
 		}
-		akismet_activate.change(function () {
+		akismet_activate.on("change", function () {
 			if ($(this).is(":checked")) {
 				akismet_message.show();
 			} else {
@@ -1319,7 +1391,9 @@ jQuery(function ($) {
 		var custom_redirection_page = $(
 			"#user_registration_form_setting_redirect_page"
 		).closest(".form-row");
-		var redirect_url = $("#user_registration_form_setting_redirect_options").closest(".form-row");
+		var redirect_url = $(
+			"#user_registration_form_setting_redirect_options"
+		).closest(".form-row");
 		var form_row = redirect_after_registration.closest(".form-row");
 		form_row.find("#ur-rar-url-notice").remove();
 
@@ -1337,7 +1411,9 @@ jQuery(function ($) {
 					$(
 						"#user_registration_form_setting_redirect_after_field"
 					).show();
-					instant ? custom_redirection_page.show() : custom_redirection_page.slideDown(800);
+					instant
+						? custom_redirection_page.show()
+						: custom_redirection_page.slideDown(800);
 					break;
 				case "external-url":
 					$(
@@ -1349,12 +1425,12 @@ jQuery(function ($) {
 					$(
 						"#user_registration_form_setting_redirect_after_field"
 					).hide();
-				// if (
-				// 	user_registration_form_builder_data.form_has_membership_field
-				// ) {
-				// 	show_membership_redirection_notice(form_row);
-				// }
-				break;
+					// if (
+					// 	user_registration_form_builder_data.form_has_membership_field
+					// ) {
+					// 	show_membership_redirection_notice(form_row);
+					// }
+					break;
 				case "previous-page":
 					$(
 						"#user_registration_form_setting_redirect_after_field"
@@ -1612,7 +1688,7 @@ jQuery(function ($) {
 	});
 
 	$("#ur-lists-page-settings-button").on("click", function () {
-		$("#show-settings-link").click();
+		$("#show-settings-link").trigger("click");
 	});
 
 	$(document)
@@ -2277,6 +2353,36 @@ jQuery(function ($) {
 		"href",
 		"admin.php?page=user-registration"
 	);
+
+	var defaultAddonName =
+		(typeof user_registration_all_forms !== "undefined" &&
+			user_registration_all_forms.i18n_default_addon) ||
+		"User Registration - Multiple Registration";
+
+	// Attach dependent module activation attributes to sidebar Add New submenu link.
+	$(
+		"#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module"
+	).attr({
+		"data-slug": "user-registration-multiple-registration",
+		"data-name": defaultAddonName,
+		"data-plan": "free",
+		"data-installed": "true"
+	});
+
+	var urlParams = new URLSearchParams(window.location.search);
+	if (urlParams.get("trigger_multiple_registration") === "1") {
+		urlParams.delete("trigger_multiple_registration");
+		var cleanUrl =
+			window.location.pathname +
+			(urlParams.toString() ? "?" + urlParams.toString() : "");
+		// Remove query parameter from history to prevent re-triggering modal on page reload.
+		window.history.replaceState(null, "", cleanUrl);
+		$(
+			"#adminmenu a[href*='page=add-new-registration'].ur-activate-dependent-module"
+		)
+			.first()
+			.trigger("click");
+	}
 
 	$(document).on(
 		"click",

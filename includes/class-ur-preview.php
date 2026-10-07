@@ -163,17 +163,14 @@ class UR_Preview {
 
 		wp_register_style( 'user-registration-form-preview-style', UR()->plugin_url() . '/assets/css/user-registration-form-preview.css', array(), UR()->version );
 		wp_register_style( 'ur-form-preview-tooltip', UR()->plugin_url() . '/assets/css/tooltipster/tooltipster-sideTip-borderless.min.css', array(), UR()->version );
-		wp_register_style( 'ur-form-preview-bundle-css', UR()->plugin_url() . '/assets/css/tooltipster/tooltipster.bundle.css', array(), UR()->version );
 		wp_register_style( 'ur-form-preview-min-css', UR()->plugin_url() . '/assets/css/tooltipster/tooltipster.bundle.min.css', array(), UR()->version );
 		wp_enqueue_style( 'user-registration-form-preview-style' );
 		wp_enqueue_style( 'ur-form-preview-tooltip' );
-		wp_enqueue_style( 'ur-form-preview-bundle-css' );
 		wp_enqueue_style( 'ur-form-preview-min-css' );
 
-		wp_register_script( 'user-registration-form-preview-script', UR()->plugin_url() . '/assets/js/frontend/ur-form-preview.js', array( 'jquery', 'wp-element', 'wp-blocks', 'wp-editor', 'tooltipster' ), UR()->version );
+		wp_register_script( 'user-registration-form-preview-script', UR()->plugin_url() . '/assets/js/frontend/ur-form-preview.js', array( 'jquery', 'tooltipster' ), UR()->version );
 		wp_register_script( 'ur-form-preview-copy', UR()->plugin_url() . '/assets/js/admin/ur-copy.js', array( 'jquery' ), UR()->version, true );
 		wp_enqueue_script( 'user-registration-form-preview-script' );
-		wp_enqueue_script( 'ur-form-preview-tooltipster' );
 		wp_enqueue_script( 'ur-form-preview-copy' );
 
 		wp_localize_script(
