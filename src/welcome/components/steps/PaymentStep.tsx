@@ -529,7 +529,7 @@ const PaymentStep: React.FC = () => {
 
 				{/* PayPal */}
 				<PaymentOption
-					label={__("Paypal", "user-registration")}
+					label={__("PayPal", "user-registration")}
 					isChecked={paymentSettings.paypal}
 					onChange={(checked) =>
 						handlePaymentSettingChange("paypal", checked)

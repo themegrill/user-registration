@@ -1720,6 +1720,19 @@ class UR_Getting_Started {
 		update_option( 'user_registration_paypal_enabled', $paypal_enabled );
 		update_option( 'user_registration_stripe_enabled', $stripe_enabled );
 
+		// Stripe is a built-in module now, not a separate add-on to activate - validating its keys here
+		// is the only activation step a user sees, so it must also flip the module flag that gates
+		// Field Sync and the rest of Stripe's admin UI (Addons > E-Commerce controls the same flag).
+		if ( $stripe_enabled ) {
+			$enabled_features = get_option( 'user_registration_enabled_features', array() );
+			$enabled_features = is_array( $enabled_features ) ? $enabled_features : array();
+
+			if ( ! in_array( 'user-registration-stripe', $enabled_features, true ) ) {
+				$enabled_features[] = 'user-registration-stripe';
+				update_option( 'user_registration_enabled_features', $enabled_features );
+			}
+		}
+
 		if ( $offline_enabled ) {
 			update_option( 'user_registration_global_bank_details', $bank_details );
 		}

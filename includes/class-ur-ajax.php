@@ -100,7 +100,7 @@ class UR_AJAX {
 			'activate_dependent_module'            => false,
 			'add_membership_field_to_default_form' => false,
 			'update_state_field'                   => true,
-
+			'toggle_logging'                       => false,
 		);
 
 		foreach ( $ajax_events as $ajax_event => $nopriv ) {
@@ -576,18 +576,18 @@ class UR_AJAX {
 		$sender_email = apply_filters( 'wp_mail_from', get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) ) );
 		$email        = sanitize_email( isset( $_POST['email'] ) ? wp_unslash( $_POST['email'] ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification
 		/* translators: %s - WP mail from name */
-		$subject = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
-		$header  = array(
+		$subject         = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
+		$header          = array(
 			'From:' . $from_name . ' <' . $sender_email . '>',
 			'Reply-To:' . $sender_email,
 			'Content-Type:text/html; charset=UTF-8',
 		);
-		$message =
-			'Congratulations,<br>
-		Your test email has been received successfully.<br>
-		We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.<br>
-		Regards,<br>
-		User Registration & Membership Team';
+		$paragraph_style = 'margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;';
+		$message         = sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'Congratulations,', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'Your test email has been received successfully.', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s<br>%s</p>', $paragraph_style, esc_html__( 'Regards,', 'user-registration' ), esc_html__( 'User Registration & Membership Team', 'user-registration' ) );
+		$message         = user_registration_process_email_content( ur_wrap_email_body_content( $message ) );
 
 		$status = wp_mail( $email, $subject, $message, $header );
 
@@ -1039,28 +1039,32 @@ class UR_AJAX {
 			wp_send_json_error( array( 'message' => __( 'You do not have permission.', 'user-registration' ) ) );
 		}
 
-		$settings_data = $_POST['data']['setting_data'];
-
-		$settings_data = array_values(
-			array_filter(
-				$settings_data,
-				function ( $item ) {
-					return isset( $item['option'] ) && $item['option'] !== 'user_registration_form_setting_general_advanced';
+		$settings_data = isset( $_POST['data']['setting_data'] ) && is_array( $_POST['data']['setting_data'] ) ? wp_unslash( $_POST['data']['setting_data'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Values are sanitized against declared field types before saving.
+		$login_section = array( 'settings' => array() );
+		foreach ( array( get_login_form_settings(), get_login_field_settings() ) as $definition ) {
+			foreach ( $definition['sections'] as $section ) {
+				foreach ( $section['settings'] as $field ) {
+					if ( ! empty( $field['id'] ) && isset( $field['type'] ) && 'button' !== $field['type'] ) {
+						$login_section['settings'][] = $field;
+					}
 				}
-			)
-		);
-
-		$output = array();
+			}
+		}
+		$allowed_keys = array_column( $login_section['settings'], 'id' );
+		$output       = array();
 		foreach ( $settings_data as $item ) {
-			if ( isset( $item['option'] ) ) {
-				$output[ $item['option'] ] = isset( $item['value'] ) ? $item['value'] : '';
+			if ( is_array( $item ) && isset( $item['option'], $item['value'] ) && is_string( $item['option'] ) && is_scalar( $item['value'] ) && in_array( $item['option'], $allowed_keys, true ) ) {
+				$output[ $item['option'] ] = $item['value'];
 			}
 		}
 
 		do_action( 'user_registration_validation_before_login_form_save', $output );
 
-		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ) ) {
-			if ( '' === $output['user_registration_login_options_configured_captcha_type'] || ! $output['user_registration_login_options_configured_captcha_type'] ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ?? false ) ) {
+			$configured_captcha_type = isset( $output['user_registration_login_options_configured_captcha_type'] ) ? $output['user_registration_login_options_configured_captcha_type'] : '';
+
+			// An empty selection is fine as long as the site-wide default type already has usable keys.
+			if ( ! ur_captcha_type_has_keys( $configured_captcha_type ) && ! ur_captcha_type_has_keys( get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' ) ) ) {
 				wp_send_json_error(
 					array(
 						'message' => esc_html__( "Seems like you haven't selected the reCAPTCHA type (Configured Captcha).", 'user-registration' ),
@@ -1069,7 +1073,7 @@ class UR_AJAX {
 			}
 		}
 
-		if ( ur_string_to_bool( $output['user_registration_login_options_prevent_core_login'] ) ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_prevent_core_login'] ?? false ) ) {
 
 			$login_redirect_value = isset( $output['user_registration_login_options_login_redirect_url'] ) ? $output['user_registration_login_options_login_redirect_url'] : '';
 			if ( empty( $login_redirect_value ) || ! is_numeric( $login_redirect_value ) ) {
@@ -1102,7 +1106,7 @@ class UR_AJAX {
 		}
 
 		// check for valid lost password and reset password page.
-		if ( ur_string_to_bool( $output['user_registration_login_options_lost_password'] ) ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_lost_password'] ?? false ) ) {
 
 			if ( ! empty( $output['user_registration_lost_password_page_id'] ) && ( is_numeric( $output['user_registration_lost_password_page_id'] ) ) ) {
 				$is_page_lost_password_page = ur_find_lost_password_in_page( sanitize_text_field( wp_unslash( $output['user_registration_lost_password_page_id'] ) ) );
@@ -1145,14 +1149,16 @@ class UR_AJAX {
 					update_option( 'user_registration_login_options_login_redirect_url', $settings );
 				}
 			}
-			update_option( $key, $settings );
+			$output[ $key ] = $settings;
 		}
+
+		ur_save_settings_options( $login_section, $output );
 
 		/**
 		 * Action after form setting save.
 		 * Default is the $_POST['data'].
 		 */
-		do_action( 'user_registration_after_login_form_settings_save', wp_unslash( $settings_data ) ); //phpcs:ignore
+		do_action( 'user_registration_after_login_form_settings_save', $settings_data );
 
 		wp_send_json_success(
 			array()
@@ -1710,6 +1716,12 @@ class UR_AJAX {
 			wp_send_json_error( $status );
 		}
 
+		$package_error = ur_get_addon_package_error( $api );
+
+		if ( ! empty( $package_error ) ) {
+			wp_send_json_error( array_merge( $status, $package_error ) );
+		}
+
 		$status['pluginName'] = $api->name;
 
 		$skin     = new WP_Ajax_Upgrader_Skin();
@@ -1799,7 +1811,7 @@ class UR_AJAX {
 
 		$form_id = UR()->form->create( $title, $template );
 
-		if ( $form_id ) {
+		if ( $form_id && ! is_wp_error( $form_id ) ) {
 			$data = array(
 				'id'       => $form_id,
 				'redirect' => add_query_arg(
@@ -1911,7 +1923,16 @@ class UR_AJAX {
 				$button = '<div class="action-buttons"><a class="button activate-license-now" href="' . esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=license' ) ) . '" rel="noreferrer noopener" target="_blank">' . esc_html__( 'Activate License', 'user-registration' ) . '</a></div>';
 				wp_send_json_success( array( 'action_button' => $button ) );
 			} else {
-				$button = '<div class="action-buttons"><a class="button upgrade-now" href="' . esc_url( ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => 'builder-fields', 'medium' => 'popup' ) ) ) . '" rel="noreferrer noopener" target="_blank">' . esc_html__( 'Upgrade Plan', 'user-registration' ) . '</a></div>';
+				$button = '<div class="action-buttons"><a class="button upgrade-now" href="' . esc_url(
+					ur_utm_url(
+						'https://wpuserregistration.com/upgrade/',
+						array(
+							'source'  => 'builder-fields',
+							'medium'  => 'popup',
+							'content' => ! empty( $slug ) ? $slug : 'locked-field',
+						)
+					)
+				) . '" rel="noreferrer noopener" target="_blank">' . esc_html__( 'Upgrade Plan', 'user-registration' ) . '</a></div>';
 				wp_send_json_success( array( 'action_button' => $button ) );
 			}
 		}
@@ -2330,8 +2351,18 @@ class UR_AJAX {
 	}
 
 	public static function get_recent_nonce() {
-		$form_ids = isset( $_POST['form_ids'] ) ? array_filter( explode( ',', sanitize_text_field( $_POST['form_ids'] ) ) ) : array();
-		$for      = isset( $_POST['nonce_for'] ) ? sanitize_text_field( $_POST['nonce_for'] ) : 'registration';
+		// Public forms need public nonce refresh. A request referer is not authorization.
+		if ( ( isset( $_POST['nonce_for'] ) && ! is_string( $_POST['nonce_for'] ) ) ||
+			( isset( $_POST['form_ids'] ) && ! is_string( $_POST['form_ids'] ) ) ) {
+			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
+		}
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Public guest nonce refresh does not require an existing nonce.
+		$for = isset( $_POST['nonce_for'] ) ? sanitize_key( wp_unslash( $_POST['nonce_for'] ) ) : 'registration';
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Public refresh; IDs are strictly validated below.
+		$form_ids = isset( $_POST['form_ids'] ) ? array_unique( array_filter( explode( ',', wp_unslash( $_POST['form_ids'] ) ) ) ) : array();
+		if ( ! in_array( $for, array( 'login', 'registration' ), true ) || count( $form_ids ) > 100 ) {
+			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
+		}
 
 		if ( 'registration' === $for ) {
 
@@ -2343,6 +2374,14 @@ class UR_AJAX {
 				);
 			}
 			foreach ( $form_ids as $form_id ) {
+				if ( ! ctype_digit( $form_id ) || (int) $form_id < 1 ) {
+					wp_send_json_error( array( __( 'Invalid form ID.', 'user-registration' ) ), 400 );
+				}
+				$post = get_post( (int) $form_id );
+				if ( ! $post || 'user_registration' !== $post->post_type ||
+					( 'publish' !== $post->post_status && ! current_user_can( 'edit_post', (int) $form_id ) ) ) {
+					wp_send_json_error( array( __( 'Form not found!', 'user-registration' ) ), 404 );
+				}
 				$form = ur_get_form_fields( $form_id );
 				if ( empty( $form ) ) {
 					wp_send_json_error(
@@ -2354,18 +2393,6 @@ class UR_AJAX {
 			}
 		}
 
-		// Strict referer verification
-		$referer      = wp_get_referer();
-		$allowed_host = parse_url( home_url(), PHP_URL_HOST );
-		$referer_host = parse_url( $referer, PHP_URL_HOST );
-
-		if ( ! $referer || $referer_host !== $allowed_host ) {
-			wp_send_json_error(
-				array(
-					__( 'Invalid form submission source.', 'user-registration' ),
-				)
-			);
-		}
 		$updated_nonce_array = array();
 		switch ( $for ) {
 			case 'registration':
@@ -2702,6 +2729,15 @@ class UR_AJAX {
 				);
 				break;
 
+			case 'legacy_payment_fields':
+				update_option( 'user_registration_legacy_payment_fields_notice_dismissed', true );
+				wp_send_json_success(
+					array(
+						'message' => __( 'Legacy payment fields notice dismissed.', 'user-registration' ),
+					)
+				);
+				break;
+
 			default:
 				wp_send_json_error( array( 'message' => __( 'Invalid section specified.', 'user-registration' ) ) );
 				break;
@@ -2845,6 +2881,32 @@ class UR_AJAX {
 			array(
 				'state'     => $option,
 				'has_state' => $has_state,
+			)
+		);
+	}
+
+	/**
+	 * Toggle user registration logging state.
+	 *
+	 * @return void
+	 */
+	public static function toggle_logging() {
+		check_ajax_referer( 'ur_toggle_logging_nonce', 'security' );
+
+		if ( ! current_user_can( 'manage_user_registration' ) && ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Permission denied.', 'user-registration' ) ) );
+		}
+
+		$enabled = ! empty( $_POST['enabled'] ) && ( 'true' === $_POST['enabled'] || '1' === $_POST['enabled'] );
+		// Store setting compatible with ur_option_checked and Settings page.
+		update_option( 'user_registration_enable_log', $enabled ? 'yes' : 'no' );
+
+		wp_send_json_success(
+			array(
+				'enabled' => $enabled,
+				'message' => $enabled
+					? __( 'Logging enabled.', 'user-registration' )
+					: __( 'Logging disabled.', 'user-registration' ),
 			)
 		);
 	}

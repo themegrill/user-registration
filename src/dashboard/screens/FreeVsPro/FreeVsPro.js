@@ -436,7 +436,8 @@ const FreeVsPro = () => {
 						upgradeURL || "https://wpuserregistration.com/upgrade/",
 						{
 							source: "dashboard-free-vs-pro",
-							medium: "button"
+							medium: "button",
+							content: "free-vs-pro-upgrade"
 						}
 					)}
 					color="white !important"

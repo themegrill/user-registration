@@ -416,6 +416,121 @@ class StripeService {
 	}
 
 	/**
+	 * Resolve one mapped form field to the member's submitted value.
+	 *
+	 * @param int          $member_id Member ID.
+	 * @param string|array $field     Mapped field name, or names for a multiselect.
+	 * @return string
+	 */
+	private function get_synced_value( $member_id, $field ) {
+		// Moved to ur_get_synced_field_value() in core so Mollie (a separate plugin) can reuse it instead of duplicating.
+		return ur_get_synced_field_value( $member_id, $field );
+	}
+
+	/**
+	 * Build the Stripe customer payload, letting field sync override the defaults.
+	 *
+	 * @param int    $member_id  Member ID.
+	 * @param string $user_email Registered email, used when sync does not map one.
+	 * @param string $username   Username, used when sync does not map a name.
+	 * @return array
+	 */
+	private function build_customer_payload( $member_id, $user_email, $username ) {
+		$payload = array(
+			'email' => $user_email,
+			'name'  => $username,
+		);
+
+		$form_id = function_exists( 'ur_get_form_id_by_userid' ) ? ur_get_form_id_by_userid( $member_id ) : 0;
+
+		if ( ! $form_id || ! ur_string_to_bool( ur_get_single_post_meta( $form_id, 'user_registration_enable_sync_fields_with_stripe', false ) ) ) {
+			return $payload;
+		}
+
+		$address_keys = array( 'city', 'country', 'line1', 'line2', 'postal_code', 'state' );
+		$top_level    = array(
+			'name'        => 'full_name',
+			'description' => 'description',
+			'phone'       => 'phone',
+			'email'       => 'email',
+		);
+
+		foreach ( $top_level as $stripe_key => $sync_key ) {
+			$mapped = maybe_unserialize( ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_' . $sync_key, '' ) );
+			$value  = $mapped ? $this->get_synced_value( $member_id, $mapped ) : '';
+
+			// A blank mapped field must never overwrite a good default.
+			if ( '' !== $value ) {
+				$payload[ $stripe_key ] = $value;
+			}
+		}
+
+		foreach ( array( 'address' => '', 'shipping' => 'shipping_' ) as $group => $prefix ) {
+			// Each group has its own enable toggle in the form settings; turning it off must stop
+			// sending that group's mapped values, not just hide the fields.
+			$enable_option = 'shipping' === $group
+				? 'user_registration_enable_sync_shipping_address_with_stripe'
+				: 'user_registration_enable_sync_address_with_stripe';
+
+			if ( ! ur_string_to_bool( ur_get_single_post_meta( $form_id, $enable_option, false ) ) ) {
+				continue;
+			}
+
+			$address = array();
+
+			foreach ( $address_keys as $address_key ) {
+				$mapped = ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_' . $prefix . $address_key, '' );
+				$value  = $mapped ? $this->get_synced_value( $member_id, $mapped ) : '';
+
+				// A country field stores {"country":"..","state":".."} as one meta value; pull the requested part out of it.
+				if ( in_array( $address_key, array( 'country', 'state' ), true ) && '' !== $value && '{' === $value[0] ) {
+					$decoded = json_decode( $value, true );
+					$value   = is_array( $decoded ) && isset( $decoded[ $address_key ] ) ? $decoded[ $address_key ] : '';
+				}
+
+				if ( '' !== $value ) {
+					$address[ $address_key ] = $value;
+				}
+			}
+
+			if ( empty( $address ) ) {
+				continue;
+			}
+
+			if ( 'shipping' === $group ) {
+				$shipping_name = $this->get_synced_value( $member_id, maybe_unserialize( ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_shipping_full_name', '' ) ) );
+				$shipping_name = '' !== $shipping_name ? $shipping_name : $payload['name'];
+
+				$payload['shipping'] = array(
+					'name'    => $shipping_name,
+					'address' => $address,
+				);
+
+				$shipping_phone = $this->get_synced_value( $member_id, ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_shipping_phone', '' ) );
+
+				if ( '' !== $shipping_phone ) {
+					$payload['shipping']['phone'] = $shipping_phone;
+				}
+
+				continue;
+			}
+
+			$payload['address'] = $address;
+		}
+
+		/**
+		 * Filters the Stripe customer payload built for a membership signup.
+		 *
+		 * @param array $payload   Customer payload.
+		 * @param int   $member_id Member ID.
+		 * @param int   $form_id   Form ID.
+		 *
+		 * @since x.x.x
+		 */
+		return apply_filters( 'user_registration_membership_stripe_customer_payload', $payload, $member_id, $form_id );
+	}
+
+	/**
 	 * Process Stripe payment.
 	 *
 	 * @param array $payment_data  Payment data.
@@ -651,10 +766,7 @@ class StripeService {
 				);
 
 				$customer = \Stripe\Customer::create(
-					array(
-						'email' => $user_email,
-						'name'  => $username,
-					)
+					$this->build_customer_payload( $member_id, $user_email, $username )
 				);
 
 				update_user_meta( $member_id, 'ur_payment_customer', $customer->id );
@@ -2015,11 +2127,12 @@ class StripeService {
 	/**
 	 * Cancel Stripe subscription.
 	 *
-	 * @param array $order        Order data.
-	 * @param array $subscription Subscription data.
+	 * @param array $order         Order data.
+	 * @param array $subscription  Subscription data.
+	 * @param bool  $force_cancel  When true, cancel immediately; otherwise cancel at period end.
 	 * @return array
 	 */
-	public function cancel_subscription( $order, $subscription ) {
+	public function cancel_subscription( $order, $subscription, $force_cancel = false ) {
 
 		$response = array(
 			'status' => false,
@@ -2046,6 +2159,7 @@ class StripeService {
 				array(
 					'event_type'      => 'cancellation_initiated',
 					'subscription_id' => $subscription['subscription_id'],
+					'force_cancel'    => $force_cancel,
 					'order_id'        => $order['ID'] ?? 'unknown',
 				),
 				JSON_PRETTY_PRINT
@@ -2053,15 +2167,65 @@ class StripeService {
 			'notice'
 		);
 
+		$stripe_subscription_id = $subscription['subscription_id'];
+		$deleted_sub            = null;
+
 		try {
-			$stripe_subscription = \Stripe\Subscription::retrieve( $subscription['subscription_id'] );
+			// Delayed-start checkouts store a schedule id until the webhook back-fills the real subscription id.
+			if ( $force_cancel && 0 === strpos( $stripe_subscription_id, 'sub_sched_' ) ) {
+				$schedule = \Stripe\SubscriptionSchedule::retrieve( $stripe_subscription_id );
+
+				if ( in_array( $schedule->status, array( 'not_started', 'active', 'canceled' ), true ) ) {
+					// Cancelling a schedule also cancels any subscription it has already started.
+					if ( 'canceled' !== $schedule->status ) {
+						$schedule->cancel();
+					}
+
+					$response['status'] = true;
+
+					PaymentGatewayLogging::log_general(
+						'stripe',
+						'Subscription schedule cancelled successfully' . "\n" . wp_json_encode(
+							array(
+								'event_type'  => 'cancellation_success',
+								'schedule_id' => $stripe_subscription_id,
+							),
+							JSON_PRETTY_PRINT
+						),
+						'success'
+					);
+
+					return $response;
+				}
+
+				// Released or completed schedules hand billing over to a standalone subscription.
+				$stripe_subscription_id = ! empty( $schedule->released_subscription ) ? $schedule->released_subscription : $schedule->subscription;
+
+				if ( empty( $stripe_subscription_id ) ) {
+					return $response;
+				}
+			}
+
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+
+			// Already canceled at Stripe: nothing left to stop, so this counts as success.
+			if ( $force_cancel && $stripe_subscription && 'canceled' === $stripe_subscription->status ) {
+				$response['status'] = true;
+
+				return $response;
+			}
+
 			if ( $stripe_subscription ) {
-				$deleted_sub = \Stripe\Subscription::update(
-					$subscription['subscription_id'],
-					array(
-						'cancel_at_period_end' => true,
-					)
-				);
+				if ( $force_cancel ) {
+					$deleted_sub = $stripe_subscription->cancel();
+				} else {
+					$deleted_sub = \Stripe\Subscription::update(
+						$stripe_subscription_id,
+						array(
+							'cancel_at_period_end' => true,
+						)
+					);
+				}
 			}
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
 			PaymentGatewayLogging::log_error(
@@ -2080,7 +2244,10 @@ class StripeService {
 			return $response;
 		}
 
-		if ( isset( $deleted_sub['canceled_at'] ) && '' !== $deleted_sub['canceled_at'] ) {
+		$canceled_now     = isset( $deleted_sub['canceled_at'] ) && '' !== $deleted_sub['canceled_at'];
+		$cancel_at_period = ! empty( $deleted_sub['cancel_at_period_end'] );
+
+		if ( $canceled_now || ( ! $force_cancel && $cancel_at_period ) ) {
 			$response['status'] = true;
 
 			PaymentGatewayLogging::log_general(
@@ -2089,7 +2256,7 @@ class StripeService {
 					array(
 						'event_type'           => 'cancellation_success',
 						'subscription_id'      => $subscription['subscription_id'],
-						'canceled_at'          => date( 'Y-m-d H:i:s', $deleted_sub['canceled_at'] ),
+						'canceled_at'          => ! empty( $deleted_sub['canceled_at'] ) ? date( 'Y-m-d H:i:s', $deleted_sub['canceled_at'] ) : '',
 						'cancel_at_period_end' => $deleted_sub['cancel_at_period_end'] ?? false,
 					),
 					JSON_PRETTY_PRINT
@@ -2684,7 +2851,7 @@ class StripeService {
 		$existing_flag = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
 		$same_dispute  = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
-			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' );
+			&& (string) ( $dispute['id'] ?? '' ) === (string) $existing_flag['dispute_id'];
 		$already_seen  = $same_dispute;
 		$is_inquiry    = $this->is_inquiry_dispute( $dispute );
 		// Do not overwrite a later outcome if created is replayed out of order.
@@ -2757,9 +2924,9 @@ class StripeService {
 		$existing_flag  = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
 		$already_closed = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
-			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' )
+			&& (string) ( $dispute['id'] ?? '' ) === (string) $existing_flag['dispute_id']
 			&& ! empty( $existing_flag['status'] )
-			&& (string) $existing_flag['status'] === (string) $dispute_status;
+			&& (string) $dispute_status === (string) $existing_flag['status'];
 
 		$this->flag_order_dispute( $order, $dispute, $dispute_status ? $dispute_status : 'closed' );
 		if ( ! $this->is_inquiry_dispute( $dispute ) ) {
@@ -2799,7 +2966,7 @@ class StripeService {
 		$existing_flag = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
 		$same_dispute  = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
-			&& (string) $existing_flag['dispute_id'] === (string) ( $dispute['id'] ?? '' );
+			&& (string) ( $dispute['id'] ?? '' ) === (string) $existing_flag['dispute_id'];
 
 		// Only an inquiry that was flagged earlier needs escalating; a real dispute is already revoked.
 		if ( $same_dispute && ! empty( $existing_flag['status'] ) && ! $this->is_inquiry_dispute( array( 'status' => $existing_flag['status'] ) ) ) {

@@ -2262,6 +2262,14 @@
 												response.success === true
 											) {
 												type = "message";
+												$this
+													.find(".profile-pic-remove")
+													.hide();
+												$this
+													.find(
+														".user_registration_profile_picture_upload"
+													)
+													.show();
 												if (
 													typeof response.data
 														.profile_pic_id !==
@@ -2297,11 +2305,14 @@
 															.find(
 																".profile-pic-remove"
 															)
-															.data(
-																"attachment-id",
-																response.data
-																	.profile_pic_id
-															);
+															.data({
+																"attachment-id":
+																	response.data
+																		.profile_pic_id,
+																"saved-attachment-id":
+																	response.data
+																		.profile_pic_id
+															});
 													}
 												}
 											}

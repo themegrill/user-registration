@@ -28,10 +28,63 @@ use WPEverest\URMembership\Admin\Services\OrderService;
 use WPEverest\URMembership\Admin\Services\PaymentGatewayLogging;
 use WPEverest\URMembership\Admin\Services\SubscriptionService;
 use WPEverest\URMembership\Local_Currency\Admin\CoreFunctions;
+use WPEverest\URMembership\TableList;
 
 defined( 'ABSPATH' ) || exit;
 
 class NewPaypalService {
+
+	/**
+	 * Seconds to wait for another request recording the same PayPal sale before giving up.
+	 */
+	const SALE_LOCK_TIMEOUT = 10;
+
+	/**
+	 * Seconds to wait for another subscription-status webhook for the same row before giving up.
+	 */
+	const SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT = 10;
+
+	/**
+	 * Billing cycles PayPal must have completed before a sale counts as a renewal; the first belongs to the checkout.
+	 */
+	const RENEWAL_MIN_COMPLETED_CYCLES = 2;
+
+	/**
+	 * Seconds between a PayPal subscription's creation and its billing start beyond which checkout charged nothing (100% coupon).
+	 */
+	const DEFERRED_START_THRESHOLD = HOUR_IN_SECONDS;
+
+	/**
+	 * Local subscription statuses that mean access has ended.
+	 */
+	const TERMINAL_STATUSES = array( 'canceled', 'expired' );
+
+	/**
+	 * User-meta key prefix (plus the local subscription row ID) holding the PayPal subscription created for a scheduled downgrade.
+	 */
+	const SCHEDULED_SUBSCRIPTION_META_PREFIX = 'urm_scheduled_paypal_subscription_';
+
+	/** Expected outgoing cancellation, scoped to a scheduled order and PayPal ID. */
+	const EXPECTED_CANCEL_META_PREFIX = 'urm_paypal_expected_cancel_';
+
+	/** Replacement approved, but still awaiting its first successful charge. */
+	const AWAITING_PAYMENT_META_PREFIX = 'urm_paypal_awaiting_payment_';
+
+	/** Lock name prefix for serializing subscription row writes across webhook, checkout, and cron. */
+	const SUBSCRIPTION_ROW_LOCK_PREFIX = 'urm_paypal_subscription_webhook_';
+
+	/**
+	 * How far each backfill re-reads before the last sync time: PayPal lists a new event only some time after
+	 * delivering it, so a window ending "now" can miss a sale that it never looks at again.
+	 */
+	const BACKFILL_WINDOW_OVERLAP = 2 * HOUR_IN_SECONDS;
+
+	/**
+	 * Set when a missed-payment backfill could not fetch events from PayPal during this request.
+	 *
+	 * @var bool
+	 */
+	private $backfill_failed = false;
 
 	/**
 	 * @var MembersOrderRepository
@@ -161,8 +214,7 @@ class NewPaypalService {
 			return $this->revise_paypal_subscription_for_upgrade( $context );
 		}
 
-		// Proration upgrade to a subscription plan: create a new subscription with the prorated amount as a setup fee,
-		// so the member pays the proration now and the full plan price on each subsequent billing cycle.
+		// Upgrade to a subscription plan: prorated first cycle, then full price (scheduled downgrades bill at delayed_until instead).
 		if ( $context['is_upgrading'] && ! empty( $context['response_data']['chargeable_amount'] ) && $context['is_subscription'] ) {
 			return $this->create_paypal_subscription_order( $context );
 		}
@@ -319,7 +371,7 @@ class NewPaypalService {
 						$ur_zone_id,
 						$base_membership_amount
 					);
-					$discount_value = max( 0.0, $final_amount - $discounted_local );
+					$discount_value   = max( 0.0, $final_amount - $discounted_local );
 				}
 
 				$final_amount = max( 0.0, (float) user_registration_sanitize_amount( $final_amount - $discount_value ) );
@@ -414,12 +466,17 @@ class NewPaypalService {
 			'is_subscription_upgrade_revise'  => false,
 		);
 
-		// UR-4386: a valid 100% coupon zeroes a subscription's amount. Bill nothing now and start
-		// one period later (future start_time) with a plain REGULAR plan, instead of a $0 TRIAL cycle.
+		// Bill nothing now and defer first cycle by one period to prevent invalid zero-dollar trial cycles.
 		$context['is_full_discount_sub'] = $context['is_subscription']
-			&& ! $is_upgrading
 			&& ! empty( $coupon_details )
 			&& 0.0 === (float) $final_amount;
+
+		// Prorated upgrade: priced first cycle then plan price, excluding scheduled downgrades and plans with their own trial.
+		$context['is_proration_upgrade'] = $context['is_subscription']
+			&& $is_upgrading
+			&& ! empty( $response_data['chargeable_amount'] )
+			&& empty( $response_data['delayed_until'] )
+			&& ( empty( $data['trial_status'] ) || 'on' !== $data['trial_status'] );
 
 		if (
 			$context['is_subscription'] &&
@@ -763,21 +820,6 @@ class NewPaypalService {
 			$plan_override = $this->build_subscription_plan_override( $context );
 		}
 
-		// For proration subscription upgrades: charge the prorated amount as a PayPal setup fee.
-		// The plan itself is at the full regular price; the setup fee covers the billing difference.
-		if ( $context['is_upgrading'] && ! empty( $context['response_data']['chargeable_amount'] ) ) {
-			$setup_fee_value = number_format( (float) $context['pre_tax_amount'], 2, '.', '' );
-			if ( ! isset( $plan_override['payment_preferences'] ) ) {
-				$plan_override['payment_preferences'] = array();
-			}
-			$plan_override['payment_preferences']['setup_fee']                = array(
-				'value'         => $setup_fee_value,
-				'currency_code' => $context['currency'],
-			);
-			$plan_override['payment_preferences']['setup_fee_failure_action'] = 'CANCEL';
-			$plan_override['payment_preferences']['auto_bill_outstanding']    = true;
-		}
-
 		if ( ! empty( $plan_override ) ) {
 			$payload['plan'] = $plan_override;
 		}
@@ -785,15 +827,18 @@ class NewPaypalService {
 		// Start time. UR-4386: for a 100% coupon the first period is free, so start billing one full
 		// billing period out (nothing charged now); otherwise start almost immediately.
 		if ( ! empty( $context['is_full_discount_sub'] ) ) {
-			$sub_data = ! empty( $context['has_team'] )
+			$sub_data              = ! empty( $context['has_team'] )
 				? array(
 					'duration' => $context['data']['team_data']['team_duration_period'] ?? 'month',
 					'value'    => $context['data']['team_data']['team_duration_value'] ?? 1,
 				)
 				: ( $context['data']['subscription'] ?? array() );
-			$value    = max( 1, (int) ( $sub_data['value'] ?? 1 ) );
-			$duration = strtolower( (string) ( $sub_data['duration'] ?? 'month' ) );
+			$value                 = max( 1, (int) ( $sub_data['value'] ?? 1 ) );
+			$duration              = strtolower( (string) ( $sub_data['duration'] ?? 'month' ) );
 			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', strtotime( "+{$value} {$duration}" ) );
+		} elseif ( $context['is_upgrading'] && ! empty( $context['response_data']['delayed_until'] ) ) {
+			// Scheduled downgrade: the current plan is paid through delayed_until, so billing starts then.
+			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', max( time() + 60, (int) strtotime( $context['response_data']['delayed_until'] ) ) );
 		} else {
 			$payload['start_time'] = gmdate( 'Y-m-d\TH:i:s\Z', time() + 60 );
 		}
@@ -820,6 +865,20 @@ class NewPaypalService {
 
 		if ( ! empty( $response['id'] ) ) {
 			update_user_meta( $context['member_id'], 'urm_paypal_subscription_paypal_id', sanitize_text_field( $response['id'] ) );
+
+			if ( $context['is_upgrading'] && ! empty( $context['response_data']['delayed_until'] ) ) {
+				// The PayPal side is already committed by this point, so a write failure here can only be logged, not retried.
+				if ( false === update_user_meta( $context['member_id'], self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $context['subscription_id'], sanitize_text_field( $response['id'] ) ) ) {
+					PaymentGatewayLogging::log_error(
+						'paypal',
+						sprintf(
+							'[Member ID #%s] Could not store the scheduled-downgrade marker for subscription %s; its billing dates may be applied without the new PayPal ID.',
+							$context['member_id'],
+							$context['subscription_id']
+						)
+					);
+				}
+			}
 		}
 
 		PaymentGatewayLogging::log_transaction_success(
@@ -934,8 +993,9 @@ class NewPaypalService {
 			);
 		}
 
-		// Price override when coupon/local currency changes effective amount.
-		$needs_custom_price = ! empty( $context['coupon_details'] ) || ! empty( $context['response_data']['switched_currency'] );
+		// Price override when coupon/proration/local currency changes effective amount.
+		$has_priced_first_cycle = $this->has_priced_first_cycle( $context );
+		$needs_custom_price     = $has_priced_first_cycle || ! empty( $context['response_data']['switched_currency'] );
 
 		if ( $needs_custom_price ) {
 			$subscription_data = ! empty( $context['has_team'] ) ? array(
@@ -959,8 +1019,8 @@ class NewPaypalService {
 					'interval_count' => $value,
 				);
 
-				if ( ! empty( $context['coupon_details'] ) ) {
-					// Coupon applied: first cycle at discounted price, all subsequent cycles at regular price.
+				if ( $has_priced_first_cycle ) {
+					// Coupon or proration: first cycle at the effective price, all subsequent cycles at regular price.
 					$discounted_price           = ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'];
 					$override['billing_cycles'] = array(
 						array(
@@ -1183,6 +1243,7 @@ class NewPaypalService {
 			|| ( ! empty( $order_token ) && empty( $paypal_subscription_id ) );
 
 		$payment_verified = false;
+		$is_deferred      = false;
 
 		// if buyer already returned and internal order is completed, just redirect .
 		// if ( 'completed' === ( isset( $member_order['status'] ) ? $member_order['status'] : '' ) ) {
@@ -1201,9 +1262,9 @@ class NewPaypalService {
 						$member_id
 					) . "\n" . wp_json_encode(
 						array(
-							'paypal_order_id'    => $order_token,
-							'expected_order_id'  => $expected_order_id,
-							'member_id'          => $member_id,
+							'paypal_order_id'   => $order_token,
+							'expected_order_id' => $expected_order_id,
+							'member_id'         => $member_id,
 						),
 						JSON_PRETTY_PRINT
 					)
@@ -1266,9 +1327,9 @@ class NewPaypalService {
 			$amount_mismatch   = $expected_amount > 0 && ( $captured_amount + 0.01 ) < $expected_amount;
 			$currency_mismatch = ! empty( $expected_currency ) && ! empty( $captured_currency ) && 0 !== strcasecmp( $expected_currency, $captured_currency );
 
-			$payee_email       = isset( $capture_response['purchase_units'][0]['payee']['email_address'] ) ? $capture_response['purchase_units'][0]['payee']['email_address'] : '';
-			$configured_email  = isset( $paypal_credentials['email'] ) ? $paypal_credentials['email'] : '';
-			$payee_mismatch    = ! empty( $payee_email ) && ! empty( $configured_email ) && 0 !== strcasecmp( $payee_email, $configured_email );
+			$payee_email      = isset( $capture_response['purchase_units'][0]['payee']['email_address'] ) ? $capture_response['purchase_units'][0]['payee']['email_address'] : '';
+			$configured_email = isset( $paypal_credentials['email'] ) ? $paypal_credentials['email'] : '';
+			$payee_mismatch   = ! empty( $payee_email ) && ! empty( $configured_email ) && 0 !== strcasecmp( $payee_email, $configured_email );
 
 			if ( $amount_mismatch || $currency_mismatch || $payee_mismatch ) {
 				PaymentGatewayLogging::log_error(
@@ -1309,7 +1370,7 @@ class NewPaypalService {
 					$member_subscription['ID'],
 					array(
 						'status'     => 'active',
-						'start_date' => date( 'Y-m-d 00:00:00' ),
+						'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 					)
 				);
 			}
@@ -1334,7 +1395,10 @@ class NewPaypalService {
 
 		// REST subscription return.
 		if ( ! empty( $paypal_subscription_id ) && 'subscription' === $membership_type ) {
-			update_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', $paypal_subscription_id );
+			$expected_id = get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true );
+			if ( empty( $expected_id ) || ! hash_equals( (string) $expected_id, (string) $paypal_subscription_id ) ) {
+				return;
+			}
 
 			$subscription_details = $this->get_paypal_subscription(
 				$paypal_subscription_id,
@@ -1359,7 +1423,20 @@ class NewPaypalService {
 				return;
 			}
 
-			$new_status = 'ACTIVE' === strtoupper( isset( $subscription_details['status'] ) ? $subscription_details['status'] : '' ) ? 'active' : 'pending';
+			$paypal_raw_status = strtoupper( isset( $subscription_details['status'] ) ? $subscription_details['status'] : '' );
+			if ( ! in_array( $paypal_raw_status, array( 'ACTIVE', 'APPROVED', 'APPROVAL_PENDING' ), true ) ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					sprintf(
+						'[Member ID #%s] Unexpected PayPal subscription status on redirect: %s.',
+						$member_id,
+						$paypal_raw_status
+					)
+				);
+				return;
+			}
+
+			$new_status = 'ACTIVE' === $paypal_raw_status ? 'active' : 'pending';
 
 			// Try to get the real transaction ID from PayPal's subscription transactions API.
 			$transaction_id     = $paypal_subscription_id;
@@ -1398,23 +1475,40 @@ class NewPaypalService {
 				'subscription_id_placeholder' === $transaction_source ? 'notice' : 'info'
 			);
 
-			$this->members_orders_repository->update(
-				$member_order['ID'],
-				array(
-					'status'         => 'completed',
-					'transaction_id' => $transaction_id,
-				)
-			);
+			// Even a late approval must leave switching to cron, after outgoing billing is stopped.
+			$scheduled_id = ! empty( $member_subscription['ID'] ) ? get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true ) : '';
+			$is_deferred  = ( ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id )
+				|| get_user_meta( $member_id, self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true );
 
-			$resolved_status = 'on' === ( isset( $member_order['trial_status'] ) ? $member_order['trial_status'] : '' ) ? 'trial' : $new_status;
+			// Defer status update on scheduled downgrades; resolve trial or active status for immediate subscriptions.
+			$resolved_status = $is_deferred
+				? ( ! empty( $member_subscription['status'] ) ? $member_subscription['status'] : 'active' )
+				: ( 'on' === ( isset( $member_order['trial_status'] ) ? $member_order['trial_status'] : '' ) ? 'trial' : $new_status );
 
-			if ( ! empty( $member_subscription ) ) {
-				$this->members_subscription_repository->update(
-					$member_subscription['ID'],
+			if ( ! $is_deferred ) {
+				$this->members_orders_repository->update(
+					$member_order['ID'],
 					array(
+						'status'         => 'completed',
+						'transaction_id' => $transaction_id,
+					)
+				);
+
+				if ( ! empty( $member_subscription ) ) {
+					$row_update = array(
 						'status'          => $resolved_status,
-						'start_date'      => date( 'Y-m-d 00:00:00' ),
+						'start_date'      => gmdate( 'Y-m-d 00:00:00' ),
 						'subscription_id' => sanitize_text_field( $paypal_subscription_id ),
+					);
+
+					$this->members_subscription_repository->update( $member_subscription['ID'], $row_update );
+				}
+			} else {
+				// Scheduled downgrade: preserve pending status until switch-over day when first payment is billed.
+				$this->members_orders_repository->update(
+					$member_order['ID'],
+					array(
+						'transaction_id' => $paypal_subscription_id,
 					)
 				);
 			}
@@ -1439,7 +1533,7 @@ class NewPaypalService {
 			$payment_verified = true;
 		}
 
-		if ( ! $payment_verified && ! $is_upgrading ) {
+		if ( ! $payment_verified ) {
 			PaymentGatewayLogging::log_error(
 				'paypal',
 				sprintf(
@@ -1458,7 +1552,10 @@ class NewPaypalService {
 			$subscription_service->update_subscription_data_for_renewal( $member_subscription, $membership_metas );
 		}
 
-		$this->send_payment_success_email( $member_order['ID'], $member_subscription, $membership_metas, $member_id, $membership_id );
+		// Deferred downgrades are unbilled until the switch-over date; send receipt only on real payment.
+		if ( ! $is_deferred ) {
+			$this->send_payment_success_email( $member_order['ID'], $member_subscription, $membership_metas, $member_id, $membership_id );
+		}
 
 		// UR-4710: PayPal is offsite, so role was deferred at registration/upgrade time.
 		// Redirect confirms payment here — grant it now instead of waiting for next login.
@@ -1628,8 +1725,9 @@ class NewPaypalService {
 			'notice'
 		);
 
-		if ( ! empty( $new_subscription_data ) ) {
-			if ( empty( $new_subscription_data['delayed_until'] ) && ! empty( $get_user_old_subscription['subscription_id'] ) ) {
+		// A scheduled downgrade is applied on delayed_until by the daily cron instead, not here.
+		if ( ! empty( $new_subscription_data ) && empty( $new_subscription_data['delayed_until'] ) ) {
+			if ( ! empty( $get_user_old_subscription['subscription_id'] ) ) {
 				$cancel_subscription = $subscription_service->cancel_subscription( $get_user_old_order, $get_user_old_subscription, true );
 
 				if ( empty( $cancel_subscription['status'] ) ) {
@@ -1654,9 +1752,16 @@ class NewPaypalService {
 				delete_user_meta( $member_id, 'urm_next_subscription_data' );
 			}
 
-			$subscription_data           = $subscription_service->prepare_upgrade_subscription_data( $new_subscription_data['membership'], $new_subscription_data['member_id'], $new_subscription_data );
-			$subscription_data['status'] = 'active';
+			$subscription_data = $subscription_service->prepare_upgrade_subscription_data( $new_subscription_data['membership'], $new_subscription_data['member_id'], $new_subscription_data );
+
+			// A trial-plan upgrade is charged nothing, so it stays out of 'active' to preserve the trial state (order carries trial_status 'on', see OrderService).
+			$upgrade_order               = $this->orders_repository->get_order_by_subscription( $subscription_id );
+			$subscription_data['status'] = 'on' === ( isset( $upgrade_order['trial_status'] ) ? $upgrade_order['trial_status'] : '' ) ? 'trial' : 'active';
 			$this->subscription_repository->update( $subscription_id, $subscription_data );
+		} elseif ( ! empty( $new_subscription_data['delayed_until'] ) ) {
+			if ( ! $this->cancel_scheduled_subscription_on_approval( $member_id, $subscription_id ) ) {
+				return;
+			}
 		}
 
 		$membership_process = urm_get_membership_process( $member_id );
@@ -1819,17 +1924,23 @@ class NewPaypalService {
 					}
 
 					// Redirect was missed — complete via transaction ID lookup.
-					$this->orders_repository->update( $order['ID'], array( 'status' => 'completed' ) );
+					if ( false === $this->orders_repository->update( $order['ID'], array( 'status' => 'completed' ) ) ) {
+						PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.CAPTURE.COMPLETED: failed to complete order %d.', $order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+						return false;
+					}
 
 					$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $order['subscription_id'] );
 					if ( ! empty( $member_subscription['ID'] ) ) {
-						$this->members_subscription_repository->update(
+						if ( false === $this->members_subscription_repository->update(
 							$member_subscription['ID'],
 							array(
 								'status'     => 'active',
-								'start_date' => date( 'Y-m-d 00:00:00' ),
+								'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 							)
-						);
+						) ) {
+							PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.CAPTURE.COMPLETED: failed to activate subscription %d.', $member_subscription['ID'] ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+							return false;
+						}
 					}
 
 					PaymentGatewayLogging::log_transaction_success(
@@ -1862,6 +1973,10 @@ class NewPaypalService {
 
 		$member_id    = absint( $parsed['member_id'] );
 		$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+		// get_member_orders() is member-wide, not scoped to this checkout — refuse to act on someone else's plan/gateway.
+		if ( ! empty( $member_order ) && ( (int) ( $member_order['item_id'] ?? 0 ) !== absint( $parsed['membership'] ) || 'paypal' !== ( $member_order['payment_method'] ?? '' ) ) ) {
+			$member_order = array();
+		}
 
 		if ( empty( $member_order ) ) {
 			// No membership order for this member_id — may be a normal-registration event.
@@ -1923,23 +2038,29 @@ class NewPaypalService {
 			'notice'
 		);
 
-		$this->members_orders_repository->update(
+		if ( false === $this->members_orders_repository->update(
 			$member_order['ID'],
 			array(
 				'status'         => 'completed',
 				'transaction_id' => $transaction_id,
 			)
-		);
+		) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'Order webhook fallback: failed to complete order %d.', $member_order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+			return false;
+		}
 
 		$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $member_order['subscription_id'] );
 		if ( ! empty( $member_subscription['ID'] ) ) {
-			$this->members_subscription_repository->update(
+			if ( false === $this->members_subscription_repository->update(
 				$member_subscription['ID'],
 				array(
 					'status'     => 'active',
-					'start_date' => date( 'Y-m-d 00:00:00' ),
+					'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 				)
-			);
+			) ) {
+				PaymentGatewayLogging::log_error( 'paypal', sprintf( 'Order webhook fallback: failed to activate subscription %d.', $member_subscription['ID'] ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+				return false;
+			}
 		}
 
 		PaymentGatewayLogging::log_transaction_success(
@@ -1992,10 +2113,13 @@ class NewPaypalService {
 			return true;
 		}
 
-		$this->members_subscription_repository->update(
+		if ( false === $this->members_subscription_repository->update(
 			$current_subscription['sub_id'],
 			array( 'status' => 'active' )
-		);
+		) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.SALE.COMPLETED: failed to restore subscription %d to active.', $current_subscription['sub_id'] ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+			return false;
+		}
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'paypal',
@@ -2061,7 +2185,10 @@ class NewPaypalService {
 			return false;
 		}
 
-		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+		if ( false === $this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) ) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PayPal %s: failed to mark order %d as refunded.', $event_type, $order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+			return false;
+		}
 
 		PaymentGatewayLogging::log_general(
 			'paypal',
@@ -2096,7 +2223,7 @@ class NewPaypalService {
 		$existing_flag  = get_user_meta( $user_id, 'urm_paypal_dispute', true );
 		$same_dispute   = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
-			&& (string) $existing_flag['dispute_id'] === (string) ( $resource['dispute_id'] ?? '' );
+			&& (string) ( $resource['dispute_id'] ?? '' ) === (string) $existing_flag['dispute_id'];
 		$already_seen   = $same_dispute;
 		$is_inquiry     = $this->is_paypal_inquiry( $resource );
 		$already_closed = $same_dispute
@@ -2153,7 +2280,7 @@ class NewPaypalService {
 		$existing_flag  = get_user_meta( $user_id, 'urm_paypal_dispute', true );
 		$already_closed = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
-			&& (string) $existing_flag['dispute_id'] === (string) ( $resource['dispute_id'] ?? '' )
+			&& (string) ( $resource['dispute_id'] ?? '' ) === (string) $existing_flag['dispute_id']
 			&& ! empty( $existing_flag['status'] )
 			&& (string) $existing_flag['status'] === (string) $dispute_status;
 
@@ -2197,7 +2324,7 @@ class NewPaypalService {
 		$existing_flag = get_user_meta( $user_id, 'urm_paypal_dispute', true );
 		$same_dispute  = is_array( $existing_flag )
 			&& ! empty( $existing_flag['dispute_id'] )
-			&& (string) $existing_flag['dispute_id'] === (string) ( $resource['dispute_id'] ?? '' );
+			&& (string) ( $resource['dispute_id'] ?? '' ) === (string) $existing_flag['dispute_id'];
 		// Only a final outcome stops updates; anything else keeps the flag current.
 		$already_closed = $same_dispute
 			&& ! empty( $existing_flag['status'] )
@@ -2442,6 +2569,72 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether a local subscription row is billed on a recurring cycle.
+	 *
+	 * `billing_cycle` holds the period for subscription plans and team subscription tiers, and is empty for
+	 * one-time and free plans — including after an upgrade or downgrade onto one.
+	 *
+	 * @param array $member_subscription Local subscription row.
+	 *
+	 * @return bool
+	 */
+	private function is_recurring_row( $member_subscription ) {
+		return '' !== (string) ( $member_subscription['billing_cycle'] ?? '' );
+	}
+
+	/**
+	 * Whether the row's latest order is a PayPal checkout still waiting for payment.
+	 *
+	 * The member's "newest created PayPal subscription" meta outlives a later switch to another gateway, so
+	 * it only counts while a PayPal checkout for this row is actually in progress.
+	 *
+	 * @param array $member_subscription Local subscription row.
+	 *
+	 * @return bool
+	 */
+	private function has_pending_paypal_checkout( $member_subscription ) {
+		$latest_order = $this->orders_repository->get_order_by_subscription( $member_subscription['ID'] ?? 0 );
+
+		// order_type excludes an unrelated pending one-time order on the same row from counting as a subscription checkout.
+		return 'paypal' === ( $latest_order['payment_method'] ?? '' )
+			&& 'pending' === ( $latest_order['status'] ?? '' )
+			&& 'subscription' === ( $latest_order['order_type'] ?? '' );
+	}
+
+	/**
+	 * Whether a BILLING.SUBSCRIPTION.* event belongs to the PayPal subscription this row now uses.
+	 *
+	 * An upgrade reuses the local row, so events from the PayPal subscription it replaced (its CANCELLED
+	 * above all) still carry this row in `custom_id`. The newest subscription created for the member may
+	 * only ACTIVATE the row before the redirect stores its ID: PayPal sends CREATED before approval, so an
+	 * abandoned checkout must not touch the row, and after a switch to another gateway the user meta still
+	 * names the old PayPal subscription. A row that is no longer recurring (moved to a one-time or free plan)
+	 * keeps the old PayPal ID but is billed by no PayPal subscription, so only the ACTIVATED of a new
+	 * subscription (a free-to-paid upgrade) may change it, never an event of the subscription it replaced.
+	 *
+	 * @param array  $member_subscription    Local subscription row named by the event's custom_id.
+	 * @param int    $member_id              Member the row belongs to.
+	 * @param string $paypal_subscription_id PayPal subscription ID the event is about.
+	 * @param string $event_type             PayPal webhook event type.
+	 *
+	 * @return bool
+	 */
+	private function is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) {
+		$row_paypal_id   = (string) ( $member_subscription['subscription_id'] ?? '' );
+		$is_new_and_live = 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type
+			&& $paypal_subscription_id !== $row_paypal_id
+			&& get_user_meta( $member_id, 'urm_paypal_subscription_paypal_id', true ) === $paypal_subscription_id
+			&& $this->has_pending_paypal_checkout( $member_subscription );
+
+		// The ID still on a one-time/free row is the subscription it replaced, which must never change it again.
+		if ( ! $this->is_recurring_row( $member_subscription ) ) {
+			return $is_new_and_live;
+		}
+
+		return '' === $row_paypal_id || $paypal_subscription_id === $row_paypal_id || $is_new_and_live;
+	}
+
+	/**
 	 * Handle subscription-related REST webhook.
 	 *
 	 * @param string $event_type
@@ -2461,9 +2654,55 @@ class NewPaypalService {
 			return false;
 		}
 
-		$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_row_id );
-		if ( empty( $member_subscription ) ) {
+		// PayPal doesn't guarantee webhook delivery order, so two events for this row can race here.
+		// Null (no GET_LOCK support) means proceed without a lock, same as SubscriptionService::upgrade_membership() — only false blocks.
+		$lock_name = self::SUBSCRIPTION_ROW_LOCK_PREFIX . $subscription_row_id;
+		$lock      = $this->members_subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT );
+		if ( false === $lock ) {
 			return false;
+		}
+
+		try {
+			$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_row_id );
+			if ( empty( $member_subscription ) ) {
+				return false;
+			}
+
+			return $this->process_subscription_webhook_event( $event_type, $member_id, $subscription_row_id, $paypal_subscription_id, $member_subscription );
+		} finally {
+			if ( true === $lock ) {
+				$this->members_subscription_repository->release_lock( $lock_name );
+			}
+		}
+	}
+
+	/**
+	 * Decide the row's new state for a subscription webhook and write it, holding the caller's per-row lock.
+	 *
+	 * @param string $event_type             PayPal webhook event type.
+	 * @param int    $member_id              Member the row belongs to.
+	 * @param string $subscription_row_id    Local subscription row ID.
+	 * @param string $paypal_subscription_id PayPal subscription ID the event is about.
+	 * @param array  $member_subscription    Row data, freshly read under the lock.
+	 *
+	 * @return bool
+	 */
+	private function process_subscription_webhook_event( $event_type, $member_id, $subscription_row_id, $paypal_subscription_id, $member_subscription ) {
+		if ( ! $this->is_current_paypal_subscription( $member_subscription, $member_id, $paypal_subscription_id, $event_type ) ) {
+			PaymentGatewayLogging::log_general(
+				'paypal',
+				sprintf( '[Member ID #%s] Subscription webhook ignored: event is for a PayPal subscription this member no longer uses.', $member_id ) . "\n" . wp_json_encode(
+					array(
+						'event_type'                     => $event_type,
+						'event_paypal_subscription_id'   => $paypal_subscription_id,
+						'current_paypal_subscription_id' => $member_subscription['subscription_id'] ?? '',
+						'subscription_id'                => $member_subscription['ID'],
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+			return true;
 		}
 
 		$status_map = array(
@@ -2476,24 +2715,79 @@ class NewPaypalService {
 			'BILLING.SUBSCRIPTION.PAYMENT.FAILED' => 'pending',
 		);
 
-		$new_status      = isset( $status_map[ $event_type ] ) ? $status_map[ $event_type ] : ( isset( $member_subscription['status'] ) ? $member_subscription['status'] : 'pending' );
-		$current_status  = isset( $member_subscription['status'] ) ? $member_subscription['status'] : '';
-		$terminal_states = array( 'canceled', 'expired' );
+		$new_status     = isset( $status_map[ $event_type ] ) ? $status_map[ $event_type ] : ( isset( $member_subscription['status'] ) ? $member_subscription['status'] : 'pending' );
+		$current_status = isset( $member_subscription['status'] ) ? $member_subscription['status'] : '';
+		if ( 'active' === $new_status && get_user_meta( $member_id, self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true ) ) {
+			return true; // Only a recorded sale can activate this scheduled replacement.
+		}
 
-		if ( 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' === $event_type && in_array( $current_status, $terminal_states, true ) ) {
+		// A trial subscription is ACTIVE at PayPal too; the first paid sale moves the row on to 'active'.
+		if ( 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type && 'trial' === $current_status ) {
+			$new_status = 'trial';
+		}
+
+		if ( 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' === $event_type && in_array( $current_status, self::TERMINAL_STATUSES, true ) ) {
 			return true; // ignore late failure events for already-terminated subscriptions
 		}
 
-		$this->members_subscription_repository->update(
+		// A scheduled downgrade bills later; the row stays on the old subscription until the daily cron switches it.
+		$row_paypal_id       = (string) ( $member_subscription['subscription_id'] ?? '' );
+		$is_new_subscription = '' !== $row_paypal_id && $paypal_subscription_id !== $row_paypal_id;
+		if ( 'BILLING.SUBSCRIPTION.ACTIVATED' === $event_type && $is_new_subscription ) {
+			// Defer only for this row's own scheduled-downgrade marker, not a time guess near delayed_until.
+			$scheduled_id = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $member_subscription['ID'], true );
+			if ( ! empty( $scheduled_id ) && $scheduled_id === $paypal_subscription_id ) {
+				if ( ! $this->cancel_scheduled_subscription_on_approval( $member_id, $subscription_row_id ) ) {
+					return false;
+				}
+				PaymentGatewayLogging::log_general(
+					'paypal',
+					sprintf(
+						'[Member ID #%s] Subscription webhook deferred: new PayPal subscription is approved but its billing has not started yet (scheduled downgrade).',
+						$member_id
+					) . "\n" . wp_json_encode(
+						array(
+							'event_type'             => $event_type,
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'current_paypal_subscription_id' => $row_paypal_id,
+						),
+						JSON_PRETTY_PRINT
+					),
+					'notice'
+				);
+				return true;
+			}
+		}
+
+		// Only our confirmed cancellation is expected. An abandoned checkout or a suspension is not.
+		if ( ! $is_new_subscription && 'BILLING.SUBSCRIPTION.CANCELLED' === $event_type ) {
+			$expected = $this->is_expected_scheduled_cancellation( $member_id, $member_subscription['ID'], $paypal_subscription_id );
+			if ( is_wp_error( $expected ) ) {
+				return false;
+			}
+			if ( $expected ) {
+				return true;
+			}
+		}
+
+		// No conditional-update guard needed: the caller's lock already covers this whole section.
+		if ( false === $this->members_subscription_repository->update(
 			$member_subscription['ID'],
 			array(
 				'status'          => $new_status,
 				'subscription_id' => $paypal_subscription_id,
 			)
-		);
+		) ) {
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to write status %s.', $member_id, $new_status ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
+			return false;
+		}
 
 		if ( 'active' === $new_status ) {
-			$member_order         = $this->members_orders_repository->get_member_orders( $member_id );
+			$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+			// get_member_orders() is member-wide, not scoped to this subscription — refuse to act on someone else's plan/gateway.
+			if ( ! empty( $member_order ) && ( (int) ( $member_order['item_id'] ?? 0 ) !== (int) ( $member_subscription['item_id'] ?? 0 ) || 'paypal' !== ( $member_order['payment_method'] ?? '' ) ) ) {
+				$member_order = array();
+			}
 			$current_order_status = isset( $member_order['status'] ) ? $member_order['status'] : '';
 
 			if ( ! empty( $member_order['ID'] ) ) {
@@ -2502,10 +2796,13 @@ class NewPaypalService {
 
 					if ( empty( $current_transaction_id ) ) {
 						// Order completed (by redirect) but transaction_id was never stored — fill it in now.
-						$this->members_orders_repository->update(
+						if ( false === $this->members_orders_repository->update(
 							$member_order['ID'],
 							array( 'transaction_id' => $paypal_subscription_id )
-						);
+						) ) {
+							PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to sync transaction_id on order %d.', $member_id, $member_order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+							return false;
+						}
 
 						PaymentGatewayLogging::log_general(
 							'paypal',
@@ -2560,13 +2857,16 @@ class NewPaypalService {
 						'notice'
 					);
 
-					$this->members_orders_repository->update(
+					if ( false === $this->members_orders_repository->update(
 						$member_order['ID'],
 						array(
 							'status'         => 'completed',
 							'transaction_id' => $paypal_subscription_id,
 						)
-					);
+					) ) {
+						PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to complete order %d.', $member_id, $member_order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+						return false;
+					}
 				}
 			}
 		}
@@ -2619,12 +2919,12 @@ class NewPaypalService {
 			return false;
 		}
 
-		// Already have an order for this exact sale — nothing to update.
+		// Already have an order for this exact sale (retry, or the backfill got there first) — only re-sync.
 		$existing = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 		if ( ! empty( $existing ) ) {
 			PaymentGatewayLogging::log_general(
 				'paypal',
-				'[PAYMENT.SALE.COMPLETED] Order already exists for this transaction — skipped.' . "\n" . wp_json_encode(
+				'[PAYMENT.SALE.COMPLETED] Order already exists for this transaction — re-syncing subscription.' . "\n" . wp_json_encode(
 					array(
 						'transaction_id' => $transaction_id,
 						'order_id'       => $existing['ID'],
@@ -2633,7 +2933,7 @@ class NewPaypalService {
 				),
 				'info'
 			);
-			return true;
+			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
 		// Find local subscription record by PayPal subscription ID.
@@ -2656,16 +2956,33 @@ class NewPaypalService {
 		$local_sub_id = $membership_subscription['ID'];
 		$user_id      = $membership_subscription['user_id'];
 
-		// Replace placeholder order whose transaction_id is the subscription ID (not a real sale ID).
-		$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
-		if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
-			$this->orders_repository->update(
+		// A completed zero-dollar order is the initial checkout; paid renewal sales must create a separate order.
+		$placeholder           = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
+		$sale_amount           = (float) ( $resource['amount']['total'] ?? 0 );
+		$is_initial_free_order = ! empty( $placeholder ) && 'completed' === ( $placeholder['status'] ?? '' ) && ( (float) ( $placeholder['total_amount'] ?? 0 ) <= 0 );
+
+		if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) && ( ! $is_initial_free_order || $sale_amount <= 0 ) ) {
+			$placeholder_updated = $this->orders_repository->update(
 				$placeholder['ID'],
 				array(
 					'status'         => 'completed',
 					'transaction_id' => $transaction_id,
 				)
 			);
+			if ( false === $placeholder_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[PAYMENT.SALE.COMPLETED] Placeholder order update failed — PayPal will retry.' . "\n" . wp_json_encode(
+						array(
+							'order_id'               => $placeholder['ID'],
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				return false;
+			}
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[PAYMENT.SALE.COMPLETED] Placeholder order updated with real transaction ID.' . "\n" . wp_json_encode(
@@ -2679,23 +2996,33 @@ class NewPaypalService {
 				),
 				'success'
 			);
-			return true;
+			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
-		// Update a pending order that has no transaction_id yet.
-		$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
-		if (
-			! empty( $pending_order['ID'] ) &&
-			'pending' === ( $pending_order['status'] ?? '' ) &&
-			'' === (string) ( $pending_order['transaction_id'] ?? '' )
-		) {
-			$this->orders_repository->update(
+		// Query the pending order for the current plan to avoid picking an abandoned order for another plan.
+		$pending_order = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $membership_subscription['item_id'] );
+		if ( ! empty( $pending_order ) ) {
+			$pending_order_updated = $this->orders_repository->update(
 				$pending_order['ID'],
 				array(
 					'status'         => 'completed',
 					'transaction_id' => $transaction_id,
 				)
 			);
+			if ( false === $pending_order_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[PAYMENT.SALE.COMPLETED] Pending order update failed — PayPal will retry.' . "\n" . wp_json_encode(
+						array(
+							'order_id'               => $pending_order['ID'],
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				return false;
+			}
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[PAYMENT.SALE.COMPLETED] Pending order completed with real transaction ID.' . "\n" . wp_json_encode(
@@ -2709,23 +3036,340 @@ class NewPaypalService {
 				),
 				'success'
 			);
-			return true;
+			// A manual renewal's pending order can meet a recurring sale; a genuine first payment stays a no-op in the sync.
+			return $this->sync_subscription_from_paypal( $paypal_subscription_id );
 		}
 
-		// No matching order found — likely a renewal payment handled by the backfill job.
+		// No order is waiting for this sale, so it is a renewal: record it, then extend the subscription.
+		$time_string = isset( $resource['create_time'] ) ? $resource['create_time'] : '';
+		$order       = $this->record_subscription_sale_once(
+			$membership_subscription,
+			$transaction_id,
+			(float) ( $resource['amount']['total'] ?? 0 ),
+			! empty( $time_string ) ? gmdate( 'Y-m-d H:i:s', strtotime( $time_string ) ) : gmdate( 'Y-m-d H:i:s' ),
+			'PayPal subscription renewal payment'
+		);
+
+		if ( false === $order ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[PAYMENT.SALE.COMPLETED] Renewal order could not be recorded — PayPal will retry.' . "\n" . wp_json_encode(
+					array(
+						'member_id'              => $user_id,
+						'paypal_subscription_id' => $paypal_subscription_id,
+						'transaction_id'         => $transaction_id,
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return false;
+		}
+
 		PaymentGatewayLogging::log_general(
 			'paypal',
-			'[PAYMENT.SALE.COMPLETED] No matching order found for transaction — skipped (backfill will handle renewals).' . "\n" . wp_json_encode(
+			'[PAYMENT.SALE.COMPLETED] Renewal payment recorded.' . "\n" . wp_json_encode(
 				array(
+					'order_id'               => $order['ID'] ?? null,
+					'member_id'              => $user_id,
 					'paypal_subscription_id' => $paypal_subscription_id,
 					'transaction_id'         => $transaction_id,
 				),
 				JSON_PRETTY_PRINT
 			),
-			'info'
+			'success'
+		);
+
+		return $this->sync_subscription_from_paypal( $paypal_subscription_id );
+	}
+
+
+	/**
+	 * Record a completed PayPal subscription sale as an order, at most once per sale.
+	 *
+	 * The renewal webhook and the missed-payment backfill can see the same sale at the same time, and
+	 * `transaction_id` has no unique index, so a MySQL named lock covers the existence check and insert.
+	 *
+	 * @param array  $membership_subscription Local subscription row the sale belongs to.
+	 * @param string $transaction_id          PayPal sale ID.
+	 * @param float  $gross_amount            Amount PayPal charged.
+	 * @param string $created_at              Sale time in UTC, `Y-m-d H:i:s`.
+	 * @param string $note                    Order note.
+	 *
+	 * @return array|null|false The new order, null when the sale was already recorded, false on failure.
+	 */
+	private function record_subscription_sale_once( $membership_subscription, $transaction_id, $gross_amount, $created_at, $note ) {
+		$wpdb      = $this->orders_repository->wpdb();
+		$lock_name = 'urm_paypal_sale_' . md5( $transaction_id );
+
+		// Null (no GET_LOCK support) means proceed without a lock, same as SubscriptionService::upgrade_membership() — only false blocks.
+		$lock = $this->orders_repository->acquire_lock( $lock_name, self::SALE_LOCK_TIMEOUT );
+		if ( false === $lock ) {
+			return false;
+		}
+
+		try {
+			if ( ! empty( $this->orders_repository->get_order_by_transaction_id( $transaction_id ) ) ) {
+				return null;
+			}
+
+			// A failed lookup also comes back empty; inserting then could record the sale twice.
+			if ( '' !== $wpdb->last_error ) {
+				return false;
+			}
+
+			$order_meta = array(
+				array(
+					'meta_key'   => 'is_admin_created',
+					'meta_value' => false, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				),
+			);
+
+			// The latest COMPLETED order, not just the latest order — that could be an abandoned pending one for a different plan/currency.
+			$previous_order = $this->orders_repository->get_latest_completed_order_by_subscription_and_item( $membership_subscription['ID'], $membership_subscription['item_id'] );
+			if ( ! empty( $previous_order['ID'] ) ) {
+				foreach ( array( 'local_currency', 'local_currency_converted_amount', 'tax_data' ) as $meta_key ) {
+					$prev_meta = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $previous_order['ID'], $meta_key );
+					if ( ! empty( $prev_meta['meta_value'] ) ) {
+						$order_meta[] = array(
+							'meta_key'   => $meta_key,
+							'meta_value' => $prev_meta['meta_value'], // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+						);
+					}
+				}
+			}
+
+			$order = $this->orders_repository->create(
+				array(
+					'orders_data'      => array(
+						'user_id'         => absint( $membership_subscription['user_id'] ),
+						'item_id'         => $membership_subscription['item_id'],
+						'subscription_id' => $membership_subscription['ID'],
+						'created_by'      => $membership_subscription['user_id'],
+						'transaction_id'  => $transaction_id,
+						'payment_method'  => 'paypal',
+						'total_amount'    => $gross_amount,
+						'status'          => 'completed',
+						'order_type'      => 'subscription',
+						'trial_status'    => 'off',
+						'notes'           => $note,
+						'created_at'      => $created_at,
+					),
+					'orders_meta_data' => $order_meta,
+				)
+			);
+
+			// A failed insert leaves a stale insert_id behind; require the retrieved order to actually be this sale.
+			return ( ! empty( $order ) && ( $order['transaction_id'] ?? '' ) === $transaction_id ) ? $order : false;
+		} finally {
+			if ( true === $lock ) {
+				$this->orders_repository->release_lock( $lock_name );
+			}
+		}
+	}
+
+	/**
+	 * Bring a local subscription's status and billing dates in line with PayPal after a sale.
+	 *
+	 * Takes PayPal's own next_billing_time rather than adding an interval locally, so replaying a sale
+	 * (webhook retry, backfill re-scan) can never extend access twice. Dates only move forward, and a
+	 * locally canceled or non-recurring subscription is left alone. Nothing happens until PayPal has billed a second cycle:
+	 * the first payment's dates belong to the checkout, whose redirect adds its own period. A subscription
+	 * whose billing started later (100% coupon) was not charged at checkout, so its first sale counts.
+	 *
+	 * @param string $paypal_subscription_id PayPal subscription ID (billing agreement ID).
+	 *
+	 * @return bool False only when PayPal or the database could not be reached, so the caller can retry.
+	 */
+	private function sync_subscription_from_paypal( $paypal_subscription_id ) {
+		$wpdb                    = $this->members_subscription_repository->wpdb();
+		$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $paypal_subscription_id );
+		if ( empty( $membership_subscription ) ) {
+			// A failed query also comes back empty; report it so PayPal retries instead of dropping the sale.
+			return '' === $wpdb->last_error;
+		}
+
+		// A row moved to a one-time or free plan has no billing dates; an old PayPal subscription must not add some.
+		if ( 'canceled' === ( $membership_subscription['status'] ?? '' ) || empty( $membership_subscription['billing_cycle'] ) ) {
+			return true;
+		}
+
+		$remote = $this->get_paypal_subscription( $paypal_subscription_id, $this->get_paypal_rest_credentials() );
+		if ( is_wp_error( $remote ) ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[Subscription sync] Could not fetch PayPal subscription.' . "\n" . wp_json_encode(
+					array(
+						'paypal_subscription_id' => $paypal_subscription_id,
+						'error'                  => $remote->get_error_message(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return false;
+		}
+
+		$awaiting_payment = get_user_meta( $membership_subscription['user_id'], self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true );
+		if ( ! $awaiting_payment && $this->count_completed_cycles( $remote ) < $this->renewal_min_completed_cycles( $remote ) ) {
+			return true;
+		}
+
+		if ( ! empty( $remote['billing_info']['next_billing_time'] ) ) {
+			$paypal_next = gmdate( 'Y-m-d H:i:s', strtotime( $remote['billing_info']['next_billing_time'] ) );
+		} else {
+			// Extend access by plan duration on final fixed cycles or when future recurring billing is cancelled.
+			$membership_data  = $this->membership_repository->get_single_membership_by_ID( $membership_subscription['item_id'] );
+			$membership_metas = ! empty( $membership_data['meta_value'] ) ? json_decode( $membership_data['meta_value'], true ) : array();
+			$duration_val     = absint( $membership_metas['subscription']['value'] ?? 1 );
+			$duration_unit    = sanitize_text_field( $membership_metas['subscription']['duration'] ?? 'month' );
+			// Anchored to PayPal's own last-payment time, not the mutable local expiry_date this function writes, so a replay computes the same date instead of stacking another period on top.
+			$last_payment_time = $remote['billing_info']['last_payment']['time'] ?? '';
+			$base_timestamp    = ! empty( $last_payment_time ) ? strtotime( $last_payment_time ) : time();
+
+			$paypal_next = gmdate( 'Y-m-d H:i:s', strtotime( "+{$duration_val} {$duration_unit}", $base_timestamp ) );
+		}
+
+		$local_expiry = (string) ( $membership_subscription['expiry_date'] ?? '' );
+		$expiry_date  = $this->later_date( $local_expiry, $paypal_next );
+		$next_billing = ! empty( $remote['billing_info']['next_billing_time'] )
+			? $this->later_date( (string) ( $membership_subscription['next_billing_date'] ?? '' ), $paypal_next )
+			: (string) ( $membership_subscription['next_billing_date'] ?? '' );
+		$table        = TableList::subscriptions_table();
+
+		// Only flip status to active when PayPal itself reports ACTIVE and the computed expiry is genuinely in the future.
+		$paypal_status     = strtoupper( (string) ( $remote['status'] ?? '' ) );
+		$should_activate   = 'ACTIVE' === $paypal_status && strtotime( $expiry_date ) > time();
+		$status_assign_sql = $should_activate ? "status = 'active', " : '';
+
+		// Conditional on status and subscription_id, since either could have changed while PayPal was being asked.
+		$update_result = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE {$table} SET {$status_assign_sql}expiry_date = %s, next_billing_date = %s WHERE ID = %d AND status <> 'canceled' AND subscription_id = %s", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$expiry_date,
+				$next_billing,
+				$membership_subscription['ID'],
+				$paypal_subscription_id
+			)
+		);
+
+		if ( 0 === $update_result ) {
+			// Matched no row: stale by the time the live check finished, not a failure — nothing to retry.
+			return true;
+		}
+
+		if ( false === $update_result ) {
+			PaymentGatewayLogging::log_error(
+				'paypal',
+				'[Subscription sync] Local subscription update failed.' . "\n" . wp_json_encode(
+					array(
+						'subscription_id'        => $membership_subscription['ID'],
+						'paypal_subscription_id' => $paypal_subscription_id,
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+			return false;
+		}
+		if ( $awaiting_payment && $should_activate ) {
+			delete_user_meta( $membership_subscription['user_id'], self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id );
+		}
+
+		PaymentGatewayLogging::log_general(
+			'paypal',
+			'[Subscription sync] Local subscription synced from PayPal.' . "\n" . wp_json_encode(
+				array(
+					'subscription_id'        => $membership_subscription['ID'],
+					'paypal_subscription_id' => $paypal_subscription_id,
+					'status_from'            => $membership_subscription['status'] ?? '',
+					'expiry_from'            => $local_expiry,
+					'expiry_to'              => $expiry_date,
+					'next_billing_date'      => $next_billing,
+				),
+				JSON_PRETTY_PRINT
+			),
+			'success'
 		);
 
 		return true;
+	}
+
+	/**
+	 * Return whichever of two `Y-m-d H:i:s` dates is later; an empty or zero local date loses.
+	 *
+	 * @param string $local_date  Date currently stored on the subscription row.
+	 * @param string $remote_date Date derived from PayPal.
+	 *
+	 * @return string
+	 */
+	private function later_date( $local_date, $remote_date ) {
+		return strtotime( $local_date ) > strtotime( $remote_date ) ? $local_date : $remote_date;
+	}
+
+	/**
+	 * Completed cycles after which a sale is a renewal: one fewer when checkout charged nothing (billing started later).
+	 *
+	 * @param array $remote PayPal subscription resource (GET /v1/billing/subscriptions/{id}).
+	 *
+	 * @return int
+	 */
+	private function renewal_min_completed_cycles( $remote ) {
+		$created             = strtotime( (string) ( $remote['create_time'] ?? '' ) );
+		$started             = strtotime( (string) ( $remote['start_time'] ?? '' ) );
+		$charged_at_checkout = ! $created || ! $started || $started - $created <= self::DEFERRED_START_THRESHOLD;
+
+		return $charged_at_checkout ? self::RENEWAL_MIN_COMPLETED_CYCLES : self::RENEWAL_MIN_COMPLETED_CYCLES - 1;
+	}
+
+	/**
+	 * Number of billing cycles PayPal has completed for a subscription, trial cycles included.
+	 *
+	 * @param array $remote PayPal subscription resource (GET /v1/billing/subscriptions/{id}).
+	 *
+	 * @return int
+	 */
+	private function count_completed_cycles( $remote ) {
+		$executions = $remote['billing_info']['cycle_executions'] ?? array();
+
+		return (int) array_sum( array_column( is_array( $executions ) ? $executions : array(), 'cycles_completed' ) );
+	}
+
+	/**
+	 * Start of a missed-payment backfill window: the last sync time minus an overlap, at most 30 days back.
+	 *
+	 * @param int $last_synced Last successful sync timestamp (0 when never synced).
+	 * @param int $now         Current timestamp.
+	 *
+	 * @return int
+	 */
+	private function backfill_window_start( $last_synced, $now ) {
+		$from = ! empty( $last_synced ) ? (int) $last_synced - self::BACKFILL_WINDOW_OVERLAP : $now - DAY_IN_SECONDS;
+
+		return max( $now - ( 30 * DAY_IN_SECONDS ), $from );
+	}
+
+	/**
+	 * Whether a missed-payment backfill in this request failed to fetch from PayPal or to save a result.
+	 *
+	 * The scheduler keeps the last sync time when this is true, so the window is searched again next run.
+	 *
+	 * @return bool
+	 */
+	public function has_backfill_failure() {
+		return $this->backfill_failed;
+	}
+
+	/**
+	 * Whether a backfill's repository write succeeded; a failed one marks the run failed so its sync window is kept.
+	 *
+	 * @param int|false $result Return value of a repository update().
+	 *
+	 * @return bool
+	 */
+	private function backfill_write_succeeded( $result ) {
+		if ( false === $result ) {
+			$this->backfill_failed = true;
+		}
+
+		return false !== $result;
 	}
 
 	/**
@@ -3325,6 +3969,175 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether a PayPal subscription is live and ACTIVE — used to confirm a scheduled downgrade was actually
+	 * approved before the daily cron cancels the old subscription and switches the row to it.
+	 *
+	 * @param string $subscription_id PayPal subscription ID.
+	 * @return bool
+	 */
+	public function is_paypal_subscription_active( $subscription_id ) {
+		$details = $this->get_paypal_subscription( $subscription_id, $this->get_paypal_rest_credentials() );
+		return ! is_wp_error( $details ) && 'ACTIVE' === strtoupper( isset( $details['status'] ) ? $details['status'] : '' );
+	}
+
+	/**
+	 * Read gateway billing evidence before granting a scheduled replacement period.
+	 *
+	 * @param string $subscription_id PayPal subscription ID.
+	 * @return array|WP_Error PayPal details or a retryable lookup error.
+	 */
+	public function get_scheduled_subscription_details( $subscription_id ) {
+		return $this->get_paypal_subscription( $subscription_id, $this->get_paypal_rest_credentials() );
+	}
+
+	/**
+	 * Recognize only the outgoing cancellation for a still-approved, bounded switch.
+	 * Keep this receipt until switching so duplicate webhook/backfill delivery is safe.
+	 *
+	 * @param int    $member_id Member ID.
+	 * @param int    $row_id Local subscription ID.
+	 * @param string $paypal_id Outgoing PayPal ID.
+	 * @return bool|WP_Error Whether cancellation is expected, or verification failed.
+	 */
+	private function is_expected_scheduled_cancellation( $member_id, $row_id, $paypal_id ) {
+		$marker   = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $row_id, true );
+		$expected = get_user_meta( $member_id, self::EXPECTED_CANCEL_META_PREFIX . $paypal_id, true );
+		$next     = json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true );
+		if ( empty( $marker ) || ! is_array( $expected )
+			|| ( $expected['replacement_id'] ?? '' ) !== $marker
+			|| empty( $expected['order_id'] )
+			|| (int) ( $next['order_id'] ?? 0 ) !== (int) $expected['order_id']
+			|| (int) ( $next['subscription_id'] ?? 0 ) !== (int) $row_id
+			|| (int) ( $expected['expires_at'] ?? 0 ) < time()
+		) {
+			return false;
+		}
+		$replacement = $this->get_scheduled_subscription_details( $marker );
+		if ( is_wp_error( $replacement ) ) {
+			return $replacement;
+		}
+		if ( empty( $replacement['status'] ) ) {
+			return new WP_Error( 'paypal_missing_status', 'PayPal replacement status could not be verified.' );
+		}
+		return 'ACTIVE' === strtoupper( $replacement['status'] );
+	}
+
+	/** Show actionable cancellation failures to site administrators. */
+	public static function user_registration_scheduled_cancellation_notice() {
+		$screen = get_current_screen();
+		if ( ! current_user_can( 'manage_options' ) || ! $screen || false === strpos( $screen->id, 'user-registration' ) ) {
+			return;
+		}
+		$members = get_users(
+			array(
+				'number'     => 5,
+				'fields'     => 'ID',
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Bounded admin-only lookup for actionable payment failures.
+					array(
+						'key'         => 'urm_paypal_scheduled_cancel_error_',
+						'compare_key' => 'LIKE',
+						'compare'     => 'EXISTS',
+					),
+				),
+			)
+		);
+		foreach ( $members as $member_id ) {
+			echo '<div class="notice notice-error"><p>';
+			printf(
+				/* translators: %d: member ID. */
+				esc_html__( 'PayPal could not stop the outgoing subscription for member #%d during a scheduled plan change. Both subscriptions may bill. Check the PayPal payment logs and cancel the outgoing agreement in PayPal if necessary; the site will retry the switch.', 'user-registration' ),
+				absint( $member_id )
+			);
+			echo '</p></div>';
+		}
+	}
+
+	/**
+	 * Stop outgoing billing only after the exact scheduled replacement is approved.
+	 *
+	 * Shared by redirect, ACTIVATED webhook and cron. API errors never prove that
+	 * billing stopped. The local paid period and scheduled data remain untouched.
+	 *
+	 * @param int $member_id Member ID.
+	 * @param int $subscription_id Local subscription row ID.
+	 * @return bool Whether outgoing billing is confirmed stopped.
+	 */
+	public function cancel_scheduled_subscription_on_approval( $member_id, $subscription_id ) {
+		$lock_name = 'urm_paypal_scheduled_cancel_' . absint( $subscription_id );
+		$lock      = $this->subscription_repository->acquire_lock( $lock_name, self::SUBSCRIPTION_WEBHOOK_LOCK_TIMEOUT );
+		if ( false === $lock ) {
+			return false;
+		}
+		try {
+			$next     = json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true );
+			$old      = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
+			$order    = json_decode( get_user_meta( $member_id, 'urm_previous_order_data', true ), true );
+			$marker   = get_user_meta( $member_id, self::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id, true );
+			$row      = $this->subscription_repository->retrieve( $subscription_id );
+			$checkout = $this->orders_repository->retrieve( $next['order_id'] ?? 0 );
+			if ( empty( $marker ) || empty( $next['delayed_until'] ) || empty( $checkout )
+				|| (int) ( $row['user_id'] ?? 0 ) !== (int) $member_id
+				|| (int) ( $next['subscription_id'] ?? 0 ) !== (int) $subscription_id
+				|| (int) ( $checkout['subscription_id'] ?? 0 ) !== (int) $subscription_id
+				|| (int) ( $checkout['user_id'] ?? 0 ) !== (int) $member_id
+				|| (int) ( $checkout['item_id'] ?? 0 ) !== (int) ( $next['membership'] ?? 0 )
+				|| 'paypal' !== ( $checkout['payment_method'] ?? '' )
+				|| ! $this->is_paypal_subscription_active( $marker )
+			) {
+				return false;
+			}
+			if ( empty( $old['subscription_id'] ) ) {
+				return true; // A previous free/manual plan has no gateway agreement to stop.
+			}
+			if ( $marker === $old['subscription_id'] || (string) ( $row['subscription_id'] ?? '' ) !== (string) $old['subscription_id'] ) {
+				return false;
+			}
+			if ( 'paypal' !== ( $order['payment_method'] ?? '' ) ) {
+				$result = ( new SubscriptionService() )->cancel_subscription( $order, $old, true );
+				return ! empty( $result['status'] );
+			}
+			$options = $this->get_paypal_rest_credentials();
+			$details = $this->get_paypal_subscription( $old['subscription_id'], $options );
+			if ( is_wp_error( $details ) || empty( $details['status'] ) ) {
+				return false;
+			}
+			if ( in_array( strtoupper( $details['status'] ), array( 'CANCELLED', 'EXPIRED' ), true ) ) {
+				return true;
+			}
+			$key      = self::EXPECTED_CANCEL_META_PREFIX . $old['subscription_id'];
+			$expected = array(
+				'replacement_id' => $marker,
+				'order_id'       => (int) $next['order_id'],
+				'expires_at'     => strtotime( $next['delayed_until'] ) + DAY_IN_SECONDS,
+			);
+			// Persist before calling PayPal: its webhook may arrive before the HTTP response.
+			update_user_meta( $member_id, $key, $expected );
+			if ( get_user_meta( $member_id, $key, true ) !== $expected ) {
+				return false;
+			}
+			$result = $this->cancel_subscription( $order, $old, true );
+			if ( ! empty( $result['status'] ) ) {
+				delete_user_meta( $member_id, 'urm_paypal_scheduled_cancel_error_' . $subscription_id );
+				return true;
+			}
+			// A timeout may follow a successful cancel; verify explicitly before retrying.
+			$details = $this->get_paypal_subscription( $old['subscription_id'], $options );
+			if ( ! is_wp_error( $details ) && in_array( strtoupper( $details['status'] ?? '' ), array( 'CANCELLED', 'EXPIRED' ), true ) ) {
+				delete_user_meta( $member_id, 'urm_paypal_scheduled_cancel_error_' . $subscription_id );
+				return true;
+			}
+			delete_user_meta( $member_id, $key );
+			update_user_meta( $member_id, 'urm_paypal_scheduled_cancel_error_' . $subscription_id, $old['subscription_id'] );
+			PaymentGatewayLogging::log_error( 'paypal', sprintf( 'Scheduled downgrade for member #%d needs attention: outgoing PayPal subscription %s could not be cancelled. Both subscriptions may bill; the switch will be retried.', $member_id, $old['subscription_id'] ) );
+			return false;
+		} finally {
+			if ( true === $lock ) {
+				$this->subscription_repository->release_lock( $lock_name );
+			}
+		}
+	}
+
+	/**
 	 * Activate subscription.
 	 *
 	 * @param string $subscription_id
@@ -3519,14 +4332,8 @@ class NewPaypalService {
 				),
 			),
 		);
-		// Coupon: plan must define a TRIAL cycle so the subscription override can set a discounted
-		// first-cycle price. Skipped for full-discount subs (UR-4386) — they use a plain REGULAR plan
-		// + future start_time instead.
-		if (
-			! empty( $context['coupon_details'] ) &&
-			empty( $context['is_full_discount_sub'] ) &&
-			( empty( $context['data']['trial_status'] ) || 'on' !== $context['data']['trial_status'] )
-		) {
+		// Coupon/proration upgrade needs a plan TRIAL cycle to override, since PayPal rejects overrides adding cycles the plan lacks.
+		if ( $this->has_priced_first_cycle( $context ) ) {
 			$billing_cycles = array(
 				array(
 					'frequency'      => array(
@@ -3650,9 +4457,33 @@ class NewPaypalService {
 				'trial_status'     => isset( $context['data']['trial_status'] ) ? $context['data']['trial_status'] : '',
 				'trial_data'       => isset( $context['data']['trial_data'] ) ? $context['data']['trial_data'] : array(),
 				'tax_rate'         => isset( $context['tax_rate'] ) ? $context['tax_rate'] : 0,
-				'has_coupon_cycle' => ! empty( $context['coupon_details'] ) && empty( $context['is_full_discount_sub'] ) && ( empty( $context['data']['trial_status'] ) || 'on' !== $context['data']['trial_status'] ),
+				// Key name kept so existing cached plan ids stay valid; proration reuses the same plan shape.
+				'has_coupon_cycle' => $this->has_priced_first_cycle( $context ),
 			)
 		);
+	}
+
+	/**
+	 * Whether the PayPal plan needs a priced TRIAL first cycle (coupon discount or upgrade proration).
+	 *
+	 * Full-discount subscriptions (UR-4386) and plans with their own free trial use other cycle shapes.
+	 *
+	 * @param array $context Normalized PayPal payment context.
+	 *
+	 * @return bool
+	 */
+	private function has_priced_first_cycle( $context ) {
+		if ( ! empty( $context['data']['trial_status'] ) && 'on' === $context['data']['trial_status'] ) {
+			return false;
+		}
+
+		// Zero-dollar cycles cannot be priced trial tiers in PayPal plan overrides.
+		if ( ! empty( $context['is_full_discount_sub'] ) || ( isset( $context['final_amount'] ) && 0.0 === (float) $context['final_amount'] ) ) {
+			return false;
+		}
+
+		return ! empty( $context['is_proration_upgrade'] )
+			|| ! empty( $context['coupon_details'] );
 	}
 
 	/**
@@ -3724,6 +4555,25 @@ class NewPaypalService {
 		);
 		$key = strtoupper( (string) $paypal_status );
 		return isset( $map[ $key ] ) ? $map[ $key ] : '';
+	}
+
+	/**
+	 * PayPal's current status of a subscription as a local status, fetched at most once per run.
+	 *
+	 * @param string $paypal_subscription_id PayPal subscription ID.
+	 * @param array  $paypal_options         REST credentials.
+	 * @param array  $cache                  PayPal responses already fetched this run, by subscription ID.
+	 *
+	 * @return string|WP_Error Local status ('' when unrecognised), or the request error.
+	 */
+	private function get_live_local_status( $paypal_subscription_id, $paypal_options, &$cache ) {
+		if ( ! isset( $cache[ $paypal_subscription_id ] ) ) {
+			$cache[ $paypal_subscription_id ] = $this->get_paypal_subscription( $paypal_subscription_id, $paypal_options );
+		}
+
+		$live = $cache[ $paypal_subscription_id ];
+
+		return is_wp_error( $live ) ? $live : $this->map_paypal_subscription_status( isset( $live['status'] ) ? $live['status'] : '' );
 	}
 
 	/**
@@ -3865,7 +4715,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $now - ( 30 * DAY_IN_SECONDS ), ! empty( $last_synced ) ? $last_synced : $now - DAY_IN_SECONDS );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -3896,6 +4746,7 @@ class NewPaypalService {
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
+				$this->backfill_failed = true;
 				++$count_errors;
 				continue;
 			}
@@ -3933,6 +4784,7 @@ class NewPaypalService {
 
 		$count_updated = 0;
 		$count_skipped = 0;
+		$live_by_id    = array();
 
 		foreach ( $all_events as $event ) {
 			$resource               = isset( $event['resource'] ) ? $event['resource'] : array();
@@ -4007,8 +4859,41 @@ class NewPaypalService {
 			$local_sub_id = $subscription['ID'];
 			$user_id      = $subscription['user_id'];
 			$local_status = $subscription['status'];
+			if ( 'active' === $paypal_status && get_user_meta( $user_id, self::AWAITING_PAYMENT_META_PREFIX . $paypal_subscription_id, true ) ) {
+				++$count_skipped;
+				continue;
+			}
+			if ( 'CANCELLED' === strtoupper( $paypal_raw_status ) ) {
+				$expected = $this->is_expected_scheduled_cancellation( $user_id, $local_sub_id, $paypal_subscription_id );
+				if ( is_wp_error( $expected ) ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+				if ( $expected ) {
+					++$count_skipped;
+					continue;
+				}
+			}
 
-			if ( $paypal_status === $local_status ) {
+			// The overlap re-reads old events, so a listed ACTIVE for a canceled row counts only if PayPal still reports it active.
+			if ( 'canceled' === $local_status && 'active' === $paypal_status ) {
+				$live_status = $this->get_live_local_status( $paypal_subscription_id, $paypal_options, $live_by_id );
+
+				if ( is_wp_error( $live_status ) ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+
+				if ( 'active' !== $live_status ) {
+					++$count_skipped;
+					continue;
+				}
+			}
+
+			// A trial row is PayPal-active too; rewriting it to 'active' would drop the trial state and its dates.
+			if ( $paypal_status === $local_status || ( 'trial' === $local_status && 'active' === $paypal_status ) ) {
 				$logger->info(
 					'[Backfill][Paypal][Subscription][Status] Skipped — status unchanged.' . "\n" . wp_json_encode(
 						array(
@@ -4024,6 +4909,68 @@ class NewPaypalService {
 				);
 				++$count_skipped;
 				continue;
+			}
+
+			// A row moved to a one-time or free plan keeps the old PayPal ID; that subscription must not change it.
+			if ( ! $this->is_recurring_row( $subscription ) ) {
+				$logger->info(
+					'[Backfill][Paypal][Subscription][Status] Skipped — subscription no longer bills this member.' . "\n" . wp_json_encode(
+						array(
+							'event_type'             => 'skip',
+							'reason'                 => 'row_not_recurring',
+							'local_sub_id'           => $local_sub_id,
+							'paypal_subscription_id' => $paypal_subscription_id,
+							'paypal_status'          => $paypal_status,
+						),
+						JSON_PRETTY_PRINT
+					),
+					array( 'source' => 'urm-missed-payment-backfill' )
+				);
+				++$count_skipped;
+				continue;
+			}
+
+			// PayPal can list an old SUSPENDED after a newer ACTIVATED, so confirm a downgrade with PayPal before removing access.
+			$active_like_statuses = array( 'active', 'trial' );
+			if ( in_array( $paypal_status, self::TERMINAL_STATUSES, true ) && in_array( $local_status, $active_like_statuses, true ) ) {
+				$live_status = $this->get_live_local_status( $paypal_subscription_id, $paypal_options, $live_by_id );
+
+				if ( is_wp_error( $live_status ) ) {
+					$logger->info(
+						'[Backfill][Paypal][Subscription][Status] Could not verify a listed downgrade against PayPal — left as-is this run.' . "\n" . wp_json_encode(
+							array(
+								'event_type'             => 'downgrade_verify_error',
+								'local_sub_id'           => $local_sub_id,
+								'paypal_subscription_id' => $paypal_subscription_id,
+								'error'                  => $live_status->get_error_message(),
+							),
+							JSON_PRETTY_PRINT
+						),
+						array( 'source' => 'urm-missed-payment-backfill' )
+					);
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+
+				if ( ! in_array( $live_status, self::TERMINAL_STATUSES, true ) ) {
+					$logger->info(
+						'[Backfill][Paypal][Subscription][Status] Skipped — listed downgrade is stale; PayPal reports the subscription is still current.' . "\n" . wp_json_encode(
+							array(
+								'event_type'             => 'skip',
+								'reason'                 => 'stale_downgrade',
+								'local_sub_id'           => $local_sub_id,
+								'paypal_subscription_id' => $paypal_subscription_id,
+								'listed_status'          => $paypal_status,
+								'live_status'            => $live_status,
+							),
+							JSON_PRETTY_PRINT
+						),
+						array( 'source' => 'urm-missed-payment-backfill' )
+					);
+					++$count_skipped;
+					continue;
+				}
 			}
 
 			$update_data       = array( 'status' => $paypal_status );
@@ -4052,7 +4999,27 @@ class NewPaypalService {
 				}
 			}
 
-			$this->members_subscription_repository->update( $local_sub_id, $update_data );
+			// Keyed by subscription_id too, since an upgrade can switch this row between the lookup above and this write.
+			$rows_affected = $this->members_subscription_repository->update_if_subscription_id_matches(
+				$local_sub_id,
+				$update_data,
+				$paypal_subscription_id
+			);
+
+			if ( false === $rows_affected ) {
+				$this->backfill_failed = true;
+				++$count_errors;
+				continue;
+			}
+
+			if ( 0 === $rows_affected ) {
+				$fresh_sub = $this->members_subscription_repository->retrieve( $local_sub_id );
+				if ( empty( $fresh_sub ) || (string) ( $fresh_sub['subscription_id'] ?? '' ) !== (string) $paypal_subscription_id ) {
+					// The row switched subscriptions in the meantime; this event is stale, not an error.
+					++$count_skipped;
+					continue;
+				}
+			}
 
 			PaymentGatewayLogging::log_general(
 				'paypal',
@@ -4071,15 +5038,24 @@ class NewPaypalService {
 				'success'
 			);
 
-			// When a subscription becomes active, also complete its pending order.
+			// Complete a zero-dollar or trial order; paid orders remain pending until run_missed_payment_backfill supplies the real sale ID.
 			if ( 'active' === $paypal_status && 'active' !== $local_status ) {
-				$pending_order = $this->orders_repository->get_order_by_subscription( $local_sub_id );
-				if ( ! empty( $pending_order ) && 'pending' === ( $pending_order['status'] ?? '' ) ) {
+				$pending_order = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $subscription['item_id'] );
+				$is_free_order = ! empty( $pending_order ) && ( (float) ( $pending_order['total_amount'] ?? 0 ) <= 0 || 'on' === ( $pending_order['trial_status'] ?? '' ) );
+				if ( $is_free_order ) {
 					$order_prev_status = $pending_order['status'];
-					$this->orders_repository->update(
-						$pending_order['ID'],
-						array( 'status' => 'completed' )
-					);
+					if ( ! $this->backfill_write_succeeded(
+						$this->orders_repository->update(
+							$pending_order['ID'],
+							array(
+								'status'         => 'completed',
+								'transaction_id' => $paypal_subscription_id,
+							)
+						)
+					) ) {
+						++$count_errors;
+						continue;
+					}
 					$logger->info(
 						'[Backfill][Paypal][Subscription][Status] Pending order completed alongside subscription activation.' . "\n" . wp_json_encode(
 							array(
@@ -4150,7 +5126,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $now - ( 30 * DAY_IN_SECONDS ), ! empty( $last_synced ) ? $last_synced : $now - DAY_IN_SECONDS );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4182,6 +5158,7 @@ class NewPaypalService {
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);
 			$logger->info( '[Backfill][PayPal][Subscription][Payments] ======= ENDED =======', array( 'source' => 'urm-missed-payment-backfill' ) );
+			$this->backfill_failed = true;
 			return;
 		}
 
@@ -4191,6 +5168,9 @@ class NewPaypalService {
 		$count_updated = 0;
 		$count_skipped = 0;
 		$count_errors  = 0;
+
+		// PayPal subscriptions with a completed sale in this window, synced once each after the loop.
+		$subscriptions_to_sync = array();
 
 		foreach ( $events as $event ) {
 			$resource               = isset( $event['resource'] ) ? $event['resource'] : array();
@@ -4221,15 +5201,22 @@ class NewPaypalService {
 			// If an order for this transaction exists, sync its status with PayPal live.
 			$existing_payment = $this->orders_repository->get_order_by_transaction_id( $transaction_id );
 			if ( ! empty( $existing_payment ) ) {
+				// The listed event's own resource is a stale snapshot, so a re-sync always needs a fresh live lookup instead.
 				$sale_details = $this->get_paypal_sale_details( $transaction_id, $paypal_options );
-				$live_state   = ! is_wp_error( $sale_details ) && isset( $sale_details['state'] ) ? $sale_details['state'] : 'completed';
-				$live_status  = $this->map_paypal_sale_state( $live_state );
-				$prev_status  = $existing_payment['status'] ?? '';
+				if ( is_wp_error( $sale_details ) || ! isset( $sale_details['state'] ) ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+				$live_state = $sale_details['state'];
 
-				$this->orders_repository->update(
-					$existing_payment['ID'],
-					array( 'status' => $live_status )
-				);
+				$live_status = $this->map_paypal_sale_state( $live_state );
+				$prev_status = $existing_payment['status'] ?? '';
+
+				if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $existing_payment['ID'], array( 'status' => $live_status ) ) ) ) {
+					++$count_errors;
+					continue;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'[Backfill][PayPal][Subscription][Payments] Existing order status synced from PayPal live.' . "\n" . wp_json_encode(
@@ -4245,6 +5232,9 @@ class NewPaypalService {
 					),
 					'success'
 				);
+				if ( 'completed' === $live_status ) {
+					$subscriptions_to_sync[ $paypal_subscription_id ] = true;
+				}
 				++$count_updated;
 				continue;
 			}
@@ -4272,32 +5262,46 @@ class NewPaypalService {
 			$local_sub_id = $membership_subscription['ID'];
 			$user_id      = $membership_subscription['user_id'];
 
-			// Replace placeholder order (transaction_id = PayPal subscription ID) if one exists.
-			$placeholder = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
-			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) ) {
+			// A completed zero-dollar order is the initial checkout; paid renewal sales must create a separate order.
+			$placeholder           = $this->orders_repository->get_order_by_transaction_id( $paypal_subscription_id );
+			$is_initial_free_order = ! empty( $placeholder ) && 'completed' === ( $placeholder['status'] ?? '' ) && ( (float) ( $placeholder['total_amount'] ?? 0 ) <= 0 );
+
+			if ( ! empty( $placeholder ) && ! empty( $placeholder['ID'] ) && ( ! $is_initial_free_order || $gross_amount <= 0 ) ) {
+				$placeholder_updated = $this->orders_repository->update(
+					$placeholder['ID'],
+					array(
+						'status'         => 'completed',
+						'transaction_id' => $transaction_id,
+						'total_amount'   => $gross_amount,
+					)
+				);
+				if ( false === $placeholder_updated ) {
+					$this->backfill_failed = true;
+					++$count_errors;
+					continue;
+				}
+				$subscriptions_to_sync[ $paypal_subscription_id ] = true;
 				$logger->info(
-					'[Backfill][PayPal][Subscription][Payments] Deleting placeholder order.' . "\n" . wp_json_encode(
+					'[Backfill][PayPal][Subscription][Payments] Placeholder order completed with real transaction ID.' . "\n" . wp_json_encode(
 						array(
-							'event_type'             => 'placeholder_deleted',
+							'event_type'             => 'placeholder_completed',
 							'local_sub_id'           => $local_sub_id,
-							'placeholder_order_id'   => $placeholder['ID'],
+							'order_id'               => $placeholder['ID'],
 							'paypal_subscription_id' => $paypal_subscription_id,
+							'transaction_id'         => $transaction_id,
 						),
 						JSON_PRETTY_PRINT
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
-				$this->orders_repository->delete( $placeholder['ID'] );
+				++$count_updated;
+				continue;
 			}
 
-			// Update a pending order in place rather than creating a duplicate.
-			$existing_pending = $this->orders_repository->get_order_by_subscription( $local_sub_id );
-			if (
-				! empty( $existing_pending['ID'] ) &&
-				'pending' === ( $existing_pending['status'] ?? '' ) &&
-				'' === (string) ( $existing_pending['transaction_id'] ?? '' )
-			) {
-				$this->orders_repository->update(
+			// Query the pending order for the current plan to avoid picking an abandoned order for another plan.
+			$existing_pending = $this->orders_repository->get_pending_order_for_item( $local_sub_id, $membership_subscription['item_id'] );
+			if ( ! empty( $existing_pending ) ) {
+				$pending_completed = $this->orders_repository->update(
 					$existing_pending['ID'],
 					array(
 						'status'         => 'completed',
@@ -4305,6 +5309,10 @@ class NewPaypalService {
 						'total_amount'   => $gross_amount,
 					)
 				);
+				if ( ! $this->backfill_write_succeeded( $pending_completed ) ) {
+					++$count_errors;
+					continue;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'[Backfill][PayPal][Subscription][Payments] Pending order updated with real transaction.' . "\n" . wp_json_encode(
@@ -4322,35 +5330,38 @@ class NewPaypalService {
 					),
 					'success'
 				);
+				$subscriptions_to_sync[ $paypal_subscription_id ] = true;
 				++$count_updated;
 				continue;
 			}
 
-			// Create a new completed order for this payment event.
-			$order_data = array(
-				'orders_data'      => array(
-					'user_id'         => absint( $membership_subscription['user_id'] ),
-					'item_id'         => $membership_subscription['item_id'],
-					'subscription_id' => $membership_subscription['ID'],
-					'created_by'      => $membership_subscription['user_id'],
-					'transaction_id'  => $transaction_id,
-					'payment_method'  => 'paypal',
-					'total_amount'    => $gross_amount,
-					'status'          => 'completed',
-					'order_type'      => 'subscription',
-					'trial_status'    => 'off',
-					'notes'           => 'Backfilled order for missed PayPal payment event',
-					'created_at'      => $created_at,
-				),
-				'orders_meta_data' => array(
-					array(
-						'meta_key'   => 'is_admin_created',
-						'meta_value' => false,
-					),
-				),
-			);
+			// Create a new completed order for this payment event (the renewal webhook may race us).
+			$order = $this->record_subscription_sale_once( $membership_subscription, $transaction_id, $gross_amount, $created_at, 'Backfilled order for missed PayPal payment event' );
 
-			$this->orders_repository->create( $order_data );
+			if ( false === $order ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'[Backfill][PayPal][Subscription][Payments] Order for missed payment could not be recorded.' . "\n" . wp_json_encode(
+						array(
+							'member_id'       => $user_id,
+							'subscription_id' => $local_sub_id,
+							'transaction_id'  => $transaction_id,
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+				$this->backfill_failed = true;
+				++$count_errors;
+				continue;
+			}
+
+			$subscriptions_to_sync[ $paypal_subscription_id ] = true;
+
+			if ( null === $order ) {
+				++$count_skipped;
+				continue;
+			}
+
 			PaymentGatewayLogging::log_general(
 				'paypal',
 				'[Backfill][PayPal][Subscription][Payments] New order created for missed payment.' . "\n" . wp_json_encode(
@@ -4369,6 +5380,13 @@ class NewPaypalService {
 				'success'
 			);
 			++$count_created;
+		}
+
+		foreach ( array_keys( $subscriptions_to_sync ) as $synced_paypal_subscription_id ) {
+			if ( ! $this->sync_subscription_from_paypal( $synced_paypal_subscription_id ) ) {
+				$this->backfill_failed = true;
+				++$count_errors;
+			}
 		}
 
 		$logger->info(
@@ -4420,7 +5438,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $last_synced, $now - ( 30 * DAY_IN_SECONDS ) );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4451,7 +5469,8 @@ class NewPaypalService {
 				),
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);
-			$events = array();
+			$this->backfill_failed = true;
+			$events                = array();
 		}
 
 		foreach ( $events as $event ) {
@@ -4467,15 +5486,21 @@ class NewPaypalService {
 			// If an order for this capture exists, sync its status with PayPal live.
 			$existing_order = $this->orders_repository->get_order_by_transaction_id( $capture_id );
 			if ( ! empty( $existing_order ) ) {
+				// The listed event's own resource is a stale snapshot, so a re-sync always needs a fresh live lookup instead.
 				$capture_details = $this->get_paypal_capture_details( $capture_id, $paypal_options );
-				$live_state      = ! is_wp_error( $capture_details ) && isset( $capture_details['status'] ) ? $capture_details['status'] : 'COMPLETED';
-				$live_status     = $this->map_paypal_capture_status( $live_state );
-				$prev_status     = $existing_order['status'] ?? '';
+				if ( is_wp_error( $capture_details ) || ! isset( $capture_details['status'] ) ) {
+					// A failed lookup must not be guessed as COMPLETED — that could resurrect a refunded order.
+					$this->backfill_failed = true;
+					++$count_skipped;
+					continue;
+				}
 
-				$this->orders_repository->update(
-					$existing_order['ID'],
-					array( 'status' => $live_status )
-				);
+				$live_status = $this->map_paypal_capture_status( $capture_details['status'] );
+				$prev_status = $existing_order['status'] ?? '';
+
+				if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $existing_order['ID'], array( 'status' => $live_status ) ) ) ) {
+					continue;
+				}
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'[Backfill][PayPal][OneTime] Existing order status synced from PayPal live.' . "\n" . wp_json_encode(
@@ -4483,7 +5508,7 @@ class NewPaypalService {
 							'event_type'        => 'order_status_synced',
 							'order_id'          => $existing_order['ID'],
 							'capture_id'        => $capture_id,
-							'paypal_live_state' => $live_state,
+							'paypal_live_state' => $capture_details['status'],
 							'status_from'       => $prev_status,
 							'status_to'         => $live_status,
 						),
@@ -4515,35 +5540,49 @@ class NewPaypalService {
 				continue;
 			}
 
-			$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
+			$subscription_row = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
 
-			if ( empty( $order ) || 'pending' !== ( isset( $order['status'] ) ? $order['status'] : '' ) ) {
+			if ( empty( $subscription_row ) ) {
 				++$count_skipped;
 				continue;
 			}
 
-			$this->orders_repository->update(
+			$order = $this->orders_repository->get_pending_order_for_item( $subscription_id, $subscription_row['item_id'] );
+
+			if ( empty( $order ) ) {
+				++$count_skipped;
+				continue;
+			}
+
+			$order_completed = $this->orders_repository->update(
 				$order['ID'],
 				array(
 					'status'         => 'completed',
 					'transaction_id' => $capture_id,
 				)
 			);
+			if ( ! $this->backfill_write_succeeded( $order_completed ) ) {
+				continue;
+			}
 
-			$subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
-			if ( ! empty( $subscription['ID'] ) && 'pending' === ( isset( $subscription['status'] ) ? $subscription['status'] : '' ) ) {
-				$this->members_subscription_repository->update(
-					$subscription['ID'],
+			if ( 'pending' === ( isset( $subscription_row['status'] ) ? $subscription_row['status'] : '' ) ) {
+				$subscription_activated = $this->members_subscription_repository->update(
+					$subscription_row['ID'],
 					array(
 						'status'     => 'active',
 						'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 					)
 				);
+				if ( ! $this->backfill_write_succeeded( $subscription_activated ) ) {
+					continue;
+				}
+				// Grant deferred WordPress user role now that one-time payment is confirmed.
+				( new MembersService() )->maybe_grant_pending_role( absint( $subscription_row['user_id'] ) );
 				$logger->info(
 					'[Backfill][PayPal][OneTime] Subscription activated.' . "\n" . wp_json_encode(
 						array(
 							'event_type'      => 'subscription_activated',
-							'subscription_id' => $subscription['ID'],
+							'subscription_id' => $subscription_row['ID'],
 							'order_id'        => $order['ID'],
 							'capture_id'      => $capture_id,
 						),
@@ -4597,13 +5636,18 @@ class NewPaypalService {
 				continue;
 			}
 
-			$this->members_subscription_repository->update(
+			$orphan_activated = $this->members_subscription_repository->update(
 				$subscription['ID'],
 				array(
 					'status'     => 'active',
 					'start_date' => gmdate( 'Y-m-d 00:00:00' ),
 				)
 			);
+			if ( ! $this->backfill_write_succeeded( $orphan_activated ) ) {
+				continue;
+			}
+			// Grant deferred WordPress user role now that orphaned subscription is active.
+			( new MembersService() )->maybe_grant_pending_role( absint( $subscription['user_id'] ) );
 			++$count_activated;
 			$logger->info(
 				'[Backfill][PayPal][OneTime] Orphaned subscription activated.' . "\n" . wp_json_encode(
@@ -4664,7 +5708,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $last_synced, $now - ( 30 * DAY_IN_SECONDS ) );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4693,6 +5737,7 @@ class NewPaypalService {
 					),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
+				$this->backfill_failed = true;
 			} else {
 				$all_events = array_merge( $all_events, $events );
 			}
@@ -4744,7 +5789,9 @@ class NewPaypalService {
 				continue;
 			}
 
-			$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+			if ( ! $this->backfill_write_succeeded( $this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) ) ) ) {
+				continue;
+			}
 			++$total_updated;
 			$logger->info(
 				sprintf( '[Backfill][PayPal][Refunds] Marked order %d as refunded (transaction %s)', $order['ID'], $transaction_id ),
@@ -4782,7 +5829,7 @@ class NewPaypalService {
 		}
 
 		$paypal_options  = $this->get_paypal_rest_credentials();
-		$effective_start = max( $last_synced, $now - ( 30 * DAY_IN_SECONDS ) );
+		$effective_start = $this->backfill_window_start( $last_synced, $now );
 		$start_time      = gmdate( 'Y-m-d\TH:i:s\Z', $effective_start );
 		$end_time        = gmdate( 'Y-m-d\TH:i:s\Z', $now );
 
@@ -4791,7 +5838,17 @@ class NewPaypalService {
 		$all_events = array();
 		foreach ( array( 'CUSTOMER.DISPUTE.CREATED', 'CUSTOMER.DISPUTE.RESOLVED', 'CUSTOMER.DISPUTE.UPDATED' ) as $event_type ) {
 			$events = $this->get_paypal_webhook_events( $event_type, $start_time, $end_time, $paypal_options );
-			if ( ! is_wp_error( $events ) ) {
+			if ( is_wp_error( $events ) ) {
+				$logger->info(
+					'[Backfill][PayPal][Disputes] API error fetching ' . $event_type . ' events.' . "\n" . wp_json_encode(
+						array( 'error' => $events->get_error_message() ),
+						JSON_PRETTY_PRINT
+					),
+					array( 'source' => 'urm-missed-payment-backfill' )
+				);
+				// Keep the sync time so this window is searched again on the next run.
+				$this->backfill_failed = true;
+			} else {
 				$all_events = array_merge( $all_events, $events );
 			}
 		}

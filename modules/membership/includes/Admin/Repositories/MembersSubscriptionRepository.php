@@ -111,6 +111,29 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	}
 
 	/**
+	 * Update a row only if it still carries the PayPal subscription ID the caller last read.
+	 *
+	 * Guards a webhook/backfill write against the row having switched to a different PayPal
+	 * subscription (e.g. an upgrade) between the caller's read and this write.
+	 *
+	 * @param int    $id                       Row ID.
+	 * @param array  $data                     Columns to update.
+	 * @param string $expected_subscription_id PayPal subscription ID the row must still carry.
+	 *
+	 * @return int|false Rows affected (0 means the row had already moved on), false on DB error.
+	 */
+	public function update_if_subscription_id_matches( $id, $data, $expected_subscription_id ) {
+		return $this->wpdb()->update(
+			$this->table,
+			$data,
+			array(
+				'ID'              => $id,
+				'subscription_id' => $expected_subscription_id,
+			)
+		);
+	}
+
+	/**
 	 * Get members subscription by their ID and Membership ID
 	 *
 	 * @param $member_id
@@ -199,7 +222,19 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 
 		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
 
-		return ! $result ? array() : $result;
+		if ( ! $result ) {
+			return array();
+		}
+
+		// PHP filter, not a SQL join - the per-subscription usermeta key can't be indexed and forces a full table scan.
+		return array_values(
+			array_filter(
+				$result,
+				function ( $subscription ) {
+					return ! get_user_meta( $subscription['member_id'], 'urm_pending_cancel_' . $subscription['subscription_id'], true );
+				}
+			)
+		);
 	}
 
 	/**
@@ -326,7 +361,7 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 			LEFT JOIN $this->users_table wu ON wums.user_id = wu.ID
 			LEFT JOIN $this->posts_table wp ON wums.item_id = wp.ID
 			LEFT JOIN $this->orders_table wo ON wums.ID = wo.subscription_id
-			WHERE (wums.status = 'failed' OR wums.status = 'expired')
+			WHERE wums.status = 'expired'
 			AND wums.updated_at >= '%s'
 			ORDER BY wums.updated_at ASC
 			",

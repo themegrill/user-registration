@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ensureFirstRun } from "../support/urm";
+import { ensureFirstRun, ensureMembershipEnabled } from "../support/urm";
 import { gotoAdminPage, loginAsAdmin } from "../support/wp";
 
 /**
@@ -34,6 +34,29 @@ test.describe("admin surfaces @fresh", () => {
     }
   });
 
+  /**
+   * @area    admin
+   * @tier    fresh
+   * @guards  #1718
+   * @source  write-spec 2026-10-05
+   * @why     Invite Codes showed the Popups bullets and Popups showed only the generic
+   *          upgrade notice. Guards each locked section rendering its own teaser; does
+   *          not assert exact bullet wording, which product copy may change.
+   */
+  test("locked Registration & Login sections each show their own upgrade teaser @fresh @admin", async ({ page }) => {
+    const teaser = page.locator(".user-registration-upsell");
+
+    await gotoAdminPage(page, "user-registration-settings", "&tab=registration_login&section=popup");
+    await expect(teaser).toContainText(/popup/i);
+    await expect(teaser.locator("li")).not.toHaveCount(0);
+    await expect(page.getByText("To unlock this setting, consider upgrading")).toHaveCount(0);
+
+    await gotoAdminPage(page, "user-registration-settings", "&tab=registration_login&section=invite-code");
+    await expect(teaser).toContainText(/invite/i);
+    await expect(teaser.locator("li")).not.toHaveCount(0);
+    await expect(teaser).not.toContainText(/popup/i);
+  });
+
   test("security tab exposes Prevent WP Dashboard Access @fresh @admin", async ({ page }) => {
     await gotoAdminPage(page, "user-registration-settings", "&tab=security");
     await expect(page.getByText("Prevent WP Dashboard Access")).toBeVisible();
@@ -43,6 +66,7 @@ test.describe("admin surfaces @fresh", () => {
   });
 
   test("membership admin navigation: Memberships, Add New, Groups, Members @fresh @admin", async ({ page }) => {
+    await ensureMembershipEnabled(page);
     await gotoAdminPage(page, "user-registration-membership");
     await expect(page.locator("#wpbody-content")).toBeVisible();
     // The membership module registers its own submenus; assert on the menu the
@@ -57,5 +81,21 @@ test.describe("admin surfaces @fresh", () => {
     await ensureFirstRun(page);
     await page.goto("/wp-admin/edit.php?post_type=user_registration");
     await expect(page.locator("#the-list tr[id^='post-']").first()).toBeVisible();
+  });
+
+  test("payment settings masks secret keys with show/hide toggle @fresh @admin", async ({ page }) => {
+    await gotoAdminPage(page, "user-registration-settings", "&tab=payment");
+    const cardHeader = page.locator("#paypal .user-registration-card__header, #stripe .user-registration-card__header, .user-registration-card__header").first();
+    await cardHeader.click();
+
+    const secretInput = page.locator(".user-registration-password-input-wrapper input").first();
+    await expect(secretInput).toHaveAttribute("type", "password");
+
+    const toggleBtn = page.locator(".user-registration-password-input-wrapper .ur-toggle-password").first();
+    await expect(toggleBtn).toBeVisible();
+    await toggleBtn.click();
+    await expect(secretInput).toHaveAttribute("type", "text");
+    await toggleBtn.click();
+    await expect(secretInput).toHaveAttribute("type", "password");
   });
 });
