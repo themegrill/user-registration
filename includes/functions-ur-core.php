@@ -11419,14 +11419,34 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 
 		$membership_field_handled = ( ! $membership_enabled ) || $default_form_has_membership || $membership_field_skipped;
 
-		$has_legacy_payment_fields      = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
-		$legacy_payment_fields_handled  = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
+		$has_legacy_payment_fields     = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
+		$legacy_payment_fields_handled = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
 
 		// Single-form sites without multiple registration go straight to that form, same as the builder's own redirect; everyone else lands on the forms list.
-		$legacy_payment_fields_forms   = ur_get_all_user_registration_form();
-		$legacy_payment_fields_url     = ( ! empty( $legacy_payment_fields_forms ) && count( $legacy_payment_fields_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
-			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $legacy_payment_fields_forms ) )
+		$all_published_forms       = ur_get_all_user_registration_form();
+		$legacy_payment_fields_url = ( ! empty( $all_published_forms ) && count( $all_published_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
+			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $all_published_forms ) )
 			: admin_url( 'admin.php?page=user-registration' );
+
+		$forms_list = array();
+		foreach ( (array) $all_published_forms as $form_id => $form_title ) {
+			$forms_list[] = array(
+				'id'    => (int) $form_id,
+				// The form list is already HTML-escaped and React escapes again, so decode it here.
+				'title' => wp_specialchars_decode( (string) $form_title, ENT_QUOTES ),
+			);
+		}
+
+		$unlinked_users_count = ur_get_unlinked_users_count();
+		// With no published form there is nothing to link to, so the step is not pending (the card needs a form to render).
+		$unlinked_users_handled = empty( $forms_list ) || ur_is_unlinked_users_handled( $unlinked_users_count );
+
+		// Validate default form: only use default_form_id if it exists in published forms, otherwise fall back to first published form.
+		$validated_default_form_id = 0;
+		if ( ! empty( $forms_list ) ) {
+			$form_ids                  = wp_list_pluck( $forms_list, 'id' );
+			$validated_default_form_id = in_array( (int) $default_form_id, $form_ids, true ) ? (int) $default_form_id : (int) $forms_list[0]['id'];
+		}
 
 		$site_assistant_data = array(
 			'users_can_register'                => ur_users_can_register(),
@@ -11441,11 +11461,142 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'default_form_has_membership_field' => $default_form_has_membership,
 			'membership_field_handled'          => $membership_field_handled,
 			'has_membership_plans'              => $has_membership_plans,
-			'legacy_payment_fields_handled'      => $legacy_payment_fields_handled,
-			'legacy_payment_fields_url'          => $legacy_payment_fields_url,
+			'legacy_payment_fields_handled'     => $legacy_payment_fields_handled,
+			'legacy_payment_fields_url'         => $legacy_payment_fields_url,
+			'unlinked_users_count'              => $unlinked_users_count,
+			'unlinked_users_handled'            => $unlinked_users_handled,
+			'registration_forms'                => $forms_list,
+			'default_form_id'                   => $validated_default_form_id,
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_query_args' ) ) {
+	/**
+	 * Build get_users() arguments for users of the current site that have no registration form.
+	 *
+	 * The acting admin is left out on purpose, so a site with a single admin does not get a step for its own account.
+	 * get_users() only returns members of the current site on multisite, unlike a raw query on the shared users table.
+	 *
+	 * @param array $args Arguments that override the defaults, such as number or fields.
+	 * @return array Arguments for get_users() or WP_User_Query.
+	 */
+	function ur_get_unlinked_users_query_args( $args = array() ) {
+		return wp_parse_args(
+			$args,
+			array(
+				'fields'     => 'ID',
+				'exclude'    => array( get_current_user_id() ),
+				'orderby'    => 'ID',
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					array(
+						'key'     => 'ur_form_id',
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			)
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
+	/**
+	 * Get count of users without an associated registration form, excluding current user.
+	 * Memoized per request and cached via transient to prevent expensive admin queries.
+	 *
+	 * @return int Number of unlinked user accounts.
+	 */
+	function ur_get_unlinked_users_count() {
+		static $memoized_count = null;
+
+		if ( null !== $memoized_count ) {
+			return $memoized_count;
+		}
+
+		$current_user_id = get_current_user_id();
+		$transient_key   = 'ur_unlinked_users_count_' . $current_user_id;
+		$cached_count    = get_transient( $transient_key );
+
+		if ( false !== $cached_count ) {
+			$memoized_count = absint( $cached_count );
+			return $memoized_count;
+		}
+
+		$query = new WP_User_Query(
+			ur_get_unlinked_users_query_args(
+				array(
+					'number'      => 1,
+					'count_total' => true,
+				)
+			)
+		);
+
+		$memoized_count = absint( $query->get_total() );
+		set_transient( $transient_key, $memoized_count, 5 * MINUTE_IN_SECONDS );
+
+		return $memoized_count;
+	}
+}
+
+if ( ! function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
+	/**
+	 * Clear cached counts of users without a registration form, including the one behind the Profile Connect notice.
+	 *
+	 * @param int $user_id Optional user ID to clear cache for, defaults to current user.
+	 * @return void
+	 */
+	function ur_clear_unlinked_users_count_cache( $user_id = 0 ) {
+		$target_id = $user_id ? (int) $user_id : get_current_user_id();
+		delete_transient( 'ur_unlinked_users_count_' . $target_id );
+		delete_transient( 'urm_users_not_from_urm_forms' );
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
+	/**
+	 * Get display names and avatars for a few users without an associated registration form, excluding current user.
+	 *
+	 * @param int $limit Maximum number of users to return.
+	 * @return array[] List of arrays with 'id', 'name' and 'avatar' keys.
+	 */
+	function ur_get_unlinked_users_preview( $limit = 3 ) {
+		$users = get_users(
+			ur_get_unlinked_users_query_args(
+				array(
+					'fields' => array( 'ID', 'display_name', 'user_login' ),
+					'number' => absint( $limit ),
+					'order'  => 'DESC',
+				)
+			)
+		);
+
+		$preview = array();
+		foreach ( $users as $user ) {
+			$preview[] = array(
+				'id'     => (int) $user->ID,
+				// WordPress stores display names HTML-escaped and React escapes again, so decode here.
+				'name'   => wp_specialchars_decode( '' !== trim( (string) $user->display_name ) ? (string) $user->display_name : (string) $user->user_login, ENT_QUOTES ),
+				'avatar' => (string) get_avatar_url( (int) $user->ID, array( 'size' => 64 ) ),
+			);
+		}
+
+		return $preview;
+	}
+}
+
+if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
+	/**
+	 * Check if the unlinked users step is done, meaning no unlinked users are left.
+	 *
+	 * @param int|null $unlinked_count Optional known count of unlinked users.
+	 * @return bool True if no unlinked users exist, false otherwise.
+	 */
+	function ur_is_unlinked_users_handled( $unlinked_count = null ) {
+		$count = null !== $unlinked_count ? (int) $unlinked_count : ur_get_unlinked_users_count();
+
+		return 0 === $count;
 	}
 }
 
@@ -11674,6 +11825,7 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 			! $site_assistant_data['users_can_register']
 			|| ! $site_assistant_data['has_default_form']
 			|| ! empty( $site_assistant_data['missing_pages'] )
+			|| ( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 )
 			|| ! $site_assistant_data['disabled_emails_handled']
 			|| ! $site_assistant_data['test_email_sent']
 			|| ! $site_assistant_data['spam_protection_handled']
@@ -11681,7 +11833,6 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 			|| ! $site_assistant_data['legacy_payment_fields_handled']
 		);
 	}
-
 }
 
 if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
@@ -11689,7 +11840,7 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 	 * Check if site assistant menu should be shown.
 	 * Returns false if all options are handled and set.
 	 *
-	 * @return bool
+	 * @return int
 	 */
 	function ur_site_assistant_config_count() {
 		$site_assistant_data = ur_get_site_assistant_data();
@@ -11698,6 +11849,7 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 			! $site_assistant_data['users_can_register'],
 			! $site_assistant_data['has_default_form'],
 			! empty( $site_assistant_data['missing_pages'] ),
+			( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 ),
 			! $site_assistant_data['disabled_emails_handled'],
 			! $site_assistant_data['test_email_sent'],
 			! $site_assistant_data['spam_protection_handled'],

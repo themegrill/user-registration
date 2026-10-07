@@ -19,6 +19,7 @@ import {
 	DisabledEmails,
 	LegacyPaymentFields,
 	MembershipField,
+	MigrateExistingUsers,
 	PaymentSetup,
 	RegistrationDisabled,
 	RequiredPagesMissing,
@@ -34,12 +35,15 @@ const submitReviewUrl =
 	"https://wordpress.org/support/plugin/user-registration/reviews/?rate=5#new-post";
 const ticketUrl =
 	"https://wordpress.org/support/plugin/user-registration/#new-topic-0";
+// Long enough for the last step's 5s result toast to be read before leaving the page.
+const SETUP_COMPLETE_REDIRECT_DELAY_MS = 5000;
 
 const SiteAssistant = () => {
 	const [open, setOpen] = useState({
 		registrationDisabled: false,
 		defaultForm: false,
 		requiredPages: false,
+		migrateUsers: false,
 		paymentSetup: false,
 		disabledEmails: false,
 		sendTestEmail: false,
@@ -127,12 +131,12 @@ const SiteAssistant = () => {
 	const initialLegacyPaymentFieldsHandled =
 		typeof _UR_DASHBOARD_ === "undefined" ||
 		!_UR_DASHBOARD_.site_assistant_data ||
-		_UR_DASHBOARD_.site_assistant_data.legacy_payment_fields_handled !== false;
+		_UR_DASHBOARD_.site_assistant_data.legacy_payment_fields_handled !==
+			false;
 
 	// State to track if the legacy payment fields notice was handled during this session
-	const [legacyPaymentFieldsHandled, setLegacyPaymentFieldsHandled] = useState(
-		initialLegacyPaymentFieldsHandled
-	);
+	const [legacyPaymentFieldsHandled, setLegacyPaymentFieldsHandled] =
+		useState(initialLegacyPaymentFieldsHandled);
 
 	const membershipEnabled =
 		typeof _UR_DASHBOARD_ !== "undefined" &&
@@ -161,8 +165,39 @@ const SiteAssistant = () => {
 		hasMembershipPlans &&
 		!membershipFieldHandled;
 
+	const unlinkedUsersCount =
+		(typeof _UR_DASHBOARD_ !== "undefined" &&
+			_UR_DASHBOARD_.site_assistant_data &&
+			_UR_DASHBOARD_.site_assistant_data.unlinked_users_count) ||
+		0;
+
+	const initialUsersMigrationHandled =
+		typeof _UR_DASHBOARD_ === "undefined" ||
+		!_UR_DASHBOARD_.site_assistant_data ||
+		_UR_DASHBOARD_.site_assistant_data.unlinked_users_handled !== false;
+
+	const [usersMigrationHandled, setUsersMigrationHandled] = useState(
+		initialUsersMigrationHandled
+	);
+
+	const registrationForms =
+		(typeof _UR_DASHBOARD_ !== "undefined" &&
+			_UR_DASHBOARD_.site_assistant_data &&
+			_UR_DASHBOARD_.site_assistant_data.registration_forms) ||
+		[];
+
+	const shouldShowUsersMigration =
+		unlinkedUsersCount > 0 &&
+		registrationForms.length > 0 &&
+		!usersMigrationHandled;
+
 	// State to track if all components are completed
 	const [allCompleted, setAllCompleted] = useState(false);
+
+	// Callback to handle when existing users are linked
+	const handleUsersMigrationHandled = useCallback(() => {
+		setUsersMigrationHandled(true);
+	}, []);
 
 	// Callback to handle when emails are enabled or the notice is skipped
 	const handleDisabledEmailsHandled = useCallback(() => {
@@ -174,7 +209,6 @@ const SiteAssistant = () => {
 		setTestEmailSent(true);
 	}, []);
 
-
 	// Callback to handle when spam protection is handled (skipped)
 	const handleSpamProtectionHandled = useCallback(() => {
 		setSpamProtectionHandled(true);
@@ -184,7 +218,6 @@ const SiteAssistant = () => {
 	const handlePaymentSetupHandled = useCallback(() => {
 		setPaymentSetupHandled(true);
 	}, []);
-
 
 	const handleMembershipFieldHandled = useCallback(() => {
 		setMembershipFieldHandled(true);
@@ -201,6 +234,7 @@ const SiteAssistant = () => {
 					usersCanRegister,
 					hasDefaultForm,
 					missingPagesData.length === 0,
+					!shouldShowUsersMigration,
 					!shouldShowMembershipField,
 					paymentSetupHandled,
 					disabledEmailsHandled,
@@ -213,6 +247,7 @@ const SiteAssistant = () => {
 					"registrationDisabled",
 					"defaultForm",
 					"requiredPages",
+					"migrateUsers",
 					"membershipField",
 					"paymentSetup",
 					"disabledEmails",
@@ -242,6 +277,7 @@ const SiteAssistant = () => {
 			usersCanRegister,
 			hasDefaultForm,
 			missingPagesData.length,
+			shouldShowUsersMigration,
 			shouldShowMembershipField,
 			paymentSetupHandled,
 			disabledEmailsHandled,
@@ -258,6 +294,7 @@ const SiteAssistant = () => {
 			usersCanRegister &&
 			hasDefaultForm &&
 			missingPagesData.length === 0 &&
+			!shouldShowUsersMigration &&
 			!shouldShowMembershipField &&
 			disabledEmailsHandled &&
 			testEmailSent &&
@@ -273,13 +310,14 @@ const SiteAssistant = () => {
 				window.location.href =
 					window._UR_DASHBOARD_?.adminURL +
 					"admin.php?page=user-registration";
-			}, 2000);
+			}, SETUP_COMPLETE_REDIRECT_DELAY_MS);
 		}
 
 		const site_config_array = [
 			usersCanRegister,
 			hasDefaultForm,
 			missingPagesData.length === 0,
+			!shouldShowUsersMigration,
 			!shouldShowMembershipField,
 			disabledEmailsHandled,
 			testEmailSent,
@@ -323,6 +361,7 @@ const SiteAssistant = () => {
 		usersCanRegister,
 		hasDefaultForm,
 		missingPagesData.length,
+		shouldShowUsersMigration,
 		shouldShowMembershipField,
 		disabledEmailsHandled,
 		testEmailSent,
@@ -378,7 +417,9 @@ const SiteAssistant = () => {
 						{!usersCanRegister && (
 							<RegistrationDisabled
 								isOpen={open.registrationDisabled}
-								onToggle={() => toggleOpen("registrationDisabled")}
+								onToggle={() =>
+									toggleOpen("registrationDisabled")
+								}
 								numbering={++config_number}
 							/>
 						)}
@@ -402,6 +443,15 @@ const SiteAssistant = () => {
 							/>
 						)}
 
+						{/* Migrate Existing Users - only show if there are unlinked users created outside UR */}
+						{shouldShowUsersMigration && (
+							<MigrateExistingUsers
+								isOpen={open.migrateUsers}
+								onToggle={() => toggleOpen("migrateUsers")}
+								onMigrated={handleUsersMigrationHandled}
+								numbering={++config_number}
+							/>
+						)}
 
 						{shouldShowMembershipField && (
 							<MembershipField
@@ -426,7 +476,9 @@ const SiteAssistant = () => {
 						{!legacyPaymentFieldsHandled && (
 							<LegacyPaymentFields
 								isOpen={open.legacyPaymentFields}
-								onToggle={() => toggleOpen("legacyPaymentFields")}
+								onToggle={() =>
+									toggleOpen("legacyPaymentFields")
+								}
 								onSkipped={handleLegacyPaymentFieldsHandled}
 								numbering={++config_number}
 							/>
