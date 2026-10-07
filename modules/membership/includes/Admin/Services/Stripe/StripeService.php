@@ -1015,7 +1015,7 @@ class StripeService {
 			do_action( 'ur_membership_order_status_failed', $latest_order['ID'], $latest_order, 'failed' );
 
 			if ( ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple && ! $this->is_existing_member( $member_id ) ) {
-				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
+				if ( $this->can_discard_pending_member( $member_id ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
@@ -1234,6 +1234,18 @@ class StripeService {
 		);
 
 		update_user_meta( absint( $member_id ), 'urm_membership_process', $membership_process );
+	}
+
+	/**
+	 * Whether the current request may delete a pending member after a failed payment.
+	 *
+	 * The member themselves, an admin, or the logged-out browser whose registration session created the pending member.
+	 *
+	 * @param int|string $member_id Pending member user ID.
+	 * @return bool
+	 */
+	private function can_discard_pending_member( $member_id ) {
+		return absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) || ( ! is_user_logged_in() && WPEverestURMembershipAJAX::verify_pending_member_session( absint( $member_id ) ) );
 	}
 
 	/**
@@ -2070,7 +2082,7 @@ class StripeService {
 			}
 
 			if ( ! $is_upgrading && ! $is_renewing && ! $this->is_existing_member( $member_id ) ) {
-				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
+				if ( $this->can_discard_pending_member( $member_id ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
