@@ -135,6 +135,7 @@ if ( ! class_exists( 'Admin' ) ) :
 			add_action( 'init', array( 'WPEverest\URMembership\ShortCodes', 'init' ) );
 			add_action( 'init', array( $this, 'add_membership_options' ) );
 			add_action( 'plugins_loaded', array( $this, 'include_membership_payment_files' ) );
+			add_action( 'admin_notices', array( 'WPEverest\URMembership\Admin\Services\Paypal\NewPaypalService', 'user_registration_scheduled_cancellation_notice' ) );
 			// add_filter( 'user_registration_get_settings_pages', array( $this, 'add_membership_settings_page' ), 10, 1 );
 
 			add_filter(

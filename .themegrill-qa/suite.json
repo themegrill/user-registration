@@ -50,6 +50,9 @@
       "includes/admin/settings/class-ur-settings-security.php",
       "includes/class-ur-install.php"
     ],
+    "membership": [
+      "modules/membership/**"
+    ],
     "security-and-captcha": [
       "assets/js/frontend/user-registration-recaptcha*.js",
       "includes/admin/settings/class-ur-settings-captcha.php",
