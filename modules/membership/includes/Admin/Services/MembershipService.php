@@ -191,6 +191,11 @@ class MembershipService {
 			return false;
 		}
 
+		// An exhausted capped coupon must not unlock a free order, since this path assigns the role without payment.
+		if ( function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( $coupon_details ) ) {
+			return false;
+		}
+
 		$plan_amount    = floatval( $membership_meta['amount'] ?? 0 );
 		$discount_type  = $coupon_details['coupon_discount_type'] ?? 'fixed';
 		$discount_value = floatval( $coupon_details['coupon_discount'] ?? 0 );

@@ -1,7 +1,7 @@
 <div class="notice-container">
 	<div class="notice_red">
 		<span class="notice_message"></span>
-		<span class="close_notice">&times;</span>
+		<button type="button" class="close_notice" aria-label="<?php esc_attr_e( 'Dismiss', 'user-registration' ); ?>">&times;</button>
 	</div>
 
 	<?php
