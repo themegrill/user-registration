@@ -74,7 +74,6 @@ class UR_Install {
 	public static function init() {
 		add_action( 'init', array( __CLASS__, 'check_version' ), 5 );
 		add_action( 'init', array( __CLASS__, 'init_background_updater' ), 5 );
-		add_action( 'admin_init', array( __CLASS__, 'install_actions' ) );
 		add_filter( 'wpmu_drop_tables', array( __CLASS__, 'wpmu_drop_tables' ) );
 		add_filter( 'cron_schedules', array( __CLASS__, 'cron_schedules' ) );
 	}
@@ -99,28 +98,6 @@ class UR_Install {
 			 * Fires an action hook after updating the User Registration plugin to a new version.
 			 */
 			do_action( 'user_registration_updated' );
-		}
-	}
-
-	/**
-	 * Install actions when a update button is clicked within the admin area.
-	 *
-	 * This function is hooked into admin_init to affect admin only.
-	 */
-	public static function install_actions() {
-		if ( ! empty( $_GET['do_update_user_registration'] ) ) { //phpcs:ignore WordPress.Security.NonceVerification
-			self::update();
-			UR_Admin_Notices::add_notice( 'update' );
-		}
-		if ( ! empty( $_GET['force_update_user_registration'] ) ) { //phpcs:ignore WordPress.Security.NonceVerification
-			/**
-			 * Fires an action hook to initiate a forced update for User Registration via admin area.
-			 *
-			 * This action hook, 'wp_{blog_id}_ur_updater_cron', is triggered when the 'force_update_user_registration'
-			 */
-			do_action( 'wp_' . get_current_blog_id() . '_ur_updater_cron' );
-			wp_safe_redirect( admin_url( 'admin.php?page=user-registration-settings' ) );
-			exit;
 		}
 	}
 
@@ -276,23 +253,48 @@ class UR_Install {
 	}
 
 	/**
-	 * See if we need to show or run database updates during install.
+	 * Run any remaining legacy DB callbacks silently, or sync the DB version.
+	 *
+	 * The old admin "Run the updater" notice is removed. Callbacks in
+	 * `$db_updates` (≤ 1.6.2) still run automatically in the background when
+	 * needed; otherwise `user_registration_db_version` is bumped to the current
+	 * plugin version so it cannot stay stuck below `UR_VERSION`.
 	 *
 	 * @since 1.2.0
 	 */
 	private static function maybe_update_db_version() {
+		self::sync_legacy_db_updates();
+	}
+
+	/**
+	 * Silently apply pending legacy `$db_updates` callbacks, or bump DB version.
+	 *
+	 * Also clears any leftover `update` admin notice from older releases.
+	 *
+	 * @since 5.3
+	 */
+	public static function sync_legacy_db_updates() {
+		self::init_background_updater();
+
 		if ( self::needs_db_update() ) {
-			/**
-			 * Checks if database updates are needed during installation and takes appropriate actions.
-			 */
-			if ( apply_filters( 'user_registration_enable_auto_update_db', false ) ) {
-				self::init_background_updater();
+			// install() and maybe_run_migrations() both sync in one request; do not queue the same batch twice.
+			if ( ! self::$background_updater->is_updating() ) {
 				self::update();
-			} else {
-				UR_Admin_Notices::add_notice( 'update' );
 			}
 		} else {
-			self::update_db_version();
+			$current_db_version = get_option( 'user_registration_db_version', null );
+			if ( is_null( $current_db_version ) || version_compare( $current_db_version, UR()->version, '<' ) ) {
+				self::update_db_version();
+			}
+		}
+
+		// Drop the legacy "update" notice from storage and (if loaded) memory.
+		$stored_notices = get_option( 'user_registration_admin_notices', array() );
+		if ( is_array( $stored_notices ) && in_array( 'update', $stored_notices, true ) ) {
+			update_option( 'user_registration_admin_notices', array_values( array_diff( $stored_notices, array( 'update' ) ) ) );
+		}
+		if ( class_exists( 'UR_Admin_Notices' ) ) {
+			UR_Admin_Notices::remove_notice( 'update' );
 		}
 	}
 
@@ -356,6 +358,9 @@ class UR_Install {
 	public static function maybe_run_migrations() {
 
 		include_once 'functions-ur-update.php';
+
+		// Finish any leftover ≤1.6.2 background callbacks / stuck DB version first.
+		self::sync_legacy_db_updates();
 
 		// Migrations for User Registration ( Free ).
 		$migration_updates = array(
@@ -438,7 +443,15 @@ class UR_Install {
 				'ur_update_125_db_version',
 			);
 		}
-		return $updates;
+
+		// Callbacks for a release that has not shipped yet would be queued again on every sync, because the updater records the running version.
+		return array_filter(
+			$updates,
+			function ( $version ) {
+				return version_compare( $version, UR()->version, '<=' );
+			},
+			ARRAY_FILTER_USE_KEY
+		);
 	}
 
 	/**
