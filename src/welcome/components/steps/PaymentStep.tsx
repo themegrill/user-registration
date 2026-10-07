@@ -642,6 +642,7 @@ const PaymentStep: React.FC = () => {
 									)}
 								>
 									<SecretInput
+										key="paypalTestClientSecret"
 										value={paymentSettings.paypalTestClientSecret || ""}
 										onChange={(e) =>
 											handlePaymentSettingChange(
@@ -705,6 +706,7 @@ const PaymentStep: React.FC = () => {
 									)}
 								>
 									<SecretInput
+										key="paypalProductionClientSecret"
 										value={paymentSettings.paypalProductionClientSecret || ""}
 										onChange={(e) =>
 											handlePaymentSettingChange(
@@ -795,6 +797,7 @@ const PaymentStep: React.FC = () => {
 									)}
 								>
 									<SecretInput
+										key="stripeTestSecretKey"
 										value={
 											paymentSettings.stripeTestSecretKey ||
 											""
@@ -848,6 +851,7 @@ const PaymentStep: React.FC = () => {
 									)}
 								>
 									<SecretInput
+										key="stripeLiveSecretKey"
 										value={
 											paymentSettings.stripeLiveSecretKey ||
 											""

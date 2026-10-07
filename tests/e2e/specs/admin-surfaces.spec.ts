@@ -123,5 +123,11 @@ test.describe("admin surfaces @fresh", () => {
     await expect(secretInput).toHaveAttribute("type", "text");
     await secretGroup.getByRole("button", { name: "Hide secret" }).click();
     await expect(secretInput).toHaveAttribute("type", "password");
+
+    // A secret revealed in one mode must not stay revealed after switching to the other mode.
+    await showSecret.first().click();
+    await expect(secretInput).toHaveAttribute("type", "text");
+    await page.locator("select").filter({ has: page.locator("option", { hasText: "Production" }) }).first().selectOption("production");
+    await expect(page.locator(".chakra-input__group input").first()).toHaveAttribute("type", "password");
   });
 });
