@@ -6,7 +6,7 @@
  */
 
 // Test doubles and fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.Files.FileName.InvalidClassFileName, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.WP.AlternativeFunctions.file_system_read_fwrite, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.Files.FileName.InvalidClassFileName, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.WP.AlternativeFunctions.file_system_read_fwrite, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 
 require __DIR__ . '/bootstrap.php';
 
@@ -140,6 +140,10 @@ function visible_ids( $posts, $user_matches, $query, $can_edit = false ) {
 	);
 }
 
+function flagged_query( $found_posts ) {
+	return new WP_Query( array( ProductRestrictionRunner::HIDE_RESTRICTED_QUERY_VAR => true ), $found_posts );
+}
+
 $post_type_rule = product_rule( 'post_types' );
 $whole_site     = product_rule( 'whole_site', true, 'access', array( 'x' ) );
 
@@ -167,15 +171,13 @@ try {
 	security_assert( true === product_allowed( array( $post_type_rule ), false, 757 ), 'A variation without a parent is left open instead of falling back to the current post' );
 	$listed    = array( new WP_Post( 755 ), new WP_Post( 10, 'post' ), new WP_Post( 999 ) );
 	$flag_var  = ProductRestrictionRunner::HIDE_RESTRICTED_QUERY_VAR;
-	$flagged   = function ( $found = 5 ) use ( $flag_var ) {
-		return new WP_Query( array( $flag_var => true ), $found ); };
-	$collected = $flagged();
+	$collected = flagged_query( 5 );
 	security_assert( array( 10, 999 ) === visible_ids( $listed, false, $collected ), 'A flagged query must drop a restricted product and keep other post types and unknown products' );
 	security_assert( 4 === $collected->found_posts, 'The found count must shrink by the number of products removed' );
-	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, true, $flagged() ), 'A member keeps every product in a flagged query' );
+	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, true, flagged_query( 5 ) ), 'A member keeps every product in a flagged query' );
 	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, false, new WP_Query( array(), 5 ) ), 'A query that is not flagged is left alone' );
-	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, false, $flagged(), true ), 'A user who can edit the product keeps it in a flagged query' );
-	$empty_count = $flagged( 0 );
+	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, false, flagged_query( 5 ), true ), 'A user who can edit the product keeps it in a flagged query' );
+	$empty_count = flagged_query( 0 );
 	visible_ids( $listed, false, $empty_count );
 	security_assert( 0 === $empty_count->found_posts, 'The found count never goes below zero' );
 	$runner = new ProductRestrictionRunner();
@@ -186,8 +188,8 @@ try {
 	$collection_block->context = array( 'query' => array( 'isProductCollectionBlock' => true ) );
 	$other_block               = new stdClass();
 	$other_block->context      = array( 'query' => array( 'postType' => 'post' ) );
-	security_assert( true === $runner->flag_product_collection_query( array( 'posts_per_page' => 3 ), $collection_block )[ $flag_var ], 'A Product Collection block query must be flagged' );
-	security_assert( array( 'posts_per_page' => 3 ) === $runner->flag_product_collection_query( array( 'posts_per_page' => 3 ), $other_block ), 'A query loop that is not a Product Collection must not be flagged' );
+	security_assert( true === $runner->flag_product_collection_query( array( 'order' => 'ASC' ), $collection_block )[ $flag_var ], 'A Product Collection block query must be flagged' );
+	security_assert( array( 'order' => 'ASC' ) === $runner->flag_product_collection_query( array( 'order' => 'ASC' ), $other_block ), 'A query loop that is not a Product Collection must not be flagged' );
 	$frontend_source = (string) file_get_contents( $frontend );
 	foreach ( array( "add_action\( 'woocommerce_product_query', array\( \\\$this, 'flag_wc_product_query' \)", "add_filter\( 'query_loop_block_query_vars', array\( \\\$this, 'flag_product_collection_query' \)", "add_filter\( 'the_posts', array\( \\\$this, 'hide_restricted_products_from_query' \)" ) as $hook ) {
 		security_assert( 1 === preg_match( '/^\s*' . $hook . '/m', $frontend_source ), 'The restricted product listing hooks must be registered' );
