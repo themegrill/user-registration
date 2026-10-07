@@ -22,6 +22,16 @@ class URCR_Frontend {
 	const HIDE_RESTRICTED_QUERY_VAR = 'urcr_hide_restricted_products';
 
 	/**
+	 * IDs of posts a post targeted rule already restricted in this request.
+	 *
+	 * Read by restrict_whole_site() so a Whole Site rule does not restrict the same
+	 * post a second time over the more specific rule's action.
+	 *
+	 * @var int[]
+	 */
+	private $restricted_post_ids = array();
+
+	/**
 	 * Hook in tabs.
 	 */
 	public function __construct() {
@@ -287,6 +297,11 @@ class URCR_Frontend {
 
 				// If no rule granted access and we have a restriction rule, apply it
 				if ( null !== $restriction_rule && ! is_super_admin() ) {
+					// A post targeted rule already restricted this post, and its action is the more specific one.
+					if ( is_singular() && is_object( $post ) && in_array( absint( $post->ID ), $this->restricted_post_ids, true ) ) {
+						return $template;
+					}
+
 					do_action( 'urcr_pre_content_restriction_applied', $restriction_rule, $post );
 
 					if ( ! is_singular() ) {
@@ -1171,6 +1186,10 @@ class URCR_Frontend {
 				do_action( 'urcr_pre_content_restriction_applied', $restriction_rule, $post );
 
 				$is_applied = urcr_apply_content_restriction( $restriction_rule['actions'], $post );
+
+				if ( $is_applied ) {
+					$this->restricted_post_ids[] = $post_id;
+				}
 
 				// In case there are multiple posts and 'true' occurred at least once, never change it to false.
 				$is_restriction_applied = $posts_length > 1 && $is_restriction_applied ? true : $is_applied;

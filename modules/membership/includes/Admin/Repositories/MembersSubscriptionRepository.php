@@ -111,6 +111,29 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	}
 
 	/**
+	 * Update a row only if it still carries the PayPal subscription ID the caller last read.
+	 *
+	 * Guards a webhook/backfill write against the row having switched to a different PayPal
+	 * subscription (e.g. an upgrade) between the caller's read and this write.
+	 *
+	 * @param int    $id                       Row ID.
+	 * @param array  $data                     Columns to update.
+	 * @param string $expected_subscription_id PayPal subscription ID the row must still carry.
+	 *
+	 * @return int|false Rows affected (0 means the row had already moved on), false on DB error.
+	 */
+	public function update_if_subscription_id_matches( $id, $data, $expected_subscription_id ) {
+		return $this->wpdb()->update(
+			$this->table,
+			$data,
+			array(
+				'ID'              => $id,
+				'subscription_id' => $expected_subscription_id,
+			)
+		);
+	}
+
+	/**
 	 * Get members subscription by their ID and Membership ID
 	 *
 	 * @param $member_id

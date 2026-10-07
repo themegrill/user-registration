@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ensureFirstRun } from "../support/urm";
+import { ensureFirstRun, ensureMembershipEnabled } from "../support/urm";
 import { gotoAdminPage, loginAsAdmin } from "../support/wp";
 
 /**
@@ -66,6 +66,7 @@ test.describe("admin surfaces @fresh", () => {
   });
 
   test("membership admin navigation: Memberships, Add New, Groups, Members @fresh @admin", async ({ page }) => {
+    await ensureMembershipEnabled(page);
     await gotoAdminPage(page, "user-registration-membership");
     await expect(page.locator("#wpbody-content")).toBeVisible();
     // The membership module registers its own submenus; assert on the menu the
