@@ -952,8 +952,9 @@ class URCR_Frontend {
 			return $can_view_purchase;
 		}
 
+		// get_post( 0 ) falls back to the current post, so a variation without a parent must not reach it.
 		// urcr_is_target_post() matches post types and IDs against a post object, not a bare ID.
-		$product_post = get_post( $product_id );
+		$product_post = $product_id ? get_post( $product_id ) : null;
 
 		if ( ! $product_post instanceof WP_Post ) {
 			return $can_view_purchase;
@@ -992,15 +993,13 @@ class URCR_Frontend {
 
 			$should_allow_access = urcr_is_allow_access( $access_rule['logic_map'], $product_post );
 			$access_control      = ! empty( $access_rule['actions'][0]['access_control'] ) ? $access_rule['actions'][0]['access_control'] : 'access';
-			$grants_access       = ( true === $should_allow_access && 'access' === $access_control ) || ( false == $should_allow_access && 'restrict' === $access_control );
-			$restricts_access    = ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control );
 
-			// Any matching rule that grants access wins over rules that restrict.
-			if ( $grants_access ) {
+			// Only an Access rule the user matches grants access; a Restrict rule the user does not match is skipped.
+			if ( true === $should_allow_access && 'access' === $access_control ) {
 				return true;
 			}
 
-			if ( $restricts_access ) {
+			if ( ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control ) ) {
 				$can_view_purchase = false;
 			}
 		}

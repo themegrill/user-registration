@@ -24,6 +24,10 @@ function is_super_admin() {
 function get_post( $id ) {
 	if ( 756 === $id ) {
 		return new WP_Post( 756, 'product_variation', 755 ); }
+	if ( 757 === $id ) {
+		return new WP_Post( 757, 'product_variation', 0 ); }
+	if ( 0 === $id ) {
+		return new WP_Post( 755 ); }
 	return 755 === $id ? new WP_Post( $id ) : null; }
 function is_singular( $type ) {
 	return false; }
@@ -32,7 +36,7 @@ function apply_filters( $hook, $value ) {
 function wp_list_pluck( $list, $field ) {
 	return array_column( $list, $field ); }
 function urcr_is_allow_access( $logic_map, $target_post ) {
-	return $GLOBALS['user_matches_rule']; }
+	return $logic_map['conditions'][0]['matches'] ?? $GLOBALS['user_matches_rule']; }
 
 $core = 'modules/content-restriction/functions-urcr-core.php';
 eval( security_function( $core, 'urcr_is_access_rule_enabled' ) );
@@ -68,12 +72,17 @@ eval(
 	. ' }'
 );
 
-function product_rule( $target_type, $enabled = true, $control = 'access', $value = array( 'product' ) ) {
+function product_rule( $target_type, $enabled = true, $control = 'access', $value = array( 'product' ), $matches = null ) {
 	return array(
 		'enabled'         => $enabled,
 		'logic_map'       => array(
 			'type'       => 'group',
-			'conditions' => array( array( 'type' => 'membership' ) ),
+			'conditions' => array(
+				null === $matches ? array( 'type' => 'membership' ) : array(
+					'type'    => 'membership',
+					'matches' => $matches,
+				),
+			),
 		),
 		'target_contents' => array(
 			array_filter(
@@ -116,6 +125,13 @@ try {
 	security_assert( false === product_allowed( array( $post_type_rule ), false, 756 ), 'A variation of a restricted product must be restricted through its parent' );
 	security_assert( true === product_allowed( array( $post_type_rule ), true, 756 ), 'A member can still buy a variation of a restricted product' );
 	security_assert( true === product_allowed( array( $post_type_rule ), false, 999 ), 'A missing product is left open' );
+	$access_rule_editor   = product_rule( 'post_types', true, 'access', array( 'product' ), false );
+	$restrict_rule_subscr = product_rule( 'post_types', true, 'restrict', array( 'product' ), false );
+	security_assert( false === product_allowed( array( $access_rule_editor, $restrict_rule_subscr ), false ), 'An unmatched Restrict rule must not cancel an Access rule that blocks the user' );
+	security_assert( false === product_allowed( array( $restrict_rule_subscr, $access_rule_editor ), false ), 'Rule order must not change the outcome' );
+	security_assert( false === product_allowed( array( $restrict_rule_subscr, product_rule( 'post_types', true, 'restrict', array( 'product' ), true ) ), false ), 'An unmatched Restrict rule must not cancel a matching Restrict rule' );
+	security_assert( true === product_allowed( array( product_rule( 'post_types', true, 'access', array( 'product' ), true ), product_rule( 'post_types', true, 'restrict', array( 'product' ), true ) ), false ), 'A matching Access rule still wins over a matching Restrict rule' );
+	security_assert( true === product_allowed( array( $post_type_rule ), false, 757 ), 'A variation without a parent is left open instead of falling back to the current post' );
 } catch ( Throwable $e ) {
 	fwrite( STDERR, $e->getMessage() . "\n" );
 	exit( 1 );
