@@ -5463,6 +5463,8 @@ class NewPaypalService {
 			array( 'name' => 'BILLING.SUBSCRIPTION.SUSPENDED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.CANCELLED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.EXPIRED' ),
+			array( 'name' => 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' ),
+			array( 'name' => 'BILLING.SUBSCRIPTION.RE-ACTIVATED' ),
 		);
 
 		PaymentGatewayLogging::log_general(
