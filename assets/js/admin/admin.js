@@ -583,7 +583,7 @@ jQuery(function ($) {
 				$(el).hide();
 			});
 
-		form_settings_section.find("#integration-settings").click(function (e) {
+		form_settings_section.find("#integration-settings").on("click", function (e) {
 			e.stopImmediatePropagation();
 
 			$(this)
@@ -609,7 +609,7 @@ jQuery(function ($) {
 
 			$(document)
 				.find("#integration_settings_back")
-				.click(function (e) {
+				.on("click", function (e) {
 					$(this)
 						.closest("#ur-tab-field-settings")
 						.find(
@@ -1211,7 +1211,7 @@ jQuery(function ($) {
 		} else {
 			akismet_message.hide();
 		}
-		akismet_activate.change(function () {
+		akismet_activate.on("change", function () {
 			if ($(this).is(":checked")) {
 				akismet_message.show();
 			} else {
@@ -1612,7 +1612,7 @@ jQuery(function ($) {
 	});
 
 	$("#ur-lists-page-settings-button").on("click", function () {
-		$("#show-settings-link").click();
+		$("#show-settings-link").trigger("click");
 	});
 
 	$(document)
