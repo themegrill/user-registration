@@ -52,6 +52,10 @@
       "assets/js/frontend/user-registration-recaptcha*.js",
       "includes/admin/settings/class-ur-settings-captcha.php",
       "includes/class-ur-captcha-conflict-manager.php"
+    ],
+    "setup-wizard": [
+      "src/welcome/**",
+      "includes/RestApi/controllers/version1/class-ur-getting-started.php"
     ]
   }
 }

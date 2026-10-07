@@ -20,6 +20,7 @@ import { useStateValue } from "../../context/StateProvider";
 interface MembershipOptionProps {
 	value: MembershipSetupType;
 	title: string;
+	isSelected: boolean;
 }
 
 const BRAND_COLOR = "#475BB2";
@@ -27,7 +28,8 @@ const BRAND_TINT = "#F5F7FD";
 
 const MembershipOption: React.FC<MembershipOptionProps> = ({
 	value,
-	title
+	title,
+	isSelected
 }) => {
 	// gray.500 is about 4:1 on white, above the 3:1 non-text contrast minimum (WCAG 1.4.11).
 	const defaultBorder = useColorModeValue("gray.500", "gray.600");
@@ -40,17 +42,20 @@ const MembershipOption: React.FC<MembershipOptionProps> = ({
 		<Box
 			borderRadius="6px"
 			borderWidth="2px"
-			borderColor={defaultBorder}
+			borderColor={isSelected ? BRAND_COLOR : defaultBorder}
+			bg={isSelected ? selectedBg : undefined}
 			transition="border-color 0.15s ease, background-color 0.15s ease"
-			_hover={{ borderColor: hoverBorder }}
+			_hover={{ borderColor: isSelected ? BRAND_COLOR : hoverBorder }}
 			sx={{
-				"&:has(input:checked)": {
-					borderColor: BRAND_COLOR,
-					bg: selectedBg
-				},
-				"&:has(input:focus-visible)": {
-					outline: `2px solid ${BRAND_COLOR}`,
-					outlineOffset: "2px"
+				// Selection is driven by state, so only the focus ring needs :has(); without it Chakra keeps its own focus shadow.
+				"@supports selector(:has(*))": {
+					"&:has(input:focus-visible)": {
+						outline: `2px solid ${BRAND_COLOR}`,
+						outlineOffset: "2px"
+					},
+					"& .chakra-radio__control[data-focus-visible]": {
+						boxShadow: "none"
+					}
 				},
 				"& .chakra-radio": {
 					display: "flex",
@@ -62,8 +67,7 @@ const MembershipOption: React.FC<MembershipOptionProps> = ({
 					cursor: "pointer"
 				},
 				"& .chakra-radio__control": {
-					borderColor: defaultBorder,
-					"&[data-focus-visible]": { boxShadow: "none" }
+					borderColor: defaultBorder
 				},
 				"& .chakra-radio__control[data-checked]": {
 					bg: BRAND_COLOR,
@@ -135,7 +139,7 @@ const WelcomeStep: React.FC = () => {
 
 	const emailForDisplay = adminEmail || "admin@example.com";
 
-	const optionsToRender: MembershipOptionProps[] = [
+	const optionsToRender: Omit<MembershipOptionProps, "isSelected">[] = [
 		{
 			value: "membership",
 			title: __("Yes", "user-registration")
@@ -195,6 +199,7 @@ const WelcomeStep: React.FC = () => {
 								key={option.value}
 								value={option.value}
 								title={option.title}
+								isSelected={membershipSetupType === option.value}
 							/>
 						))}
 					</SimpleGrid>

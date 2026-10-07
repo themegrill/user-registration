@@ -279,6 +279,7 @@ area out of CI narrowing.
 - payments — Stripe, PayPal, amounts charged and recorded
 - form-builder — building and saving a form with every field type
 - admin — the settings screens and menus every other area depends on
+- setup-wizard — the first-run wizard: the membership question, step routing and what it saves
 
 The tier breakdown below says which individual tests gate CI today.
 
