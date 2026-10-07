@@ -7941,6 +7941,201 @@ if ( ! function_exists( 'ur_get_coupon_details' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_coupon_has_remaining_uses' ) ) {
+	/**
+	 * Whether a coupon still has redemptions left.
+	 *
+	 * A usage limit of 0 (or missing) means unlimited.
+	 *
+	 * @param array $coupon_details Coupon meta from ur_get_coupon_details().
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_coupon_has_remaining_uses( $coupon_details ) {
+		if ( empty( $coupon_details ) || ! is_array( $coupon_details ) ) {
+			return false;
+		}
+
+		$limit = isset( $coupon_details['coupon_usage_limit'] ) ? absint( $coupon_details['coupon_usage_limit'] ) : 0;
+
+		if ( $limit <= 0 ) {
+			return true;
+		}
+
+		$count = isset( $coupon_details['coupon_usage_count'] ) ? absint( $coupon_details['coupon_usage_count'] ) : 0;
+
+		return $count < $limit;
+	}
+}
+
+if ( ! function_exists( 'ur_update_coupon_meta' ) ) {
+	/**
+	 * Atomically rewrite a coupon's stored meta.
+	 *
+	 * The callback receives the stored meta (an empty array when it cannot be decoded) and returns
+	 * the meta to save, or false to leave it untouched. The write only lands while the row still
+	 * holds what was read, retrying otherwise, so redemptions and admin edits cannot overwrite each other.
+	 *
+	 * @param int      $coupon_id Coupon post ID.
+	 * @param callable $callback  Receives the stored meta array, returns the new meta array or false.
+	 * @return bool True when the stored meta matches the callback's result.
+	 * @since x.x.x
+	 */
+	function ur_update_coupon_meta( $coupon_id, $callback ) {
+		global $wpdb;
+
+		$coupon_id = absint( $coupon_id );
+
+		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
+			$row = $wpdb->get_row( $wpdb->prepare( "SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id ASC LIMIT 1", $coupon_id, 'ur_coupon_meta' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- must read the uncached row for the compare-and-swap below.
+
+			if ( ! $row ) {
+				return false;
+			}
+
+			$meta = json_decode( $row->meta_value, true );
+			$meta = call_user_func( $callback, is_array( $meta ) ? $meta : array() );
+
+			if ( ! is_array( $meta ) ) {
+				return false;
+			}
+
+			$meta_value = wp_json_encode( $meta );
+
+			if ( $meta_value === $row->meta_value ) {
+				return true;
+			}
+
+			// Written raw, not via update_post_meta(), whose wp_unslash() would break the nested JSON strings in this meta.
+			$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE meta_id = %d AND meta_value = %s", $meta_value, $row->meta_id, $row->meta_value ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- atomic conditional update; the meta cache is cleared right after.
+
+			if ( 1 === $updated ) {
+				wp_cache_delete( $coupon_id, 'post_meta' );
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'ur_change_coupon_usage' ) ) {
+	/**
+	 * Move a coupon's redemption counter by one step.
+	 *
+	 * @param string $coupon_code   Coupon code.
+	 * @param int    $delta         1 to count a use, -1 to give one back (never below 0).
+	 * @param bool   $enforce_limit Refuse the change when a capped coupon has no uses left.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_change_coupon_usage( $coupon_code, $delta, $enforce_limit = false ) {
+		$coupon_code = sanitize_text_field( $coupon_code );
+
+		if ( '' === $coupon_code ) {
+			return false;
+		}
+
+		$coupon_details = ur_get_coupon_details( $coupon_code );
+
+		if ( empty( $coupon_details['coupon_id'] ) ) {
+			return false;
+		}
+
+		return ur_update_coupon_meta(
+			$coupon_details['coupon_id'],
+			function ( $meta ) use ( $delta, $enforce_limit ) {
+				if ( empty( $meta ) || ( $enforce_limit && ! ur_coupon_has_remaining_uses( $meta ) ) ) {
+					return false;
+				}
+
+				$count                      = isset( $meta['coupon_usage_count'] ) ? absint( $meta['coupon_usage_count'] ) : 0;
+				$meta['coupon_usage_count'] = max( 0, $count + (int) $delta );
+
+				return $meta;
+			}
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_claim_coupon_usage' ) ) {
+	/**
+	 * Reserve one use of a coupon at checkout, refusing once a capped coupon is used up.
+	 *
+	 * The check and the increment happen in one compare-and-swap, so concurrent signups cannot
+	 * exceed the cap. Uncapped coupons are always counted. Give the use back with
+	 * ur_release_coupon_usage() if the checkout never completes.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when a use was claimed.
+	 * @since x.x.x
+	 */
+	function ur_claim_coupon_usage( $coupon_code ) {
+		$claimed = ur_change_coupon_usage( $coupon_code, 1, true );
+
+		if ( $claimed ) {
+			ur_coupon_claimed_this_request( $coupon_code, true );
+		}
+
+		return $claimed;
+	}
+}
+
+if ( ! function_exists( 'ur_release_coupon_usage' ) ) {
+	/**
+	 * Give back a use claimed by ur_claim_coupon_usage(), floored at 0.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_release_coupon_usage( $coupon_code ) {
+		ur_coupon_claimed_this_request( $coupon_code, false );
+
+		return ur_change_coupon_usage( $coupon_code, -1 );
+	}
+}
+
+if ( ! function_exists( 'ur_coupon_claimed_this_request' ) ) {
+	/**
+	 * Track coupons this request has claimed a use of.
+	 *
+	 * @param string    $coupon_code Coupon code.
+	 * @param bool|null $state       True to mark claimed, false to clear, null to only read.
+	 * @return bool Whether this request holds a claim on the coupon.
+	 * @since x.x.x
+	 */
+	function ur_coupon_claimed_this_request( $coupon_code, $state = null ) {
+		static $claimed = array();
+
+		$coupon_code = sanitize_text_field( (string) $coupon_code );
+
+		if ( true === $state ) {
+			$claimed[ $coupon_code ] = true;
+		} elseif ( false === $state ) {
+			unset( $claimed[ $coupon_code ] );
+		}
+
+		return isset( $claimed[ $coupon_code ] );
+	}
+}
+
+if ( ! function_exists( 'ur_increment_coupon_usage' ) ) {
+	/**
+	 * Bump a coupon's redemption counter without checking its cap.
+	 *
+	 * Checkout uses ur_claim_coupon_usage(); this stays for existing callers.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_increment_coupon_usage( $coupon_code ) {
+		return ur_change_coupon_usage( $coupon_code, 1 );
+	}
+}
+
 if ( ! function_exists( 'ur_get_registration_field_value_by_field_name' ) ) {
 
 	/**
