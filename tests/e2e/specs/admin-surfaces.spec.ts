@@ -98,4 +98,40 @@ test.describe("admin surfaces @fresh", () => {
     await toggleBtn.click();
     await expect(secretInput).toHaveAttribute("type", "password");
   });
+
+  test("setup wizard payment step reveals secret keys with a show/hide toggle @fresh @admin", async ({ page }) => {
+    // The wizard is a React bundle; a checkout that was never built serves an HTML page for it.
+    const bundle = await page.request.get("/wp-content/plugins/user-registration/chunks/welcome.js");
+    test.skip(!(bundle.headers()["content-type"] ?? "").includes("javascript"), "chunks/welcome.js is not built on this site; run pnpm build first");
+
+    await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(page.getByRole("heading", { name: "Create Membership" })).toBeVisible();
+    // The Payment tab ignores clicks until the Membership step has finished mounting.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Go to Payment" }).click();
+      await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+
+    const paypalSwitch = page.getByText(/^pays?pal$/i).locator("xpath=following::label[contains(@class,'chakra-switch')][1]");
+    await expect(paypalSwitch).toBeVisible();
+    const showSecret = page.getByRole("button", { name: "Show secret" });
+    // A clean install has the gateways off, so the secret fields only render once PayPal is on.
+    if (!(await paypalSwitch.locator("input").isChecked())) await paypalSwitch.click();
+
+    const secretGroup = page.locator(".chakra-input__group").filter({ has: showSecret }).first();
+    const secretInput = secretGroup.locator("input");
+    await expect(secretInput).toHaveAttribute("type", "password");
+
+    await showSecret.first().click();
+    await expect(secretInput).toHaveAttribute("type", "text");
+    await secretGroup.getByRole("button", { name: "Hide secret" }).click();
+    await expect(secretInput).toHaveAttribute("type", "password");
+
+    // A secret revealed in one mode must not stay revealed after switching to the other mode.
+    await showSecret.first().click();
+    await expect(secretInput).toHaveAttribute("type", "text");
+    await page.locator("select").filter({ has: page.locator("option", { hasText: "Production" }) }).first().selectOption("production");
+    await expect(page.locator(".chakra-input__group input").first()).toHaveAttribute("type", "password");
+  });
 });

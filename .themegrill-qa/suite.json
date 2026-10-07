@@ -27,6 +27,7 @@
       "assets/css/settings*",
       "assets/css/urm-deactivation-popup*",
       "assets/js/admin/**",
+      "src/welcome/**",
       "modules/paypal/**",
       "modules/stripe/**"
     ],
