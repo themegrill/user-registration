@@ -11,7 +11,8 @@ const shouldShowSiteAssistant =
 			!_UR_DASHBOARD_.site_assistant_data.test_email_sent ||
 			!_UR_DASHBOARD_.site_assistant_data.wordpress_login_handled ||
 			!_UR_DASHBOARD_.site_assistant_data.spam_protection_handled ||
-			!_UR_DASHBOARD_.site_assistant_data.payment_setup_handled
+			!_UR_DASHBOARD_.site_assistant_data.payment_setup_handled ||
+			!_UR_DASHBOARD_.site_assistant_data.legacy_payment_fields_handled
 		: true; // Default to true if data not available
 
 let ROUTES = [

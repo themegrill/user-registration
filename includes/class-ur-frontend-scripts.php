@@ -496,6 +496,7 @@ class UR_Frontend_Scripts {
 					'deps'    => '',
 					'version' => UR_VERSION,
 					'media'   => 'all',
+					'has_rtl' => true,
 				),
 			)
 		);

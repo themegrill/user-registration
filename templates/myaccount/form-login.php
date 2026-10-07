@@ -195,6 +195,7 @@ if ( isset( $_GET['page'] ) && 'user-registration-login-forms' === $_GET['page']
 							   value="<?php echo ( ! empty( $_POST['username'] ) ) ? esc_attr( wp_unslash( sanitize_text_field( $_POST['username'] ) ) ) : ''; // phpcs:ignore ?>"
 								style="<?php echo ( $enable_field_icon || $is_login_settings && is_plugin_active( 'user-registration-pro/user-registration.php' ) ) ? 'padding-left: 32px !important' : ''; ?>"
 								<?php echo $is_login_settings ? 'disabled' : ''; ?>
+								required
 						/>
 						<?php if ( $enable_field_icon || $is_login_settings && is_plugin_active( 'user-registration-pro/user-registration.php' ) ) { ?>
 							<span class="ur-icon ur-icon-user">
@@ -220,6 +221,7 @@ if ( isset( $_GET['page'] ) && 'user-registration-login-forms' === $_GET['page']
 							name="password" id="password" autocomplete="current-password"
 							style="<?php echo ( $enable_field_icon || $is_login_settings && is_plugin_active( 'user-registration-pro/user-registration.php' ) ) ? 'padding-left: 32px !important' : ''; ?>"
 							<?php echo $is_login_settings ? 'disabled' : ''; ?>
+							required
 						/>
 
 						<?php

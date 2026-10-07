@@ -1158,10 +1158,6 @@ textarea.ur-input-border-red {
 				.button-group {
 					margin-bottom: 10px;
 				}
-
-				.profile-pic-remove {
-					margin-right: 10px;
-				}
 			}
 
 			.user-registration-nick-name {
@@ -3974,6 +3970,29 @@ body.user-registration-page {
 
 	.user-registration-img-container {
 		width: 100px;
+
+		&.ur-profile-pic-uploading {
+			position: relative;
+
+			.profile-preview {
+				opacity: 0.4;
+			}
+
+			&::after {
+				content: "";
+				position: absolute;
+				box-sizing: border-box;
+				top: 50%;
+				left: 50%;
+				width: 24px;
+				height: 24px;
+				margin: -12px 0 0 -12px;
+				border: 3px solid rgba(0, 0, 0, 0.2);
+				border-top-color: #475bb2;
+				border-radius: 50%;
+				animation: lds-dual-ring 0.8s linear infinite;
+			}
+		}
 	}
 
 	h3 {
@@ -3986,10 +4005,6 @@ body.user-registration-page {
 		p,
 		.button-group {
 			margin-bottom: 10px;
-		}
-
-		.profile-pic-remove {
-			margin-right: 10px;
 		}
 	}
 

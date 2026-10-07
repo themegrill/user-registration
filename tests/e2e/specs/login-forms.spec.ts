@@ -114,3 +114,34 @@ test.describe("login methods @fresh", () => {
     await visitor.close();
   });
 });
+
+/**
+ * themegrill/user-registration-pro#1664 — the Login and Lost Password inputs
+ * carried only a decorative asterisk, so an empty submit went to the server and
+ * came back as a page reload with the error in the URL. `required` lets the
+ * browser stop it first. Asserted through the form's own validity, which is what
+ * blocks the submit, rather than through the attribute alone.
+ */
+test.describe("required-field validation @fresh", () => {
+  test("login and lost-password inputs are required before anything is sent @fresh @login-forms", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+
+    const visitor = await newVisitor(browser);
+    const user = await visitor.newPage();
+
+    await user.goto("/my-account/");
+    const login = user.locator("form.login");
+    await expect(login.locator("input[name=username]")).toHaveAttribute("required", "");
+    await expect(login.locator("input[name=password]")).toHaveAttribute("required", "");
+    expect(await login.evaluate((form: HTMLFormElement) => form.checkValidity())).toBe(false);
+
+    await user.locator(".user-registration-LostPassword a").first().click();
+    await user.waitForLoadState("domcontentloaded");
+    const lost = user.locator("input[name=user_login]");
+    await expect(lost).toHaveAttribute("required", "");
+    expect(await lost.evaluate((input: HTMLInputElement) => input.form?.checkValidity())).toBe(false);
+
+    await visitor.close();
+  });
+});
