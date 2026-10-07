@@ -59,6 +59,10 @@ function wp_get_post_parent_id( $id ) {
 	return $post ? $post->post_parent : 0; }
 function get_post_meta( $id, $key, $single ) {
 	return ''; }
+class WC_Product {
+	public function get_id() {
+		return 755; }
+}
 function ur_string_to_bool( $value ) {
 	return true === $value || 'yes' === $value || 'on' === $value || 1 === $value; }
 class WP_Query {
@@ -90,6 +94,8 @@ eval(
 	. security_function( $frontend, 'get_rule_product_id' )
 	. ' public '
 	. security_function( $frontend, 'ur_user_can_purchase_woocommerce_product' )
+	. ' public '
+	. security_function( $frontend, 'hide_wc_price_if_restricted' )
 	. ' }'
 );
 
@@ -144,6 +150,14 @@ function flagged_query( $found_posts ) {
 	return new WP_Query( array( ProductRestrictionRunner::HIDE_RESTRICTED_QUERY_VAR => true ), $found_posts );
 }
 
+function product_price( $rules, $user_matches, $user_can_edit = false ) {
+	$GLOBALS['user_matches_rule'] = $user_matches;
+	$GLOBALS['access_rules']      = $rules;
+	$GLOBALS['caps']              = $user_can_edit ? array( 'edit_post' ) : array();
+	$runner                       = new ProductRestrictionRunner();
+	return $runner->hide_wc_price_if_restricted( '<span>$49.99</span>', new WC_Product() );
+}
+
 $post_type_rule = product_rule( 'post_types' );
 $whole_site     = product_rule( 'whole_site', true, 'access', array( 'x' ) );
 
@@ -195,6 +209,11 @@ try {
 		security_assert( 1 === preg_match( '/^\s*' . $hook . '/m', $frontend_source ), 'The restricted product listing hooks must be registered' );
 	}
 	security_assert( 1 === preg_match( "/const HIDE_RESTRICTED_QUERY_VAR = 'urcr_hide_restricted_products';/", $frontend_source ), 'The flag query var must keep its name' );
+	security_assert( '' === product_price( array( $post_type_rule ), false ), 'The price of a restricted product must be hidden from a non-member' );
+	security_assert( '<span>$49.99</span>' === product_price( array( $post_type_rule ), true ), 'A member still sees the price' );
+	security_assert( '<span>$49.99</span>' === product_price( array(), false ), 'An unrestricted product keeps its price' );
+	security_assert( '<span>$49.99</span>' === product_price( array( $post_type_rule ), false, true ), 'A user who can edit the product still sees its price' );
+	security_assert( 1 === preg_match( "/^\s*add_filter\( 'woocommerce_get_price_html', array\( \\\$this, 'hide_wc_price_if_restricted' \)/m", (string) file_get_contents( $frontend ) ), 'The price filter must be registered on woocommerce_get_price_html' );
 } catch ( Throwable $e ) {
 	fwrite( STDERR, $e->getMessage() . "\n" );
 	exit( 1 );
