@@ -42,8 +42,7 @@ const getVisibleSteps = (
 	let filteredSteps: StepConfig[];
 
 	switch (membershipType) {
-		case "paid":
-		case "free":
+		case "membership":
 			if (hasPaidPlan) {
 				filteredSteps = ALL_STEPS.filter(
 					(step) => step.id !== "settings"
@@ -54,13 +53,10 @@ const getVisibleSteps = (
 				);
 			}
 			break;
-		case "other":
+		default:
 			filteredSteps = ALL_STEPS.filter(
 				(step) => step.id !== "membership" && step.id !== "payment"
 			);
-			break;
-		default:
-			filteredSteps = ALL_STEPS.filter((step) => step.id !== "settings");
 	}
 
 	return filteredSteps.map((step, index) => ({
@@ -136,11 +132,6 @@ const SetupWizard: React.FC = () => {
 							welcome.admin_email
 								? welcome.admin_email
 								: state.adminEmail,
-						membershipOptions: Array.isArray(
-							welcome?.membership_options
-						)
-							? welcome.membership_options
-							: state.membershipOptions
 					}
 				});
 			} catch (e) {
