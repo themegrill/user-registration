@@ -1267,15 +1267,10 @@ class SubscriptionService {
 		}
 
 		$membership_process = urm_get_membership_process( $member_id );
-		if ( $membership_process && ! in_array( $membership_id, $membership_process['renew'] ) ) {
+		// A marker left by an abandoned or declined renewal is reused, otherwise the member could never renew again.
+		if ( ! in_array( absint( $membership_id ), array_map( 'absint', $membership_process['renew'] ), true ) ) {
 			$membership_process['renew'][] = $membership_id;
 			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
-		} else {
-			wp_send_json_error(
-				array(
-					'message' => __( 'Membership renew process already initiated.', 'user-registration' ),
-				)
-			);
 		}
 
 		$orders_data     = $order_service->prepare_orders_data( $members_data, $member_id, $member_subscription, array(), true ); // prepare data for orders table.
@@ -1489,6 +1484,41 @@ class SubscriptionService {
 				( new NewPaypalService() )->cancel_suspended_subscription( $subscription['gateway_subscription_id'] );
 			}
 			delete_user_meta( $user_id, 'urm_pending_cancel_' . $subscription_id );
+
+			// Don't lock the member out while Stripe is still collecting (past_due) or still
+			// considers the subscription live (active/trialing). Mika's case: local expiry ran
+			// while Stripe stayed active after a renewal invoice with no payment_intent.
+			if ( ! $pending_cancel_meta && 'stripe' === ( $order['payment_method'] ?? '' ) && ! empty( $subscription['gateway_subscription_id'] ) ) {
+				$stripe_service      = new StripeService();
+				$stripe_subscription = $stripe_service->get_subscription( $subscription['gateway_subscription_id'] );
+				$gateway_status      = is_wp_error( $stripe_subscription ) ? $stripe_subscription : (string) ( $stripe_subscription->status ?? '' );
+
+				if ( ! is_wp_error( $gateway_status ) && in_array( $gateway_status, array( 'past_due', 'active', 'trialing' ), true ) ) {
+					if ( in_array( $gateway_status, array( 'active', 'trialing' ), true ) ) {
+						// Reuse the subscription already retrieved above rather than asking Stripe a second time.
+						$stripe_service->apply_stripe_subscription_to_local(
+							$stripe_subscription,
+							array(
+								'sub_id'  => $subscription_id,
+								'user_id' => $user_id,
+							),
+							'active'
+						);
+					}
+
+					ur_get_logger()->notice(
+						sprintf(
+							'[Member ID #%d] Expiration held - Stripe subscription %s is still %s',
+							$user_id,
+							$subscription['gateway_subscription_id'],
+							$gateway_status
+						),
+						array( 'source' => 'urm-membership-expiration' )
+					);
+					continue;
+				}
+			}
+
 			// A pending-cancel subscription reaching its date is a cancellation, not a natural expiry.
 			$new_status    = $pending_cancel_meta ? 'canceled' : 'expired';
 			$update_result = $this->members_subscription_repository->update( $subscription_id, array( 'status' => $new_status ) );

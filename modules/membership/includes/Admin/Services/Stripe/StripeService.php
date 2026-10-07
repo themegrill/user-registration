@@ -565,7 +565,7 @@ class StripeService {
 							JSON_PRETTY_PRINT
 						)
 					);
-					if ( empty( $payment_data['upgrade'] ) ) {
+					if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 						wp_delete_user( absint( $member_id ) );
 						if ( $team_id ) {
 							wp_delete_post( absint( $team_id ) );
@@ -594,7 +594,7 @@ class StripeService {
 								JSON_PRETTY_PRINT
 							)
 						);
-						if ( empty( $payment_data['upgrade'] ) ) {
+						if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 							wp_delete_user( absint( $member_id ) );
 							if ( $team_id ) {
 								wp_delete_post( absint( $team_id ) );
@@ -704,7 +704,7 @@ class StripeService {
 					JSON_PRETTY_PRINT
 				)
 			);
-			if ( empty( $payment_data['upgrade'] ) ) {
+			if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 				wp_delete_user( absint( $member_id ) );
 			}
 			wp_send_json_error(
@@ -727,7 +727,7 @@ class StripeService {
 					JSON_PRETTY_PRINT
 				)
 			);
-			if ( empty( $payment_data['upgrade'] ) ) {
+			if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 				wp_delete_user( absint( $member_id ) );
 			}
 			wp_send_json_error(
@@ -846,7 +846,7 @@ class StripeService {
 				),
 			);
 
-			if ( empty( $payment_data['upgrade'] ) ) {
+			if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 				wp_delete_user( absint( $member_id ) );
 			}
 
@@ -1102,7 +1102,7 @@ class StripeService {
 		}
 
 		if ( 'failed' === $payment_status ) {
-			$is_renewing = ! empty( $membership_process['renew'] ) && in_array( $latest_order['item_id'], $membership_process['renew'], true );
+			$is_renewing = $this->is_renewing_membership( $membership_process, $latest_order['item_id'] );
 
 			$error_msg = __( 'Stripe Payment failed.', 'user-registration' );
 			$error_msg = $data['payment_result']['error']['message'] ?? $error_msg;
@@ -1129,15 +1129,14 @@ class StripeService {
 
 			do_action( 'ur_membership_order_status_failed', $latest_order['ID'], $latest_order, 'failed' );
 
-			if ( ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
-				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
+			if ( ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple && ! $this->is_existing_member( $member_id ) ) {
+				if ( $this->can_discard_pending_member( $member_id ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
 			}
 			if ( $is_renewing ) {
-				unset( $membership_process['upgrade'][ $latest_order['item_id'] ] );
-				update_user_meta( $member_id, 'urm_membership_process', $membership_process );
+				$this->clear_renewal_marker( $member_id, $latest_order['item_id'] );
 
 				do_action( 'user_registration_membership_renewal_failed', $member_id, $latest_order['item_id'] );
 			}
@@ -1316,6 +1315,134 @@ class StripeService {
 	}
 
 	/**
+	 * Whether a membership is being renewed.
+	 *
+	 * The renew list holds integer IDs (`absint()` when the renewal starts) while order and subscription rows
+	 * return the membership ID as a string, so a strict comparison of the raw values never matches.
+	 *
+	 * @param array      $membership_process Membership process of the member.
+	 * @param int|string $membership_id      Membership ID.
+	 * @return bool
+	 */
+	private function is_renewing_membership( $membership_process, $membership_id ) {
+		return ! empty( $membership_process['renew'] ) && in_array( absint( $membership_id ), array_map( 'absint', (array) $membership_process['renew'] ), true );
+	}
+
+	/**
+	 * Remove a membership from the member's renewal list.
+	 *
+	 * A renewal that did not complete must not stay marked as in progress, or the member can never start another.
+	 *
+	 * @param int|string $member_id     Member user ID.
+	 * @param int|string $membership_id Membership ID.
+	 * @return void
+	 */
+	private function clear_renewal_marker( $member_id, $membership_id ) {
+		$membership_process          = urm_get_membership_process( $member_id );
+		$membership_process['renew'] = array_values(
+			array_filter(
+				(array) $membership_process['renew'],
+				function ( $renewing_id ) use ( $membership_id ) {
+					return absint( $renewing_id ) !== absint( $membership_id );
+				}
+			)
+		);
+
+		update_user_meta( absint( $member_id ), 'urm_membership_process', $membership_process );
+	}
+
+	/**
+	 * Whether the current request may delete a pending member after a failed payment.
+	 *
+	 * The member themselves, an admin, or the logged-out browser whose registration session created the pending member.
+	 *
+	 * @param int|string $member_id Pending member user ID.
+	 * @return bool
+	 */
+	private function can_discard_pending_member( $member_id ) {
+		return absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) || ( ! is_user_logged_in() && WPEverestURMembershipAJAX::verify_pending_member_session( absint( $member_id ) ) );
+	}
+
+	/**
+	 * Whether a member has already paid, so a failed payment is not a failed new registration.
+	 *
+	 * Only a user created for this checkout may be deleted when the payment fails; a member who already
+	 * completed an order (a renewal, another membership, a retry) must keep their account, orders and subscription.
+	 *
+	 * @param int|string $member_id Member user ID.
+	 * @return bool
+	 */
+	private function is_existing_member( $member_id ) {
+		return $this->orders_repository->has_completed_order_for_user( absint( $member_id ) );
+	}
+
+	/**
+	 * Stop the Stripe subscription a renewal replaces, so the member is not billed on both.
+	 *
+	 * It is stopped once the new subscription is paid (active or trialing). While the new one still needs
+	 * 3D Secure the old one keeps the member covered, and is remembered until the new subscription's first paid invoice.
+	 *
+	 * @param string     $old_subscription_id Stripe subscription ID the renewal replaces.
+	 * @param string     $new_subscription_id Stripe subscription ID created by the renewal.
+	 * @param int|string $member_id           Member user ID.
+	 * @param string     $new_stripe_status   Status Stripe reported for the new subscription.
+	 * @return void
+	 */
+	private function stop_replaced_subscription( $old_subscription_id, $new_subscription_id, $member_id, $new_stripe_status ) {
+		if ( empty( $old_subscription_id ) || $old_subscription_id === $new_subscription_id || 0 !== strpos( (string) $old_subscription_id, 'sub_' ) || 0 === strpos( (string) $old_subscription_id, 'sub_sched_' ) ) {
+			return;
+		}
+
+		if ( ! in_array( $new_stripe_status, array( 'active', 'trialing' ), true ) ) {
+			update_user_meta(
+				absint( $member_id ),
+				'urm_stripe_replaced_subscription',
+				array(
+					'old' => sanitize_text_field( $old_subscription_id ),
+					'new' => sanitize_text_field( $new_subscription_id ),
+				)
+			);
+
+			return;
+		}
+
+		try {
+			$old_subscription = \Stripe\Subscription::retrieve( $old_subscription_id );
+
+			if ( $old_subscription && ! in_array( $old_subscription->status, array( 'canceled', 'incomplete_expired' ), true ) ) {
+				$old_subscription->cancel();
+
+				PaymentGatewayLogging::log_general(
+					'stripe',
+					'Replaced Stripe subscription canceled after renewal' . "\n" . wp_json_encode(
+						array(
+							'event_type'          => 'renewal_replaced_subscription_canceled',
+							'old_subscription_id' => $old_subscription_id,
+							'new_subscription_id' => $new_subscription_id,
+							'member_id'           => $member_id,
+						),
+						JSON_PRETTY_PRINT
+					),
+					'notice'
+				);
+			}
+
+			delete_user_meta( absint( $member_id ), 'urm_stripe_replaced_subscription' );
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to cancel the Stripe subscription replaced by a renewal: ' . $e->getMessage(),
+				array(
+					'error_code'          => 'REPLACED_SUBSCRIPTION_CANCEL_FAILED',
+					'old_subscription_id' => $old_subscription_id,
+					'new_subscription_id' => $new_subscription_id,
+					'member_id'           => $member_id,
+				)
+			);
+		}
+	}
+
+	/**
 	 * Create Stripe subscription.
 	 *
 	 * @param string $customer_id       Customer ID.
@@ -1337,7 +1464,9 @@ class StripeService {
 		$is_automatic        = 'automatic' === get_option( 'user_registration_renewal_behaviour', 'automatic' );
 
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = ! empty( $membership_process['renew'] ) && in_array( $member_order['item_id'], $membership_process['renew'], true );
+		$is_renewing        = $this->is_renewing_membership( $membership_process, $member_order['item_id'] );
+		// The local row is overwritten with the new subscription's ID below, so keep the one a renewal replaces.
+		$replaced_subscription_id = $is_renewing ? ( $member_subscription['subscription_id'] ?? '' ) : '';
 
 		$response = array(
 			'status' => false,
@@ -1853,7 +1982,7 @@ class StripeService {
 				}
 			}
 
-			if ( ( ! $is_automatic && ! $is_upgrading ) || $is_renewing ) {
+			if ( ! $is_automatic && ( $is_renewing || ! $is_upgrading ) ) {
 				$value    = $subscription_value;
 				$duration = $subscription_duration;
 
@@ -1886,6 +2015,7 @@ class StripeService {
 
 			$subscription        = \Stripe\Subscription::create( $subscription_details );
 			$subscription_status = $subscription->status ?? '';
+			$new_stripe_status   = $subscription_status;
 			PaymentGatewayLogging::log_api_response(
 				'stripe',
 				'Stripe subscription created',
@@ -1958,6 +2088,8 @@ class StripeService {
 						'status'          => $subscription_status,
 					)
 				);
+
+				$this->stop_replaced_subscription( $replaced_subscription_id, $subscription->id, $member_id, $new_stripe_status );
 
 				PaymentGatewayLogging::log_debug(
 					'stripe',
@@ -2034,6 +2166,8 @@ class StripeService {
 					)
 				);
 
+				$this->stop_replaced_subscription( $replaced_subscription_id, $subscription->id, $member_id, $new_stripe_status );
+
 				$response['subscription'] = $subscription;
 				$response['message']      = __( 'Payment requires additional verification.', 'user-registration' );
 				$response['status']       = true;
@@ -2054,8 +2188,16 @@ class StripeService {
 				)
 			);
 
-			if ( ! $is_upgrading && ! $is_renewing ) {
-				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
+			if ( $is_renewing ) {
+				// Without this the order stays pending and the marker blocks every later renewal.
+				$this->members_orders_repository->update( $member_order['ID'], array( 'status' => 'failed' ) );
+				$this->clear_renewal_marker( $member_id, $member_order['item_id'] );
+
+				do_action( 'user_registration_membership_renewal_failed', $member_id, $member_order['item_id'] );
+			}
+
+			if ( ! $is_upgrading && ! $is_renewing && ! $this->is_existing_member( $member_id ) ) {
+				if ( $this->can_discard_pending_member( $member_id ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
@@ -2500,27 +2642,48 @@ class StripeService {
 
 			return;
 		}
-		// A 'trial' sub, or a 'pending' delayed-start sub (UR-4386 100% coupon), activates on its
-		// first successful charge; anything else keeps its current status.
-		$subscription_status = in_array( $current_subscription['status'], array( 'trial', 'pending' ), true ) ? 'active' : $current_subscription['status'];
+		// Successful invoice means access should continue. Keep canceled (admin/gateway cancel)
+		// terminal; everything else — including expired after a late renewal — becomes active.
+		$subscription_status = ( 'canceled' === ( $current_subscription['status'] ?? '' ) ) ? 'canceled' : 'active';
 
 		$member_id         = $current_subscription['user_id'];
+
+		// A renewal that needed 3D Secure left the old subscription running; stop it now that the new one is paid.
+		$replaced_subscription = get_user_meta( absint( $member_id ), 'urm_stripe_replaced_subscription', true );
+		if ( is_array( $replaced_subscription ) && ( $replaced_subscription['new'] ?? '' ) === $subscription_id ) {
+			$this->stop_replaced_subscription( $replaced_subscription['old'] ?? '', $subscription_id, $member_id, 'active' );
+		}
 		$membership_id     = $current_subscription['item_id'];
 		$invoice_id        = $event['data']['object']['id'];
-		$payment_intent_id = $event['data']['object']['payment_intent'] ?? null;
-		$invoice_amount    = $event['data']['object']['amount_due']; // phpcs:ignore VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable
+		$payment_intent_id = $this->extract_stripe_id( $event['data']['object']['payment_intent'] ?? null );
+		$invoice_amount    = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
 
-		// $0 trial invoices have no payment_intent. The initial order was already created
-		// during subscription setup, so skip duplicate order creation here.
+		// $0 invoices (typical first trial invoice) have no payment_intent. Skip duplicate order
+		// creation, but still sync dates/status from Stripe — otherwise a renewal invoice that
+		// arrives without a PI leaves the member expired while Stripe stays active (inflowmind Mika).
+		// A trial or pending subscription keeps its status and expiry until its first paid invoice.
 		if ( empty( $payment_intent_id ) ) {
+			$keeps_trial_state = in_array( $current_subscription['status'] ?? '', array( 'trial', 'pending' ), true );
+
+			if ( $keeps_trial_state ) {
+				$log_message = 'Skipping order creation for zero-amount trial invoice';
+				$log_event   = 'invoice_without_payment_intent_trial_kept';
+			} else {
+				$this->sync_local_subscription_from_stripe( $subscription_id, $current_subscription, $subscription_status );
+
+				$log_message = 'Skipping order creation for invoice without payment_intent; local subscription synced from Stripe';
+				$log_event   = 'invoice_without_payment_intent_synced';
+			}
+
 			PaymentGatewayLogging::log_general(
 				'stripe',
-				'Skipping order creation for zero-amount trial invoice' . "\n" . wp_json_encode(
+				$log_message . "\n" . wp_json_encode(
 					array(
-						'event_type'      => 'trial_invoice_skipped',
+						'event_type'      => $log_event,
 						'subscription_id' => $subscription_id,
 						'invoice_id'      => $invoice_id,
 						'member_id'       => $member_id,
+						'amount_paid'     => $invoice_amount,
 					),
 					JSON_PRETTY_PRINT
 				),
@@ -2617,7 +2780,7 @@ class StripeService {
 			)
 		);
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = ! empty( $membership_process['renew'] ) && in_array( $membership_id, $membership_process['renew'], true );
+		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
 
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
@@ -3503,6 +3666,191 @@ class StripeService {
 	}
 
 	/**
+	 * Reads the live Stripe subscription status without triggering a retry.
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription ID.
+	 * @return string|\WP_Error Stripe subscription status, or WP_Error if it could not be read.
+	 */
+	public function get_subscription_status( $stripe_subscription_id ) {
+		$stripe_subscription = $this->get_subscription( $stripe_subscription_id );
+
+		return is_wp_error( $stripe_subscription ) ? $stripe_subscription : (string) ( $stripe_subscription->status ?? '' );
+	}
+
+	/**
+	 * Reads the live Stripe subscription without triggering a retry.
+	 *
+	 * Callers that need both the status and the dates can use the returned object instead of retrieving twice.
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription ID.
+	 * @return \Stripe\Subscription|\WP_Error The Stripe subscription, or WP_Error if it could not be read.
+	 */
+	public function get_subscription( $stripe_subscription_id ) {
+		try {
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+
+			return $stripe_subscription ? $stripe_subscription : new \WP_Error( 'urm_stripe_subscription_not_found', __( 'Subscription not found in Stripe', 'user-registration' ) );
+		} catch ( \Exception $e ) {
+			return new \WP_Error( 'urm_stripe_status_check_failed', $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Normalize a Stripe id that may arrive as a string or an expanded object/array.
+	 *
+	 * @param mixed $value Stripe id, expanded object, or null.
+	 * @return string|null
+	 */
+	private function extract_stripe_id( $value ) {
+		if ( empty( $value ) ) {
+			return null;
+		}
+		if ( is_string( $value ) ) {
+			return $value;
+		}
+		if ( is_array( $value ) && ! empty( $value['id'] ) ) {
+			return (string) $value['id'];
+		}
+		if ( is_object( $value ) && ! empty( $value->id ) ) {
+			return (string) $value->id;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Push Stripe's current period end and status onto the matching local membership row.
+	 *
+	 * Used when a renewal invoice has no payment_intent (so we skip order creation) and when
+	 * the retry cron finds Stripe already active while the local row is still expired.
+	 *
+	 * @param string     $stripe_subscription_id Stripe subscription ID.
+	 * @param array|null $current_subscription   Optional local membership row.
+	 * @param string     $preferred_status       Optional local status override (e.g. 'active').
+	 * @return bool True when the local row was updated.
+	 */
+	public function sync_local_subscription_from_stripe( $stripe_subscription_id, $current_subscription = null, $preferred_status = '' ) {
+		if ( empty( $stripe_subscription_id ) ) {
+			return false;
+		}
+
+		if ( empty( $current_subscription ) ) {
+			$current_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $stripe_subscription_id, true );
+		}
+
+		if ( empty( $current_subscription['sub_id'] ) ) {
+			return false;
+		}
+
+		try {
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to sync local subscription from Stripe' . "\n" . wp_json_encode(
+					array(
+						'error_code'      => 'STRIPE_SYNC_FAILED',
+						'subscription_id' => $stripe_subscription_id,
+						'error_message'   => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			return false;
+		}
+
+		if ( empty( $stripe_subscription ) ) {
+			return false;
+		}
+
+		return $this->apply_stripe_subscription_to_local( $stripe_subscription, $current_subscription, $preferred_status );
+	}
+
+	/**
+	 * Get the end of the current billing period of a Stripe subscription as a timestamp.
+	 *
+	 * Since Stripe API 2025-03-31.basil `current_period_end` is on each subscription item; older versions
+	 * have it on the subscription. The account's API version decides, so both are read.
+	 *
+	 * @param object $stripe_subscription Stripe Subscription object.
+	 * @return int Zero when Stripe sent no period end.
+	 */
+	private function get_stripe_subscription_period_end( $stripe_subscription ) {
+		$ends = array();
+
+		if ( isset( $stripe_subscription->current_period_end ) ) {
+			$ends[] = (int) $stripe_subscription->current_period_end;
+		}
+
+		if ( isset( $stripe_subscription->items->data ) && is_iterable( $stripe_subscription->items->data ) ) {
+			foreach ( $stripe_subscription->items->data as $item ) {
+				if ( isset( $item->current_period_end ) ) {
+					$ends[] = (int) $item->current_period_end;
+				}
+			}
+		}
+
+		return $ends ? max( $ends ) : 0;
+	}
+
+	/**
+	 * Write period end / status from an already-retrieved Stripe subscription onto the local row.
+	 *
+	 * @param object $stripe_subscription  Stripe Subscription object.
+	 * @param array  $current_subscription Local membership row (needs sub_id).
+	 * @param string $preferred_status     Optional local status override.
+	 * @return bool
+	 */
+	public function apply_stripe_subscription_to_local( $stripe_subscription, $current_subscription, $preferred_status = '' ) {
+		if ( empty( $current_subscription['sub_id'] ) || empty( $stripe_subscription ) ) {
+			return false;
+		}
+
+		$update_data = array();
+
+		$current_period_end = $this->get_stripe_subscription_period_end( $stripe_subscription );
+		if ( $current_period_end > 0 ) {
+			$next_billing_date                = gmdate( 'Y-m-d H:i:s', $current_period_end );
+			$update_data['next_billing_date'] = $next_billing_date;
+			$update_data['expiry_date']       = $next_billing_date;
+		}
+
+		$stripe_status = isset( $stripe_subscription->status ) ? (string) $stripe_subscription->status : '';
+		if ( '' !== $preferred_status ) {
+			$update_data['status'] = sanitize_text_field( $preferred_status );
+		} elseif ( in_array( $stripe_status, array( 'active', 'trialing' ), true ) ) {
+			$update_data['status'] = 'active';
+		}
+
+		if ( empty( $update_data ) ) {
+			return false;
+		}
+
+		$updated = $this->members_subscription_repository->update( $current_subscription['sub_id'], $update_data );
+
+		if ( $updated ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'Local subscription synced from Stripe' . "\n" . wp_json_encode(
+					array(
+						'event_type'          => 'local_subscription_synced_from_stripe',
+						'local_sub_id'        => $current_subscription['sub_id'],
+						'stripe_subscription' => $stripe_subscription->id ?? '',
+						'stripe_status'       => $stripe_status,
+						'update_data'         => $update_data,
+						'member_id'           => $current_subscription['user_id'] ?? 'unknown',
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+		}
+
+		return (bool) $updated;
+	}
+
+	/**
 	 * Retries subscription for Stripe subscription payments.
 	 *
 	 * @param array $subscription Subscription data.
@@ -3590,6 +3938,11 @@ class StripeService {
 				);
 
 				if ( 'active' === $updated_subscription->status || 'trialing' === $updated_subscription->status ) {
+					$local_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
+					if ( ! empty( $local_subscription ) ) {
+						$this->apply_stripe_subscription_to_local( $updated_subscription, $local_subscription, 'active' );
+					}
+
 					PaymentGatewayLogging::log_transaction_success(
 						'stripe',
 						'Subscription payment retry successful',
@@ -3603,16 +3956,24 @@ class StripeService {
 					$response['status']  = true;
 					$response['message'] = __( 'Subscription payment retried successfully', 'user-registration' );
 				} else {
-					PaymentGatewayLogging::log_error(
-						'stripe',
-						'Subscription payment retry - Unexpected status' . "\n" . wp_json_encode(
-							array(
-								'subscription_id' => $subscription['sub_id'],
-								'status'          => $updated_subscription->status,
-							),
-							JSON_PRETTY_PRINT
-						)
+					// 'past_due' means Stripe is still actively dunning; 'unpaid' means Stripe has already exhausted its own retries.
+					$log_message = 'past_due' === $updated_subscription->status
+						? 'Subscription payment retry - still awaiting payment, gateway dunning in progress'
+						: 'Subscription payment retry - unexpected status';
+
+					$log_context = wp_json_encode(
+						array(
+							'subscription_id' => $subscription['sub_id'],
+							'status'          => $updated_subscription->status,
+						),
+						JSON_PRETTY_PRINT
 					);
+
+					if ( 'past_due' === $updated_subscription->status ) {
+						PaymentGatewayLogging::log_general( 'stripe', $log_message . "\n" . $log_context, 'notice' );
+					} else {
+						PaymentGatewayLogging::log_error( 'stripe', $log_message . "\n" . $log_context );
+					}
 
 					// Notify user via email about a failed retry attempt.
 					$current_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
@@ -3636,10 +3997,16 @@ class StripeService {
 					}
 				}
 			} elseif ( 'active' === $stripe_subscription->status || 'trialing' === $stripe_subscription->status ) {
-				// Scenario: if automatic retry is enabled in stripe dashboard, it might be already active via smart retry.
+				// Stripe already collected (or never left active). Sync local dates/status so an
+				// expired WP row does not stay expired while Stripe keeps billing (inflowmind Mika).
+				$local_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
+				if ( ! empty( $local_subscription ) ) {
+					$this->apply_stripe_subscription_to_local( $stripe_subscription, $local_subscription, 'active' );
+				}
+
 				PaymentGatewayLogging::log_general(
 					'stripe',
-					'Subscription is already active - no retry needed' . "\n" . wp_json_encode(
+					'Subscription is already active on Stripe - local membership synced' . "\n" . wp_json_encode(
 						array(
 							'subscription_id' => $subscription['sub_id'],
 							'status'          => $stripe_subscription->status,
@@ -3972,8 +4339,8 @@ class StripeService {
 					'status' => $subscription->status,
 				);
 
-				$current_period_end = $subscription->current_period_end ?? null;
-				if ( ! empty( $current_period_end ) ) {
+				$current_period_end = $this->get_stripe_subscription_period_end( $subscription );
+				if ( $current_period_end > 0 ) {
 					$next_billing_date                = gmdate( 'Y-m-d H:i:s', $current_period_end );
 					$update_data['next_billing_date'] = $next_billing_date;
 					$update_data['expiry_date']       = $next_billing_date;

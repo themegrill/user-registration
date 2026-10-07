@@ -210,6 +210,25 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * Whether a user has at least one completed order.
+	 *
+	 * A member who has paid before is an existing member, never a failed new registration.
+	 *
+	 * @param int $user_id User ID.
+	 * @return bool
+	 */
+	public function has_completed_order_for_user( $user_id ) {
+		$count = $this->wpdb()->get_var( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+			$this->wpdb()->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				"SELECT COUNT(*) FROM $this->table WHERE user_id = %d AND status = 'completed'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Internal table name.
+				$user_id // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+			)
+		);
+
+		return (int) $count > 0;
+	}
+
+	/**
 	 * Get specific order by their subscription ID
 	 *
 	 * @param int    $subscription_id Local subscription ID.
