@@ -237,7 +237,7 @@ File appearance count across the last 600 fix/bug/regression commits:
 | `includes/admin/class-ur-admin-settings.php` | 25 |
 | `modules/membership/includes/Admin.php` | 24 |
 
-Membership payments dominate. Four clusters stand out in the commit subjects:
+Membership payments dominate. Five clusters stand out in the commit subjects:
 
 1. **Payment/currency correctness** — Stripe charging the global amount in local
    currency (`0fbffa10`), subscription tab showing base price instead of amount
@@ -257,6 +257,14 @@ Membership payments dominate. Four clusters stand out in the commit subjects:
    `6750dddb`), and `ur_get_my_account_url` appending a trailing slash after a
    query string on plain permalinks (`2cdbbded`). Permalink structure and
    WPML/Polylang are both real variables here.
+5. **PayPal REST billing is not CI-testable yet** — what PayPal will charge is
+   decided by the plan/subscription payloads `NewPaypalService` sends server-side
+   (setup fee, TRIAL/REGULAR cycles, `start_time`), e.g. the upgrade double charge
+   in free#1447 / pro#1405. `boot-wp` has no PayPal credentials and no way to stub
+   server-side HTTP, so a spec cannot observe those payloads. Guarding them needs a
+   harness mu-plugin that stubs `pre_http_request` for `api-m.sandbox.paypal.com`
+   (token, catalog product, billing plan, subscription) and records the request
+   bodies, plus seeded PayPal test-mode options.
 
 `includes/functions-ur-core.php` is ~12,700 lines and touched by 81 fix commits;
 treat any change to it as high blast radius.
