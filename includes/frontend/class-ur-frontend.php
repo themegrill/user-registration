@@ -553,7 +553,7 @@ class UR_Frontend {
 		$meta_value = get_user_meta( $user_id, 'ur_payment_invoices', true );
 		if ( 'membership' !== $user_source ) {
 			if ( ! empty( $meta_value ) && is_array( $meta_value ) ) {
-				foreach ( $meta_value as $values ) {
+				foreach ( ur_get_valid_payment_invoices( $meta_value ) as $values ) {
 					$total_items[] = array(
 						'user_id'        => $user_id,
 						'transaction_id' => $values['invoice_no'] ?? '',

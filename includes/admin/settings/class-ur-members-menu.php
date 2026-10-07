@@ -1997,7 +1997,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 				$meta_value = get_user_meta( $user_id, 'ur_payment_invoices', true );
 
 				if ( 'membership' !== $user_source && ! empty( $meta_value ) && is_array( $meta_value ) ) {
-					foreach ( $meta_value as $values ) {
+					foreach ( ur_get_valid_payment_invoices( $meta_value ) as $values ) {
 						$total_items[] = array(
 							'user_id'        => $user_id,
 							'transaction_id' => $values['invoice_no'] ?? '',
@@ -2046,7 +2046,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 									$currency   = isset( $payment['currency'] ) && '' !== $payment['currency'] ? $payment['currency'] : 'USD';
 
 									$symbol = $currencies[ $currency ]['symbol'];
-									$amount = ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( $amount, 2 ) : number_format( $amount, 2 ) . $symbol;
+									$amount = ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( (float) $amount, 2 ) : number_format( (float) $amount, 2 ) . $symbol;
 
 									?>
 									<tr>
