@@ -552,7 +552,7 @@ if ( ! function_exists( 'user_registration_form_field' ) ) {
 					$field .= '</ul>';
 				} else {
 					$field = '<label class="ur-label checkbox" ' . implode( ' ', $custom_attributes ) . '>
-							<input data-rules="' . esc_attr( $rules ) . '" data-id="' . esc_attr( $key ) . '" ' . implode( ' ', $custom_attributes ) . ' data-value="' . $value . '" type="' . esc_attr( $args['type'] ) . '" class="input-checkbox ' . esc_attr( implode( ' ', $args['input_class'] ) ) . '" name="' . esc_attr( $key ) . ( '' !== $current_row ? '_' . $current_row : '' ) . '" id="' . esc_attr( $args['id'] ) . '" value="1" ' . checked( $value, 1, false ) . ' /> '
+							<input data-rules="' . esc_attr( $rules ) . '" data-id="' . esc_attr( $key ) . '" ' . implode( ' ', $custom_attributes ) . ' data-value="' . esc_attr( $value ) . '" type="' . esc_attr( $args['type'] ) . '" class="input-checkbox ' . esc_attr( implode( ' ', $args['input_class'] ) ) . '" name="' . esc_attr( $key ) . ( '' !== $current_row ? '_' . $current_row : '' ) . '" id="' . esc_attr( $args['id'] ) . '" value="1" ' . checked( $value, 1, false ) . ' /> '
 							. $args['label'] . $required . $tooltip_html . '</label>';
 				}
 				break;
