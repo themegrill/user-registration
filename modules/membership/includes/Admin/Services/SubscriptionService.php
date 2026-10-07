@@ -1084,15 +1084,10 @@ class SubscriptionService {
 		}
 
 		$membership_process = urm_get_membership_process( $member_id );
-		if ( $membership_process && ! in_array( $membership_id, $membership_process['renew'] ) ) {
+		// A marker left by an abandoned or declined renewal is reused, otherwise the member could never renew again.
+		if ( ! in_array( absint( $membership_id ), array_map( 'absint', $membership_process['renew'] ), true ) ) {
 			$membership_process['renew'][] = $membership_id;
 			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
-		} else {
-			wp_send_json_error(
-				array(
-					'message' => __( 'Membership renew process already initiated.', 'user-registration' ),
-				)
-			);
 		}
 
 		$orders_data     = $order_service->prepare_orders_data( $members_data, $member_id, $member_subscription, array(), true ); // prepare data for orders table.

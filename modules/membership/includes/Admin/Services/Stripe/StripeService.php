@@ -1021,8 +1021,7 @@ class StripeService {
 				$this->members_orders_repository->delete_member_order( $member_id );
 			}
 			if ( $is_renewing ) {
-				unset( $membership_process['upgrade'][ $latest_order['item_id'] ] );
-				update_user_meta( $member_id, 'urm_membership_process', $membership_process );
+				$this->clear_renewal_marker( $member_id, $latest_order['item_id'] );
 
 				do_action( 'user_registration_membership_renewal_failed', $member_id, $latest_order['item_id'] );
 			}
@@ -1212,6 +1211,29 @@ class StripeService {
 	 */
 	private function is_renewing_membership( $membership_process, $membership_id ) {
 		return ! empty( $membership_process['renew'] ) && in_array( absint( $membership_id ), array_map( 'absint', (array) $membership_process['renew'] ), true );
+	}
+
+	/**
+	 * Remove a membership from the member's renewal list.
+	 *
+	 * A renewal that did not complete must not stay marked as in progress, or the member can never start another.
+	 *
+	 * @param int|string $member_id     Member user ID.
+	 * @param int|string $membership_id Membership ID.
+	 * @return void
+	 */
+	private function clear_renewal_marker( $member_id, $membership_id ) {
+		$membership_process          = urm_get_membership_process( $member_id );
+		$membership_process['renew'] = array_values(
+			array_filter(
+				(array) $membership_process['renew'],
+				function ( $renewing_id ) use ( $membership_id ) {
+					return absint( $renewing_id ) !== absint( $membership_id );
+				}
+			)
+		);
+
+		update_user_meta( absint( $member_id ), 'urm_membership_process', $membership_process );
 	}
 
 	/**
@@ -1833,7 +1855,7 @@ class StripeService {
 				}
 			}
 
-			if ( ( ! $is_automatic && ! $is_upgrading ) || $is_renewing ) {
+			if ( ! $is_automatic && ( $is_renewing || ! $is_upgrading ) ) {
 				$value    = $subscription_value;
 				$duration = $subscription_duration;
 
@@ -2039,12 +2061,20 @@ class StripeService {
 				)
 			);
 
+			if ( $is_renewing ) {
+				// Without this the order stays pending and the marker blocks every later renewal.
+				$this->members_orders_repository->update( $member_order['ID'], array( 'status' => 'failed' ) );
+				$this->clear_renewal_marker( $member_id, $member_order['item_id'] );
+
+				do_action( 'user_registration_membership_renewal_failed', $member_id, $member_order['item_id'] );
+			}
+
 			if ( ! $is_upgrading && ! $is_renewing && ! $this->is_existing_member( $member_id ) ) {
 				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
-				$customer = \Stripe\Customer::retrieve( $customer_id );
+				$customer =\Stripe\Customer::retrieve( $customer_id );
 				$customer->delete();
 			}
 
