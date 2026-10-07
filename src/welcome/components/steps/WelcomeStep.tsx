@@ -29,9 +29,9 @@ const MembershipOption: React.FC<MembershipOptionProps> = ({
 	value,
 	title
 }) => {
-	// gray.300 keeps the unselected card edge above the 3:1 non-text contrast minimum (WCAG 1.4.11).
-	const defaultBorder = useColorModeValue("gray.300", "gray.600");
-	const hoverBorder = useColorModeValue("gray.400", "gray.500");
+	// gray.500 is about 4:1 on white, above the 3:1 non-text contrast minimum (WCAG 1.4.11).
+	const defaultBorder = useColorModeValue("gray.500", "gray.600");
+	const hoverBorder = useColorModeValue("gray.600", "gray.500");
 	const selectedBg = useColorModeValue(BRAND_TINT, "whiteAlpha.100");
 	const titleColor = useColorModeValue("gray.800", "white");
 
@@ -61,12 +61,16 @@ const MembershipOption: React.FC<MembershipOptionProps> = ({
 					py: 3,
 					cursor: "pointer"
 				},
+				"& .chakra-radio__control": {
+					borderColor: defaultBorder,
+					"&[data-focus-visible]": { boxShadow: "none" }
+				},
 				"& .chakra-radio__control[data-checked]": {
 					bg: BRAND_COLOR,
 					borderColor: BRAND_COLOR
 				},
 				"& .chakra-radio__label": {
-					ml: 3,
+					ms: 3,
 					fontWeight: 600,
 					fontSize: "15px",
 					lineHeight: "22px",
