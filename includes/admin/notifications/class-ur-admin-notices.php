@@ -507,7 +507,7 @@ class UR_Admin_Notices
 					// sprintf(
 					// '<p>%s</p>',
 					// __(
-					// 'Help us improve the plugin\'s features by sharing <a href="https://docs.wpuserregistration.com/docs/miscellaneous-settings/#1-toc-title" target="_blank">non-sensitive plugin data</a> with us.',
+					// 'Help us improve the plugin\'s features by sharing <a href="https://docs.wpuserregistration.com/global-settings/advanced-settings/#allow-usage-tracking" target="_blank">non-sensitive plugin data</a> with us.',
 					// 'user-registration'
 					// )
 					// )

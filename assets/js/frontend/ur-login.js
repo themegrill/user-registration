@@ -28,6 +28,13 @@ jQuery(function ($) {
 				.on("click", function (e) {
 					e.preventDefault();
 					var $this = $(this);
+					var login_form = $this.closest("form")[0];
+
+					if (login_form && !login_form.checkValidity()) {
+						login_form.reportValidity();
+						return;
+					}
+
 					var username = $this
 						.closest("form")
 						.find('input[name="username"]')

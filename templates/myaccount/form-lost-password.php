@@ -102,7 +102,7 @@ if ( 'bordered' === $form_template ) {
 					<path d="M2.33561 2.83301H11.6689C12.3106 2.83301 12.8356 3.35801 12.8356 3.99967V10.9997C12.8356 11.6413 12.3106 12.1663 11.6689 12.1663H2.33561C1.69395 12.1663 1.16895 11.6413 1.16895 10.9997V3.99967C1.16895 3.35801 1.69395 2.83301 2.33561 2.83301Z" stroke="#858585" stroke-linecap="round" stroke-linejoin="round"/>
 						<path d="M12.8356 4L7.00228 8.08333L1.16895 4" stroke="#858585" stroke-linecap="round" stroke-linejoin="round"/>
 						</svg>
-						<input class="form-control user-registration-Input user-registration-Input--text" type="text" name="user_login" id="user_login" placeholder="<?php echo esc_html( apply_filters( 'user_registration_lost_password_user_login_placeholder', __( 'Enter your email', 'user-registration' ) ) ); ?>" />
+						<input class="form-control user-registration-Input user-registration-Input--text" type="text" name="user_login" id="user_login" placeholder="<?php echo esc_html( apply_filters( 'user_registration_lost_password_user_login_placeholder', __( 'Enter your email', 'user-registration' ) ) ); ?>" required />
 				</div>
 
 				</p>

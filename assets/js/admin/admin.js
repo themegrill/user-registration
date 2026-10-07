@@ -588,16 +588,8 @@ jQuery(function ($) {
 						? "integration-lists-settings"
 						: "";
 
-					if (
-						!$(el).hasClass("integration-lists-settings") &&
-						$(el).is('[data-field-group*="payments"]')
-					) {
-						if (
-							user_registration_form_builder_data.form_has_membership_field
-						) {
-							classToAdd += " disabled";
-						}
-					}
+					// ponytail: no longer disabled when a membership field is present — the settings array
+					// itself already reduces to only what a membership form can use (sync fields, overrides).
 					var divToAppend = "";
 
 					if ($(el).hasClass("integration-lists-settings")) {
@@ -915,8 +907,34 @@ jQuery(function ($) {
 					$(".ur-builder-wrapper").scrollTop(0);
 				}
 			});
+
+		ur_toggle_field_sync_membership_visibility();
 	});
 
+	/**
+	 * Show Field Sync form-settings tab only while a membership field is on the canvas.
+	 * The panel is always rendered when a gateway is available so drag/delete can toggle live.
+	 */
+	window.ur_toggle_field_sync_membership_visibility = function () {
+		var hasMembership =
+			$(".ur-input-grids").find('.ur-field[data-field-key="membership"]')
+				.length > 0;
+		var $tab = $("#ur-tab-field-settings > #field-sync-settings");
+		var $panel = $("form #ur-field-all-settings > #field-sync-settings");
+
+		if (!$tab.length && !$panel.length) {
+			return;
+		}
+
+		$tab.toggle(hasMembership);
+
+		if (!hasMembership) {
+			if ($tab.hasClass("active")) {
+				$("#ur-tab-field-settings > #general-settings").trigger("click");
+			}
+			$panel.hide();
+		}
+	};
 	/**
 	 * Enables disables the lost password page
 	 *
@@ -1589,8 +1607,19 @@ jQuery(function ($) {
 	$("input.input-color").wpColorPicker();
 	// send test email message
 	$(".user_registration_send_email_test").on("click", function (e) {
+		var $button = $(this);
 		var email = $("#user_registration_email_send_to").val();
 		e.preventDefault();
+
+		if ($button.data("requestRunning")) {
+			return;
+		}
+
+		$button
+			.data("requestRunning", true)
+			.prop("disabled", true)
+			.attr("aria-disabled", "true")
+			.addClass("disabled");
 		$.ajax({
 			url: user_registration_send_email.ajax_url,
 			data: {
@@ -1602,10 +1631,15 @@ jQuery(function ($) {
 			beforeSend: function () {
 				var spinner =
 					'<span class="ur-spinner is-active" style="margin-left: 20px"></span>';
-				$(".user_registration_send_email_test").append(spinner);
+				$button.append(spinner);
 			},
 			complete: function (response) {
-				$(".ur-spinner").remove();
+				$button.find(".ur-spinner").remove();
+				$button
+					.data("requestRunning", false)
+					.prop("disabled", false)
+					.removeAttr("aria-disabled")
+					.removeClass("disabled");
 				$(
 					".user-registration-membership_page_user-registration-settings .notice"
 				).remove();
@@ -1898,28 +1932,6 @@ jQuery(function ($) {
 			);
 		}
 	);
-
-	$(".user-registration-system-info-setting-copy").tooltipster({
-		content: "Copied",
-		trigger: "click",
-		theme: "tooltipster-shadow",
-		interactive: true,
-		functionBefore: function (instance, helper) {
-			var table = $(".user-registration-system-info-setting table")[0];
-			$(
-				".user-registration-system-info-setting .ur-general-settings-hide"
-			).css("display", "block");
-			var range = document.createRange();
-			range.selectNode(table);
-			window.getSelection().removeAllRanges();
-			window.getSelection().addRange(range);
-			document.execCommand("copy");
-			window.getSelection().removeAllRanges();
-			$(
-				".user-registration-system-info-setting .ur-general-settings-hide"
-			).css("display", "none");
-		}
-	});
 
 	/**
 	 * For update the default value.
@@ -2371,4 +2383,52 @@ jQuery(function ($) {
 			.first()
 			.trigger("click");
 	}
+
+	$(document).on(
+		"click",
+		".user-registration-password-input-wrapper .ur-toggle-password, .user-registration-password-input-wrapper .user-registration-password-toggle",
+		function (e) {
+			e.preventDefault();
+			var $btn = $(this);
+			var $input = $btn.siblings("input");
+			if (!$input.length) {
+				$input = $btn.closest(".user-registration-password-input-wrapper").find("input");
+			}
+		if (!$input.length) {
+			return;
+		}
+
+		var isPassword = $input.attr("type") === "password";
+		$input.attr("type", isPassword ? "text" : "password");
+
+		var $icon = $btn.find(".dashicons");
+		if (isPassword) {
+			$icon.removeClass("dashicons-visibility").addClass("dashicons-hidden");
+			$btn.attr("aria-label", $btn.data("hide-text") || "Hide password");
+		} else {
+			$icon.removeClass("dashicons-hidden").addClass("dashicons-visibility");
+			$btn.attr("aria-label", $btn.data("show-text") || "Show password");
+		}
+	});
+});
+
+// Field Sync panel: each gateway's mapping fields stay hidden until its own enable toggle is checked.
+jQuery(function ($) {
+	function ur_sync_field_visibility(toggle_id) {
+		$('#field-sync-settings [data-sync-toggle="' + toggle_id + '"]').toggle(
+			$("#" + toggle_id).is(":checked")
+		);
+	}
+
+	$("#field-sync-settings [data-sync-toggle]").each(function () {
+		ur_sync_field_visibility($(this).data("sync-toggle"));
+	});
+
+	$(document.body).on(
+		"change",
+		'#field-sync-settings input[type="checkbox"]',
+		function () {
+			ur_sync_field_visibility(this.id);
+		}
+	);
 });
