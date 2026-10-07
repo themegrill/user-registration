@@ -14,6 +14,11 @@ use WPEverest\URMembership\Admin\Services\Stripe\StripeService;
 
 defined( 'ABSPATH' ) || exit;
 
+// Names are plain text across registration, profile and membership writers.
+add_filter( 'sanitize_user_meta_first_name', 'sanitize_text_field' );
+add_filter( 'sanitize_user_meta_last_name', 'sanitize_text_field' );
+add_filter( 'sanitize_user_meta_nickname', 'sanitize_text_field' );
+
 // Include core functions (available in both admin and frontend).
 require UR_ABSPATH . 'includes/functions-ur-page.php';
 require UR_ABSPATH . 'includes/functions-ur-account.php';
@@ -11749,6 +11754,10 @@ if ( ! function_exists( 'urm_process_profile_fields' ) ) {
 					unset( $profile[ $key ] );
 				}
 			}
+			// Preserve fields omitted from a partial profile update.
+			if ( ! array_key_exists( $key, $single_field ) ) {
+				continue;
+			}
 			// Get Value.
 			switch ( $field['type'] ) {
 				case 'checkbox':
@@ -11868,6 +11877,7 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 	function urm_update_user_profile_data( $user, $profile, $single_field, $form_id ) {
 
 		$user_data = array();
+		$meta_data = array();
 		/**
 		 * Filter to modify the email change confirmation.
 		 * Default vallue is 'true'.
@@ -11886,6 +11896,9 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 		$profile = apply_filters( 'user_registration_before_save_profile_details', $profile, $user_id, $form_id );
 
 		foreach ( $profile as $key => $field ) {
+			if ( ! array_key_exists( $key, $single_field ) ) {
+				continue;
+			}
 			$new_key = str_replace( 'user_registration_', '', $key );
 
 			if ( $is_email_change_confirmation && 'user_email' === $new_key ) {
@@ -11913,14 +11926,21 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 				$disabled = isset( $field['custom_attributes']['disabled'] ) ? $field['custom_attributes']['disabled'] : '';
 
 				if ( 'disabled' !== $disabled ) {
-					update_user_meta( $user_id, $update_key, $single_field[ $key ] );
+					$meta_data[ $update_key ] = in_array( $update_key, array( 'first_name', 'last_name', 'nickname' ), true ) ? sanitize_text_field( $single_field[ $key ] ) : $single_field[ $key ];
 				}
 			}
 		}
 
 		if ( count( $user_data ) > 0 ) {
 			$user_data['ID'] = $user_id;
-			wp_update_user( $user_data );
+			$result          = wp_update_user( $user_data );
+			if ( is_wp_error( $result ) ) {
+				wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+			}
+		}
+
+		foreach ( $meta_data as $meta_key => $meta_value ) {
+			update_user_meta( $user_id, $meta_key, $meta_value );
 		}
 
 		return array( $email_updated, $pending_email );
