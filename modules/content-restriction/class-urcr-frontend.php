@@ -755,6 +755,16 @@ class URCR_Frontend {
 	}
 
 	/**
+	 * Resolve a product variation to its parent product, which is where content rules and restriction meta are set.
+	 *
+	 * @param int $product_id ID of a WooCommerce product or variation.
+	 * @return int
+	 */
+	private function get_rule_product_id( $product_id ) {
+		return 'product_variation' === get_post_type( $product_id ) ? (int) wp_get_post_parent_id( $product_id ) : $product_id;
+	}
+
+	/**
 	 * Determines whether or not a user is allowed to view a WooCommerce product.
 	 *
 	 * @param int $product_id ID of the WooCommerce product.
@@ -775,6 +785,8 @@ class URCR_Frontend {
 		}
 
 		if ( null !== $product_id ) {
+			$product_id = $this->get_rule_product_id( $product_id );
+
 			$urcr_meta_override_global_settings = get_post_meta( $product_id, 'urcr_meta_override_global_settings', true );
 
 			if ( ! ur_string_to_bool( $urcr_meta_override_global_settings ) ) {
@@ -811,6 +823,8 @@ class URCR_Frontend {
 		}
 
 		if ( null !== $product_id ) {
+			$product_id = $this->get_rule_product_id( $product_id );
+
 			$urcr_meta_override_global_settings = get_post_meta( $product_id, 'urcr_meta_override_global_settings', true );
 
 			if ( ! ur_string_to_bool( $urcr_meta_override_global_settings ) ) {
@@ -940,11 +954,6 @@ class URCR_Frontend {
 
 		// urcr_is_target_post() matches post types and IDs against a post object, not a bare ID.
 		$product_post = get_post( $product_id );
-
-		// Rules target the parent product, never its variations.
-		if ( $product_post instanceof WP_Post && 'product_variation' === $product_post->post_type ) {
-			$product_post = get_post( $product_post->post_parent );
-		}
 
 		if ( ! $product_post instanceof WP_Post ) {
 			return $can_view_purchase;

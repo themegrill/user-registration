@@ -47,7 +47,26 @@ function urcr_get_published_access_rules() {
 			return (object) array( 'post_content' => wp_json_encode( $rule ) ); },
 		$GLOBALS['access_rules']
 	); }
-eval( 'class ProductRestrictionRunner { public ' . security_function( 'modules/content-restriction/class-urcr-frontend.php', 'wc_advanced_restriction_with_access_rule' ) . ' }' );
+function get_post_type( $id ) {
+	$post = get_post( $id );
+	return $post ? $post->post_type : false; }
+function wp_get_post_parent_id( $id ) {
+	$post = get_post( $id );
+	return $post ? $post->post_parent : 0; }
+function get_post_meta( $id, $key, $single ) {
+	return ''; }
+function ur_string_to_bool( $value ) {
+	return true === $value || 'yes' === $value || 'on' === $value || 1 === $value; }
+$frontend = 'modules/content-restriction/class-urcr-frontend.php';
+eval(
+	'class ProductRestrictionRunner { public '
+	. security_function( $frontend, 'wc_advanced_restriction_with_access_rule' )
+	. ' private '
+	. security_function( $frontend, 'get_rule_product_id' )
+	. ' public '
+	. security_function( $frontend, 'ur_user_can_purchase_woocommerce_product' )
+	. ' }'
+);
 
 function product_rule( $target_type, $enabled = true, $control = 'access', $value = array( 'product' ) ) {
 	return array(
@@ -76,7 +95,7 @@ function product_allowed( $rules, $user_matches, $product_id = 755 ) {
 	$GLOBALS['user_matches_rule'] = $user_matches;
 	$GLOBALS['access_rules']      = $rules;
 	$runner                       = new ProductRestrictionRunner();
-	return $runner->wc_advanced_restriction_with_access_rule( $product_id );
+	return $runner->ur_user_can_purchase_woocommerce_product( $product_id );
 }
 
 $post_type_rule = product_rule( 'post_types' );
