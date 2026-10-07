@@ -3791,11 +3791,10 @@ a.button.ur-smart-tags-list-button {
 					}
 
 					&#ur-view-live-button {
-						a {
-							color: #475bb2;
-						}
+						order: 0; // Counters the generic `--right a { order: 1 }` rule in _navigation.scss.
+						color: #475bb2;
 
-						a::after {
+						&::after {
 							background-image: url(../images/icons/external-link.svg);
 						}
 					}
@@ -7599,40 +7598,6 @@ body.user-registration {
 		}
 	}
 
-	#log-viewer {
-		background: $white;
-		border: $border_width solid $border_color;
-		border-radius: $border_radius_7;
-		margin: $spacing_32px;
-		padding: $spacing_32px;
-
-		&-select {
-			padding: 0 $spacing_32px;
-
-			.alignleft {
-				h2 {
-					padding: 0;
-					display: flex;
-					align-items: center;
-					gap: $spacing_12px;
-				}
-			}
-
-			.alignright {
-				form {
-					display: flex;
-					align-items: center;
-					gap: $spacing_12px;
-				}
-			}
-		}
-
-		pre {
-			margin: 0;
-			white-space: pre-wrap;
-			word-wrap: break-word;
-		}
-	}
 }
 
 #user-registration-pro-single-user-view {

@@ -46,7 +46,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 						</svg>
 						</button>
 
-						<button  id="ur-view-live-button" class="button button-secondary button-large"><a title="<?php echo esc_attr( sprintf( __( 'View Live in %s page', 'user-registration' ), $login_page_title ) ); ?>" href="<?php echo esc_url( add_query_arg( 'ur_login_preview', 'true', $login_page_url ) ); ?>" target="_blank" rel="noreferrer noopener"><?php esc_html_e( 'View Live', 'user-registration' ); ?></a></button>
+						<a id="ur-view-live-button" class="button button-secondary button-large" title="<?php echo esc_attr( sprintf( __( 'View Live in %s page', 'user-registration' ), $login_page_title ) ); ?>" href="<?php echo esc_url( add_query_arg( 'ur_login_preview', 'true', $login_page_url ) ); ?>" target="_blank" rel="noreferrer noopener"><?php esc_html_e( 'View Live', 'user-registration' ); ?></a>
 					<?php else : ?>
 						<button name="create_login_page" data-form_id="<?php esc_attr_e( $login_page_id ); ?>" class="button button-large ur-embed-form-button ur-create-login-page-button" type="button" value="<?php esc_attr_e( 'Create Login Page', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Create Login Page', 'user-registration' ); ?>">+ <?php esc_html_e( 'Create Login Page', 'user-registration' ); ?></button>
 					<?php endif; ?>

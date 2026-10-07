@@ -1,6 +1,6 @@
 @import "variables/variables";
 @import "mixins/mixins";
-@import "components/button", "components/typography", "components/toggle";
+@import "components/button", "components/typography", "components/toggle", "components/modal", "components/settings-tools";
 
 // User Registration Global Settings CSS
 * {
@@ -10,6 +10,13 @@
 body {
 	@media screen and (max-width: 782px) {
 		min-width: 600px;
+	}
+
+	// Tools tab's Logs table needs the full mobile width; every other Settings tab keeps the 600px floor.
+	&:has(.user-registration-settings--tools) {
+		@media screen and (max-width: 782px) {
+			min-width: 0;
+		}
 	}
 }
 
@@ -1094,6 +1101,15 @@ body {
 						padding-bottom: $spacing_20px;
 					}
 				}
+
+				&.ur-payment-section-highlight {
+					animation: ur-payment-section-pulse 1.2s ease-in-out 3;
+					box-shadow: 0 0 0 3px rgba(71, 91, 178, 0.55) !important;
+					border-color: #475bb2 !important;
+					border-radius: $border_radius_3;
+					outline: 2px solid rgba(71, 91, 178, 0.45);
+					outline-offset: 2px;
+				}
 			}
 
 			.integration-header-info {
@@ -2136,8 +2152,19 @@ body {
 			&.ui-state-active {
 				color: white;
 				background: #0073aa;
+
+				.ur-search-result-location {
+					color: inherit;
+				}
 			}
 		}
+	}
+
+	.ur-search-result-location {
+		display: block;
+		margin-top: 2px;
+		font-size: 11px;
+		color: #50575e;
 	}
 }
 
@@ -2895,3 +2922,71 @@ body {
 		display: none !important;
 	}
 }
+
+@keyframes ur-payment-section-pulse {
+	0%,
+	100% {
+		box-shadow: 0 0 0 3px rgba(71, 91, 178, 0.35);
+	}
+	50% {
+		box-shadow: 0 0 0 6px rgba(71, 91, 178, 0.15);
+	}
+}
+
+.user-registration-password-input-wrapper {
+	position: relative;
+	display: flex;
+	align-items: center;
+	width: 100%;
+
+	input[type="password"],
+	input[type="text"] {
+		width: 100%;
+		padding-right: 40px !important;
+	}
+
+	.user-registration-password-toggle,
+	.ur-toggle-password {
+		position: absolute;
+		right: 12px;
+		top: 50%;
+		transform: translateY(-50%);
+		background: none;
+		border: none;
+		padding: 0;
+		margin: 0;
+		width: 20px;
+		height: 20px;
+		line-height: 1;
+		cursor: pointer;
+		color: #787c82;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+
+		&:hover {
+			color: #135e96;
+		}
+
+		&:focus {
+			color: #135e96;
+			outline: 2px solid #2271b1;
+			outline-offset: 2px;
+			border-radius: 2px;
+		}
+
+		&:focus:not(:focus-visible) {
+			outline: none;
+		}
+
+		.dashicons {
+			font-size: 20px;
+			width: 20px;
+			height: 20px;
+			line-height: 1;
+			vertical-align: middle;
+			display: inline-block;
+		}
+	}
+}
+

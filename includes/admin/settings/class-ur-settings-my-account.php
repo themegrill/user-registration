@@ -84,7 +84,7 @@ if ( ! class_exists( 'UR_Settings_My_Account' ) ) {
 					'my_account_options' => array(
 						'title'    => __( 'General', 'user-registration' ),
 						'type'     => 'card',
-						'desc'     => sprintf(
+						'desc'     => ur_string_to_bool( get_option( 'urm_is_new_installation', '' ) ) ? '' : sprintf(
 							__( '<strong>My Account page setting has moved.</strong> Configure your my account page <a href="%s">here</a>.', 'user-registration' ),
 							admin_url( 'admin.php?page=user-registration-settings&tab=general&section=pages' )
 						),

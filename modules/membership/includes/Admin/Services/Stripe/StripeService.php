@@ -172,6 +172,9 @@ class StripeService {
 			'invoice.payment_failed',
 			'payment_intent.payment_failed',
 			'charge.refunded',
+			'charge.dispute.created',
+			'charge.dispute.updated',
+			'charge.dispute.closed',
 			// Fires when a delayed-start Subscription Schedule (100% coupon) actually starts and
 			// materializes its subscription, so we can back-fill the real subscription id. UR-4386.
 			'customer.subscription.created',
@@ -413,6 +416,121 @@ class StripeService {
 	}
 
 	/**
+	 * Resolve one mapped form field to the member's submitted value.
+	 *
+	 * @param int          $member_id Member ID.
+	 * @param string|array $field     Mapped field name, or names for a multiselect.
+	 * @return string
+	 */
+	private function get_synced_value( $member_id, $field ) {
+		// Moved to ur_get_synced_field_value() in core so Mollie (a separate plugin) can reuse it instead of duplicating.
+		return ur_get_synced_field_value( $member_id, $field );
+	}
+
+	/**
+	 * Build the Stripe customer payload, letting field sync override the defaults.
+	 *
+	 * @param int    $member_id  Member ID.
+	 * @param string $user_email Registered email, used when sync does not map one.
+	 * @param string $username   Username, used when sync does not map a name.
+	 * @return array
+	 */
+	private function build_customer_payload( $member_id, $user_email, $username ) {
+		$payload = array(
+			'email' => $user_email,
+			'name'  => $username,
+		);
+
+		$form_id = function_exists( 'ur_get_form_id_by_userid' ) ? ur_get_form_id_by_userid( $member_id ) : 0;
+
+		if ( ! $form_id || ! ur_string_to_bool( ur_get_single_post_meta( $form_id, 'user_registration_enable_sync_fields_with_stripe', false ) ) ) {
+			return $payload;
+		}
+
+		$address_keys = array( 'city', 'country', 'line1', 'line2', 'postal_code', 'state' );
+		$top_level    = array(
+			'name'        => 'full_name',
+			'description' => 'description',
+			'phone'       => 'phone',
+			'email'       => 'email',
+		);
+
+		foreach ( $top_level as $stripe_key => $sync_key ) {
+			$mapped = maybe_unserialize( ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_' . $sync_key, '' ) );
+			$value  = $mapped ? $this->get_synced_value( $member_id, $mapped ) : '';
+
+			// A blank mapped field must never overwrite a good default.
+			if ( '' !== $value ) {
+				$payload[ $stripe_key ] = $value;
+			}
+		}
+
+		foreach ( array( 'address' => '', 'shipping' => 'shipping_' ) as $group => $prefix ) {
+			// Each group has its own enable toggle in the form settings; turning it off must stop
+			// sending that group's mapped values, not just hide the fields.
+			$enable_option = 'shipping' === $group
+				? 'user_registration_enable_sync_shipping_address_with_stripe'
+				: 'user_registration_enable_sync_address_with_stripe';
+
+			if ( ! ur_string_to_bool( ur_get_single_post_meta( $form_id, $enable_option, false ) ) ) {
+				continue;
+			}
+
+			$address = array();
+
+			foreach ( $address_keys as $address_key ) {
+				$mapped = ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_' . $prefix . $address_key, '' );
+				$value  = $mapped ? $this->get_synced_value( $member_id, $mapped ) : '';
+
+				// A country field stores {"country":"..","state":".."} as one meta value; pull the requested part out of it.
+				if ( in_array( $address_key, array( 'country', 'state' ), true ) && '' !== $value && '{' === $value[0] ) {
+					$decoded = json_decode( $value, true );
+					$value   = is_array( $decoded ) && isset( $decoded[ $address_key ] ) ? $decoded[ $address_key ] : '';
+				}
+
+				if ( '' !== $value ) {
+					$address[ $address_key ] = $value;
+				}
+			}
+
+			if ( empty( $address ) ) {
+				continue;
+			}
+
+			if ( 'shipping' === $group ) {
+				$shipping_name = $this->get_synced_value( $member_id, maybe_unserialize( ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_shipping_full_name', '' ) ) );
+				$shipping_name = '' !== $shipping_name ? $shipping_name : $payload['name'];
+
+				$payload['shipping'] = array(
+					'name'    => $shipping_name,
+					'address' => $address,
+				);
+
+				$shipping_phone = $this->get_synced_value( $member_id, ur_get_single_post_meta( $form_id, 'user_registration_stripe_sync_shipping_phone', '' ) );
+
+				if ( '' !== $shipping_phone ) {
+					$payload['shipping']['phone'] = $shipping_phone;
+				}
+
+				continue;
+			}
+
+			$payload['address'] = $address;
+		}
+
+		/**
+		 * Filters the Stripe customer payload built for a membership signup.
+		 *
+		 * @param array $payload   Customer payload.
+		 * @param int   $member_id Member ID.
+		 * @param int   $form_id   Form ID.
+		 *
+		 * @since x.x.x
+		 */
+		return apply_filters( 'user_registration_membership_stripe_customer_payload', $payload, $member_id, $form_id );
+	}
+
+	/**
 	 * Process Stripe payment.
 	 *
 	 * @param array $payment_data  Payment data.
@@ -447,7 +565,7 @@ class StripeService {
 							JSON_PRETTY_PRINT
 						)
 					);
-					if ( empty( $payment_data['upgrade'] ) ) {
+					if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 						wp_delete_user( absint( $member_id ) );
 						if ( $team_id ) {
 							wp_delete_post( absint( $team_id ) );
@@ -476,7 +594,7 @@ class StripeService {
 								JSON_PRETTY_PRINT
 							)
 						);
-						if ( empty( $payment_data['upgrade'] ) ) {
+						if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 							wp_delete_user( absint( $member_id ) );
 							if ( $team_id ) {
 								wp_delete_post( absint( $team_id ) );
@@ -586,7 +704,7 @@ class StripeService {
 					JSON_PRETTY_PRINT
 				)
 			);
-			if ( empty( $payment_data['upgrade'] ) ) {
+			if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 				wp_delete_user( absint( $member_id ) );
 			}
 			wp_send_json_error(
@@ -609,7 +727,7 @@ class StripeService {
 					JSON_PRETTY_PRINT
 				)
 			);
-			if ( empty( $payment_data['upgrade'] ) ) {
+			if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 				wp_delete_user( absint( $member_id ) );
 			}
 			wp_send_json_error(
@@ -648,10 +766,7 @@ class StripeService {
 				);
 
 				$customer = \Stripe\Customer::create(
-					array(
-						'email' => $user_email,
-						'name'  => $username,
-					)
+					$this->build_customer_payload( $member_id, $user_email, $username )
 				);
 
 				update_user_meta( $member_id, 'ur_payment_customer', $customer->id );
@@ -731,7 +846,7 @@ class StripeService {
 				),
 			);
 
-			if ( empty( $payment_data['upgrade'] ) ) {
+			if ( empty( $payment_data['upgrade'] ) && ! $this->is_existing_member( $member_id ) ) {
 				wp_delete_user( absint( $member_id ) );
 			}
 
@@ -987,7 +1102,7 @@ class StripeService {
 		}
 
 		if ( 'failed' === $payment_status ) {
-			$is_renewing = ! empty( $membership_process['renew'] ) && in_array( $latest_order['item_id'], $membership_process['renew'], true );
+			$is_renewing = $this->is_renewing_membership( $membership_process, $latest_order['item_id'] );
 
 			$error_msg = __( 'Stripe Payment failed.', 'user-registration' );
 			$error_msg = $data['payment_result']['error']['message'] ?? $error_msg;
@@ -1014,15 +1129,14 @@ class StripeService {
 
 			do_action( 'ur_membership_order_status_failed', $latest_order['ID'], $latest_order, 'failed' );
 
-			if ( ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
-				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
+			if ( ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple && ! $this->is_existing_member( $member_id ) ) {
+				if ( $this->can_discard_pending_member( $member_id ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
 			}
 			if ( $is_renewing ) {
-				unset( $membership_process['upgrade'][ $latest_order['item_id'] ] );
-				update_user_meta( $member_id, 'urm_membership_process', $membership_process );
+				$this->clear_renewal_marker( $member_id, $latest_order['item_id'] );
 
 				do_action( 'user_registration_membership_renewal_failed', $member_id, $latest_order['item_id'] );
 			}
@@ -1201,6 +1315,134 @@ class StripeService {
 	}
 
 	/**
+	 * Whether a membership is being renewed.
+	 *
+	 * The renew list holds integer IDs (`absint()` when the renewal starts) while order and subscription rows
+	 * return the membership ID as a string, so a strict comparison of the raw values never matches.
+	 *
+	 * @param array      $membership_process Membership process of the member.
+	 * @param int|string $membership_id      Membership ID.
+	 * @return bool
+	 */
+	private function is_renewing_membership( $membership_process, $membership_id ) {
+		return ! empty( $membership_process['renew'] ) && in_array( absint( $membership_id ), array_map( 'absint', (array) $membership_process['renew'] ), true );
+	}
+
+	/**
+	 * Remove a membership from the member's renewal list.
+	 *
+	 * A renewal that did not complete must not stay marked as in progress, or the member can never start another.
+	 *
+	 * @param int|string $member_id     Member user ID.
+	 * @param int|string $membership_id Membership ID.
+	 * @return void
+	 */
+	private function clear_renewal_marker( $member_id, $membership_id ) {
+		$membership_process          = urm_get_membership_process( $member_id );
+		$membership_process['renew'] = array_values(
+			array_filter(
+				(array) $membership_process['renew'],
+				function ( $renewing_id ) use ( $membership_id ) {
+					return absint( $renewing_id ) !== absint( $membership_id );
+				}
+			)
+		);
+
+		update_user_meta( absint( $member_id ), 'urm_membership_process', $membership_process );
+	}
+
+	/**
+	 * Whether the current request may delete a pending member after a failed payment.
+	 *
+	 * The member themselves, an admin, or the logged-out browser whose registration session created the pending member.
+	 *
+	 * @param int|string $member_id Pending member user ID.
+	 * @return bool
+	 */
+	private function can_discard_pending_member( $member_id ) {
+		return absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) || ( ! is_user_logged_in() && WPEverestURMembershipAJAX::verify_pending_member_session( absint( $member_id ) ) );
+	}
+
+	/**
+	 * Whether a member has already paid, so a failed payment is not a failed new registration.
+	 *
+	 * Only a user created for this checkout may be deleted when the payment fails; a member who already
+	 * completed an order (a renewal, another membership, a retry) must keep their account, orders and subscription.
+	 *
+	 * @param int|string $member_id Member user ID.
+	 * @return bool
+	 */
+	private function is_existing_member( $member_id ) {
+		return $this->orders_repository->has_completed_order_for_user( absint( $member_id ) );
+	}
+
+	/**
+	 * Stop the Stripe subscription a renewal replaces, so the member is not billed on both.
+	 *
+	 * It is stopped once the new subscription is paid (active or trialing). While the new one still needs
+	 * 3D Secure the old one keeps the member covered, and is remembered until the new subscription's first paid invoice.
+	 *
+	 * @param string     $old_subscription_id Stripe subscription ID the renewal replaces.
+	 * @param string     $new_subscription_id Stripe subscription ID created by the renewal.
+	 * @param int|string $member_id           Member user ID.
+	 * @param string     $new_stripe_status   Status Stripe reported for the new subscription.
+	 * @return void
+	 */
+	private function stop_replaced_subscription( $old_subscription_id, $new_subscription_id, $member_id, $new_stripe_status ) {
+		if ( empty( $old_subscription_id ) || $old_subscription_id === $new_subscription_id || 0 !== strpos( (string) $old_subscription_id, 'sub_' ) || 0 === strpos( (string) $old_subscription_id, 'sub_sched_' ) ) {
+			return;
+		}
+
+		if ( ! in_array( $new_stripe_status, array( 'active', 'trialing' ), true ) ) {
+			update_user_meta(
+				absint( $member_id ),
+				'urm_stripe_replaced_subscription',
+				array(
+					'old' => sanitize_text_field( $old_subscription_id ),
+					'new' => sanitize_text_field( $new_subscription_id ),
+				)
+			);
+
+			return;
+		}
+
+		try {
+			$old_subscription = \Stripe\Subscription::retrieve( $old_subscription_id );
+
+			if ( $old_subscription && ! in_array( $old_subscription->status, array( 'canceled', 'incomplete_expired' ), true ) ) {
+				$old_subscription->cancel();
+
+				PaymentGatewayLogging::log_general(
+					'stripe',
+					'Replaced Stripe subscription canceled after renewal' . "\n" . wp_json_encode(
+						array(
+							'event_type'          => 'renewal_replaced_subscription_canceled',
+							'old_subscription_id' => $old_subscription_id,
+							'new_subscription_id' => $new_subscription_id,
+							'member_id'           => $member_id,
+						),
+						JSON_PRETTY_PRINT
+					),
+					'notice'
+				);
+			}
+
+			delete_user_meta( absint( $member_id ), 'urm_stripe_replaced_subscription' );
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to cancel the Stripe subscription replaced by a renewal: ' . $e->getMessage(),
+				array(
+					'error_code'          => 'REPLACED_SUBSCRIPTION_CANCEL_FAILED',
+					'old_subscription_id' => $old_subscription_id,
+					'new_subscription_id' => $new_subscription_id,
+					'member_id'           => $member_id,
+				)
+			);
+		}
+	}
+
+	/**
 	 * Create Stripe subscription.
 	 *
 	 * @param string $customer_id       Customer ID.
@@ -1222,7 +1464,9 @@ class StripeService {
 		$is_automatic        = 'automatic' === get_option( 'user_registration_renewal_behaviour', 'automatic' );
 
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = ! empty( $membership_process['renew'] ) && in_array( $member_order['item_id'], $membership_process['renew'], true );
+		$is_renewing        = $this->is_renewing_membership( $membership_process, $member_order['item_id'] );
+		// The local row is overwritten with the new subscription's ID below, so keep the one a renewal replaces.
+		$replaced_subscription_id = $is_renewing ? ( $member_subscription['subscription_id'] ?? '' ) : '';
 
 		$response = array(
 			'status' => false,
@@ -1738,7 +1982,7 @@ class StripeService {
 				}
 			}
 
-			if ( ( ! $is_automatic && ! $is_upgrading ) || $is_renewing ) {
+			if ( ! $is_automatic && ( $is_renewing || ! $is_upgrading ) ) {
 				$value    = $subscription_value;
 				$duration = $subscription_duration;
 
@@ -1771,6 +2015,7 @@ class StripeService {
 
 			$subscription        = \Stripe\Subscription::create( $subscription_details );
 			$subscription_status = $subscription->status ?? '';
+			$new_stripe_status   = $subscription_status;
 			PaymentGatewayLogging::log_api_response(
 				'stripe',
 				'Stripe subscription created',
@@ -1843,6 +2088,8 @@ class StripeService {
 						'status'          => $subscription_status,
 					)
 				);
+
+				$this->stop_replaced_subscription( $replaced_subscription_id, $subscription->id, $member_id, $new_stripe_status );
 
 				PaymentGatewayLogging::log_debug(
 					'stripe',
@@ -1919,6 +2166,8 @@ class StripeService {
 					)
 				);
 
+				$this->stop_replaced_subscription( $replaced_subscription_id, $subscription->id, $member_id, $new_stripe_status );
+
 				$response['subscription'] = $subscription;
 				$response['message']      = __( 'Payment requires additional verification.', 'user-registration' );
 				$response['status']       = true;
@@ -1939,8 +2188,16 @@ class StripeService {
 				)
 			);
 
-			if ( ! $is_upgrading && ! $is_renewing ) {
-				if ( absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) ) {
+			if ( $is_renewing ) {
+				// Without this the order stays pending and the marker blocks every later renewal.
+				$this->members_orders_repository->update( $member_order['ID'], array( 'status' => 'failed' ) );
+				$this->clear_renewal_marker( $member_id, $member_order['item_id'] );
+
+				do_action( 'user_registration_membership_renewal_failed', $member_id, $member_order['item_id'] );
+			}
+
+			if ( ! $is_upgrading && ! $is_renewing && ! $this->is_existing_member( $member_id ) ) {
+				if ( $this->can_discard_pending_member( $member_id ) ) {
 					wp_delete_user( absint( $member_id ) );
 				}
 				$this->members_orders_repository->delete_member_order( $member_id );
@@ -2012,11 +2269,12 @@ class StripeService {
 	/**
 	 * Cancel Stripe subscription.
 	 *
-	 * @param array $order        Order data.
-	 * @param array $subscription Subscription data.
+	 * @param array $order         Order data.
+	 * @param array $subscription  Subscription data.
+	 * @param bool  $force_cancel  When true, cancel immediately; otherwise cancel at period end.
 	 * @return array
 	 */
-	public function cancel_subscription( $order, $subscription ) {
+	public function cancel_subscription( $order, $subscription, $force_cancel = false ) {
 
 		$response = array(
 			'status' => false,
@@ -2043,6 +2301,7 @@ class StripeService {
 				array(
 					'event_type'      => 'cancellation_initiated',
 					'subscription_id' => $subscription['subscription_id'],
+					'force_cancel'    => $force_cancel,
 					'order_id'        => $order['ID'] ?? 'unknown',
 				),
 				JSON_PRETTY_PRINT
@@ -2050,15 +2309,65 @@ class StripeService {
 			'notice'
 		);
 
+		$stripe_subscription_id = $subscription['subscription_id'];
+		$deleted_sub            = null;
+
 		try {
-			$stripe_subscription = \Stripe\Subscription::retrieve( $subscription['subscription_id'] );
+			// Delayed-start checkouts store a schedule id until the webhook back-fills the real subscription id.
+			if ( $force_cancel && 0 === strpos( $stripe_subscription_id, 'sub_sched_' ) ) {
+				$schedule = \Stripe\SubscriptionSchedule::retrieve( $stripe_subscription_id );
+
+				if ( in_array( $schedule->status, array( 'not_started', 'active', 'canceled' ), true ) ) {
+					// Cancelling a schedule also cancels any subscription it has already started.
+					if ( 'canceled' !== $schedule->status ) {
+						$schedule->cancel();
+					}
+
+					$response['status'] = true;
+
+					PaymentGatewayLogging::log_general(
+						'stripe',
+						'Subscription schedule cancelled successfully' . "\n" . wp_json_encode(
+							array(
+								'event_type'  => 'cancellation_success',
+								'schedule_id' => $stripe_subscription_id,
+							),
+							JSON_PRETTY_PRINT
+						),
+						'success'
+					);
+
+					return $response;
+				}
+
+				// Released or completed schedules hand billing over to a standalone subscription.
+				$stripe_subscription_id = ! empty( $schedule->released_subscription ) ? $schedule->released_subscription : $schedule->subscription;
+
+				if ( empty( $stripe_subscription_id ) ) {
+					return $response;
+				}
+			}
+
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+
+			// Already canceled at Stripe: nothing left to stop, so this counts as success.
+			if ( $force_cancel && $stripe_subscription && 'canceled' === $stripe_subscription->status ) {
+				$response['status'] = true;
+
+				return $response;
+			}
+
 			if ( $stripe_subscription ) {
-				$deleted_sub = \Stripe\Subscription::update(
-					$subscription['subscription_id'],
-					array(
-						'cancel_at_period_end' => true,
-					)
-				);
+				if ( $force_cancel ) {
+					$deleted_sub = $stripe_subscription->cancel();
+				} else {
+					$deleted_sub = \Stripe\Subscription::update(
+						$stripe_subscription_id,
+						array(
+							'cancel_at_period_end' => true,
+						)
+					);
+				}
 			}
 		} catch ( \Stripe\Exception\ApiErrorException $e ) {
 			PaymentGatewayLogging::log_error(
@@ -2077,7 +2386,10 @@ class StripeService {
 			return $response;
 		}
 
-		if ( isset( $deleted_sub['canceled_at'] ) && '' !== $deleted_sub['canceled_at'] ) {
+		$canceled_now     = isset( $deleted_sub['canceled_at'] ) && '' !== $deleted_sub['canceled_at'];
+		$cancel_at_period = ! empty( $deleted_sub['cancel_at_period_end'] );
+
+		if ( $canceled_now || ( ! $force_cancel && $cancel_at_period ) ) {
 			$response['status'] = true;
 
 			PaymentGatewayLogging::log_general(
@@ -2086,7 +2398,7 @@ class StripeService {
 					array(
 						'event_type'           => 'cancellation_success',
 						'subscription_id'      => $subscription['subscription_id'],
-						'canceled_at'          => date( 'Y-m-d H:i:s', $deleted_sub['canceled_at'] ),
+						'canceled_at'          => ! empty( $deleted_sub['canceled_at'] ) ? date( 'Y-m-d H:i:s', $deleted_sub['canceled_at'] ) : '',
 						'cancel_at_period_end' => $deleted_sub['cancel_at_period_end'] ?? false,
 					),
 					JSON_PRETTY_PRINT
@@ -2218,6 +2530,15 @@ class StripeService {
 			case 'charge.refunded':
 				$this->handle_refunded_charge( $event );
 				break;
+			case 'charge.dispute.created':
+				$this->handle_dispute_created( $event );
+				break;
+			case 'charge.dispute.updated':
+				$this->handle_dispute_updated( $event );
+				break;
+			case 'charge.dispute.closed':
+				$this->handle_dispute_closed( $event );
+				break;
 			case 'customer.subscription.created':
 				$this->handle_scheduled_subscription_started( $event );
 				break;
@@ -2321,27 +2642,48 @@ class StripeService {
 
 			return;
 		}
-		// A 'trial' sub, or a 'pending' delayed-start sub (UR-4386 100% coupon), activates on its
-		// first successful charge; anything else keeps its current status.
-		$subscription_status = in_array( $current_subscription['status'], array( 'trial', 'pending' ), true ) ? 'active' : $current_subscription['status'];
+		// Successful invoice means access should continue. Keep canceled (admin/gateway cancel)
+		// terminal; everything else — including expired after a late renewal — becomes active.
+		$subscription_status = ( 'canceled' === ( $current_subscription['status'] ?? '' ) ) ? 'canceled' : 'active';
 
 		$member_id         = $current_subscription['user_id'];
+
+		// A renewal that needed 3D Secure left the old subscription running; stop it now that the new one is paid.
+		$replaced_subscription = get_user_meta( absint( $member_id ), 'urm_stripe_replaced_subscription', true );
+		if ( is_array( $replaced_subscription ) && ( $replaced_subscription['new'] ?? '' ) === $subscription_id ) {
+			$this->stop_replaced_subscription( $replaced_subscription['old'] ?? '', $subscription_id, $member_id, 'active' );
+		}
 		$membership_id     = $current_subscription['item_id'];
 		$invoice_id        = $event['data']['object']['id'];
-		$payment_intent_id = $event['data']['object']['payment_intent'] ?? null;
-		$invoice_amount    = $event['data']['object']['amount_due']; // phpcs:ignore VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable
+		$payment_intent_id = $this->extract_stripe_id( $event['data']['object']['payment_intent'] ?? null );
+		$invoice_amount    = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
 
-		// $0 trial invoices have no payment_intent. The initial order was already created
-		// during subscription setup, so skip duplicate order creation here.
+		// $0 invoices (typical first trial invoice) have no payment_intent. Skip duplicate order
+		// creation, but still sync dates/status from Stripe — otherwise a renewal invoice that
+		// arrives without a PI leaves the member expired while Stripe stays active (inflowmind Mika).
+		// A trial or pending subscription keeps its status and expiry until its first paid invoice.
 		if ( empty( $payment_intent_id ) ) {
+			$keeps_trial_state = in_array( $current_subscription['status'] ?? '', array( 'trial', 'pending' ), true );
+
+			if ( $keeps_trial_state ) {
+				$log_message = 'Skipping order creation for zero-amount trial invoice';
+				$log_event   = 'invoice_without_payment_intent_trial_kept';
+			} else {
+				$this->sync_local_subscription_from_stripe( $subscription_id, $current_subscription, $subscription_status );
+
+				$log_message = 'Skipping order creation for invoice without payment_intent; local subscription synced from Stripe';
+				$log_event   = 'invoice_without_payment_intent_synced';
+			}
+
 			PaymentGatewayLogging::log_general(
 				'stripe',
-				'Skipping order creation for zero-amount trial invoice' . "\n" . wp_json_encode(
+				$log_message . "\n" . wp_json_encode(
 					array(
-						'event_type'      => 'trial_invoice_skipped',
+						'event_type'      => $log_event,
 						'subscription_id' => $subscription_id,
 						'invoice_id'      => $invoice_id,
 						'member_id'       => $member_id,
+						'amount_paid'     => $invoice_amount,
 					),
 					JSON_PRETTY_PRINT
 				),
@@ -2438,7 +2780,7 @@ class StripeService {
 			)
 		);
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = ! empty( $membership_process['renew'] ) && in_array( $membership_id, $membership_process['renew'], true );
+		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
 
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
@@ -2630,6 +2972,411 @@ class StripeService {
 				'payment_intent_id' => $payment_intent_id,
 			)
 		);
+	}
+
+	/**
+	 * Handle charge.dispute.created: flag membership, notify admin and, for a real dispute, revoke access.
+	 *
+	 * An inquiry (`warning_*` status) moves no money, so it is only flagged and reported.
+	 *
+	 * @param array $event Stripe event array.
+	 * @return void
+	 */
+	public function handle_dispute_created( $event ) {
+		$dispute = isset( $event['data']['object'] ) ? $event['data']['object'] : array();
+		$order   = $this->resolve_order_from_dispute( $dispute );
+
+		PaymentGatewayLogging::log_webhook_received(
+			'stripe',
+			'Charge dispute created webhook received',
+			array(
+				'webhook_type' => 'charge.dispute.created',
+				'dispute_id'   => $dispute['id'] ?? 'unknown',
+				'event_id'     => $event['id'] ?? 'unknown',
+				'order_id'     => $order['ID'] ?? null,
+			)
+		);
+
+		if ( empty( $order['ID'] ) ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'charge.dispute.created: no local order for dispute.',
+				array(
+					'error_code'        => 'ORDER_NOT_FOUND',
+					'dispute_id'        => $dispute['id'] ?? 'unknown',
+					'payment_intent_id' => $dispute['payment_intent'] ?? '',
+					'charge_id'         => $dispute['charge'] ?? '',
+				)
+			);
+			return;
+		}
+
+		$existing_flag = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
+		$same_dispute  = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) ( $dispute['id'] ?? '' ) === (string) $existing_flag['dispute_id'];
+		$already_seen  = $same_dispute;
+		$is_inquiry    = $this->is_inquiry_dispute( $dispute );
+		// Do not overwrite a later outcome if created is replayed out of order.
+		$already_closed = $same_dispute
+			&& ! empty( $existing_flag['status'] )
+			&& $this->is_final_dispute_status( $existing_flag['status'] );
+
+		if ( ! $already_closed ) {
+			$this->flag_order_dispute( $order, $dispute, $is_inquiry ? $dispute['status'] : 'open' );
+		}
+
+		if ( ! $is_inquiry && ! $already_closed ) {
+			$this->revoke_membership_for_dispute( $order, $dispute );
+		}
+
+		if ( ! $already_seen ) {
+			$this->notify_admin_of_dispute( $order, $dispute, $is_inquiry ? 'inquiry' : 'created' );
+		}
+
+		PaymentGatewayLogging::log_webhook_processed(
+			'stripe',
+			sprintf( $is_inquiry ? 'Inquiry %s: order %d flagged, membership kept.' : 'Dispute %s: order %d flagged and membership revoked.', $dispute['id'] ?? '', $order['ID'] ),
+			array(
+				'order_id'   => $order['ID'],
+				'dispute_id' => $dispute['id'] ?? '',
+				'member_id'  => $order['user_id'] ?? 0,
+			)
+		);
+	}
+
+	/**
+	 * Handle charge.dispute.closed: update flag; ensure access stays revoked.
+	 *
+	 * Revokes for a real dispute (including won). If created was missed, a won close must still
+	 * cancel access; admins restore manually after a won dispute. A closed inquiry
+	 * (`warning_closed`) never revoked and is left alone.
+	 *
+	 * @param array $event Stripe event array.
+	 * @return void
+	 */
+	public function handle_dispute_closed( $event ) {
+		$dispute        = isset( $event['data']['object'] ) ? $event['data']['object'] : array();
+		$dispute_status = isset( $dispute['status'] ) ? sanitize_text_field( $dispute['status'] ) : '';
+		$order          = $this->resolve_order_from_dispute( $dispute );
+
+		PaymentGatewayLogging::log_webhook_received(
+			'stripe',
+			'Charge dispute closed webhook received',
+			array(
+				'webhook_type'   => 'charge.dispute.closed',
+				'dispute_id'     => $dispute['id'] ?? 'unknown',
+				'dispute_status' => $dispute_status,
+				'event_id'       => $event['id'] ?? 'unknown',
+				'order_id'       => $order['ID'] ?? null,
+			)
+		);
+
+		if ( empty( $order['ID'] ) ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'charge.dispute.closed: no local order for dispute.',
+				array(
+					'error_code' => 'ORDER_NOT_FOUND',
+					'dispute_id' => $dispute['id'] ?? 'unknown',
+				)
+			);
+			return;
+		}
+
+		$existing_flag  = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
+		$already_closed = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) ( $dispute['id'] ?? '' ) === (string) $existing_flag['dispute_id']
+			&& ! empty( $existing_flag['status'] )
+			&& (string) $dispute_status === (string) $existing_flag['status'];
+
+		$this->flag_order_dispute( $order, $dispute, $dispute_status ? $dispute_status : 'closed' );
+		if ( ! $this->is_inquiry_dispute( $dispute ) ) {
+			$this->revoke_membership_for_dispute( $order, $dispute );
+		}
+
+		if ( ! $already_closed ) {
+			$this->notify_admin_of_dispute( $order, $dispute, 'closed' );
+		}
+
+		PaymentGatewayLogging::log_webhook_processed(
+			'stripe',
+			sprintf( 'Dispute %s closed as %s for order %d.', $dispute['id'] ?? '', $dispute_status, $order['ID'] ),
+			array(
+				'order_id'       => $order['ID'],
+				'dispute_id'     => $dispute['id'] ?? '',
+				'dispute_status' => $dispute_status,
+				'member_id'      => $order['user_id'] ?? 0,
+			)
+		);
+	}
+
+	/**
+	 * Handle charge.dispute.updated: an inquiry that escalates to a real dispute revokes access.
+	 *
+	 * @param array $event Stripe event array.
+	 * @return void
+	 */
+	public function handle_dispute_updated( $event ) {
+		$dispute = isset( $event['data']['object'] ) ? $event['data']['object'] : array();
+		$order   = $this->resolve_order_from_dispute( $dispute );
+
+		if ( empty( $order['ID'] ) || $this->is_inquiry_dispute( $dispute ) || $this->is_final_dispute_status( $dispute['status'] ?? '' ) ) {
+			return;
+		}
+
+		$existing_flag = get_user_meta( absint( $order['user_id'] ), 'urm_stripe_dispute', true );
+		$same_dispute  = is_array( $existing_flag )
+			&& ! empty( $existing_flag['dispute_id'] )
+			&& (string) ( $dispute['id'] ?? '' ) === (string) $existing_flag['dispute_id'];
+
+		// Only an inquiry that was flagged earlier needs escalating; a real dispute is already revoked.
+		if ( $same_dispute && ! empty( $existing_flag['status'] ) && ! $this->is_inquiry_dispute( array( 'status' => $existing_flag['status'] ) ) ) {
+			return;
+		}
+
+		$this->flag_order_dispute( $order, $dispute, 'open' );
+		$this->revoke_membership_for_dispute( $order, $dispute );
+		$this->notify_admin_of_dispute( $order, $dispute, 'created' );
+
+		PaymentGatewayLogging::log_webhook_processed(
+			'stripe',
+			sprintf( 'Dispute %s escalated: order %d flagged and membership revoked.', $dispute['id'] ?? '', $order['ID'] ),
+			array(
+				'order_id'   => $order['ID'],
+				'dispute_id' => $dispute['id'] ?? '',
+				'member_id'  => $order['user_id'] ?? 0,
+			)
+		);
+	}
+
+	/**
+	 * Whether a Stripe dispute is only an inquiry (early warning, no funds withdrawn).
+	 *
+	 * @param array $dispute Stripe dispute.
+	 * @return bool
+	 */
+	private function is_inquiry_dispute( $dispute ) {
+		return isset( $dispute['status'] ) && 0 === strpos( (string) $dispute['status'], 'warning_' );
+	}
+
+	/**
+	 * Whether a dispute status is a final outcome.
+	 *
+	 * @param string $status Stripe dispute status or local flag status.
+	 * @return bool
+	 */
+	private function is_final_dispute_status( $status ) {
+		return in_array( (string) $status, array( 'won', 'lost', 'warning_closed', 'closed', 'charge_refunded' ), true );
+	}
+
+	/**
+	 * Resolve the local order for a Stripe dispute object.
+	 *
+	 * @param array $dispute Stripe dispute object.
+	 * @return array
+	 */
+	private function resolve_order_from_dispute( $dispute ) {
+		$payment_intent_id = isset( $dispute['payment_intent'] ) ? $dispute['payment_intent'] : '';
+
+		if ( empty( $payment_intent_id ) && ! empty( $dispute['charge'] ) ) {
+			try {
+				$charge            = \Stripe\Charge::retrieve( $dispute['charge'] );
+				$payment_intent_id = $charge->payment_intent ?? '';
+			} catch ( \Exception $e ) {
+				PaymentGatewayLogging::log_error(
+					'stripe',
+					'Failed to retrieve charge for dispute Order lookup: ' . $e->getMessage(),
+					array(
+						'error_code' => 'CHARGE_RETRIEVE_FAILED',
+						'charge_id'  => $dispute['charge'],
+					)
+				);
+			}
+		}
+
+		if ( empty( $payment_intent_id ) ) {
+			return array();
+		}
+
+		$order = $this->orders_repository->get_order_by_transaction_id( $payment_intent_id );
+
+		return is_array( $order ) ? $order : array();
+	}
+
+	/**
+	 * Store dispute flag on the member for admin review.
+	 *
+	 * @param array  $order   Local order.
+	 * @param array  $dispute Stripe dispute.
+	 * @param string $status  Local dispute status label.
+	 * @return void
+	 */
+	private function flag_order_dispute( $order, $dispute, $status ) {
+		$user_id = absint( $order['user_id'] ?? 0 );
+		if ( ! $user_id ) {
+			return;
+		}
+
+		$flag = array(
+			'dispute_id'        => sanitize_text_field( $dispute['id'] ?? '' ),
+			'status'            => sanitize_text_field( $status ),
+			'reason'            => sanitize_text_field( $dispute['reason'] ?? '' ),
+			'amount'            => isset( $dispute['amount'] ) ? absint( $dispute['amount'] ) : 0,
+			'currency'          => sanitize_text_field( $dispute['currency'] ?? '' ),
+			'order_id'          => absint( $order['ID'] ),
+			'payment_intent_id' => sanitize_text_field( $dispute['payment_intent'] ?? ( $order['transaction_id'] ?? '' ) ),
+			'updated_at'        => gmdate( 'Y-m-d H:i:s' ),
+		);
+
+		update_user_meta( $user_id, 'urm_stripe_dispute', $flag );
+	}
+
+	/**
+	 * Mark order refunded and cancel membership for a disputed charge.
+	 *
+	 * @param array $order   Local order.
+	 * @param array $dispute Stripe dispute.
+	 * @return void
+	 */
+	private function revoke_membership_for_dispute( $order, $dispute ) {
+		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		if ( ! $subscription_id ) {
+			return;
+		}
+
+		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
+		if ( empty( $subscription ) ) {
+			return;
+		}
+
+		if ( 'canceled' !== ( $subscription['status'] ?? '' ) ) {
+			$this->members_subscription_repository->update(
+				$subscription_id,
+				array(
+					'status' => 'canceled',
+				)
+			);
+		}
+
+		if ( ! empty( $subscription['subscription_id'] ) ) {
+			$this->cancel_stripe_subscription_immediately( $subscription['subscription_id'], $order['ID'] ?? 0 );
+		}
+
+		if ( ! empty( $order['user_id'] ) ) {
+			delete_transient( 'urm_pending_login_' . absint( $order['user_id'] ) );
+		}
+
+		PaymentGatewayLogging::log_general(
+			'stripe',
+			sprintf( 'Dispute revoke: order %d refunded; subscription %d canceled.', $order['ID'], $subscription_id ) . "\n" . wp_json_encode(
+				array(
+					'event_type'      => 'dispute_revoke',
+					'order_id'        => $order['ID'],
+					'subscription_id' => $subscription_id,
+					'dispute_id'      => $dispute['id'] ?? '',
+					'member_id'       => $order['user_id'] ?? 0,
+				),
+				JSON_PRETTY_PRINT
+			),
+			'notice'
+		);
+	}
+
+	/**
+	 * Cancel a Stripe subscription immediately (dispute / chargeback).
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription id.
+	 * @param int    $order_id               Local order id for logs.
+	 * @return void
+	 */
+	private function cancel_stripe_subscription_immediately( $stripe_subscription_id, $order_id = 0 ) {
+		try {
+			$stripe_sub = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+			if ( $stripe_sub && ! in_array( $stripe_sub->status, array( 'canceled', 'incomplete_expired' ), true ) ) {
+				$stripe_sub->cancel();
+			}
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to cancel Stripe subscription after dispute: ' . $e->getMessage(),
+				array(
+					'error_code'      => 'DISPUTE_CANCEL_FAILED',
+					'subscription_id' => $stripe_subscription_id,
+					'order_id'        => $order_id,
+				)
+			);
+		}
+	}
+
+	/**
+	 * Email admins when a Stripe dispute is opened or closed.
+	 *
+	 * @param array  $order      Local order.
+	 * @param array  $dispute    Stripe dispute.
+	 * @param string $event_kind created|closed.
+	 * @return void
+	 */
+	private function notify_admin_of_dispute( $order, $dispute, $event_kind ) {
+		$recipients = get_option( 'user_registration_payments_admin_email_receipents', get_option( 'admin_email' ) );
+		$recipients = array_filter( array_map( 'trim', explode( ',', (string) $recipients ) ) );
+
+		if ( empty( $recipients ) ) {
+			return;
+		}
+
+		$user_id  = absint( $order['user_id'] ?? 0 );
+		$user     = $user_id ? get_user_by( 'ID', $user_id ) : false;
+		$username = $user ? $user->user_login : (string) $user_id;
+		$blogname = wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES );
+
+		if ( 'inquiry' === $event_kind ) {
+			/* translators: %s: site name */
+			$subject = sprintf( __( '[%s] Stripe inquiry opened', 'user-registration' ), $blogname );
+			/* translators: 1: dispute id, 2: reason, 3: username, 4: order id */
+			$message = sprintf(
+				__( "A Stripe inquiry was opened against a membership payment.\n\nDispute ID: %1\$s\nReason: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nNo funds were withdrawn and membership access has not been changed. Respond to the inquiry in your Stripe Dashboard; access is revoked if it becomes a dispute.", 'user-registration' ),
+				$dispute['id'] ?? '',
+				$dispute['reason'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		} elseif ( 'closed' === $event_kind ) {
+			/* translators: %s: site name */
+			$subject = sprintf( __( '[%s] Stripe dispute closed', 'user-registration' ), $blogname );
+			/* translators: 1: dispute id, 2: dispute status, 3: username, 4: order id */
+			$message = sprintf(
+				__( "A Stripe dispute has been closed.\n\nDispute ID: %1\$s\nOutcome: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nReview the member and restore access manually if the dispute was won.", 'user-registration' ),
+				$dispute['id'] ?? '',
+				$dispute['status'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		} else {
+			/* translators: %s: site name */
+			$subject = sprintf( __( '[%s] Stripe dispute opened — membership revoked', 'user-registration' ), $blogname );
+			/* translators: 1: dispute id, 2: reason, 3: username, 4: order id */
+			$message = sprintf(
+				__( "A Stripe dispute was opened against a membership payment.\n\nDispute ID: %1\$s\nReason: %2\$s\nMember: %3\$s\nOrder ID: %4\$d\n\nMembership access has been revoked. Respond to the dispute in your Stripe Dashboard.", 'user-registration' ),
+				$dispute['id'] ?? '',
+				$dispute['reason'] ?? '',
+				$username,
+				absint( $order['ID'] )
+			);
+		}
+
+		$headers = class_exists( '\UR_Emailer' ) ? \UR_Emailer::ur_get_header() : array();
+		// The header sets an HTML content type, so keep the line breaks of the plain-text body.
+		$message = wpautop( esc_html( $message ) );
+
+		foreach ( $recipients as $email ) {
+			if ( is_email( $email ) ) {
+				wp_mail( $email, $subject, $message, $headers );
+			}
+		}
 	}
 
 	/**
@@ -2919,6 +3666,191 @@ class StripeService {
 	}
 
 	/**
+	 * Reads the live Stripe subscription status without triggering a retry.
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription ID.
+	 * @return string|\WP_Error Stripe subscription status, or WP_Error if it could not be read.
+	 */
+	public function get_subscription_status( $stripe_subscription_id ) {
+		$stripe_subscription = $this->get_subscription( $stripe_subscription_id );
+
+		return is_wp_error( $stripe_subscription ) ? $stripe_subscription : (string) ( $stripe_subscription->status ?? '' );
+	}
+
+	/**
+	 * Reads the live Stripe subscription without triggering a retry.
+	 *
+	 * Callers that need both the status and the dates can use the returned object instead of retrieving twice.
+	 *
+	 * @param string $stripe_subscription_id Stripe subscription ID.
+	 * @return \Stripe\Subscription|\WP_Error The Stripe subscription, or WP_Error if it could not be read.
+	 */
+	public function get_subscription( $stripe_subscription_id ) {
+		try {
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+
+			return $stripe_subscription ? $stripe_subscription : new \WP_Error( 'urm_stripe_subscription_not_found', __( 'Subscription not found in Stripe', 'user-registration' ) );
+		} catch ( \Exception $e ) {
+			return new \WP_Error( 'urm_stripe_status_check_failed', $e->getMessage() );
+		}
+	}
+
+	/**
+	 * Normalize a Stripe id that may arrive as a string or an expanded object/array.
+	 *
+	 * @param mixed $value Stripe id, expanded object, or null.
+	 * @return string|null
+	 */
+	private function extract_stripe_id( $value ) {
+		if ( empty( $value ) ) {
+			return null;
+		}
+		if ( is_string( $value ) ) {
+			return $value;
+		}
+		if ( is_array( $value ) && ! empty( $value['id'] ) ) {
+			return (string) $value['id'];
+		}
+		if ( is_object( $value ) && ! empty( $value->id ) ) {
+			return (string) $value->id;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Push Stripe's current period end and status onto the matching local membership row.
+	 *
+	 * Used when a renewal invoice has no payment_intent (so we skip order creation) and when
+	 * the retry cron finds Stripe already active while the local row is still expired.
+	 *
+	 * @param string     $stripe_subscription_id Stripe subscription ID.
+	 * @param array|null $current_subscription   Optional local membership row.
+	 * @param string     $preferred_status       Optional local status override (e.g. 'active').
+	 * @return bool True when the local row was updated.
+	 */
+	public function sync_local_subscription_from_stripe( $stripe_subscription_id, $current_subscription = null, $preferred_status = '' ) {
+		if ( empty( $stripe_subscription_id ) ) {
+			return false;
+		}
+
+		if ( empty( $current_subscription ) ) {
+			$current_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $stripe_subscription_id, true );
+		}
+
+		if ( empty( $current_subscription['sub_id'] ) ) {
+			return false;
+		}
+
+		try {
+			$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_subscription_id );
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to sync local subscription from Stripe' . "\n" . wp_json_encode(
+					array(
+						'error_code'      => 'STRIPE_SYNC_FAILED',
+						'subscription_id' => $stripe_subscription_id,
+						'error_message'   => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			return false;
+		}
+
+		if ( empty( $stripe_subscription ) ) {
+			return false;
+		}
+
+		return $this->apply_stripe_subscription_to_local( $stripe_subscription, $current_subscription, $preferred_status );
+	}
+
+	/**
+	 * Get the end of the current billing period of a Stripe subscription as a timestamp.
+	 *
+	 * Since Stripe API 2025-03-31.basil `current_period_end` is on each subscription item; older versions
+	 * have it on the subscription. The account's API version decides, so both are read.
+	 *
+	 * @param object $stripe_subscription Stripe Subscription object.
+	 * @return int Zero when Stripe sent no period end.
+	 */
+	private function get_stripe_subscription_period_end( $stripe_subscription ) {
+		$ends = array();
+
+		if ( isset( $stripe_subscription->current_period_end ) ) {
+			$ends[] = (int) $stripe_subscription->current_period_end;
+		}
+
+		if ( isset( $stripe_subscription->items->data ) && is_iterable( $stripe_subscription->items->data ) ) {
+			foreach ( $stripe_subscription->items->data as $item ) {
+				if ( isset( $item->current_period_end ) ) {
+					$ends[] = (int) $item->current_period_end;
+				}
+			}
+		}
+
+		return $ends ? max( $ends ) : 0;
+	}
+
+	/**
+	 * Write period end / status from an already-retrieved Stripe subscription onto the local row.
+	 *
+	 * @param object $stripe_subscription  Stripe Subscription object.
+	 * @param array  $current_subscription Local membership row (needs sub_id).
+	 * @param string $preferred_status     Optional local status override.
+	 * @return bool
+	 */
+	public function apply_stripe_subscription_to_local( $stripe_subscription, $current_subscription, $preferred_status = '' ) {
+		if ( empty( $current_subscription['sub_id'] ) || empty( $stripe_subscription ) ) {
+			return false;
+		}
+
+		$update_data = array();
+
+		$current_period_end = $this->get_stripe_subscription_period_end( $stripe_subscription );
+		if ( $current_period_end > 0 ) {
+			$next_billing_date                = gmdate( 'Y-m-d H:i:s', $current_period_end );
+			$update_data['next_billing_date'] = $next_billing_date;
+			$update_data['expiry_date']       = $next_billing_date;
+		}
+
+		$stripe_status = isset( $stripe_subscription->status ) ? (string) $stripe_subscription->status : '';
+		if ( '' !== $preferred_status ) {
+			$update_data['status'] = sanitize_text_field( $preferred_status );
+		} elseif ( in_array( $stripe_status, array( 'active', 'trialing' ), true ) ) {
+			$update_data['status'] = 'active';
+		}
+
+		if ( empty( $update_data ) ) {
+			return false;
+		}
+
+		$updated = $this->members_subscription_repository->update( $current_subscription['sub_id'], $update_data );
+
+		if ( $updated ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'Local subscription synced from Stripe' . "\n" . wp_json_encode(
+					array(
+						'event_type'          => 'local_subscription_synced_from_stripe',
+						'local_sub_id'        => $current_subscription['sub_id'],
+						'stripe_subscription' => $stripe_subscription->id ?? '',
+						'stripe_status'       => $stripe_status,
+						'update_data'         => $update_data,
+						'member_id'           => $current_subscription['user_id'] ?? 'unknown',
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+		}
+
+		return (bool) $updated;
+	}
+
+	/**
 	 * Retries subscription for Stripe subscription payments.
 	 *
 	 * @param array $subscription Subscription data.
@@ -3006,6 +3938,11 @@ class StripeService {
 				);
 
 				if ( 'active' === $updated_subscription->status || 'trialing' === $updated_subscription->status ) {
+					$local_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
+					if ( ! empty( $local_subscription ) ) {
+						$this->apply_stripe_subscription_to_local( $updated_subscription, $local_subscription, 'active' );
+					}
+
 					PaymentGatewayLogging::log_transaction_success(
 						'stripe',
 						'Subscription payment retry successful',
@@ -3019,16 +3956,24 @@ class StripeService {
 					$response['status']  = true;
 					$response['message'] = __( 'Subscription payment retried successfully', 'user-registration' );
 				} else {
-					PaymentGatewayLogging::log_error(
-						'stripe',
-						'Subscription payment retry - Unexpected status' . "\n" . wp_json_encode(
-							array(
-								'subscription_id' => $subscription['sub_id'],
-								'status'          => $updated_subscription->status,
-							),
-							JSON_PRETTY_PRINT
-						)
+					// 'past_due' means Stripe is still actively dunning; 'unpaid' means Stripe has already exhausted its own retries.
+					$log_message = 'past_due' === $updated_subscription->status
+						? 'Subscription payment retry - still awaiting payment, gateway dunning in progress'
+						: 'Subscription payment retry - unexpected status';
+
+					$log_context = wp_json_encode(
+						array(
+							'subscription_id' => $subscription['sub_id'],
+							'status'          => $updated_subscription->status,
+						),
+						JSON_PRETTY_PRINT
 					);
+
+					if ( 'past_due' === $updated_subscription->status ) {
+						PaymentGatewayLogging::log_general( 'stripe', $log_message . "\n" . $log_context, 'notice' );
+					} else {
+						PaymentGatewayLogging::log_error( 'stripe', $log_message . "\n" . $log_context );
+					}
 
 					// Notify user via email about a failed retry attempt.
 					$current_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
@@ -3052,10 +3997,16 @@ class StripeService {
 					}
 				}
 			} elseif ( 'active' === $stripe_subscription->status || 'trialing' === $stripe_subscription->status ) {
-				// Scenario: if automatic retry is enabled in stripe dashboard, it might be already active via smart retry.
+				// Stripe already collected (or never left active). Sync local dates/status so an
+				// expired WP row does not stay expired while Stripe keeps billing (inflowmind Mika).
+				$local_subscription = $this->members_subscription_repository->get_membership_by_subscription_id( $subscription['sub_id'], true );
+				if ( ! empty( $local_subscription ) ) {
+					$this->apply_stripe_subscription_to_local( $stripe_subscription, $local_subscription, 'active' );
+				}
+
 				PaymentGatewayLogging::log_general(
 					'stripe',
-					'Subscription is already active - no retry needed' . "\n" . wp_json_encode(
+					'Subscription is already active on Stripe - local membership synced' . "\n" . wp_json_encode(
 						array(
 							'subscription_id' => $subscription['sub_id'],
 							'status'          => $stripe_subscription->status,
@@ -3388,8 +4339,8 @@ class StripeService {
 					'status' => $subscription->status,
 				);
 
-				$current_period_end = $subscription->current_period_end ?? null;
-				if ( ! empty( $current_period_end ) ) {
+				$current_period_end = $this->get_stripe_subscription_period_end( $subscription );
+				if ( $current_period_end > 0 ) {
 					$next_billing_date                = gmdate( 'Y-m-d H:i:s', $current_period_end );
 					$update_data['next_billing_date'] = $next_billing_date;
 					$update_data['expiry_date']       = $next_billing_date;
@@ -3741,6 +4692,90 @@ class StripeService {
 			array( 'source' => 'urm-missed-payment-backfill' )
 		);
 		$logger->info( '[Backfill][Stripe][Refunds] ---------- ENDED ----------', array( 'source' => 'urm-missed-payment-backfill' ) );
+	}
+
+	/**
+	 * Backfill dispute events missed by webhooks.
+	 *
+	 * Fetches charge.dispute.created / charge.dispute.closed within the window
+	 * and applies the same handlers used by live webhooks.
+	 *
+	 * @param int $last_synced Unix timestamp of the previous sync.
+	 * @return void
+	 */
+	public function run_missed_dispute_backfill( $last_synced ) {
+		$logger = ur_get_logger();
+		$logger->info( '[Backfill][Stripe][Disputes] ---------- STARTED ----------', array( 'source' => 'urm-missed-payment-backfill' ) );
+		$logger->info(
+			'[Backfill][Stripe][Disputes] Starting dispute backfill.' . "\n" . wp_json_encode(
+				array(
+					'event_type'   => 'backfill_start',
+					'window_start' => gmdate( 'Y-m-d H:i:s', $last_synced ),
+					'window_end'   => gmdate( 'Y-m-d H:i:s' ),
+					'event_types'  => array( 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed' ),
+				),
+				JSON_PRETTY_PRINT
+			),
+			array( 'source' => 'urm-missed-payment-backfill' )
+		);
+
+		$events = \Stripe\Event::all(
+			array(
+				'types'   => array( 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed' ),
+				'created' => array( 'gte' => $last_synced ),
+				'limit'   => 100,
+			)
+		);
+
+		// Stripe returns newest-first; process oldest-first so created runs before closed.
+		$ordered_events = array();
+		foreach ( $events->autoPagingIterator() as $event ) {
+			$ordered_events[] = json_decode( wp_json_encode( $event ), true );
+		}
+		usort(
+			$ordered_events,
+			static function ( $a, $b ) {
+				return (int) ( $a['created'] ?? 0 ) <=> (int) ( $b['created'] ?? 0 );
+			}
+		);
+
+		$total_found   = count( $ordered_events );
+		$total_handled = 0;
+
+		foreach ( $ordered_events as $event_array ) {
+			if ( empty( $event_array['type'] ) ) {
+				continue;
+			}
+
+			if ( 'charge.dispute.created' === $event_array['type'] ) {
+				$this->handle_dispute_created( $event_array );
+				++$total_handled;
+			} elseif ( 'charge.dispute.updated' === $event_array['type'] ) {
+				$this->handle_dispute_updated( $event_array );
+				++$total_handled;
+			} elseif ( 'charge.dispute.closed' === $event_array['type'] ) {
+				$this->handle_dispute_closed( $event_array );
+				++$total_handled;
+			}
+
+			$logger->info(
+				sprintf( '[Backfill][Stripe][Disputes] Processed %s (%s).', $event_array['id'] ?? '', $event_array['type'] ),
+				array( 'source' => 'urm-missed-payment-backfill' )
+			);
+		}
+
+		$logger->info(
+			'[Backfill][Stripe][Disputes] Done.' . "\n" . wp_json_encode(
+				array(
+					'event_type'    => 'backfill_done',
+					'total_found'   => $total_found,
+					'total_handled' => $total_handled,
+				),
+				JSON_PRETTY_PRINT
+			),
+			array( 'source' => 'urm-missed-payment-backfill' )
+		);
+		$logger->info( '[Backfill][Stripe][Disputes] ---------- ENDED ----------', array( 'source' => 'urm-missed-payment-backfill' ) );
 	}
 
 	/**

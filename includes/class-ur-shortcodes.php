@@ -62,6 +62,9 @@ class UR_Shortcodes {
 			'after'  => null,
 		)
 	) {
+		// Every shortcode routed through here renders differently per user, so none of it is cacheable.
+		UR_Cache_Helper::disable_page_cache( 'shortcode' );
+
 		ob_start();
 		include_once UR_ABSPATH . 'includes/functions-ur-notice.php';
 		$wrap_before = empty( $wrapper['before'] ) ? '<div id="user-registration" class="' . esc_attr( $wrapper['class'] ) . '">' : $wrapper['before'];
@@ -260,11 +263,26 @@ class UR_Shortcodes {
 	}
 
 	/**
+	 * Whether the request is a membership checkout link for a logged-in member.
+	 *
+	 * Every link the membership module builds (renew, upgrade, purchase, Masteriyo) carries both parameters.
+	 *
+	 * @param array $params Query parameters of the request.
+	 * @return bool
+	 */
+	public static function has_membership_checkout_intent( $params ) {
+		return isset( $params['action'], $params['thank_you'] );
+	}
+
+	/**
 	 * User Registration form shortcode.
 	 *
 	 * @param mixed $atts Extra attributes.
 	 */
 	public static function form( $atts ) {
+		// Several branches below return before the form template runs, so the template action is not enough.
+		UR_Cache_Helper::disable_page_cache( 'registration' );
+
 		$check_user_state = isset( $atts['userState'] ) && 'logged_in' === $atts['userState'];
 
 		if ( ! is_user_logged_in() && ! $check_user_state && ! ur_users_can_register() ) {
@@ -274,11 +292,11 @@ class UR_Shortcodes {
 		if ( is_user_logged_in() || $check_user_state ) {
 
 			$is_membership_module_active = ur_check_module_activation( 'membership' );
-			global $wp_query;
-			$page_id                     = $wp_query->get_queried_object_id();
-			$membership_checkout_page_id = get_option( 'user_registration_member_registration_page_id', false );
 
-			if ( $is_membership_module_active && is_user_logged_in() && $membership_checkout_page_id && $membership_checkout_page_id == $page_id ) {
+			// Every membership link (renew, upgrade, purchase, Masteriyo) carries action and thank_you.
+			$has_membership_checkout_intent = self::has_membership_checkout_intent( $_GET ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+			if ( $is_membership_module_active && is_user_logged_in() && $has_membership_checkout_intent ) {
 				$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
 				do_action( 'wp_enqueue_membership_scripts' );
 				wp_enqueue_script( 'user-registration' );
@@ -289,129 +307,105 @@ class UR_Shortcodes {
 				wp_enqueue_style( 'user-registration-membership-frontend-style' );
 				wp_enqueue_style( 'user-registration-general' );
 
-				$url_params = array( 'action', 'thank_you' );
+				$membership_service = new WPEverest\URMembership\Admin\Services\MembershipService();
 
-				$has_all_params = ! array_diff( $url_params, array_keys( $_GET ) );
+				$fetched_data = $membership_service->fetch_membership_details_from_intended_actions( $_GET );
 
-				if ( ! $has_all_params ) {
-					global $wp;
+				if ( isset( $fetched_data['status'] ) && $fetched_data['status'] ) {
+					$user_id = get_current_user_id();
+					$form_id = get_user_meta( $user_id, 'ur_form_id', true );
 
-					$current_user_capability = apply_filters( 'ur_registration_user_capability', 'create_users' );
-
-					if ( ! current_user_can( $current_user_capability ) ) {
-						$user_id      = get_current_user_id();
-						$user         = get_user_by( 'ID', $user_id );
-						$current_url  = home_url( add_query_arg( array(), $wp->request ) );
-						$display_name = ! empty( $user->data->display_name ) ? $user->data->display_name : $user->data->user_email;
-						/**
-						 * Applies a filter to customize the pre-form message for user registration.
-						 *
-						 * @param string $default_message Default pre-form message.
-						 */
-						/* translators: 1: Link and username of user 2: Logout url */
-						return apply_filters( 'ur_register_pre_form_message', '<p class="alert" id="ur_register_pre_form_message">' . sprintf( __( 'You are currently logged in as %1$1s. %2$2s', 'user-registration' ), '<a href="#" title="' . esc_attr( $display_name ) . '">' . esc_html( $display_name ) . '</a>', '<a href="' . wp_logout_url( $current_url ) . '" title="' . __( 'Log out of this account.', 'user-registration' ) . '">' . __( 'Logout', 'user-registration' ) . '  &raquo;</a>' ) . '</p>', $user_id );
+					if ( check_membership_field_in_form($form_id ) === false ) {
+						$form_id = $atts['id'] ?? 0;
 					}
+
+					$form_fields = ur_get_form_fields( $form_id );
+
+					foreach ( $form_fields as $field ) {
+						add_filter(
+							'user_registration_' . $field->field_key . '_frontend_form_data',
+							function ( $default_data ) use ( $user_id, $field ) {
+								if ( 'membership' !== $field->field_key && isset( $field->general_setting->field_name ) ) {
+									$default_fields      = ur_get_user_table_fields();
+									$default_meta_fields = ur_get_registered_user_meta_fields();
+
+									$user_data = get_userdata( $user_id );
+
+									if ( in_array( $field->field_key, $default_fields, true ) ) {
+										$user_submitted_value = isset( $user_data->data->{ $field->field_key } ) ? $user_data->data->{ $field->field_key } : '';
+									} elseif ( in_array( $field->field_key, $default_meta_fields, true ) ) {
+										$user_submitted_value = get_user_meta( $user_id, $field->field_key, true );
+									} else {
+										$user_submitted_value = get_user_meta( $user_id, 'user_registration_' . $field->general_setting->field_name, true );
+									}
+
+									if ( 'user_pass' === $field->field_key || 'user_confirm_password' === $field->field_key || 'user_confirm_email' === $field->field_key ) {
+										$default_data['form_data']['is_checkout'] = true;
+									}
+
+									$default_data['form_data']['default'] = $user_submitted_value;
+
+									if ( ! empty( $user_submitted_value ) ) {
+										$default_data['form_data']['custom_attributes']['disabled'] = 'disabled';
+										$default_data['form_data']['custom_attributes']['readonly'] = 'readonly';
+									}
+									return $default_data;
+								}
+							}
+						);
+					}
+
+					add_filter(
+						'user_registration_handle_form_fields',
+						function ( $grid_data ) use ( $user_id, $field ) {
+
+							foreach ( $grid_data as $key => $data ) {
+								$ignore_checkout = apply_filters(
+									'user_registration_ignorable_checkout_fields',
+									array(
+										'user_pass',
+										'user_confirm_password',
+										'user_confirm_email',
+										'profile_picture',
+										'wysiwyg',
+										'select2',
+										'multi_select2',
+										'range',
+										'file',
+									)
+								);
+								if ( in_array( $data->field_key, $ignore_checkout ) ) {
+									unset( $grid_data[ $key ] );
+								}
+							}
+							return $grid_data;
+						}
+					);
+
+					add_filter(
+						'user_registration_parts_data',
+						function () {
+							return false;
+						},
+						9999
+					);
+
+					add_filter(
+						'user_registration_form_submit_btn_class',
+						function ( $classes ) {
+							$classes[] = 'urm-update-membership-button';
+							return $classes;
+						}
+					);
+
+					ob_start();
+					self::render_form( $form_id );
+
+					return ob_get_clean();
 				} else {
-					$membership_service = new WPEverest\URMembership\Admin\Services\MembershipService();
+					$message = isset( $fetched_data['message'] ) ? $fetched_data['message'] : esc_html__( 'Cannot fetch membership details. Please contact your site administrator.', 'user-registration' );
 
-					$fetched_data = $membership_service->fetch_membership_details_from_intended_actions( $_GET );
-
-					if ( isset( $fetched_data['status'] ) && $fetched_data['status'] ) {
-						$user_id = get_current_user_id();
-						$form_id = get_user_meta( $user_id, 'ur_form_id', true );
-
-						if ( check_membership_field_in_form($form_id ) === false ) {
-							$form_id = $atts['id'] ?? 0;
-						}
-
-						$form_fields = ur_get_form_fields( $form_id );
-
-						foreach ( $form_fields as $field ) {
-							add_filter(
-								'user_registration_' . $field->field_key . '_frontend_form_data',
-								function ( $default_data ) use ( $user_id, $field ) {
-									if ( 'membership' !== $field->field_key && isset( $field->general_setting->field_name ) ) {
-										$default_fields      = ur_get_user_table_fields();
-										$default_meta_fields = ur_get_registered_user_meta_fields();
-
-										$user_data = get_userdata( $user_id );
-
-										if ( in_array( $field->field_key, $default_fields, true ) ) {
-											$user_submitted_value = isset( $user_data->data->{ $field->field_key } ) ? $user_data->data->{ $field->field_key } : '';
-										} elseif ( in_array( $field->field_key, $default_meta_fields, true ) ) {
-											$user_submitted_value = get_user_meta( $user_id, $field->field_key, true );
-										} else {
-											$user_submitted_value = get_user_meta( $user_id, 'user_registration_' . $field->general_setting->field_name, true );
-										}
-
-										if ( 'user_pass' === $field->field_key || 'user_confirm_password' === $field->field_key || 'user_confirm_email' === $field->field_key ) {
-											$default_data['form_data']['is_checkout'] = true;
-										}
-
-										$default_data['form_data']['default'] = $user_submitted_value;
-
-										if ( ! empty( $user_submitted_value ) ) {
-											$default_data['form_data']['custom_attributes']['disabled'] = 'disabled';
-											$default_data['form_data']['custom_attributes']['readonly'] = 'readonly';
-										}
-										return $default_data;
-									}
-								}
-							);
-						}
-
-						add_filter(
-							'user_registration_handle_form_fields',
-							function ( $grid_data ) use ( $user_id, $field ) {
-
-								foreach ( $grid_data as $key => $data ) {
-									$ignore_checkout = apply_filters(
-										'user_registration_ignorable_checkout_fields',
-										array(
-											'user_pass',
-											'user_confirm_password',
-											'user_confirm_email',
-											'profile_picture',
-											'wysiwyg',
-											'select2',
-											'multi_select2',
-											'range',
-											'file',
-										)
-									);
-									if ( in_array( $data->field_key, $ignore_checkout ) ) {
-										unset( $grid_data[ $key ] );
-									}
-								}
-								return $grid_data;
-							}
-						);
-
-						add_filter(
-							'user_registration_parts_data',
-							function () {
-								return false;
-							},
-							9999
-						);
-
-						add_filter(
-							'user_registration_form_submit_btn_class',
-							function ( $classes ) {
-								$classes[] = 'urm-update-membership-button';
-								return $classes;
-							}
-						);
-
-						ob_start();
-						self::render_form( $form_id );
-
-						return ob_get_clean();
-					} else {
-						$message = isset( $fetched_data['message'] ) ? $fetched_data['message'] : esc_html__( 'Cannot fetch membership details. Please contact your site administrator.', 'user-registration' );
-
-						return '<div id="user-registration" class="user-registration">' . $message . '</div>';
-					}
+					return '<div id="user-registration" class="user-registration">' . $message . '</div>';
 				}
 			} else {
 				/**

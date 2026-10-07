@@ -111,6 +111,8 @@ const TemplateList = ({ selectedCategory, templates }) => {
 	}, []);
 
 	const handleTemplateClick = async (template) => {
+		// Set first so the upgrade/plugin modals attribute the clicked template.
+		setSelectedTemplateSlug(template.slug);
 		const requiredPlugins = template.addons
 			? Object.keys(template.addons)
 			: [];
@@ -171,7 +173,6 @@ const TemplateList = ({ selectedCategory, templates }) => {
 				return;
 			}
 
-			setSelectedTemplateSlug(template.slug);
 			setPreviewTemplate(template);
 			setFormTemplateName(template.title);
 			openModal();
@@ -678,7 +679,10 @@ const TemplateList = ({ selectedCategory, templates }) => {
 								"https://wpuserregistration.com/upgrade/",
 								{
 									source: "form-template",
-									medium: "popup"
+									medium: "popup",
+									content:
+										selectedTemplateSlug ||
+										"premium-template"
 								}
 							)}
 							target="_blank"

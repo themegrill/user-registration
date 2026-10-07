@@ -67,7 +67,21 @@ class UR_Getting_Started {
 	 */
 	const OPTION_ONBOARDING_SNAPSHOT = 'urm_onboarding_snapshot';
 
+	/**
+	 * Read the stored onboarding membership type, folding the retired "free_membership" answer into "paid_membership".
+	 *
+	 * The welcome step now only asks Yes or Not now, and Yes is stored as "paid_membership", so a site that saved the old Free option must unlock the same steps.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param string $default Value returned when nothing is stored.
+	 * @return string
+	 */
+	protected static function get_onboarding_membership_type( $default = '' ) {
+		$membership_type = get_option( 'urm_onboarding_membership_type', $default );
 
+		return 'free_membership' === $membership_type ? 'paid_membership' : $membership_type;
+	}
 
 	/**
 	 * Register all REST API routes for the getting started wizard.
@@ -249,7 +263,7 @@ class UR_Getting_Started {
 		self::ensure_default_form( 'normal' );
 
 		$current_step    = self::get_current_step();
-		$membership_type = get_option( 'urm_onboarding_membership_type', '' );
+		$membership_type = self::get_onboarding_membership_type( '' );
 		$is_completed    = ! get_option( 'user_registration_first_time_activation_flag', true );
 		$is_skipped      = get_option( 'user_registration_onboarding_skipped', false );
 
@@ -453,7 +467,7 @@ class UR_Getting_Started {
 			}
 		}
 
-		$membership_type = get_option( 'urm_onboarding_membership_type', 'normal' );
+		$membership_type = self::get_onboarding_membership_type( 'normal' );
 
 		$next_step = self::calculate_next_step( 4, $membership_type );
 		self::update_current_step( $next_step );
@@ -479,26 +493,9 @@ class UR_Getting_Started {
 	public static function get_welcome_data( $request ) {
 
 		$data = array(
-			'membership_type'      => get_option( 'urm_onboarding_membership_type', '' ),
+			'membership_type'      => self::get_onboarding_membership_type( '' ),
 			'allow_usage_tracking' => get_option( 'user_registration_allow_usage_tracking', true ),
 			'admin_email'          => get_option( 'user_registration_updates_admin_email', get_option( 'admin_email' ) ),
-			'membership_options'   => array(
-				array(
-					'value'       => 'paid_membership',
-					'label'       => __( 'Paid Membership', 'user-registration' ),
-					'description' => __( 'Charge users to access premium content (you can offer free plans too).', 'user-registration' ),
-				),
-				array(
-					'value'       => 'free_membership',
-					'label'       => __( 'Free Membership', 'user-registration' ),
-					'description' => __( 'Let users register for free and access members-only content.', 'user-registration' ),
-				),
-				array(
-					'value'       => 'normal',
-					'label'       => __( 'Advanced Registration', 'user-registration' ),
-					'description' => __( "Complete registration system to replace WordPress's basic signup. Custom signup fields, login & account pages, and user approval.", 'user-registration' ),
-				),
-			),
 		);
 
 		return new \WP_REST_Response(
@@ -821,7 +818,7 @@ class UR_Getting_Started {
 	 * @return \WP_REST_Response
 	 */
 	public static function get_memberships_data( $request ) {
-		$membership_type      = get_option( 'urm_onboarding_membership_type', 'free_membership' );
+		$membership_type      = self::get_onboarding_membership_type( 'free_membership' );
 		$saved_membership_ids = get_option( 'urm_onboarding_membership_ids', array() );
 		$memberships          = self::fetch_memberships_for_wizard( $saved_membership_ids );
 		$content              = array(
@@ -884,7 +881,7 @@ class UR_Getting_Started {
 			$memberships = array();
 		}
 
-		$membership_type = get_option( 'urm_onboarding_membership_type', 'free_membership' );
+		$membership_type = self::get_onboarding_membership_type( 'free_membership' );
 
 		if ( in_array( $membership_type, array( 'paid_membership', 'free_membership' ), true ) ) {
 			self::ensure_membership_field_in_default_form();
@@ -1720,6 +1717,19 @@ class UR_Getting_Started {
 		update_option( 'user_registration_paypal_enabled', $paypal_enabled );
 		update_option( 'user_registration_stripe_enabled', $stripe_enabled );
 
+		// Stripe is a built-in module now, not a separate add-on to activate - validating its keys here
+		// is the only activation step a user sees, so it must also flip the module flag that gates
+		// Field Sync and the rest of Stripe's admin UI (Addons > E-Commerce controls the same flag).
+		if ( $stripe_enabled ) {
+			$enabled_features = get_option( 'user_registration_enabled_features', array() );
+			$enabled_features = is_array( $enabled_features ) ? $enabled_features : array();
+
+			if ( ! in_array( 'user-registration-stripe', $enabled_features, true ) ) {
+				$enabled_features[] = 'user-registration-stripe';
+				update_option( 'user_registration_enabled_features', $enabled_features );
+			}
+		}
+
 		if ( $offline_enabled ) {
 			update_option( 'user_registration_global_bank_details', $bank_details );
 		}
@@ -1877,7 +1887,7 @@ class UR_Getting_Started {
 	 * @return \WP_REST_Response
 	 */
 	public static function get_finish_data( $request ) {
-		$membership_type  = get_option( 'urm_onboarding_membership_type', '' );
+		$membership_type  = self::get_onboarding_membership_type( '' );
 		$membership_ids   = get_option( 'urm_onboarding_membership_ids', array() );
 		$enabled_gateways = get_option( 'urm_enabled_payment_gateways', array() );
 
@@ -2032,7 +2042,7 @@ class UR_Getting_Started {
 	 */
 	public static function skip_step( $request ) {
 		$current_step    = isset( $request['step'] ) ? absint( $request['step'] ) : self::get_current_step();
-		$membership_type = get_option( 'urm_onboarding_membership_type', '' );
+		$membership_type = self::get_onboarding_membership_type( '' );
 
 		$next_step = self::calculate_next_step( $current_step, $membership_type );
 		self::update_current_step( $next_step );
@@ -2069,7 +2079,7 @@ class UR_Getting_Started {
 	public static function navigate_to_step( $request ) {
 		$target_step     = isset( $request['step'] ) ? absint( $request['step'] ) : 1;
 		$current_step    = self::get_current_step();
-		$membership_type = get_option( 'urm_onboarding_membership_type', '' );
+		$membership_type = self::get_onboarding_membership_type( '' );
 
 		if ( ! self::is_step_accessible( $target_step, $membership_type ) ) {
 			return new \WP_REST_Response(
@@ -2235,7 +2245,7 @@ class UR_Getting_Started {
 				'is_skipped'   => (bool) get_option( 'user_registration_onboarding_skipped', false ),
 
 				'welcome'      => array(
-					'membership_type'      => get_option( 'urm_onboarding_membership_type', '' ),
+					'membership_type'      => self::get_onboarding_membership_type( '' ),
 					'allow_usage_tracking' => (bool) get_option( 'user_registration_allow_usage_tracking', true ),
 					'admin_email'          => get_option(
 						'user_registration_updates_admin_email',

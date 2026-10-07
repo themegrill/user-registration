@@ -227,8 +227,9 @@ class OrdersListTable extends \UR_List_Table {
 			case 'created_at':
 				return date_i18n( get_option( 'date_format' ), strtotime( $item[ $column_name ] ) );
 			case 'post_title':
-			case 'payment_method':
 				return esc_html( ucfirst( $item[ $column_name ] ) );
+			case 'payment_method':
+				return esc_html( ur_get_payment_gateway_label( $item[ $column_name ] ?? '' ) );
 			case 'payer_email':
 				return esc_html( $item['user_email'] );
 			default:
