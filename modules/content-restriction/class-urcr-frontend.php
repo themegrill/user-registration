@@ -17,6 +17,11 @@ defined( 'ABSPATH' ) || exit;
 class URCR_Frontend {
 
 	/**
+	 * Query var that flags a product query whose results must exclude products the user cannot view.
+	 */
+	const HIDE_RESTRICTED_QUERY_VAR = 'urcr_hide_restricted_products';
+
+	/**
 	 * Hook in tabs.
 	 */
 	public function __construct() {
@@ -34,6 +39,9 @@ class URCR_Frontend {
 		add_filter( 'template_include', array( $this, 'restrict_wc_shop_page' ), PHP_INT_MAX );
 		add_filter( 'template_include', array( $this, 'restrict_wc_product_post' ), PHP_INT_MAX );
 		add_filter( 'woocommerce_product_is_visible', array( $this, 'is_wc_product_visible' ), 99999, 2 );
+		add_action( 'woocommerce_product_query', array( $this, 'flag_wc_product_query' ), 10, 1 );
+		add_filter( 'query_loop_block_query_vars', array( $this, 'flag_product_collection_query' ), 20, 2 );
+		add_filter( 'the_posts', array( $this, 'hide_restricted_products_from_query' ), 10, 2 );
 
 		if ( UR_PRO_ACTIVE ) {
 			// To restrict products page  based on taxonomies.
@@ -734,6 +742,65 @@ class URCR_Frontend {
 		}
 
 		return $this->ur_user_can_view_woocommerce_product( $product_id );
+	}
+
+	/**
+	 * Flag the main WooCommerce product query so restricted products are removed from its results.
+	 *
+	 * @param WP_Query $query Main product query.
+	 *
+	 * @since x.x.x
+	 * @return void
+	 */
+	public function flag_wc_product_query( $query ) {
+		$query->set( self::HIDE_RESTRICTED_QUERY_VAR, true );
+	}
+
+	/**
+	 * Flag a Product Collection block query so restricted products are removed from its results.
+	 *
+	 * @param array    $query_vars Query args built for the block.
+	 * @param WP_Block $block      Block being rendered.
+	 *
+	 * @since x.x.x
+	 * @return array
+	 */
+	public function flag_product_collection_query( $query_vars, $block ) {
+		if ( ! empty( $block->context['query']['isProductCollectionBlock'] ) ) {
+			$query_vars[ self::HIDE_RESTRICTED_QUERY_VAR ] = true;
+		}
+
+		return $query_vars;
+	}
+
+	/**
+	 * Remove the products the current user cannot view from the results of a flagged query.
+	 *
+	 * Product Collection blocks never call WC_Product::is_visible(), which is how classic themes hide them.
+	 *
+	 * @param WP_Post[] $posts Posts the query found.
+	 * @param WP_Query  $query Query that found them.
+	 *
+	 * @since x.x.x
+	 * @return WP_Post[]
+	 */
+	public function hide_restricted_products_from_query( $posts, $query ) {
+		if ( ! $query->get( self::HIDE_RESTRICTED_QUERY_VAR ) ) {
+			return $posts;
+		}
+
+		$visible_posts = array_values(
+			array_filter(
+				$posts,
+				function ( $post ) {
+					return ! $post instanceof WP_Post || 'product' !== $post->post_type || $this->is_wc_product_visible( true, $post->ID );
+				}
+			)
+		);
+
+		$query->found_posts = max( 0, (int) $query->found_posts - ( count( $posts ) - count( $visible_posts ) ) );
+
+		return $visible_posts;
 	}
 
 	/**

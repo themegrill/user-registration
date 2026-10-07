@@ -61,9 +61,30 @@ function get_post_meta( $id, $key, $single ) {
 	return ''; }
 function ur_string_to_bool( $value ) {
 	return true === $value || 'yes' === $value || 'on' === $value || 1 === $value; }
+class WP_Query {
+	public $vars = array();
+	public $found_posts;
+	public function __construct( $vars = array(), $found_posts = 0 ) {
+		$this->vars        = $vars;
+		$this->found_posts = $found_posts; }
+	public function get( $key ) {
+		return $this->vars[ $key ] ?? null; }
+	public function set( $key, $value ) {
+		$this->vars[ $key ] = $value; }
+}
 $frontend = 'modules/content-restriction/class-urcr-frontend.php';
 eval(
-	'class ProductRestrictionRunner { public '
+	'class ProductRestrictionRunner { const HIDE_RESTRICTED_QUERY_VAR = \'urcr_hide_restricted_products\'; public '
+	. security_function( $frontend, 'ur_user_can_view_woocommerce_product' )
+	. ' public '
+	. security_function( $frontend, 'is_wc_product_visible' )
+	. ' public '
+	. security_function( $frontend, 'flag_wc_product_query' )
+	. ' public '
+	. security_function( $frontend, 'flag_product_collection_query' )
+	. ' public '
+	. security_function( $frontend, 'hide_restricted_products_from_query' )
+	. ' public '
 	. security_function( $frontend, 'wc_advanced_restriction_with_access_rule' )
 	. ' private '
 	. security_function( $frontend, 'get_rule_product_id' )
@@ -107,6 +128,18 @@ function product_allowed( $rules, $user_matches, $product_id = 755 ) {
 	return $runner->ur_user_can_purchase_woocommerce_product( $product_id );
 }
 
+function visible_ids( $posts, $user_matches, $query, $can_edit = false ) {
+	$GLOBALS['user_matches_rule'] = $user_matches;
+	$GLOBALS['access_rules']      = array( product_rule( 'post_types' ) );
+	$GLOBALS['caps']              = $can_edit ? array( 'edit_post' ) : array();
+	$runner                       = new ProductRestrictionRunner();
+	return array_map(
+		function ( $post ) {
+			return $post->ID; },
+		$runner->hide_restricted_products_from_query( $posts, $query )
+	);
+}
+
 $post_type_rule = product_rule( 'post_types' );
 $whole_site     = product_rule( 'whole_site', true, 'access', array( 'x' ) );
 
@@ -132,6 +165,34 @@ try {
 	security_assert( false === product_allowed( array( $restrict_rule_subscr, product_rule( 'post_types', true, 'restrict', array( 'product' ), true ) ), false ), 'An unmatched Restrict rule must not cancel a matching Restrict rule' );
 	security_assert( true === product_allowed( array( product_rule( 'post_types', true, 'access', array( 'product' ), true ), product_rule( 'post_types', true, 'restrict', array( 'product' ), true ) ), false ), 'A matching Access rule still wins over a matching Restrict rule' );
 	security_assert( true === product_allowed( array( $post_type_rule ), false, 757 ), 'A variation without a parent is left open instead of falling back to the current post' );
+	$listed    = array( new WP_Post( 755 ), new WP_Post( 10, 'post' ), new WP_Post( 999 ) );
+	$flag_var  = ProductRestrictionRunner::HIDE_RESTRICTED_QUERY_VAR;
+	$flagged   = function ( $found = 5 ) use ( $flag_var ) {
+		return new WP_Query( array( $flag_var => true ), $found ); };
+	$collected = $flagged();
+	security_assert( array( 10, 999 ) === visible_ids( $listed, false, $collected ), 'A flagged query must drop a restricted product and keep other post types and unknown products' );
+	security_assert( 4 === $collected->found_posts, 'The found count must shrink by the number of products removed' );
+	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, true, $flagged() ), 'A member keeps every product in a flagged query' );
+	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, false, new WP_Query( array(), 5 ) ), 'A query that is not flagged is left alone' );
+	security_assert( array( 755, 10, 999 ) === visible_ids( $listed, false, $flagged(), true ), 'A user who can edit the product keeps it in a flagged query' );
+	$empty_count = $flagged( 0 );
+	visible_ids( $listed, false, $empty_count );
+	security_assert( 0 === $empty_count->found_posts, 'The found count never goes below zero' );
+	$runner = new ProductRestrictionRunner();
+	$main   = new WP_Query();
+	$runner->flag_wc_product_query( $main );
+	security_assert( true === $main->get( $flag_var ), 'The main WooCommerce product query must be flagged' );
+	$collection_block          = new stdClass();
+	$collection_block->context = array( 'query' => array( 'isProductCollectionBlock' => true ) );
+	$other_block               = new stdClass();
+	$other_block->context      = array( 'query' => array( 'postType' => 'post' ) );
+	security_assert( true === $runner->flag_product_collection_query( array( 'posts_per_page' => 3 ), $collection_block )[ $flag_var ], 'A Product Collection block query must be flagged' );
+	security_assert( array( 'posts_per_page' => 3 ) === $runner->flag_product_collection_query( array( 'posts_per_page' => 3 ), $other_block ), 'A query loop that is not a Product Collection must not be flagged' );
+	$frontend_source = (string) file_get_contents( $frontend );
+	foreach ( array( "add_action\( 'woocommerce_product_query', array\( \\\$this, 'flag_wc_product_query' \)", "add_filter\( 'query_loop_block_query_vars', array\( \\\$this, 'flag_product_collection_query' \)", "add_filter\( 'the_posts', array\( \\\$this, 'hide_restricted_products_from_query' \)" ) as $hook ) {
+		security_assert( 1 === preg_match( '/^\s*' . $hook . '/m', $frontend_source ), 'The restricted product listing hooks must be registered' );
+	}
+	security_assert( 1 === preg_match( "/const HIDE_RESTRICTED_QUERY_VAR = 'urcr_hide_restricted_products';/", $frontend_source ), 'The flag query var must keep its name' );
 } catch ( Throwable $e ) {
 	fwrite( STDERR, $e->getMessage() . "\n" );
 	exit( 1 );
