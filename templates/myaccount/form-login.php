@@ -191,7 +191,7 @@ if ( isset( $_GET['page'] ) && 'user-registration-login-forms' === $_GET['page']
 					<span class="input-wrapper">
 						<input placeholder="<?php echo esc_attr( $placeholders['username'] ); ?>" type="text"
 								class="user-registration-Input user-registration-Input--text input-text" name="username"
-								id="username"
+								id="username" autocomplete="username"
 							   value="<?php echo ( ! empty( $_POST['username'] ) ) ? esc_attr( wp_unslash( sanitize_text_field( $_POST['username'] ) ) ) : ''; // phpcs:ignore ?>"
 								style="<?php echo ( $enable_field_icon || $is_login_settings && is_plugin_active( 'user-registration-pro/user-registration.php' ) ) ? 'padding-left: 32px !important' : ''; ?>"
 								<?php echo $is_login_settings ? 'disabled' : ''; ?>
@@ -218,7 +218,7 @@ if ( isset( $_GET['page'] ) && 'user-registration-login-forms' === $_GET['page']
 						<input
 							placeholder="<?php echo esc_attr( $placeholders['password'] ); ?>"
 							class="user-registration-Input user-registration-Input--text input-text" type="password"
-							name="password" id="password"
+							name="password" id="password" autocomplete="current-password"
 							style="<?php echo ( $enable_field_icon || $is_login_settings && is_plugin_active( 'user-registration-pro/user-registration.php' ) ) ? 'padding-left: 32px !important' : ''; ?>"
 							<?php echo $is_login_settings ? 'disabled' : ''; ?>
 							required

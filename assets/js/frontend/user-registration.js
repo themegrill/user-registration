@@ -2617,7 +2617,7 @@
 							'<div class="user-registration-membership-notice__container">' +
 								'<div class="ur-toaster user-registration-membership-notice__red">' +
 									'<span class="user-registration-membership-notice__message"></span>' +
-									'<span class="user-registration-membership__close_notice">&times;</span>' +
+									'<button type="button" class="user-registration-membership__close_notice" aria-label="' + (user_registration_params.ursL10n.dismiss || "Dismiss") + '">&times;</button>' +
 								"</div>" +
 							"</div>"
 						);

@@ -63,6 +63,56 @@ test.describe("login methods @fresh", () => {
     await deleteUserByEmail(page, account.email);
     await visitor.close();
   });
+
+  /**
+   * @area    login-forms
+   * @tier    fresh
+   * @guards  #1725
+   * @source  verify-fix 2026-10-05
+   * @why     The login and lost-password inputs carried no autocomplete token, so
+   *          password managers could not tell a username field from a password
+   *          field (WCAG 1.3.5). Asserts the three tokens the templates ship.
+   *          Deliberately does not assert any autofill behaviour — that is the
+   *          browser's, not the product's.
+   */
+  test("login and lost-password fields declare their input purpose @fresh @login-forms", async ({ browser }) => {
+    const visitor = await newVisitor(browser);
+    const guest = await visitor.newPage();
+
+    await guest.goto("/my-account/");
+    await expect(guest.locator("#username")).toHaveAttribute("autocomplete", "username");
+    await expect(guest.locator("#password")).toHaveAttribute("autocomplete", "current-password");
+
+    await guest.locator(".ur-frontend-form a[href*='lost-password']").first().click();
+    await expect(guest.locator("#user_login")).toHaveAttribute("autocomplete", "username");
+    await visitor.close();
+  });
+
+  /**
+   * @area    login-forms
+   * @tier    fresh
+   * @guards  #1725
+   * @source  verify-fix 2026-10-05
+   * @why     Every front-end form control had `outline: none` with no replacement
+   *          that survived the per-form resets, so a keyboard user could not see
+   *          where they were (WCAG 2.4.7). Asserts a drawn outline on a focused
+   *          login field and on the submit button. Deliberately does not assert
+   *          the ring's colour or width — those are the theme's to tune.
+   */
+  test("a focused login field and the login button show a visible outline @fresh @login-forms", async ({ browser }) => {
+    const visitor = await newVisitor(browser);
+    const guest = await visitor.newPage();
+    await guest.goto("/my-account/");
+
+    await guest.locator("#username").focus();
+    await expect(guest.locator("#username")).toHaveCSS("outline-style", "solid");
+
+    await guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first().focus();
+    await expect(
+      guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first(),
+    ).toHaveCSS("outline-style", "solid");
+    await visitor.close();
+  });
 });
 
 /**

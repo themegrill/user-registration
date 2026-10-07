@@ -281,6 +281,7 @@ class Frontend {
 			'i18n_coupon_invalid_error'                    => __( 'Coupon is Invalid.', 'user-registration' ),
 			'i18n_coupon_discount_message'                 => __( 'discount on membership has been applied.', 'user-registration' ),
 			'i18n_coupon_empty_error'                      => __( 'Coupon Field is empty.', 'user-registration' ),
+			'i18n_dismiss'                                 => __( 'Dismiss', 'user-registration' ),
 			'i18n_coupon_free_membership_error'            => __( 'Invalid membership type (Free).', 'user-registration' ),
 			'i18n_incomplete_stripe_setup_error'           => __( 'Stripe Payment stopped. Incomplete Stripe setup.', 'user-registration' ),
 			'i18n_bank_details_title'                      => __( 'Bank Details.', 'user-registration' ),
