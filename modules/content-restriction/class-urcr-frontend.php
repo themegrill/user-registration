@@ -760,10 +760,12 @@ class URCR_Frontend {
 	 *
 	 * @param string     $price_html Price HTML.
 	 * @param WC_Product $product    Product being priced.
+	 *
+	 * @since x.x.x
 	 * @return string
 	 */
 	public function hide_wc_price_if_restricted( $price_html, $product ) {
-		if ( current_user_can( 'edit_post', $product->get_id() ) ) {
+		if ( '' === $price_html || current_user_can( 'edit_post', $product->get_id() ) ) {
 			return $price_html;
 		}
 
