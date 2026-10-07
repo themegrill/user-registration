@@ -280,7 +280,8 @@ class UR_Shortcodes {
 		if ( is_user_logged_in() || $check_user_state ) {
 
 			$is_membership_module_active    = ur_check_module_activation( 'membership' );
-			$has_membership_checkout_intent = isset( $_GET['action'] ) && isset( $_GET['membership_id'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			// My Account renew and upgrade links carry the membership as 'current', not 'membership_id'.
+			$has_membership_checkout_intent = isset( $_GET['action'] ) && ( isset( $_GET['membership_id'] ) || isset( $_GET['current'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 			if ( $is_membership_module_active && is_user_logged_in() && $has_membership_checkout_intent ) {
 				$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
