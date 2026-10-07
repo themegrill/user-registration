@@ -777,7 +777,7 @@ class UR_Getting_Started {
 		'{"field_key":"user_pass","general_setting":{"label":"User Password","description":"","field_name":"user_pass","placeholder":"","required":"1","hide_label":"false"},"advance_setting":{"custom_class":""},"icon":"ur-icon ur-icon-password"},' .
 		'{"field_key":"user_confirm_password","general_setting":{"label":"Confirm Password","description":"","field_name":"user_confirm_password","placeholder":"","required":"1","hide_label":"false"},"advance_setting":{"custom_class":""},"icon":"ur-icon ur-icon-password-confirm"}' .
 		'],[' .
-		'{"field_key":"membership","general_setting":{"label":"Membership Field","description":"","field_name":"' . $membership_field_name . '","required":"false","hide_label":"false","membership_listing_option":"all","membership_group":"0"},"advance_setting":{"custom_class":""},"icon":"ur-icon ur-icon-membership-field"}' .
+		'{"field_key":"membership","general_setting":{"label":"Membership","description":"","field_name":"' . $membership_field_name . '","required":"false","hide_label":"false","membership_listing_option":"all","membership_group":"0"},"advance_setting":{"custom_class":""},"icon":"ur-icon ur-icon-membership-field"}' .
 		']]]'
 		: '[[[' .
 		'{"field_key":"user_login","general_setting":{"label":"Username","description":"","field_name":"user_login","placeholder":"","required":"1","hide_label":"false"},"advance_setting":{"custom_class":"","username_length":"","username_character":"1"},"icon":"ur-icon ur-icon-user"},' .
@@ -1011,7 +1011,7 @@ class UR_Getting_Started {
 		}
 
 		$membership_field_json =
-		'{"field_key":"membership","general_setting":{"label":"Membership Field","description":"","field_name":"' .
+		'{"field_key":"membership","general_setting":{"label":"Membership","description":"","field_name":"' .
 		$membership_field_name .
 		'","required":"false","hide_label":"false","membership_listing_option":"all","membership_group":"0"},"advance_setting":{"custom_class":""},"icon":"ur-icon ur-icon-membership-field"}';
 
