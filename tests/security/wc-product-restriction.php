@@ -39,18 +39,15 @@ eval( security_function( $core, 'urcr_is_access_rule_enabled' ) );
 eval( security_function( $core, 'urcr_is_action_specified' ) );
 eval( security_function( $core, 'urcr_is_target_post' ) );
 
-class ProductRestrictionProbe {
-	public $rules = array();
-	protected function get_all_access_rules() {
-		return array_map(
-			function ( $rule ) {
-				return (object) array( 'post_content' => wp_json_encode( $rule ) ); },
-			$this->rules
-		); }
-}
 function wp_json_encode( $value ) {
 	return json_encode( $value ); }
-eval( 'class ProductRestrictionRunner extends ProductRestrictionProbe { public ' . security_function( 'modules/content-restriction/class-urcr-frontend.php', 'wc_advanced_restriction_with_access_rule' ) . ' }' );
+function urcr_get_published_access_rules() {
+	return array_map(
+		function ( $rule ) {
+			return (object) array( 'post_content' => wp_json_encode( $rule ) ); },
+		$GLOBALS['access_rules']
+	); }
+eval( 'class ProductRestrictionRunner { public ' . security_function( 'modules/content-restriction/class-urcr-frontend.php', 'wc_advanced_restriction_with_access_rule' ) . ' }' );
 
 function product_rule( $target_type, $enabled = true, $control = 'access', $value = array( 'product' ) ) {
 	return array(
@@ -77,8 +74,8 @@ function product_rule( $target_type, $enabled = true, $control = 'access', $valu
 }
 function product_allowed( $rules, $user_matches, $product_id = 755 ) {
 	$GLOBALS['user_matches_rule'] = $user_matches;
+	$GLOBALS['access_rules']      = $rules;
 	$runner                       = new ProductRestrictionRunner();
-	$runner->rules                = $rules;
 	return $runner->wc_advanced_restriction_with_access_rule( $product_id );
 }
 

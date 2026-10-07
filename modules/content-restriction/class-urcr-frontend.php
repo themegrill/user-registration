@@ -950,7 +950,7 @@ class URCR_Frontend {
 			return $can_view_purchase;
 		}
 
-		foreach ( $this->get_all_access_rules() as $access_rule_post ) {
+		foreach ( urcr_get_published_access_rules() as $access_rule_post ) {
 			$access_rule = json_decode( $access_rule_post->post_content, true );
 
 			// Verify if required params are available.
