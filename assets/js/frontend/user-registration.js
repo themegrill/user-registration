@@ -3226,6 +3226,8 @@
 	 * @since 5.0.0
 	 */
 	function calculate_total(membershipData, taxRate) {
+		taxRate = Number(taxRate);
+		taxRate = Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100 ? taxRate : 0;
 		var total_input = $("#ur-membership-total");
 
 		let membershipPrice = parseFloat(membershipData.total);
@@ -3276,19 +3278,14 @@
 
 		$("#ur-tax-details").remove();
 
-		var taxDetailsInput =
-			'<input type="hidden" ' +
-			'id="ur-tax-details" ' +
-			'name="ur_tax_details" ' +
-			'data-tax-rate="' +
-			taxRate +
-			'" ' +
-			'data-tax-calculation-method="' +
-			user_registration_params.tax_calculation_method +
-			'" ' +
-			'data-total="' +
-			total +
-			'">';
+		var taxDetailsInput = $("<input>", {
+			type: "hidden",
+			id: "ur-tax-details",
+			name: "ur_tax_details",
+			"data-tax-rate": taxRate,
+			"data-tax-calculation-method": user_registration_params.tax_calculation_method,
+			"data-total": total,
+		});
 
 		total_input.after(taxDetailsInput);
 	}
