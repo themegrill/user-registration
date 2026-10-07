@@ -921,9 +921,15 @@ class URCR_Frontend {
 		return $result;
 	}
 	/**
-	 * Basic WooCommerce Product Restriction.
+	 * Check the advanced access rules to see whether the current user can view and purchase a WooCommerce product.
+	 *
+	 * Whole Site targets are ignored here, since they are enforced separately, so that a product rule
+	 * still decides when a Whole Site rule exists.
 	 *
 	 * @since 4.0
+	 *
+	 * @param int $product_id ID of the WooCommerce product.
+	 * @return bool
 	 */
 	function wc_advanced_restriction_with_access_rule( $product_id ) {
 		$can_view_purchase = true;
@@ -932,92 +938,59 @@ class URCR_Frontend {
 			return $can_view_purchase;
 		}
 
-		$access_rule_posts = $this->get_all_access_rules();
+		// urcr_is_target_post() matches post types and IDs against a post object, not a bare ID.
+		$product_post = get_post( $product_id );
 
-		$is_whole_site_restriction = false;
+		if ( ! $product_post instanceof WP_Post ) {
+			return $can_view_purchase;
+		}
 
-		foreach ( $access_rule_posts as $access_rule_post ) {
+		foreach ( $this->get_all_access_rules() as $access_rule_post ) {
 			$access_rule = json_decode( $access_rule_post->post_content, true );
 
 			// Verify if required params are available.
-			if ( ! empty( $access_rule['target_contents'] ) ) {
-				$types = wp_list_pluck( $access_rule['target_contents'], 'type' );
-				if ( in_array( 'whole_site', $types, true ) ) {
-					$is_whole_site_restriction = true;
+			if ( empty( $access_rule['logic_map'] ) || empty( $access_rule['target_contents'] ) || empty( $access_rule['actions'] ) ) {
+				continue;
+			}
+			// Check if the logic map data is in array format.
+			if ( ! is_array( $access_rule['logic_map'] ) ) {
+				continue;
+			}
+			// Validate against empty variables.
+			if ( empty( $access_rule['logic_map']['conditions'] ) ) {
+				continue;
+			}
+
+			if ( ! urcr_is_access_rule_enabled( $access_rule ) || ! urcr_is_action_specified( $access_rule ) ) {
+				continue;
+			}
+
+			$product_targets = array_filter(
+				$access_rule['target_contents'],
+				function ( $target ) {
+					return 'whole_site' !== ( $target['type'] ?? '' );
 				}
+			);
+
+			if ( true !== urcr_is_target_post( $product_targets, $product_post ) ) {
+				continue;
+			}
+
+			$should_allow_access = urcr_is_allow_access( $access_rule['logic_map'], $product_post );
+			$access_control      = ! empty( $access_rule['actions'][0]['access_control'] ) ? $access_rule['actions'][0]['access_control'] : 'access';
+			$grants_access       = ( true === $should_allow_access && 'access' === $access_control ) || ( false == $should_allow_access && 'restrict' === $access_control );
+			$restricts_access    = ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control );
+
+			// Any matching rule that grants access wins over rules that restrict.
+			if ( $grants_access ) {
+				return true;
+			}
+
+			if ( $restricts_access ) {
+				$can_view_purchase = false;
 			}
 		}
 
-		if ( ! $is_whole_site_restriction ) {
-			$access_granted = false;
-
-			// First, check all rules to see if any grant access
-			foreach ( $access_rule_posts as $access_rule_post ) {
-				$access_rule = json_decode( $access_rule_post->post_content, true );
-
-				// Verify if required params are available.
-				if ( empty( $access_rule['logic_map'] ) || empty( $access_rule['target_contents'] ) || empty( $access_rule['actions'] ) ) {
-					continue;
-				}
-				// Check if the logic map data is in array format.
-				if ( ! is_array( $access_rule['logic_map'] ) ) {
-					continue;
-				}
-				// Validate against empty variables.
-				if ( empty( $access_rule['logic_map']['conditions'] ) || empty( $access_rule['logic_map']['conditions'] ) ) {
-					continue;
-				}
-
-				if ( urcr_is_access_rule_enabled( $access_rule ) && urcr_is_action_specified( $access_rule ) ) {
-
-					$is_target = urcr_is_target_post( $access_rule['target_contents'], $product_id );
-					if ( true === $is_target ) {
-						$should_allow_access = urcr_is_allow_access( $access_rule['logic_map'], $product_id );
-						$access_control      = isset( $access_rule['actions'][0]['access_control'] ) && ! empty( $access_rule['actions'][0]['access_control'] ) ? $access_rule['actions'][0]['access_control'] : 'access';
-
-						// If any rule grants access, allow it
-						if ( ( true === $should_allow_access && 'access' === $access_control ) || ( false == $should_allow_access && 'restrict' === $access_control ) ) {
-							$access_granted = true;
-							break;
-						}
-					}
-				}
-			}
-
-			// Only restrict if no rule granted access
-			if ( ! $access_granted ) {
-				foreach ( $access_rule_posts as $access_rule_post ) {
-					$access_rule = json_decode( $access_rule_post->post_content, true );
-
-					// Verify if required params are available.
-					if ( empty( $access_rule['logic_map'] ) || empty( $access_rule['target_contents'] ) || empty( $access_rule['actions'] ) ) {
-						continue;
-					}
-					// Check if the logic map data is in array format.
-					if ( ! is_array( $access_rule['logic_map'] ) ) {
-						continue;
-					}
-					// Validate against empty variables.
-					if ( empty( $access_rule['logic_map']['conditions'] ) || empty( $access_rule['logic_map']['conditions'] ) ) {
-						continue;
-					}
-
-					if ( urcr_is_access_rule_enabled( $access_rule ) && urcr_is_action_specified( $access_rule ) ) {
-
-						$is_target = urcr_is_target_post( $access_rule['target_contents'], $product_id );
-						if ( true === $is_target ) {
-							$should_allow_access = urcr_is_allow_access( $access_rule['logic_map'], $product_id );
-							$access_control      = isset( $access_rule['actions'][0]['access_control'] ) && ! empty( $access_rule['actions'][0]['access_control'] ) ? $access_rule['actions'][0]['access_control'] : 'access';
-
-							if ( ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control ) ) {
-								$can_view_purchase = false;
-								break;
-							}
-						}
-					}
-				}
-			}
-		}
 		return $can_view_purchase;
 	}
 	/**
