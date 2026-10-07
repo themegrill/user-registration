@@ -1360,7 +1360,7 @@ class StripeService {
 	 * @return bool
 	 */
 	private function can_discard_pending_member( $member_id ) {
-		return absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) || ( ! is_user_logged_in() && WPEverestURMembershipAJAX::verify_pending_member_session( absint( $member_id ) ) );
+		return absint( $member_id ) === get_current_user_id() || current_user_can( 'edit_users' ) || ( ! is_user_logged_in() && \WPEverest\URMembership\AJAX::verify_pending_member_session( absint( $member_id ) ) );
 	}
 
 	/**
