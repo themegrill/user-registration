@@ -150,6 +150,7 @@ try {
 	security_assert( '<span>$49.99</span>' === product_price( array( $post_type_rule ), true ), 'A member still sees the price' );
 	security_assert( '<span>$49.99</span>' === product_price( array(), false ), 'An unrestricted product keeps its price' );
 	security_assert( '<span>$49.99</span>' === product_price( array( $post_type_rule ), false, true ), 'A user who can edit the product still sees its price' );
+	security_assert( 1 === preg_match( "/^\s*add_filter\( 'woocommerce_get_price_html', array\( \\\$this, 'hide_wc_price_if_restricted' \)/m", (string) file_get_contents( $frontend ) ), 'The price filter must be registered on woocommerce_get_price_html' );
 } catch ( Throwable $e ) {
 	fwrite( STDERR, $e->getMessage() . "\n" );
 	exit( 1 );
