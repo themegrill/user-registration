@@ -4,7 +4,7 @@ Tags: membership, subscription, content restriction, user profile, user registra
 Requires at least: 5.5
 Requires PHP: 7.4
 Tested up to: 7.1
-Stable tag: 5.2.8
+Stable tag: 5.3.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
@@ -251,6 +251,10 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 9. Subscription Management
 
 == Changelog ==
+
+
+= 5.3.0    - 08/10/2026 =
+* Fix - Undefined array key warning on subscription cancel with no order.
 
 = 5.2.8    - 10/09/2026 =
 * Fix      - Stop retrying deleted Stripe subscriptions.
