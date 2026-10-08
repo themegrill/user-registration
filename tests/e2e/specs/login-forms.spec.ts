@@ -106,13 +106,35 @@ test.describe("login methods @fresh", () => {
 
     await guest.locator("#username").focus();
     await expect(guest.locator("#username")).toHaveCSS("outline-style", "solid");
-    // themegrill/user-registration-pro#1896: no gap between the border and the ring, so it reads as one.
-    await expect(guest.locator("#username")).toHaveCSS("outline-offset", "0px");
 
     await guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first().focus();
     await expect(
       guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first(),
     ).toHaveCSS("outline-style", "solid");
+    await visitor.close();
+  });
+
+  /**
+   * @area    login-forms
+   * @tier    fresh
+   * @guards  #1896
+   * @source  verify-fix 2026-10-08
+   * @why     A focused login field showed its primary border and, 2px outside it,
+   *          the focus ring, which read as a double border. The ring now sits
+   *          flush against the border on bordered fields while the submit button
+   *          keeps its gap. Asserts only that offset, not the ring's colour.
+   */
+  test("a focused login field has no gap between its border and focus ring @fresh @login-forms", async ({ browser }) => {
+    const visitor = await newVisitor(browser);
+    const guest = await visitor.newPage();
+    await guest.goto("/my-account/");
+
+    await guest.locator("#username").focus();
+    await expect(guest.locator("#username")).toHaveCSS("outline-offset", "0px");
+
+    const submit = guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first();
+    await submit.focus();
+    await expect(submit).not.toHaveCSS("outline-offset", "0px");
     await visitor.close();
   });
 });
