@@ -106,6 +106,8 @@ test.describe("login methods @fresh", () => {
 
     await guest.locator("#username").focus();
     await expect(guest.locator("#username")).toHaveCSS("outline-style", "solid");
+    // themegrill/user-registration-pro#1896: no gap between the border and the ring, so it reads as one.
+    await expect(guest.locator("#username")).toHaveCSS("outline-offset", "0px");
 
     await guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first().focus();
     await expect(
