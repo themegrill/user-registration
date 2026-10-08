@@ -2539,8 +2539,13 @@
 				.then(stripe_settings.handleOnComplete)
 				.catch(function (message, error) {
 					ur_membership_frontend_utils.hide_payment_processing_overlay();
+					// Pass the gateway's message on, so a declined payment still says why once its pending order is gone.
+					var failure = { error: {} };
+					if (message && message.data && message.data.message) {
+						failure.error.message = message.data.message;
+					}
 					stripe_settings.update_order_status(
-						{ error: {} },
+						failure,
 						response,
 						data.prepare_members_data,
 						data.form_response
