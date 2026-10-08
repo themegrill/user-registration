@@ -269,6 +269,25 @@ Membership payments dominate. Five clusters stand out in the commit subjects:
 `includes/functions-ur-core.php` is ~12,700 lines and touched by 81 fix commits;
 treat any change to it as high blast radius.
 
+## Known-fragile — no fixture yet
+
+- **Prorated membership upgrade pricing (#1467).** `convert_currency_and_calculate_tax()`
+  in `assets/js/modules/membership/frontend/user-registration-membership-frontend.js`
+  reads `membershipAmount` from the `data-urm-membership-amount` attribute and calls
+  `.toFixed(2)` on it. That attribute is only rendered as `data-urm-upgrade-type="Prorated"`
+  when `$_GET['action']==='upgrade'` *and* the backend's `calculated_amount` for the
+  target plan is genuinely below its list price — i.e. only for a member with a real,
+  active subscription who is mid-cycle upgrading to a different plan. The e2e suite has
+  no way to reach that state: there is no admin UI or REST/CLI seam to assign a user an
+  active subscription without a real payment-gateway checkout (`membership.spec.ts`'s own
+  docblock excludes Paid/Subscription plan creation for the same reason — no gateway
+  sandbox in CI), and this suite has no DB/WP-CLI seeding path at all. Fixed in PR #1468
+  by coercing `membershipAmount` with `parseFloat(...) || 0`, matching the existing
+  pattern in `calculate_total()`. Guarding this with a real `@fresh` scenario needs either
+  a gateway sandbox wired into CI or a seeding helper for `ur_membership_subscriptions` /
+  `ur_membership_orders` — a tooling decision, not something to bolt on as a side effect
+  of this fix.
+
 ## Critical flows
 
 The product's functional areas, in the order they matter. These slugs are the

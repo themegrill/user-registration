@@ -981,7 +981,8 @@
 			var localCurrency = "";
 			var currency = urmf_data.currency_symbol;
 
-			subTotal = urm_calculated_total;
+			// .data() returns "299.00" as a string, and convert_currency_and_calculate_tax() calls .toFixed() on it.
+			subTotal = parseFloat(urm_calculated_total);
 
 			if ($this.data("local-currency")) {
 				localCurrency = $this.data("local-currency");
@@ -1248,9 +1249,9 @@
 					typeof discount_amount !== "undefined"
 						? parseFloat(discount_amount)
 						: 0,
-				membershipAmount = $membershipRadio.data(
-					"urm-membership-amount"
-				),
+				membershipAmount =
+					parseFloat($membershipRadio.data("urm-membership-amount")) ||
+					0,
 				upgradeType = $membershipRadio.data("urm-upgrade-type") || null;
 
 			totalDetails.total = total;
@@ -2538,8 +2539,13 @@
 				.then(stripe_settings.handleOnComplete)
 				.catch(function (message, error) {
 					ur_membership_frontend_utils.hide_payment_processing_overlay();
+					// Pass the gateway's message on, so a declined payment still says why once its pending order is gone.
+					var failure = { error: {} };
+					if (message && message.data && message.data.message) {
+						failure.error.message = message.data.message;
+					}
 					stripe_settings.update_order_status(
-						{ error: {} },
+						failure,
 						response,
 						data.prepare_members_data,
 						data.form_response
