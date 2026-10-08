@@ -1761,8 +1761,8 @@ class StripeService {
 					update_user_meta( $member_id, 'urm_stripe_schedule_id', sanitize_text_field( $schedule->id ) );
 
 					// UR-4386: schedule created (sub_sched_ returned) -> billing is set up, so activate
-					// now. First charge is one period later; a later charge failure reverts to pending
-					// via handle_failed_invoice().
+					// now. First charge is one period later; if it fails, handle_failed_invoice() reverts
+					// to pending once Stripe has no retry left.
 					$this->members_orders_repository->update(
 						$member_order['ID'],
 						array(
@@ -2904,8 +2904,8 @@ class StripeService {
 
 		$member_id = $current_subscription['user_id'];
 
-		// Stripe sends this event on every retry; while it is still retrying, the member keeps access like the past_due expiry hold.
-		if ( ! empty( $event['data']['object']['next_payment_attempt'] ) && in_array( $current_subscription['status'] ?? '', array( 'active', 'trial' ), true ) ) {
+		// Stripe sends this event on every retry; while it is still retrying, a paying member keeps access like the past_due expiry hold.
+		if ( ! empty( $event['data']['object']['next_payment_attempt'] ) && 'active' === ( $current_subscription['status'] ?? '' ) ) {
 			PaymentGatewayLogging::log_webhook_processed(
 				'stripe',
 				'Invoice payment failed, Stripe will retry; subscription status kept',
@@ -4487,19 +4487,22 @@ class StripeService {
 		);
 
 		$count_created = 0;
+		$count_linked  = 0;
 		$count_skipped = 0;
+		$seen_invoices = array();
 
 		foreach ( $events->autoPagingIterator() as $event ) {
-			$invoice         = $event->data->object;
-			$invoice_data    = $invoice->toArray();
+			$invoice_data    = $event->data->object->toArray();
 			$subscription_id = $this->extract_stripe_id( $invoice_data['subscription'] ?? $invoice_data['parent']['subscription_details']['subscription'] ?? null );
 
-			if ( empty( $subscription_id ) ) {
+			// invoice.paid and invoice.payment_succeeded both list the same invoice; handle it once.
+			if ( empty( $subscription_id ) || isset( $seen_invoices[ $invoice_data['id'] ] ) ) {
 				++$count_skipped;
 				continue;
 			}
 
-			$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $subscription_id );
+			$seen_invoices[ $invoice_data['id'] ] = true;
+			$membership_subscription              = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $subscription_id );
 
 			if ( ! empty( $membership_subscription ) ) {
 				try {
@@ -4522,6 +4525,25 @@ class StripeService {
 				$payment = $this->orders_repository->get_order_by_transaction_id( $payment_intent_id );
 
 				if ( empty( $payment ) ) {
+					// Registration can save its order before the PaymentIntent is known; link the signup invoice to it instead of duplicating it.
+					$unlinked_order = 'subscription_create' === ( $invoice_data['billing_reason'] ?? '' ) ? $this->orders_repository->get_unlinked_order_by_subscription( $membership_subscription['ID'] ) : array();
+					if ( ! empty( $unlinked_order ) ) {
+						$this->orders_repository->update(
+							$unlinked_order['ID'],
+							array(
+								'transaction_id' => sanitize_text_field( $payment_intent_id ),
+								'status'         => 'completed',
+							)
+						);
+
+						++$count_linked;
+						$logger->info(
+							sprintf( '[Backfill][Stripe][Payments] Linked PaymentIntent %s to existing order %d (subscription %s)', $payment_intent_id, $unlinked_order['ID'], $subscription_id ),
+							array( 'source' => 'urm-missed-payment-backfill' )
+						);
+						continue;
+					}
+
 					$payment = $this->orders_repository->get_order_by_transaction_id( $subscription_id );
 					if ( ! empty( $payment ) ) {
 						$this->orders_repository->delete( $payment['ID'] );
@@ -4530,7 +4552,7 @@ class StripeService {
 					$subscription   = $this->members_subscription_repository->retrieve( $membership_subscription['ID'] );
 					$payment_intent = \Stripe\PaymentIntent::retrieve( $payment_intent_id );
 					$paid_amount    = $payment_intent->amount_received / 100; // Convert from cents to dollars
-					$created_at     = gmdate( 'Y-m-d H:i:s', $invoice->created );
+					$created_at     = gmdate( 'Y-m-d H:i:s', $invoice_data['created'] );
 
 					$order_data = array(
 						'orders_data'      => array(
@@ -4574,6 +4596,7 @@ class StripeService {
 				array(
 					'event_type'     => 'backfill_done',
 					'orders_created' => $count_created,
+					'orders_linked'  => $count_linked,
 					'skipped'        => $count_skipped,
 				),
 				JSON_PRETTY_PRINT
