@@ -211,7 +211,7 @@ class SubscriptionService {
 	 * @return array|bool[]|void
 	 */
 	public function cancel_subscription( $order, $subscription, $force_cancel = false ) {
-		switch ( $order['payment_method'] ) {
+		switch ( $order['payment_method'] ?? '' ) {
 			case 'paypal':
 				$paypal_service = new NewPaypalService();
 
@@ -220,7 +220,7 @@ class SubscriptionService {
 			case 'stripe':
 				$stripe_service = new StripeService();
 
-				return $stripe_service->cancel_subscription( $order, $subscription );
+				return $stripe_service->cancel_subscription( $order, $subscription, $force_cancel );
 
 			case 'mollie':
 				$mollie_service = new MollieService();
@@ -260,10 +260,20 @@ class SubscriptionService {
 		$period        = get_option( 'user_registration_membership_renewal_reminder_period', 'weeks' );
 		$value_in_days = convert_to_days( $days_before_value, $period );
 
-		$date       = new \DateTime( 'today' );
-		$check_date = $date->modify( "+$value_in_days day" )->format( 'Y-m-d H:i:s' );
+		// Ideal target = today + lead time. Look back so a missed cron day can still catch up;
+		// urm_billing_reminder_sent_for_date_{subscription_id} dedupes per billing cycle (same pattern as ended email).
+		$lookback_days = (int) apply_filters( 'urm_reminder_email_lookback_days', 7 );
+		$lookback_days = max( 0, $lookback_days );
 
-		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $check_date );
+		$window_end   = ( new \DateTime( 'today' ) )->modify( "+{$value_in_days} day" )->format( 'Y-m-d' );
+		$window_start = ( new \DateTime( $window_end ) )->modify( "-{$lookback_days} day" )->format( 'Y-m-d' );
+		// Never remind for billing dates already in the past.
+		$today = ( new \DateTime( 'today' ) )->format( 'Y-m-d' );
+		if ( $window_start < $today ) {
+			$window_start = $today;
+		}
+
+		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $window_start, $window_end );
 
 		if ( empty( $subscriptions ) ) {
 			return;
@@ -277,12 +287,13 @@ class SubscriptionService {
 				continue;
 			}
 
-			$checked_date = get_user_meta( $user_id, 'urm_billing_reminder_sent_for_date', true );
-			if ( $checked_date === $subscription['next_billing_date'] ) {
+			// Keyed per subscription so a user with several subscriptions in the window is not re-sent; legacy user-level key still honored.
+			$sent_key = 'urm_billing_reminder_sent_for_date_' . $subscription['subscription_id'];
+			if ( get_user_meta( $user_id, $sent_key, true ) === $subscription['next_billing_date'] || get_user_meta( $user_id, 'urm_billing_reminder_sent_for_date', true ) === $subscription['next_billing_date'] ) {
 				continue;
 			}
 			$email_service->send_email( $subscription, 'membership_renewal' );
-			update_user_meta( $subscription['member_id'], 'urm_billing_reminder_sent_for_date', $subscription['next_billing_date'] );
+			update_user_meta( $user_id, $sent_key, $subscription['next_billing_date'] );
 		}
 	}
 
@@ -299,7 +310,8 @@ class SubscriptionService {
 
 		$member_id = $current_user_subscription['user_id'];
 
-		$latest_order = $this->members_orders_repository->get_member_orders( $member_id );
+		// Scoped to this subscription, not the member's most recent order overall.
+		$latest_order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 		$membership = $this->membership_repository->get_single_membership_by_ID( $current_user_subscription['item_id'] );
 
@@ -310,6 +322,7 @@ class SubscriptionService {
 
 		$email_data = array(
 			'subscription'     => $subscription,
+			'subscription_id'  => $subscription_id,
 			'order'            => $latest_order,
 			'membership_metas' => $membership_metas,
 			'member_id'        => $member_id,
@@ -346,13 +359,35 @@ class SubscriptionService {
 			}
 		}
 
-		if ( empty( $member_order ) ) {
-			$member_order = $this->members_orders_repository->get_member_orders( $data['member_id'] );
+		if ( isset( $data['subscription']['ID'] ) ) {
+			$subscription_id = $data['subscription']['ID'];
+		} elseif ( ! empty( $data['subscription_id'] ) ) {
+			$subscription_id = $data['subscription_id'];
 		}
 
-		if ( isset( $data['subscription']['ID'] ) ) {
-			$subscription_id = $data['subscription']['ID'] ?? 0;
-		} else {
+		// Trust a caller-supplied order only when it matches the resolved subscription, so a caller's own mis-derived order can't bypass the lookup below.
+		if ( empty( $member_order ) && ! empty( $data['order'] ) ) {
+			$candidate_order = $data['order'];
+			if ( empty( $candidate_order['ID'] ) && ! empty( $candidate_order['order_id'] ) ) {
+				$candidate_order['ID'] = $candidate_order['order_id'];
+			}
+			if ( empty( $subscription_id ) || (int) ( $candidate_order['subscription_id'] ?? 0 ) === (int) $subscription_id ) {
+				$member_order = $candidate_order;
+			}
+		}
+
+		if ( empty( $subscription_id ) && ! empty( $member_order['subscription_id'] ) ) {
+			$subscription_id = $member_order['subscription_id'];
+		}
+
+		// Scope the order lookup to this subscription rather than the member's most recent order.
+		if ( empty( $member_order ) && ! empty( $subscription_id ) ) {
+			$member_order = $this->orders_repository->get_order_by_subscription( $subscription_id );
+		}
+
+		// Only fall back member-wide when no subscription resolved at all - one with no order of its own must not inherit another's data.
+		if ( empty( $member_order ) && empty( $subscription_id ) ) {
+			$member_order    = $this->members_orders_repository->get_member_orders( $data['member_id'] );
 			$subscription_id = ! empty( $member_order ) ? ( $member_order['subscription_id'] ?? '' ) : '';
 		}
 
@@ -362,7 +397,6 @@ class SubscriptionService {
 
 		$membership_metas               = ! empty( $membership['meta_value'] ) ? wp_unslash( json_decode( $membership['meta_value'], true ) ) : array();
 		$membership_metas['post_title'] = $membership['post_title'] ?? '';
-		$member_order                   = $member_order ? $member_order : $this->members_orders_repository->get_member_orders( $data['member_id'] );
 		$order                          = ! empty( $member_order['ID'] ) ? $this->orders_repository->get_order_detail( $member_order['ID'] ) : array();
 		$total                          = $order['total_amount'] ?? 0;
 		$membership_tab_url             = esc_url( ur_get_my_account_url() . 'ur-membership' );
@@ -414,12 +448,12 @@ class SubscriptionService {
 			// New orders have coupon_data meta — total_amount already reflects the actual paid amount.
 		}
 		$billing_cycle = ( 'subscription' === ( $membership_metas['type'] ?? '' ) ) ? ( ( 'day' === $membership_metas['subscription']['duration'] ) ? esc_html( 'Daily', 'user-registration' ) : ( esc_html( ucfirst( $membership_metas['subscription']['duration'] . 'ly' ) ) ) ) : 'N/A';
-		$trial_period  = ( 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === $order['trial_status'] ) ? ( $membership_metas['trial_data']['value'] . ' ' . $membership_metas['trial_data']['duration'] . ( $membership_metas['trial_data']['value'] > 1 ? 's' : '' ) ) : 'N/A';
+		$trial_period  = ( 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === ( $order['trial_status'] ?? '' ) ) ? ( $membership_metas['trial_data']['value'] . ' ' . $membership_metas['trial_data']['duration'] . ( $membership_metas['trial_data']['value'] > 1 ? 's' : '' ) ) : 'N/A';
 
 		$next_billing_date = 'subscription' === ( $membership_metas['type'] ?? '' ) && ! empty( $subscription['next_billing_date'] ) ? date( 'Y, F d', strtotime( $subscription['next_billing_date'] ) ) : 'N/A';
 		$expiry_date       = 'subscription' === ( $membership_metas['type'] ?? '' ) && ! empty( $subscription['expiry_date'] ) ? date( 'Y, F d', strtotime( $subscription['expiry_date'] ) ) : 'N/A';
-		$trial_start_date  = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === $order['trial_status'] && ! empty( $subscription['trial_start_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_start_date'] ) ) : 'N/A';
-		$trial_end_date    = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === $order['trial_status'] && ! empty( $subscription['trial_end_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_end_date'] ) ) : 'N/A';
+		$trial_start_date  = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === ( $order['trial_status'] ?? '' ) && ! empty( $subscription['trial_start_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_start_date'] ) ) : 'N/A';
+		$trial_end_date    = 'subscription' === ( $membership_metas['type'] ?? '' ) && 'on' === ( $order['trial_status'] ?? '' ) && ! empty( $subscription['trial_end_date'] ) ? date( 'Y, F d', strtotime( $subscription['trial_end_date'] ) ) : 'N/A';
 		$membership_type   = ucwords( $membership_metas['type'] ?? '' ) == 'Paid' ? __( 'One-Time Payment', 'user-registration' ) : ucwords( $membership_metas['type'] ?? '' );
 
 		$team_data  = null;
@@ -446,7 +480,7 @@ class SubscriptionService {
 			'username'                          => esc_html( ucwords( isset( $data['username'] ) ? $data['username'] : '' ) ),
 			'membership_plan_name'              => esc_html( ucwords( $membership_metas['post_title'] ) ),
 			'membership_plan_type'              => esc_html( $membership_type ),
-			'membership_plan_payment_method'    => esc_html( ucwords( isset( $data['order']['payment_method'] ) ? $data['order']['payment_method'] : ( $data['payment_method'] ?? '' ) ) ),
+			'membership_plan_payment_method'    => esc_html( ucwords( $order['payment_method'] ?? ( $data['payment_method'] ?? '' ) ) ),
 			'membership_plan_trial_status'      => esc_html( ucwords( $order['trial_status'] ?? '' ) ),
 			'membership_plan_trial_start_date'  => esc_html( $trial_start_date ),
 			'membership_plan_trial_end_date'    => esc_html( $trial_end_date ),
@@ -480,6 +514,8 @@ class SubscriptionService {
 			'membership_plan_total'             => ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( $total, 2 ) : number_format( $total, 2 ) . $symbol,
 			'membership_renewal_link'           => "<a href=$membership_tab_url>" . __( 'Renew Now', 'user-registration' ) . '</a>',
 			'membership_plan_transaction_id'    => ! empty( $data['transaction_id'] ) ? $data['transaction_id'] : '',
+			// Raw date for the {{payment_date}} smart tag, so it resolves to this subscription-scoped order instead of falling back to the member's most recent order.
+			'payment_date'                      => ! empty( $order['created_at'] ) ? esc_html( $order['created_at'] ) : '',
 		);
 
 		if ( ! empty( $team_data ) ) {
@@ -506,6 +542,34 @@ class SubscriptionService {
 	 * @return array The response from the payment gateway.
 	 */
 	public function upgrade_membership( $data ) {
+		// Serialize checkout writes with scheduled switching and payment webhooks.
+		$lock_name = NewPaypalService::SUBSCRIPTION_ROW_LOCK_PREFIX . absint( $data['current_subscription_id'] ?? 0 );
+		$lock      = $this->subscription_repository->acquire_lock( $lock_name );
+		if ( false === $lock ) {
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => __( 'A membership update is in progress. Please try again.', 'user-registration' ),
+				),
+			);
+		}
+		try {
+			wp_cache_delete( get_current_user_id(), 'user_meta' );
+			return $this->upgrade_membership_under_lock( $data );
+		} finally {
+			if ( true === $lock ) {
+				$this->subscription_repository->release_lock( $lock_name );
+			}
+		}
+	}
+
+	/**
+	 * Execute an upgrade while its subscription row is locked.
+	 *
+	 * @param array $data Checkout data.
+	 * @return array Checkout response.
+	 */
+	private function upgrade_membership_under_lock( $data ) {
 		$order_service = new OrderService();
 
 		$current_subscription_id                   = $data['current_subscription_id'];
@@ -519,6 +583,9 @@ class SubscriptionService {
 				),
 			);
 		}
+
+		// Always derive the current membership from the verified subscription, not the client-submitted value.
+		$data['current_membership_id'] = (int) $subscription['item_id'];
 
 		$user                                      = get_userdata( $subscription['user_id'] );
 		$payment_method                            = $data['selected_pg'];
@@ -641,7 +708,7 @@ class SubscriptionService {
 
 		if ( isset( $data['upgrade'] ) && $data['upgrade'] && 'subscription' === $current_membership_details['type'] && 'bank' !== $payment_method && 'off' === $selected_membership_details['trial_status'] && ! isset( $upgrade_details['delayed_until'] ) ) {
 
-			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false );
+			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false, true );
 
 			if ( ! $cancel_subscription['status'] ) {
 				$response['status'] = false;
@@ -649,8 +716,6 @@ class SubscriptionService {
 				$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
 
 				return $response;
-			} else {
-				$this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false );
 			}
 		}
 
@@ -820,8 +885,10 @@ class SubscriptionService {
 			);
 
 		} else {
-			$upgradable_memberships = explode( ',', $upgrade_details['upgrade_path'] );
-			$status                 = in_array( $data['selected_membership_id'], $upgradable_memberships );
+			$upgradable_memberships = is_array( $upgrade_details['upgrade_path'] )
+				? $upgrade_details['upgrade_path']
+				: explode( ',', (string) $upgrade_details['upgrade_path'] );
+			$status                 = in_array( (string) $data['selected_membership_id'], array_map( 'strval', $upgradable_memberships ), true );
 		}
 
 		if ( ! $status ) {
@@ -921,7 +988,7 @@ class SubscriptionService {
 	}
 
 	public function run_daily_delayed_membership_subscriptions() {
-		$all_delayed_orders = $this->orders_repository->get_all_delayed_orders( date( 'Y-m-d 00:00:00' ) );
+		$all_delayed_orders = $this->orders_repository->get_all_delayed_orders( current_time( 'mysql', true ) );
 
 		ur_get_logger()->notice(
 			sprintf(
@@ -952,27 +1019,143 @@ class SubscriptionService {
 			if ( ! isset( $decoded_data['subscription_id'] ) ) {
 				continue;
 			}
-			$subscription_id = $decoded_data['subscription_id'];
-			$user            = get_userdata( $decoded_data['member_id'] );
-			if ( $user ) {
-				$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
-				ur_get_logger()->notice( $cancel_subscription['message'], array( 'source' => 'urm-membership-crons' ) );
-				$previous_subscription             = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
-				$updated_subscription_for_users[]  = $user->user_login;
-				$decoded_data['subscription_data'] = $previous_subscription;
-				$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
-				$subscription_data['status']       = 'active';
-				$this->subscription_repository->update( $subscription_id, $subscription_data );
-				$last_order = $this->members_orders_repository->get_member_orders( $user->ID );
+
+			// `urm_next_subscription_data` gets overwritten by ANY later upgrade, so require it to still name THIS order (not just the same subscription/date, which a second delayed attempt submitted before either took effect could also share).
+			if ( empty( $decoded_data['order_id'] ) || (int) $decoded_data['order_id'] !== (int) $data['order_id'] ) {
+				// This order can never own the newer checkout's data. Retire only its schedule.
 				$this->orders_repository->delete_order_meta(
 					array(
-						'order_id' => $last_order['ID'],
+						'order_id' => absint( $data['order_id'] ),
 						'meta_key' => 'delayed_until',
 					)
 				);
-				delete_user_meta( $user->ID, 'urm_next_subscription_data' );
-				delete_user_meta( $user->ID, 'urm_previous_subscription_data' );
-				delete_user_meta( $user->ID, 'urm_previous_order_data' );
+				ur_get_logger()->notice(
+					sprintf( 'Delayed order #%d skipped: urm_next_subscription_data no longer matches this order (superseded by a later change).', $data['order_id'] ),
+					array( 'source' => 'urm-membership-crons' )
+				);
+				continue;
+			}
+
+			$subscription_id = $decoded_data['subscription_id'];
+			$user            = get_userdata( $decoded_data['member_id'] );
+			if ( $user ) {
+				$lock_name = NewPaypalService::SUBSCRIPTION_ROW_LOCK_PREFIX . $subscription_id;
+				$lock      = $this->subscription_repository->acquire_lock( $lock_name );
+				if ( false === $lock ) {
+					continue;
+				}
+				try {
+					wp_cache_delete( $user->ID, 'user_meta' );
+					$schedule_snapshot = get_user_meta( $user->ID, 'urm_next_subscription_data', true );
+					if ( $schedule_snapshot !== $data['sub_data'] ) {
+						continue;
+					}
+					$previous_snapshot = get_user_meta( $user->ID, 'urm_previous_subscription_data', true );
+					$order_snapshot    = get_user_meta( $user->ID, 'urm_previous_order_data', true );
+					$current_row       = $this->subscription_repository->retrieve( $subscription_id );
+					// Only for a PayPal scheduled downgrade — the marker is PayPal-specific and must not touch a Stripe/bank switch.
+					$is_paypal_delayed_checkout = 'paypal' === ( isset( $decoded_data['payment_method'] ) ? $decoded_data['payment_method'] : '' );
+					$scheduled_meta_key         = NewPaypalService::SCHEDULED_SUBSCRIPTION_META_PREFIX . $subscription_id;
+					$new_paypal_subscription_id = $is_paypal_delayed_checkout ? get_user_meta( $user->ID, $scheduled_meta_key, true ) : '';
+
+					$paypal_service = new NewPaypalService();
+					// A missing marker or failed verification cannot authorize a switch.
+					if ( $is_paypal_delayed_checkout && ! $paypal_service->cancel_scheduled_subscription_on_approval( $user->ID, $subscription_id ) ) {
+						ur_get_logger()->notice(
+							sprintf( 'Scheduled downgrade for user #%d skipped: PayPal subscription %s is not active yet.', $user->ID, $new_paypal_subscription_id ),
+							array( 'source' => 'urm-membership-crons' )
+						);
+						continue;
+					}
+
+					$previous_subscription = json_decode( get_user_meta( $user->ID, 'urm_previous_subscription_data', true ), true );
+					if ( ! $is_paypal_delayed_checkout ) {
+						$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false, true );
+						ur_get_logger()->notice( $cancel_subscription['message'], array( 'source' => 'urm-membership-crons' ) );
+					}
+
+					$decoded_data['subscription_data'] = $previous_subscription;
+					$subscription_data                 = $this->prepare_upgrade_subscription_data( $decoded_data['membership'], $decoded_data['member_id'], $decoded_data );
+					$subscription_data['status']       = 'active';
+					if ( ! empty( $new_paypal_subscription_id ) ) {
+						$subscription_data['subscription_id'] = $new_paypal_subscription_id;
+						$remote                               = $paypal_service->get_scheduled_subscription_details( $new_paypal_subscription_id );
+						if ( is_wp_error( $remote ) || 'ACTIVE' !== ( $remote['status'] ?? '' ) ) {
+							continue;
+						}
+						$paid_at = strtotime( $remote['billing_info']['last_payment']['time'] ?? '' );
+						$starts  = strtotime( $remote['start_time'] ?? '' );
+						$paid    = $paid_at && $starts && $paid_at >= $starts && (float) ( $remote['billing_info']['last_payment']['amount']['value'] ?? 0 ) > 0;
+						// ACTIVE at PayPal means approved, even while the first charge is failing.
+						// Bind the ID so a later sale can find the row, but grant no unpaid cycle.
+						$subscription_data['status'] = $paid ? 'active' : 'pending';
+						$payment_key                 = NewPaypalService::AWAITING_PAYMENT_META_PREFIX . $new_paypal_subscription_id;
+						if ( ! $paid ) {
+							update_user_meta( $user->ID, $payment_key, (int) $data['order_id'] );
+							if ( (int) get_user_meta( $user->ID, $payment_key, true ) !== (int) $data['order_id'] ) {
+								continue;
+							}
+						}
+						$next_billing                           = strtotime( $remote['billing_info']['next_billing_time'] ?? '' );
+						$subscription_data['expiry_date']       = $paid && $next_billing ? gmdate( 'Y-m-d H:i:s', $next_billing ) : '';
+						$subscription_data['next_billing_date'] = $next_billing ? gmdate( 'Y-m-d H:i:s', $next_billing ) : '';
+					}
+					// Gateway calls can overlap a newer checkout. Never apply its predecessor's snapshot.
+					wp_cache_delete( $user->ID, 'user_meta' );
+					if ( get_user_meta( $user->ID, 'urm_next_subscription_data', true ) !== $schedule_snapshot
+						|| ( $is_paypal_delayed_checkout && get_user_meta( $user->ID, $scheduled_meta_key, true ) !== $new_paypal_subscription_id ) ) {
+						continue;
+					}
+					$row_updated = $this->members_subscription_repository->update_if_subscription_id_matches( $subscription_id, $subscription_data, $current_row['subscription_id'] ?? '' );
+
+					// Only clean up the scheduled markers once the write took or row is already up-to-date.
+					if ( false === $row_updated ) {
+						continue;
+					}
+
+					if ( 0 === $row_updated ) {
+						$fresh_row = $this->subscription_repository->retrieve( $subscription_id );
+						if ( empty( $fresh_row ) || (string) ( $fresh_row['subscription_id'] ?? '' ) !== (string) ( $subscription_data['subscription_id'] ?? '' ) ) {
+							continue;
+						}
+					}
+
+					$updated_subscription_for_users[] = $user->user_login;
+
+					$payment_service = new PaymentService( '', $decoded_data['membership'] ?? 0, $user->user_email );
+					if ( ! empty( $decoded_data['current_membership_id'] ) && $payment_service->is_paid_to_free_change( $decoded_data['current_membership_id'], $decoded_data['membership'] ?? 0 ) ) {
+						$email_service = new EmailService();
+						$email_service->send_email( $decoded_data, 'membership_downgraded_free_user' );
+						$email_service->send_email( $decoded_data, 'membership_downgraded_free_admin' );
+					}
+
+					if ( ! empty( $new_paypal_subscription_id ) ) {
+						delete_user_meta( $user->ID, $scheduled_meta_key, $new_paypal_subscription_id );
+					}
+					delete_user_meta( $user->ID, NewPaypalService::EXPECTED_CANCEL_META_PREFIX . ( $previous_subscription['subscription_id'] ?? '' ) );
+					delete_user_meta( $user->ID, 'urm_paypal_scheduled_cancel_error_' . $subscription_id );
+					// Target the exact order that held delayed_until rather than assuming the newest order overall.
+					$delayed_order_id = ! empty( $data['order_id'] ) ? absint( $data['order_id'] ) : 0;
+					if ( empty( $delayed_order_id ) ) {
+						$last_order       = $this->members_orders_repository->get_member_orders( $user->ID );
+						$delayed_order_id = ! empty( $last_order['ID'] ) ? absint( $last_order['ID'] ) : 0;
+					}
+					if ( ! empty( $delayed_order_id ) ) {
+						$this->orders_repository->delete_order_meta(
+							array(
+								'order_id' => $delayed_order_id,
+								'meta_key' => 'delayed_until',
+							)
+						);
+					}
+					delete_user_meta( $user->ID, 'urm_next_subscription_data', $schedule_snapshot );
+					delete_user_meta( $user->ID, 'urm_previous_subscription_data', $previous_snapshot );
+					delete_user_meta( $user->ID, 'urm_previous_order_data', $order_snapshot );
+				} finally {
+					if ( true === $lock ) {
+						$this->subscription_repository->release_lock( $lock_name );
+					}
+				}
 			}
 		}
 
@@ -1084,15 +1267,10 @@ class SubscriptionService {
 		}
 
 		$membership_process = urm_get_membership_process( $member_id );
-		if ( $membership_process && ! in_array( $membership_id, $membership_process['renew'] ) ) {
+		// A marker left by an abandoned or declined renewal is reused, otherwise the member could never renew again.
+		if ( ! in_array( absint( $membership_id ), array_map( 'absint', $membership_process['renew'] ), true ) ) {
 			$membership_process['renew'][] = $membership_id;
 			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
-		} else {
-			wp_send_json_error(
-				array(
-					'message' => __( 'Membership renew process already initiated.', 'user-registration' ),
-				)
-			);
 		}
 
 		$orders_data     = $order_service->prepare_orders_data( $members_data, $member_id, $member_subscription, array(), true ); // prepare data for orders table.
@@ -1201,10 +1379,19 @@ class SubscriptionService {
 		}
 		$period        = get_option( 'user_registration_membership_expiring_soon_period', 'weeks' );
 		$value_in_days = convert_to_days( $days_before_value, $period );
-		$date          = new \DateTime( 'today' );
-		$check_date    = $date->modify( "+$value_in_days day" )->format( 'Y-m-d H:i:s' );
 
-		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $check_date );
+		// Same lookback + per-cycle dedup as renewal reminders (see daily_membership_renewal_check).
+		$lookback_days = (int) apply_filters( 'urm_reminder_email_lookback_days', 7 );
+		$lookback_days = max( 0, $lookback_days );
+
+		$window_end   = ( new \DateTime( 'today' ) )->modify( "+{$value_in_days} day" )->format( 'Y-m-d' );
+		$window_start = ( new \DateTime( $window_end ) )->modify( "-{$lookback_days} day" )->format( 'Y-m-d' );
+		$today        = ( new \DateTime( 'today' ) )->format( 'Y-m-d' );
+		if ( $window_start < $today ) {
+			$window_start = $today;
+		}
+
+		$subscriptions = $this->members_subscription_repository->get_about_to_expire_subscriptions( $window_start, $window_end );
 		if ( empty( $subscriptions ) ) {
 			return;
 		}
@@ -1218,13 +1405,13 @@ class SubscriptionService {
 				continue;
 			}
 
-			$checked_date = get_user_meta( $user_id, 'urm_expiring_reminder_sent_for_date', true );
-
-			if ( $checked_date === $subscription['next_billing_date'] ) {
+			// Keyed per subscription so a user with several subscriptions in the window is not re-sent; legacy user-level key still honored.
+			$sent_key = 'urm_expiring_reminder_sent_for_date_' . $subscription['subscription_id'];
+			if ( get_user_meta( $user_id, $sent_key, true ) === $subscription['next_billing_date'] || get_user_meta( $user_id, 'urm_expiring_reminder_sent_for_date', true ) === $subscription['next_billing_date'] ) {
 				continue;
 			}
 			$email_service->send_email( $subscription, 'membership_expiring_soon' );
-			update_user_meta( $subscription['member_id'], 'urm_expiring_reminder_sent_for_date', $subscription['next_billing_date'] );
+			update_user_meta( $user_id, $sent_key, $subscription['next_billing_date'] );
 		}
 	}
 
@@ -1261,6 +1448,8 @@ class SubscriptionService {
 	 * @return void
 	 */
 	public function daily_membership_expiration_check() {
+		// Resolve due replacements first, even when WP runs expiration before the delayed job.
+		$this->run_daily_delayed_membership_subscriptions();
 		// Grace period gives the hourly missed-payment backfill time to catch a renewal
 		$grace_hours   = (int) apply_filters( 'urm_expiry_grace_hours', 12 );
 		$date          = new \DateTime( "-{$grace_hours} hours" );
@@ -1295,6 +1484,41 @@ class SubscriptionService {
 				( new NewPaypalService() )->cancel_suspended_subscription( $subscription['gateway_subscription_id'] );
 			}
 			delete_user_meta( $user_id, 'urm_pending_cancel_' . $subscription_id );
+
+			// Don't lock the member out while Stripe is still collecting (past_due) or still
+			// considers the subscription live (active/trialing). Mika's case: local expiry ran
+			// while Stripe stayed active after a renewal invoice with no payment_intent.
+			if ( ! $pending_cancel_meta && 'stripe' === ( $order['payment_method'] ?? '' ) && ! empty( $subscription['gateway_subscription_id'] ) ) {
+				$stripe_service      = new StripeService();
+				$stripe_subscription = $stripe_service->get_subscription( $subscription['gateway_subscription_id'] );
+				$gateway_status      = is_wp_error( $stripe_subscription ) ? $stripe_subscription : (string) ( $stripe_subscription->status ?? '' );
+
+				if ( ! is_wp_error( $gateway_status ) && in_array( $gateway_status, array( 'past_due', 'active', 'trialing' ), true ) ) {
+					if ( in_array( $gateway_status, array( 'active', 'trialing' ), true ) ) {
+						// Reuse the subscription already retrieved above rather than asking Stripe a second time.
+						$stripe_service->apply_stripe_subscription_to_local(
+							$stripe_subscription,
+							array(
+								'sub_id'  => $subscription_id,
+								'user_id' => $user_id,
+							),
+							'active'
+						);
+					}
+
+					ur_get_logger()->notice(
+						sprintf(
+							'[Member ID #%d] Expiration held - Stripe subscription %s is still %s',
+							$user_id,
+							$subscription['gateway_subscription_id'],
+							$gateway_status
+						),
+						array( 'source' => 'urm-membership-expiration' )
+					);
+					continue;
+				}
+			}
+
 			// A pending-cancel subscription reaching its date is a cancellation, not a natural expiry.
 			$new_status    = $pending_cancel_meta ? 'canceled' : 'expired';
 			$update_result = $this->members_subscription_repository->update( $subscription_id, array( 'status' => $new_status ) );
@@ -1381,8 +1605,16 @@ class SubscriptionService {
 	 * Payment retry callback for a failed attempt.
 	 */
 	public function failed_payment_retry_callback( $subscription ) {
+		$retry_count     = (int) get_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', true );
+		$max_retry_count = (int) get_option( 'user_registration_payment_retry_count', 3 );
+
+		// Retries already exhausted for this subscription - stop retrying and cancel it instead.
+		if ( $retry_count >= $max_retry_count ) {
+			$this->cancel_subscription_after_retries_exhausted( $subscription );
+			return;
+		}
+
 		// update the counter for failed payment retry.
-		$retry_count = (int) get_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', true );
 		update_user_meta( $subscription['member_id'], 'urm_is_payment_retrying', $retry_count + 1 );
 		switch ( $subscription['payment_method'] ) {
 			case 'paypal':
@@ -1397,6 +1629,55 @@ class SubscriptionService {
 				do_action( 'urm_handle_failed_payment_retry', $subscription );
 				break;
 		}
+	}
+
+	/**
+	 * Cancel a subscription once its configured payment retry attempts are
+	 * exhausted, and notify the member with the "Payment Retry - Final
+	 * Notice" email.
+	 *
+	 * @param array $subscription Row from MembersSubscriptionRepository::get_subscriptions_to_retry().
+	 * @return void
+	 */
+	private function cancel_subscription_after_retries_exhausted( $subscription ) {
+		$subscription_id = $subscription['subscription_id'];
+		$member_id       = $subscription['member_id'];
+
+		$cancel_result = $this->subscription_repository->cancel_subscription_by_id( $subscription_id, false );
+
+		if ( empty( $cancel_result['status'] ) ) {
+			// Leave the retry counter as-is so the next daily run retries the cancellation itself.
+			ur_get_logger()->error(
+				sprintf(
+					'[Payment Retry] Retries exhausted for subscription #%d, but cancellation failed: %s.',
+					$subscription_id,
+					$cancel_result['message'] ?? 'unknown error'
+				),
+				array( 'source' => 'urm-payment-retry' )
+			);
+			return;
+		}
+
+		ur_get_logger()->info(
+			sprintf( '[Payment Retry] Retries exhausted for subscription #%d - cancelled.', $subscription_id ),
+			array( 'source' => 'urm-payment-retry' )
+		);
+
+		delete_user_meta( $member_id, 'urm_is_payment_retrying' );
+
+		$latest_order     = $this->orders_repository->get_order_by_subscription( $subscription_id );
+		$membership_id    = $subscription['membership'] ?? ( $latest_order['item_id'] ?? 0 );
+		$membership       = $this->membership_repository->get_single_membership_by_ID( $membership_id );
+		$membership_metas = ! empty( $membership['meta_value'] ) ? wp_unslash( json_decode( $membership['meta_value'], true ) ) : array();
+
+		$email_data = array(
+			'subscription'     => $this->members_subscription_repository->retrieve( $subscription_id ),
+			'order'            => $latest_order,
+			'membership_metas' => $membership_metas,
+			'member_id'        => $member_id,
+		);
+
+		( new EmailService() )->send_email( $email_data, 'payment_retry_cancel' );
 	}
 
 	/**
@@ -1497,12 +1778,21 @@ class SubscriptionService {
 							);
 							break;
 						}
+						// Order backfills (idempotent by PaymentIntent) keep a failed Stripe window for the next run; status and dispute replays would re-apply stale snapshots.
+						$stripe_payments_sync_option = 'urm_last_stripe_payment_backfill_sync_time';
+						$stripe_payments_synced_from = (int) get_option( $stripe_payments_sync_option, 0 );
+						if ( $stripe_payments_synced_from <= 0 ) {
+							$stripe_payments_synced_from = $last_synced;
+						}
+						$stripe_synced = false;
 						try {
 							$stripe_service = new StripeService();
 							$stripe_service->run_missed_subscription_backfill( $last_synced );
-							$stripe_service->run_missed_payment_backfill( $last_synced );
-							$stripe_service->run_missed_onetime_payment_backfill( $last_synced );
+							$stripe_service->run_missed_payment_backfill( $stripe_payments_synced_from );
+							$stripe_service->run_missed_onetime_payment_backfill( $stripe_payments_synced_from );
 							$stripe_service->run_missed_refund_backfill( $last_synced );
+							$stripe_service->run_missed_dispute_backfill( $last_synced );
+							$stripe_synced = ! $stripe_service->has_backfill_failure();
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(
@@ -1511,16 +1801,60 @@ class SubscriptionService {
 								),
 								array( 'source' => 'urm-missed-payment-backfill' )
 							);
-							break;
 						}
+						if ( ! $stripe_synced ) {
+							ur_get_logger()->warning(
+								'[Backfill][Stripe] A Stripe request or order write failed; the Stripe payment sync time is kept and this window is searched again next run.',
+								array( 'source' => 'urm-missed-payment-backfill' )
+							);
+						}
+						// Storing the window start on failure also covers a first run, which has no stored Stripe payment sync time yet.
+						update_option( $stripe_payments_sync_option, $stripe_synced ? $now : $stripe_payments_synced_from );
 						break;
 					case 'paypal':
 						try {
+							// PayPal keeps its own sync time, advanced only on full success, so a failed window is retried without blocking other gateways.
+							$paypal_last_synced = (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 );
+							if ( $paypal_last_synced <= 0 ) {
+								// First run seeds from a bookmark, not the ever-advancing $last_synced, so a retry can't silently skip past this window.
+								$seed_candidate = (int) get_option( 'urm_paypal_backfill_seed_pending', 0 );
+								if ( $seed_candidate <= 0 ) {
+									$seed_candidate = $last_synced;
+									update_option( 'urm_paypal_backfill_seed_pending', $seed_candidate );
+								}
+								update_option( 'urm_last_paypal_backfill_sync_time', $seed_candidate );
+								// Verify stored option to prevent update_option() from failing when new value equals existing value.
+								if ( (int) get_option( 'urm_last_paypal_backfill_sync_time', 0 ) !== $seed_candidate ) {
+									ur_get_logger()->warning(
+										'[Backfill][PayPal] Could not store the starting sync time; retrying next run.',
+										array( 'source' => 'urm-missed-payment-backfill' )
+									);
+									break;
+								}
+								delete_option( 'urm_paypal_backfill_seed_pending' );
+								$paypal_last_synced = $seed_candidate;
+							}
 							$paypal_service = new NewPaypalService();
-							$paypal_service->run_missed_subscription_backfill( $last_synced, $now );
-							$paypal_service->run_missed_payment_backfill( $last_synced, $now );
-							$paypal_service->run_missed_onetime_payment_backfill( $last_synced, $now );
-							$paypal_service->run_missed_refund_backfill( $last_synced, $now );
+							if ( ! $paypal_service->has_rest_credentials() ) {
+								ur_get_logger()->info(
+									'[Backfill][PayPal] Skipped — no REST credentials; the PayPal sync time is kept.',
+									array( 'source' => 'urm-missed-payment-backfill' )
+								);
+								break;
+							}
+							$paypal_service->run_missed_subscription_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_payment_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_onetime_payment_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_refund_backfill( $paypal_last_synced, $now );
+							$paypal_service->run_missed_dispute_backfill( $paypal_last_synced, $now );
+							if ( $paypal_service->has_backfill_failure() ) {
+								ur_get_logger()->warning(
+									'[Backfill][PayPal] A fetch or update failed; the PayPal sync time is kept and this window is searched again next run.',
+									array( 'source' => 'urm-missed-payment-backfill' )
+								);
+							} else {
+								update_option( 'urm_last_paypal_backfill_sync_time', $now );
+							}
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(

@@ -51,6 +51,9 @@ class UR_Admin_Dashboard {
 		// Get site assistant data from core function
 		$site_assistant_data = ur_get_site_assistant_data();
 
+		// Built here, not in ur_get_site_assistant_data(), because that also runs on every admin page for the menu badge.
+		$site_assistant_data['unlinked_users_preview'] = $site_assistant_data['unlinked_users_handled'] ? array() : ur_get_unlinked_users_preview();
+
 		// Count custom content restriction rules (excluding membership rules)
 		$custom_rules_count = urcr_get_custom_rules_count( array( 'custom', 'is_migrated' ) );
 

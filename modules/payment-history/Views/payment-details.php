@@ -62,7 +62,7 @@ foreach ( $fields as $key => $label ):
 					break;
 
 				case 'payment_method':
-					echo esc_html( ucfirst( $order_detail['payment_method'] ) );
+					echo esc_html( ur_get_payment_gateway_label( $order_detail['payment_method'] ) );
 					break;
 
 				case 'created_at':

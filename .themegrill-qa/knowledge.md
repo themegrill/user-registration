@@ -237,7 +237,7 @@ File appearance count across the last 600 fix/bug/regression commits:
 | `includes/admin/class-ur-admin-settings.php` | 25 |
 | `modules/membership/includes/Admin.php` | 24 |
 
-Membership payments dominate. Four clusters stand out in the commit subjects:
+Membership payments dominate. Five clusters stand out in the commit subjects:
 
 1. **Payment/currency correctness** — Stripe charging the global amount in local
    currency (`0fbffa10`), subscription tab showing base price instead of amount
@@ -257,9 +257,36 @@ Membership payments dominate. Four clusters stand out in the commit subjects:
    `6750dddb`), and `ur_get_my_account_url` appending a trailing slash after a
    query string on plain permalinks (`2cdbbded`). Permalink structure and
    WPML/Polylang are both real variables here.
+5. **PayPal REST billing is not CI-testable yet** — what PayPal will charge is
+   decided by the plan/subscription payloads `NewPaypalService` sends server-side
+   (setup fee, TRIAL/REGULAR cycles, `start_time`), e.g. the upgrade double charge
+   in free#1447 / pro#1405. `boot-wp` has no PayPal credentials and no way to stub
+   server-side HTTP, so a spec cannot observe those payloads. Guarding them needs a
+   harness mu-plugin that stubs `pre_http_request` for `api-m.sandbox.paypal.com`
+   (token, catalog product, billing plan, subscription) and records the request
+   bodies, plus seeded PayPal test-mode options.
 
 `includes/functions-ur-core.php` is ~12,700 lines and touched by 81 fix commits;
 treat any change to it as high blast radius.
+
+## Known-fragile — no fixture yet
+
+- **Prorated membership upgrade pricing (#1467).** `convert_currency_and_calculate_tax()`
+  in `assets/js/modules/membership/frontend/user-registration-membership-frontend.js`
+  reads `membershipAmount` from the `data-urm-membership-amount` attribute and calls
+  `.toFixed(2)` on it. That attribute is only rendered as `data-urm-upgrade-type="Prorated"`
+  when `$_GET['action']==='upgrade'` *and* the backend's `calculated_amount` for the
+  target plan is genuinely below its list price — i.e. only for a member with a real,
+  active subscription who is mid-cycle upgrading to a different plan. The e2e suite has
+  no way to reach that state: there is no admin UI or REST/CLI seam to assign a user an
+  active subscription without a real payment-gateway checkout (`membership.spec.ts`'s own
+  docblock excludes Paid/Subscription plan creation for the same reason — no gateway
+  sandbox in CI), and this suite has no DB/WP-CLI seeding path at all. Fixed in PR #1468
+  by coercing `membershipAmount` with `parseFloat(...) || 0`, matching the existing
+  pattern in `calculate_total()`. Guarding this with a real `@fresh` scenario needs either
+  a gateway sandbox wired into CI or a seeding helper for `ur_membership_subscriptions` /
+  `ur_membership_orders` — a tooling decision, not something to bolt on as a side effect
+  of this fix.
 
 ## Critical flows
 
@@ -279,6 +306,7 @@ area out of CI narrowing.
 - payments — Stripe, PayPal, amounts charged and recorded
 - form-builder — building and saving a form with every field type
 - admin — the settings screens and menus every other area depends on
+- setup-wizard — the first-run wizard: the membership question, step routing and what it saves
 
 The tier breakdown below says which individual tests gate CI today.
 

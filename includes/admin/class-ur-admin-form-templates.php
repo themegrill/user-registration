@@ -80,7 +80,17 @@ class UR_Admin_Form_Templates {
 		 *
 		 * @param array $template_data->templates templates data
 		 */
-		return isset( $template_data->templates ) ? apply_filters( 'user_registration_template_section_data', $template_data->templates ) : self::get_default_template();
+		if ( ! isset( $template_data->templates ) ) {
+			return self::get_default_template();
+		}
+
+		$sections = $template_data->templates;
+
+		if ( function_exists( 'ur_exclude_legacy_payment_form_templates' ) ) {
+			$sections = ur_exclude_legacy_payment_form_templates( $sections );
+		}
+
+		return apply_filters( 'user_registration_template_section_data', $sections );
 	}
 
 	/**
