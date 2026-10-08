@@ -33,18 +33,6 @@ namespace Stripe {
 namespace {
 	require __DIR__ . '/bootstrap.php';
 
-	class PaymentGatewayLogging {
-		public static function log_error( $gateway, $message ) {
-			$GLOBALS['logged_errors'][] = $message;
-		}
-	}
-	function wp_json_encode( $value, $flags = 0 ) {
-		return 'encoded:' . gettype( $value ) . ':' . (int) $flags;
-	}
-	function wp_die() {
-		throw new SecurityResponse( false, 'wp_die', 500 );
-	}
-
 	$stripe_service = 'modules/membership/includes/Admin/Services/Stripe/StripeService.php';
 	eval( 'class StripeInvoiceResolver {' . security_function( $stripe_service, 'extract_stripe_id' ) . security_function( $stripe_service, 'get_invoice_payment_intent_id' ) . '}' );
 	$resolver = new ReflectionMethod( 'StripeInvoiceResolver', 'get_invoice_payment_intent_id' );
@@ -126,14 +114,12 @@ namespace {
 	);
 	security_assert( '' === $resolve( array( 'id' => 'in_6' ), $oob ), 'A non-PaymentIntent payment yields no PaymentIntent' );
 
-	// Lookup failure must surface so Stripe retries, never be mistaken for a $0 invoice.
-	$GLOBALS['logged_errors'] = array();
-	$failed                   = null;
+	// Lookup failure must reach the caller, never be mistaken for a $0 invoice.
+	$failed = null;
 	try {
 		$resolve( array( 'id' => 'in_7' ), array(), true );
-	} catch ( SecurityResponse $e ) {
+	} catch ( \Exception $e ) {
 		$failed = $e;
 	}
-	security_assert( null !== $failed && 500 === $failed->status, 'A failed lookup aborts the webhook with an error status' );
-	security_assert( 1 === count( $GLOBALS['logged_errors'] ), 'A failed lookup is logged' );
+	security_assert( null !== $failed && 'No such invoice' === $failed->getMessage(), 'A failed lookup throws to the caller' );
 }

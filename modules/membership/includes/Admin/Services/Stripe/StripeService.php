@@ -2653,10 +2653,26 @@ class StripeService {
 		if ( is_array( $replaced_subscription ) && ( $replaced_subscription['new'] ?? '' ) === $subscription_id ) {
 			$this->stop_replaced_subscription( $replaced_subscription['old'] ?? '', $subscription_id, $member_id, 'active' );
 		}
-		$membership_id     = $current_subscription['item_id'];
-		$invoice_id        = $event['data']['object']['id'];
-		$payment_intent_id = $this->get_invoice_payment_intent_id( $event['data']['object'] );
-		$invoice_amount    = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
+		$membership_id = $current_subscription['item_id'];
+		$invoice_id    = $event['data']['object']['id'];
+		try {
+			$payment_intent_id = $this->get_invoice_payment_intent_id( $event['data']['object'] );
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to resolve the PaymentIntent of an invoice' . "\n" . wp_json_encode(
+					array(
+						'error_code'    => 'INVOICE_PAYMENT_LOOKUP_FAILED',
+						'invoice_id'    => $invoice_id,
+						'error_message' => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			wp_die();
+		}
+		$invoice_amount = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
 
 		// $0 invoices (typical first trial invoice) have no payment_intent. Skip duplicate order
 		// creation, but still sync dates/status from Stripe — otherwise a renewal invoice that
@@ -2812,6 +2828,7 @@ class StripeService {
 	 *
 	 * @param array $invoice Invoice object from a Stripe event.
 	 * @return string PaymentIntent id, or an empty string when no PaymentIntent paid the invoice.
+	 * @throws \Exception When the invoice cannot be fetched from Stripe.
 	 */
 	private function get_invoice_payment_intent_id( $invoice ) {
 		$payment_intent_id = $this->extract_stripe_id( $invoice['payment_intent'] ?? null );
@@ -2819,28 +2836,12 @@ class StripeService {
 			return $payment_intent_id;
 		}
 
-		try {
-			$payments = \Stripe\Invoice::retrieve(
-				array(
-					'id'     => $invoice['id'],
-					'expand' => array( 'payments' ),
-				)
-			)->toArray()['payments']['data'] ?? array();
-		} catch ( \Exception $e ) {
-			PaymentGatewayLogging::log_error(
-				'stripe',
-				'Failed to resolve the PaymentIntent of an invoice' . "\n" . wp_json_encode(
-					array(
-						'error_code'    => 'INVOICE_PAYMENT_LOOKUP_FAILED',
-						'invoice_id'    => $invoice['id'],
-						'error_message' => $e->getMessage(),
-					),
-					JSON_PRETTY_PRINT
-				)
-			);
-
-			wp_die();
-		}
+		$payments = \Stripe\Invoice::retrieve(
+			array(
+				'id'     => $invoice['id'],
+				'expand' => array( 'payments' ),
+			)
+		)->toArray()['payments']['data'] ?? array();
 
 		foreach ( $payments as $payment ) {
 			if ( 'paid' === ( $payment['status'] ?? '' ) && ! empty( $payment['payment']['payment_intent'] ) ) {
@@ -2901,6 +2902,25 @@ class StripeService {
 			return;
 		}
 
+		$member_id = $current_subscription['user_id'];
+
+		// Stripe sends this event on every retry; while it is still retrying, the member keeps access like the past_due expiry hold.
+		if ( ! empty( $event['data']['object']['next_payment_attempt'] ) && in_array( $current_subscription['status'] ?? '', array( 'active', 'trial' ), true ) ) {
+			PaymentGatewayLogging::log_webhook_processed(
+				'stripe',
+				'Invoice payment failed, Stripe will retry; subscription status kept',
+				array(
+					'subscription_id'      => $subscription_id,
+					'sub_id'               => $current_subscription['sub_id'],
+					'member_id'            => $member_id,
+					'status'               => $current_subscription['status'],
+					'next_payment_attempt' => $event['data']['object']['next_payment_attempt'],
+				)
+			);
+
+			return;
+		}
+
 		$this->members_subscription_repository->update(
 			$current_subscription['sub_id'],
 			array(
@@ -2908,7 +2928,6 @@ class StripeService {
 			)
 		);
 
-		$member_id = $current_subscription['user_id'];
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
 			'Invoice payment failed handled',
@@ -4471,11 +4490,11 @@ class StripeService {
 		$count_skipped = 0;
 
 		foreach ( $events->autoPagingIterator() as $event ) {
-			$invoice           = $event->data->object;
-			$subscription_id   = $invoice->subscription ?? null;
-			$payment_intent_id = $invoice->payment_intent ?? null;
+			$invoice         = $event->data->object;
+			$invoice_data    = $invoice->toArray();
+			$subscription_id = $this->extract_stripe_id( $invoice_data['subscription'] ?? $invoice_data['parent']['subscription_details']['subscription'] ?? null );
 
-			if ( empty( $subscription_id ) || empty( $payment_intent_id ) ) {
+			if ( empty( $subscription_id ) ) {
 				++$count_skipped;
 				continue;
 			}
@@ -4483,6 +4502,23 @@ class StripeService {
 			$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $subscription_id );
 
 			if ( ! empty( $membership_subscription ) ) {
+				try {
+					$payment_intent_id = $this->get_invoice_payment_intent_id( $invoice_data );
+				} catch ( \Exception $e ) {
+					// Skip only this invoice: the sync time advances even when the backfill throws, so aborting would drop the rest of the window.
+					$logger->error(
+						sprintf( '[Backfill][Stripe][Payments] Could not resolve the PaymentIntent of invoice %s: %s', $invoice_data['id'] ?? '', $e->getMessage() ),
+						array( 'source' => 'urm-missed-payment-backfill' )
+					);
+					++$count_skipped;
+					continue;
+				}
+
+				if ( empty( $payment_intent_id ) ) {
+					++$count_skipped;
+					continue;
+				}
+
 				$payment = $this->orders_repository->get_order_by_transaction_id( $payment_intent_id );
 
 				if ( empty( $payment ) ) {
