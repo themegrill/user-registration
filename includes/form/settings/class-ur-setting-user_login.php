@@ -59,7 +59,7 @@ class UR_Setting_User_Login extends UR_Field_Settings {
 				'class'       => $this->default_class . ' ur-settings-min',
 				'type'        => 'number',
 				'required'    => false,
-				'default'     => $this->field_id . '_username_length',
+				'default'     => '',
 				'placeholder' => __( 'Maximum Value', 'user-registration' ),
 				'tip'         => __( 'Enter maximum number of characters allowed in the username.', 'user-registration' ),
 			),

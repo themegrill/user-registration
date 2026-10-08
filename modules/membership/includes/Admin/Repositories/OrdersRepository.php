@@ -210,24 +210,113 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * Whether a user has at least one completed order.
+	 *
+	 * A member who has paid before is an existing member, never a failed new registration.
+	 *
+	 * @param int $user_id User ID.
+	 * @return bool
+	 */
+	public function has_completed_order_for_user( $user_id ) {
+		$count = $this->wpdb()->get_var( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+			$this->wpdb()->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				"SELECT COUNT(*) FROM $this->table WHERE user_id = %d AND status = 'completed'", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Internal table name.
+				$user_id // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+			)
+		);
+
+		return (int) $count > 0;
+	}
+
+	/**
 	 * Get specific order by their subscription ID
 	 *
-	 * @param $subscription_id
+	 * @param int    $subscription_id Local subscription ID.
+	 * @param string $status          Optional order status to match; empty matches any.
 	 *
 	 * @return array|mixed|object|\stdClass|void
 	 */
-	public function get_order_by_subscription( $subscription_id ) {
+	public function get_order_by_subscription( $subscription_id, $status = '' ) {
 		$result = $this->wpdb()->get_row(
 			$this->wpdb()->prepare(
 				"
 				SELECT * from $this->table
 				WHERE subscription_id = %d
+				AND ( '' = %s OR status = %s )
 				ORDER BY ID DESC LIMIT 1
 		",
-				$subscription_id
+				$subscription_id, // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				$status, // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				$status // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
 			),
 			ARRAY_A
 		);
+
+		return ! $result ? array() : $result;
+	}
+
+	/**
+	 * The row's latest completed order for the given item, used to inherit currency/tax config for a renewal.
+	 *
+	 * The plain "latest order" can be an abandoned pending order for a different plan or currency
+	 * (a switch the member started but never paid for) — that must not leak into a real sale's order meta.
+	 *
+	 * @param int $subscription_id Local subscription row ID.
+	 * @param int $item_id         Membership post ID the order must be for.
+	 *
+	 * @return array Empty when none matches.
+	 */
+	public function get_latest_completed_order_by_subscription_and_item( $subscription_id, $item_id ) {
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- Internal table name; all variable values use placeholders.
+		$result = $this->wpdb()->get_row(
+			$this->wpdb()->prepare(
+				"
+				SELECT * from $this->table
+				WHERE subscription_id = %d
+				AND item_id = %d
+				AND status = 'completed'
+				ORDER BY ID DESC LIMIT 1
+		",
+				$subscription_id,
+				$item_id
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
+
+		return ! $result ? array() : $result;
+	}
+
+	/**
+	 * The row's pending, uncharged PayPal order for one specific plan — not just its latest order overall.
+	 *
+	 * A newer, unrelated pending order for a different plan (an abandoned upgrade/downgrade), or a pending
+	 * order on another gateway (bank/Stripe) for the same plan, must not be finalized by a PayPal event.
+	 *
+	 * @param int $subscription_id Local subscription row ID.
+	 * @param int $item_id         Membership post ID the order must be for.
+	 *
+	 * @return array Empty when none matches.
+	 */
+	public function get_pending_order_for_item( $subscription_id, $item_id ) {
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- $this->table is a fixed internal value, never attacker-influenced; all user-supplied values go through $wpdb->prepare()'s own placeholders.
+		$result = $this->wpdb()->get_row(
+			$this->wpdb()->prepare(
+				"
+				SELECT * from $this->table
+				WHERE subscription_id = %d
+				AND item_id = %d
+				AND payment_method = 'paypal'
+				AND status = 'pending'
+				AND transaction_id = ''
+				ORDER BY ID DESC LIMIT 1
+		",
+				$subscription_id,
+				$item_id
+			),
+			ARRAY_A
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return ! $result ? array() : $result;
 	}
@@ -254,21 +343,27 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	public function get_all_delayed_orders( $date ) {
-		$sql = sprintf(
+		$users_meta_table = TableList::users_meta_table();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table names are fixed internal values, never attacker-influenced; the date value goes through $wpdb->prepare()'s own placeholder.
+		// A row due today or earlier, not an exact-date match: one skipped on its own scheduled day (e.g. the new subscription wasn't active yet) must still be picked up by a later run instead of being dropped permanently.
+		$sql = $this->wpdb()->prepare(
 			"
 					SELECT
+					       urmo.ID as order_id,
 					       wpum.meta_value as sub_data
-					FROM wp_ur_membership_orders urmo
-					         JOIN wp_ur_membership_ordermeta wpom ON urmo.ID = wpom.order_id
-					         JOIN wp_usermeta wpum ON urmo.user_id = wpum.user_id
+					FROM {$this->table} urmo
+					         JOIN {$this->orders_meta_table} wpom ON urmo.ID = wpom.order_id
+					         JOIN {$users_meta_table} wpum ON urmo.user_id = wpum.user_id
 					WHERE wpom.meta_key = 'delayed_until'
-					  AND wpom.meta_value = '%s'
+					  AND wpom.meta_value <= %s
 					  AND wpum.meta_key = 'urm_next_subscription_data'
 				",
 			$date
 		);
 
 		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return ! $result ? array() : $result;
 	}
@@ -307,6 +402,61 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * Settle the coupon use an order claimed at checkout.
+	 *
+	 * A completed order keeps the use; a failed, cancelled or refunded one gives it back. Only the
+	 * caller that deletes the claim marker acts on it, so each use settles once.
+	 *
+	 * @param int    $order_id Order ID.
+	 * @param string $status   The order's new status.
+	 * @return void
+	 * @since x.x.x
+	 */
+	public function settle_coupon_claim( $order_id, $status ) {
+		if ( ! in_array( $status, array( 'completed', 'failed', 'canceled', 'cancelled', 'refunded' ), true ) ) {
+			return;
+		}
+
+		$claim = $this->get_order_meta_by_order_id_and_meta_key( $order_id, 'urm_coupon_usage_claim' );
+
+		if ( empty( $claim['meta_value'] ) ) {
+			return;
+		}
+
+		$deleted = $this->delete_order_meta(
+			array(
+				'order_id' => absint( $order_id ),
+				'meta_key' => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- keyed delete on the order meta table.
+			)
+		);
+
+		if ( $deleted && 'completed' !== $status && function_exists( 'ur_release_coupon_usage' ) ) {
+			ur_release_coupon_usage( $claim['meta_value'] );
+		}
+	}
+
+	/**
+	 * Give back the coupon uses claimed by a member's unfinished orders before they are deleted.
+	 *
+	 * @param int  $member_id   Member user ID.
+	 * @param bool $latest_only Only settle the member's latest order.
+	 * @return void
+	 * @since x.x.x
+	 */
+	public function release_member_coupon_claims( $member_id, $latest_only = false ) {
+		$wpdb      = $this->wpdb();
+		$order_ids = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$this->table} WHERE user_id = %d ORDER BY ID DESC", absint( $member_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name comes from TableList.
+
+		if ( $latest_only ) {
+			$order_ids = array_slice( $order_ids, 0, 1 );
+		}
+
+		foreach ( $order_ids as $order_id ) {
+			$this->settle_coupon_claim( $order_id, 'failed' );
+		}
+	}
+
+	/**
 	 * Get pending PayPal one-time payment orders created on or after a given timestamp.
 	 *
 	 * @param int $since Unix timestamp.
@@ -334,6 +484,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	public function get_completed_paypal_onetime_with_pending_subscription() {
 		$subs_table = $this->wpdb()->prefix . 'ur_membership_subscriptions';
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Table names cannot be prepared placeholders.
 		$result = $this->wpdb()->get_results(
 			"SELECT o.*
 			 FROM {$this->table} o
@@ -341,9 +492,12 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 			 WHERE o.payment_method = 'paypal'
 			 AND o.order_type = 'paid'
 			 AND o.status = 'completed'
-			 AND s.status IN ('pending', 'expired', 'canceled')",
+			 AND s.status = 'pending'
+			 AND o.item_id = s.item_id
+			 AND o.ID = ( SELECT MAX( o2.ID ) FROM {$this->table} o2 WHERE o2.subscription_id = s.ID )",
 			ARRAY_A
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return $result ? $result : array();
 	}

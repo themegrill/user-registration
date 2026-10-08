@@ -400,14 +400,14 @@ class Orders {
 	 *
 	 * This function adds the payment gateways for the membership plugin to the
 	 * WordPress options table. The payment gateways are stored in the 'ur_payment_gateways'
-	 * option and are an array containing the strings 'Paypal', 'Stripe', and 'Bank'.
+	 * option and are an array containing the strings 'PayPal', 'Stripe', and 'Bank'.
 	 *
 	 * @return void
 	 */
 	public function add_payment_gateway_options() {
 
 		$payment_gateways = array(
-			'paypal'      => __( 'Paypal', 'user-registration' ),
+			'paypal'      => __( 'PayPal', 'user-registration' ),
 			'stripe'      => __( 'Stripe', 'user-registration' ),
 			'credit_card' => __( 'Stripe (Credit Card)', 'user-registration' ),
 			'bank'        => __( 'Bank', 'user-registration' ),

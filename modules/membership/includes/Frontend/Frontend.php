@@ -11,7 +11,9 @@
 namespace WPEverest\URMembership\Frontend;
 
 use WPEverest\URMembership\Admin\Services\MembershipService;
+use WPEverest\URMembership\Admin\Services\Stripe\StripeService;
 use WPEverest\URMembership\Admin\Repositories\MembersSubscriptionRepository;
+use WPEverest\URMembership\Admin\Repositories\MembershipRepository;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -21,6 +23,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Frontend Class
  */
 class Frontend {
+
+	/**
+	 * Membership type stored for plans that need no payment.
+	 */
+	private const FREE_MEMBERSHIP_TYPE = 'free';
 
 	/**
 	 * Hook in tabs.
@@ -128,6 +135,27 @@ class Frontend {
 	}
 
 	/**
+	 * Whether Stripe's script is needed: Stripe is enabled with a publishable key and at least one active paid or subscription plan can be bought.
+	 *
+	 * @return bool
+	 */
+	private function is_stripe_script_needed() {
+		$stripe_settings = StripeService::get_stripe_settings();
+
+		if ( ! ur_string_to_bool( $stripe_settings['is_stipe_enabled'] ) || empty( $stripe_settings['publishable_key'] ) ) {
+			return false;
+		}
+
+		foreach ( ( new MembershipRepository() )->get_all_membership() as $membership ) {
+			if ( ! empty( $membership['meta_value']['type'] ) && self::FREE_MEMBERSHIP_TYPE !== $membership['meta_value']['type'] ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Enqueue scripts
 	 *
 	 * @since 1.0.0
@@ -139,7 +167,9 @@ class Frontend {
 		wp_enqueue_script( 'sweetalert2' );
 
 		wp_register_script( 'user-registration-membership-frontend-script', UR()->plugin_url() . '/assets/js/modules/membership/frontend/user-registration-membership-frontend' . $suffix . '.js', array( 'jquery' ), UR_VERSION, true );
-		wp_enqueue_script( 'user-registration-membership-stripe-v3', 'https://js.stripe.com/v3/', array() );
+		if ( $this->is_stripe_script_needed() ) {
+			wp_enqueue_script( 'user-registration-membership-stripe-v3', 'https://js.stripe.com/v3/', array() );
+		}
 		wp_enqueue_script( 'user-registration-membership-frontend-script' );
 		// Enqueue frontend styles here.
 		wp_register_style( 'user-registration-membership-frontend-style', UR()->plugin_url() . '/assets/css/modules/membership/user-registration-membership-frontend.css', array(), UR_VERSION );
@@ -251,6 +281,7 @@ class Frontend {
 			'i18n_coupon_invalid_error'                    => __( 'Coupon is Invalid.', 'user-registration' ),
 			'i18n_coupon_discount_message'                 => __( 'discount on membership has been applied.', 'user-registration' ),
 			'i18n_coupon_empty_error'                      => __( 'Coupon Field is empty.', 'user-registration' ),
+			'i18n_dismiss'                                 => __( 'Dismiss', 'user-registration' ),
 			'i18n_coupon_free_membership_error'            => __( 'Invalid membership type (Free).', 'user-registration' ),
 			'i18n_incomplete_stripe_setup_error'           => __( 'Stripe Payment stopped. Incomplete Stripe setup.', 'user-registration' ),
 			'i18n_bank_details_title'                      => __( 'Bank Details.', 'user-registration' ),

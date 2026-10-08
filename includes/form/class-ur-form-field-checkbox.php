@@ -91,10 +91,38 @@ class UR_Form_Field_Checkbox extends UR_Form_Field {
 
 		$field_label = $single_form_field->general_setting->field_name;
 		$value       = $form_data->value;
+		$values      = is_array( $value ) ? $value : json_decode( (string) $value, true );
+		$values      = is_array( $values ) ? $values : ( '' === $value || null === $value ? array() : array( array() ) );
+		$options     = isset( $single_form_field->general_setting->options ) ? (array) $single_form_field->general_setting->options : array();
+		if ( empty( $options ) && ! empty( $single_form_field->advance_setting->choices ) ) {
+			$options = explode( ',', $single_form_field->advance_setting->choices );
+		}
+		$image_choice = ! empty( $single_form_field->general_setting->image_choice ) && ur_string_to_bool( $single_form_field->general_setting->image_choice );
+		if ( $image_choice && ! empty( $single_form_field->general_setting->image_options ) ) {
+			$options = array_keys( (array) $single_form_field->general_setting->image_options );
+		}
+		// Match the decoded option value submitted by the browser.
+		$allowed = array_map(
+			function ( $option ) {
+				return html_entity_decode( ur_sanitize_tooltip( trim( (string) $option ) ) );
+			},
+			$options
+		);
+		foreach ( $values as $selected ) {
+			if ( ! is_scalar( $selected ) || ( ! empty( $allowed ) && ! in_array( (string) $selected, $allowed, true ) ) ) {
+				add_filter(
+					$filter_hook,
+					function () {
+						return __( 'Please select a valid checkbox option.', 'user-registration' );
+					}
+				);
+				return;
+			}
+		}
 
 		if ( ! empty( $single_form_field->advance_setting->choice_limit ) ) {
 
-			$checked_count = is_array( $value ) ? count( $value ) : ( ( json_decode( $value ) && ! is_null( $value ) ) ? count( json_decode( $value ) ) : 0 );
+			$checked_count = count( $values );
 			$limit         = $single_form_field->advance_setting->choice_limit;
 
 			if ( $checked_count > $limit ) {

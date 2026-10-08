@@ -514,20 +514,20 @@ if ( ! class_exists( 'User_Registration_Users_ListTable' ) ) {
 					$row .= "<td $attributes>";
 					switch ( $column_name ) {
 						case 'username':
-							$row .= "$avatar $user_object->user_login";
+							$row .= $avatar . ' ' . esc_html( $user_object->user_login );
 							break;
 						case 'fullname':
 							if ( $user_object->first_name && $user_object->last_name ) {
 								$row .= sprintf(
 									/* translators: 1: User's first name, 2: Last name. */
 									_x( '%1$s %2$s', 'Display name based on first name and last name', 'user-registration' ),
-									$user_object->first_name,
-									$user_object->last_name
+									esc_html( $user_object->first_name ),
+									esc_html( $user_object->last_name )
 								);
 							} elseif ( $user_object->first_name ) {
-								$row .= $user_object->first_name;
+								$row .= esc_html( $user_object->first_name );
 							} elseif ( $user_object->last_name ) {
-								$row .= $user_object->last_name;
+								$row .= esc_html( $user_object->last_name );
 							} else {
 								$row .= sprintf(
 									'<span aria-hidden="true">&#8212;</span><span class="screen-reader-text">%s</span>',

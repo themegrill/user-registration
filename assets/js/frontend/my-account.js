@@ -27,7 +27,9 @@ jQuery(function ($) {
 			var upload_node = $this
 				.closest(".button-group")
 				.find(".user_registration_profile_picture_upload");
-			var upload_node_value = upload_node.text();
+			var img_container = $this
+				.closest(".user-registration-profile-header")
+				.find(".user-registration-img-container");
 
 			var file_data = $.ajax({
 				url: url,
@@ -37,15 +39,16 @@ jQuery(function ($) {
 				contentType: false,
 				// tell jQuery not to set contentType
 				beforeSend: function () {
-					upload_node.text(
-						user_registration_params.user_registration_profile_picture_uploading
-					);
+					upload_node.prop("disabled", true);
+					img_container.addClass("ur-profile-pic-uploading");
 				},
 				complete: function (ajax_response) {
 					var message = "",
 						profile_pic_url = "",
 						attachment_id = "";
 
+					upload_node.prop("disabled", false);
+					img_container.removeClass("ur-profile-pic-uploading");
 					$this.val("");
 
 					var response_obj = JSON.parse(ajax_response.responseText);
@@ -74,21 +77,21 @@ jQuery(function ($) {
 							.closest(".user-registration-profile-header")
 							.find(".profile-preview")
 							.attr("src", profile_pic_url);
-					}
 
-					// Shows the remove button and hides the upload and take snapshot buttons after successfull picture upload
-					$this
-						.closest(".button-group")
-						.find(".profile-pic-remove")
-						.data("attachment-id", response_obj.data.attachment_id);
-					$this
-						.closest(".button-group")
-						.find(".profile-pic-remove")
-						.prop("style", false);
-					$this
-						.closest(".button-group")
-						.find(".user_registration_profile_picture_upload")
-						.attr("style", "display:none");
+						// Shows the remove button and hides the upload and take snapshot buttons after successfull picture upload
+						$this
+							.closest(".button-group")
+							.find(".profile-pic-remove")
+							.data("attachment-id", response_obj.data.attachment_id);
+						$this
+							.closest(".button-group")
+							.find(".profile-pic-remove")
+							.prop("style", false);
+						$this
+							.closest(".button-group")
+							.find(".user_registration_profile_picture_upload")
+							.attr("style", "display:none");
+					}
 
 					// Finds and removes any prevaling errors and appends new errors occured during picture upload
 					$this
@@ -102,8 +105,6 @@ jQuery(function ($) {
 								message +
 								"</span>"
 						);
-					upload_node.text(upload_node_value);
-
 					$this
 						.closest(".user-registration-profile-header")
 						.find(".ur-new-profile-image-message")
@@ -166,6 +167,10 @@ jQuery(function ($) {
 				!!el_value ? JSON.parse(el_value) : []
 			);
 			ur_removed_pic.add(attachment_id);
+			// A fresh upload only has a placeholder ID, so also queue the saved picture for deletion.
+			if ($node.data("saved-attachment-id")) {
+				ur_removed_pic.add($node.data("saved-attachment-id"));
+			}
 			$node
 				.closest("form")
 				.find(".ur_removed_profile_pic")
@@ -233,8 +238,24 @@ jQuery(function ($) {
 		}
 	};
 
+	$(".profile-pic-remove").each(function () {
+		var saved_id = $(this)
+			.closest("form")
+			.find("#profile_pic_url")
+			.val();
+
+		if (/^\d+$/.test(saved_id)) {
+			$(this).data("saved-attachment-id", saved_id);
+		}
+	});
+
+	$(".profile-pic-remove").on("click", function (e) {
+		e.preventDefault();
+		user_registration_profile_picture_upload.remove_avatar($(this));
+	});
+
 	// Handle profile picture remove event.
-	$(".profile-pic-remove, .uraf-profile-picture-remove").on(
+	$(".uraf-profile-picture-remove").on(
 		"click",
 		function (e) {
 			e.preventDefault();
