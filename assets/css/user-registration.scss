@@ -4023,6 +4023,13 @@ body.user-registration-page {
 		outline-offset: 2px;
 	}
 
+	// Bordered fields already turn the border primary on focus; no gap keeps it one ring.
+	input:not([type="radio"], [type="checkbox"]):focus-visible,
+	textarea:focus-visible,
+	select:focus-visible {
+		outline-offset: 0;
+	}
+
 	input[type="radio"]:focus-visible,
 	input[type="checkbox"]:focus-visible {
 		outline-style: auto !important;
