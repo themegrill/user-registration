@@ -25,12 +25,13 @@ $second = array(
 
 security_assert( array( $first, $second ) === ur_get_valid_payment_invoices( array( $first, $second ) ), 'A flat list is read as it is' );
 security_assert( array( $second ) === ur_get_valid_payment_invoices( array( array( $first ), $second ) ), 'The nested list a renewal saved is skipped, not read as an invoice with no amount' );
+security_assert( array( 1 => $second ) === ur_get_valid_payment_invoices( array( array( $first ), $second ), true ), 'The View link keeps each invoice position in the stored list' );
 security_assert( array() === ur_get_valid_payment_invoices( '' ), 'No stored invoices gives an empty list' );
 security_assert( array() === ur_get_valid_payment_invoices( array( 'junk', 5, array() ) ), 'Entries that are not invoices are skipped' );
 
 // Both readers go through the helper, and the amount is cast so a bad value cannot fatal number_format().
 $members_menu = (string) file_get_contents( dirname( __DIR__, 2 ) . '/includes/admin/settings/class-ur-members-menu.php' );
 $frontend     = (string) file_get_contents( dirname( __DIR__, 2 ) . '/includes/frontend/class-ur-frontend.php' );
-security_assert( false !== strpos( $members_menu, 'foreach ( ur_get_valid_payment_invoices( $meta_value ) as $values )' ), 'The Members view reads invoices through the helper' );
+security_assert( false !== strpos( $members_menu, 'foreach ( ur_get_valid_payment_invoices( $meta_value, true ) as $invoice_index => $values )' ), 'The Members view reads invoices through the helper' );
 security_assert( false !== strpos( $frontend, 'foreach ( ur_get_valid_payment_invoices( $meta_value ) as $values )' ), 'My Account reads invoices through the helper' );
 security_assert( false === strpos( $members_menu, 'number_format( $amount, 2 )' ), 'The Members view casts the amount before number_format()' );

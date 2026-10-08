@@ -13856,21 +13856,22 @@ if ( ! function_exists( 'ur_get_valid_payment_invoices' ) ) {
 	 * Renewals once saved the list nested inside another list, so anything that is not an invoice is skipped
 	 * instead of being read as a payment with no amount.
 	 *
-	 * @param mixed $meta_value Value of the `ur_payment_invoices` user meta.
+	 * @param mixed $meta_value    Value of the `ur_payment_invoices` user meta.
+	 * @param bool  $preserve_keys Keep each invoice's position in the stored list, for links that point at it.
 	 * @return array[] Invoices.
 	 */
-	function ur_get_valid_payment_invoices( $meta_value ) {
+	function ur_get_valid_payment_invoices( $meta_value, $preserve_keys = false ) {
 		if ( ! is_array( $meta_value ) ) {
 			return array();
 		}
 
-		return array_values(
-			array_filter(
-				$meta_value,
-				function ( $invoice ) {
-					return is_array( $invoice ) && ( isset( $invoice['invoice_date'] ) || isset( $invoice['invoice_no'] ) );
-				}
-			)
+		$invoices = array_filter(
+			$meta_value,
+			function ( $invoice ) {
+				return is_array( $invoice ) && ( isset( $invoice['invoice_date'] ) || isset( $invoice['invoice_no'] ) );
+			}
 		);
+
+		return $preserve_keys ? $invoices : array_values( $invoices );
 	}
 }

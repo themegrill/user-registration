@@ -845,12 +845,22 @@ class UR_Frontend {
 				'type'   => 'subscription',
 				'status' => 'active' === $ur_payment_subscription_status,
 			);
-			$payment_details['membership']['status']             = $ur_payment_subscription_status;
-			$payment_details['membership']['expiry_date']        = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
-			$payment_details['subscription_data']['expiry_date'] = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
+			$payment_details['membership']['status'] = $ur_payment_subscription_status;
+
+			$subscription_expiry = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
+			$next_billing_date   = get_user_meta( $user_id, 'ur_payment_next_billing_date', true );
+			$is_renewing         = 'active' === $ur_payment_subscription_status && empty( $payment_details['membership']['cancel_sub'] );
+
+			// The period end is only the next billing date while the subscription still renews.
+			if ( $is_renewing && empty( $next_billing_date ) && ! empty( $subscription_expiry ) ) {
+				$next_billing_date = $subscription_expiry;
+			}
+
+			$payment_details['membership']['expiry_date']        = $subscription_expiry;
+			$payment_details['subscription_data']['expiry_date'] = $subscription_expiry;
 			$payment_details['membership']['start_date']         = $user->user_registered;
 			$payment_details['subscription_data']['start_date']  = $user->user_registered;
-			$payment_details['membership']['next_billing_date']  = get_user_meta( $user_id, 'ur_payment_next_billing_date', true );
+			$payment_details['membership']['next_billing_date']  = $next_billing_date;
 
 			if ( 'paypal_standard' === $payment_method ) {
 				$payment_details['membership']['billing_amount'] = get_user_meta( $user_id, 'ur_payment_total_amount', true );
