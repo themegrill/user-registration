@@ -981,7 +981,8 @@
 			var localCurrency = "";
 			var currency = urmf_data.currency_symbol;
 
-			subTotal = urm_calculated_total;
+			// .data() returns "299.00" as a string, and convert_currency_and_calculate_tax() calls .toFixed() on it.
+			subTotal = parseFloat(urm_calculated_total);
 
 			if ($this.data("local-currency")) {
 				localCurrency = $this.data("local-currency");
@@ -1248,9 +1249,9 @@
 					typeof discount_amount !== "undefined"
 						? parseFloat(discount_amount)
 						: 0,
-				membershipAmount = $membershipRadio.data(
-					"urm-membership-amount"
-				),
+				membershipAmount =
+					parseFloat($membershipRadio.data("urm-membership-amount")) ||
+					0,
 				upgradeType = $membershipRadio.data("urm-upgrade-type") || null;
 
 			totalDetails.total = total;

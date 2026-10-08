@@ -2655,7 +2655,7 @@ class StripeService {
 		}
 		$membership_id     = $current_subscription['item_id'];
 		$invoice_id        = $event['data']['object']['id'];
-		$payment_intent_id = $this->extract_stripe_id( $event['data']['object']['payment_intent'] ?? null );
+		$payment_intent_id = $this->get_invoice_payment_intent_id( $event['data']['object'] );
 		$invoice_amount    = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
 
 		// $0 invoices (typical first trial invoice) have no payment_intent. Skip duplicate order
@@ -2805,6 +2805,53 @@ class StripeService {
 	}
 
 	/**
+	 * Resolve the PaymentIntent that paid an invoice, whatever Stripe API version rendered the event.
+	 *
+	 * Events rendered before 2025-03-31.basil carry `payment_intent` on the invoice. Later versions
+	 * drop it and events never expand `payments`, so the invoice is fetched with it expanded.
+	 *
+	 * @param array $invoice Invoice object from a Stripe event.
+	 * @return string PaymentIntent id, or an empty string when no PaymentIntent paid the invoice.
+	 */
+	private function get_invoice_payment_intent_id( $invoice ) {
+		$payment_intent_id = $this->extract_stripe_id( $invoice['payment_intent'] ?? null );
+		if ( ! empty( $payment_intent_id ) ) {
+			return $payment_intent_id;
+		}
+
+		try {
+			$payments = \Stripe\Invoice::retrieve(
+				array(
+					'id'     => $invoice['id'],
+					'expand' => array( 'payments' ),
+				)
+			)->toArray()['payments']['data'] ?? array();
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to resolve the PaymentIntent of an invoice' . "\n" . wp_json_encode(
+					array(
+						'error_code'    => 'INVOICE_PAYMENT_LOOKUP_FAILED',
+						'invoice_id'    => $invoice['id'],
+						'error_message' => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			wp_die();
+		}
+
+		foreach ( $payments as $payment ) {
+			if ( 'paid' === ( $payment['status'] ?? '' ) && ! empty( $payment['payment']['payment_intent'] ) ) {
+				return $payment['payment']['payment_intent'];
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Handle failed invoice webhook.
 	 *
 	 * @param array  $event           Event.
@@ -2921,14 +2968,17 @@ class StripeService {
 	}
 
 	/**
-	 * Handle charge.refunded webhook: mark the linked order as refunded.
+	 * Handle charge.refunded webhook: mark the linked order as refunded and
+	 * revoke membership access on a full refund.
 	 *
 	 * @param array $event Stripe event array.
 	 * @return void
 	 */
 	public function handle_refunded_charge( $event ) {
 		$charge            = isset( $event['data']['object'] ) ? $event['data']['object'] : array();
-		$payment_intent_id = isset( $charge['payment_intent'] ) ? $charge['payment_intent'] : null;
+		$payment_intent_id = is_array( $charge )
+			? ( isset( $charge['payment_intent'] ) ? $charge['payment_intent'] : null )
+			: ( $charge->payment_intent ?? null );
 
 		PaymentGatewayLogging::log_webhook_received(
 			'stripe',
@@ -2962,16 +3012,117 @@ class StripeService {
 			return;
 		}
 
-		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+		$is_fully_refunded = is_array( $charge )
+			? ! empty( $charge['refunded'] )
+			: ! empty( $charge->refunded );
+
+		$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
-			sprintf( 'Order %d marked as refunded (PaymentIntent %s).', $order['ID'], $payment_intent_id ),
+			sprintf(
+				'Order %d marked as refunded (PaymentIntent %s)%s.',
+				$order['ID'],
+				$payment_intent_id,
+				$is_fully_refunded ? '; membership subscription canceled' : '; partial refund — subscription unchanged'
+			),
 			array(
 				'order_id'          => $order['ID'],
 				'payment_intent_id' => $payment_intent_id,
+				'is_fully_refunded' => $is_fully_refunded,
+				'subscription_id'   => $order['subscription_id'] ?? null,
 			)
 		);
+	}
+
+	/**
+	 * Mark an order refunded and, on a full refund, cancel the linked subscription
+	 * so content restriction (active/trial only) drops access immediately.
+	 *
+	 * Unlike revoke_membership_for_dispute(), which stops the Stripe subscription at once, a refund sets
+	 * cancel_at_period_end through cancel_subscription(): the money is already returned, so no further
+	 * billing is the only thing left to stop.
+	 *
+	 * @param array $order             Order row from OrdersRepository.
+	 * @param bool  $is_fully_refunded Whether Stripe reports the charge as fully refunded.
+	 * @return void
+	 */
+	private function apply_refund_to_order_and_subscription( $order, $is_fully_refunded = true ) {
+		if ( empty( $order['ID'] ) ) {
+			return;
+		}
+
+		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+
+		if ( ! $is_fully_refunded ) {
+			return;
+		}
+
+		// Clear pending login before the subscription lookups so one-time or orphaned orders are covered too.
+		$member_id = ! empty( $order['user_id'] ) ? absint( $order['user_id'] ) : 0;
+		if ( $member_id ) {
+			delete_transient( 'urm_pending_login_' . $member_id );
+		}
+
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		if ( ! $subscription_id ) {
+			return;
+		}
+
+		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
+		if ( empty( $subscription ) ) {
+			return;
+		}
+
+		// Local cancel first — content restriction only grants active/trial.
+		if ( 'canceled' !== ( $subscription['status'] ?? '' ) ) {
+			$this->members_subscription_repository->update(
+				$subscription_id,
+				array(
+					'status' => 'canceled',
+				)
+			);
+		}
+
+		// Stop further Stripe billing when this was a recurring subscription.
+		if ( ! empty( $subscription['subscription_id'] ) ) {
+			// The local cancel already happened, so a Stripe failure must not 500 the webhook or abort a backfill batch.
+			try {
+				$this->cancel_subscription( $order, $subscription );
+			} catch ( \Throwable $e ) {
+				PaymentGatewayLogging::log_error(
+					'stripe',
+					'Failed to cancel Stripe subscription after refund' . "\n" . wp_json_encode(
+						array(
+							'error_code'      => 'STRIPE_REFUND_CANCELLATION_ERROR',
+							'subscription_id' => $subscription['subscription_id'],
+							'order_id'        => $order['ID'],
+							'error_message'   => $e->getMessage(),
+						),
+						JSON_PRETTY_PRINT
+					)
+				);
+			}
+		}
+	}
+
+	/**
+	 * Whether a refunded order has nothing left to revoke.
+	 *
+	 * True when the order has no subscription row to cancel, or that subscription is already canceled.
+	 *
+	 * @param array $order Order row from OrdersRepository.
+	 * @return bool
+	 */
+	private function is_refund_subscription_canceled( $order ) {
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		if ( ! $subscription_id ) {
+			return true;
+		}
+
+		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
+
+		return empty( $subscription ) || 'canceled' === ( $subscription['status'] ?? '' );
 	}
 
 	/**
@@ -4664,7 +4815,11 @@ class StripeService {
 				continue;
 			}
 
-			if ( 'refunded' === $order['status'] ) {
+			$is_fully_refunded = ! empty( $charge->refunded );
+
+			// A partial refund may already have marked the order refunded, so the final full refund must still revoke access, but a fully handled order is a no-op on later runs.
+			$is_already_handled = 'refunded' === $order['status'] && ( ! $is_fully_refunded || $this->is_refund_subscription_canceled( $order ) );
+			if ( $is_already_handled ) {
 				$logger->info(
 					sprintf( '[Backfill][Stripe][Refunds] Order %d already refunded — skipping.', $order['ID'] ),
 					array( 'source' => 'urm-missed-payment-backfill' )
@@ -4672,10 +4827,15 @@ class StripeService {
 				continue;
 			}
 
-			$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
+			$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
 			++$total_updated;
 			$logger->info(
-				sprintf( '[Backfill][Stripe][Refunds] Marked order %d as refunded (PaymentIntent %s)', $order['ID'], $payment_intent_id ),
+				sprintf(
+					'[Backfill][Stripe][Refunds] Marked order %d as refunded (PaymentIntent %s)%s',
+					$order['ID'],
+					$payment_intent_id,
+					$is_fully_refunded ? '; membership subscription canceled' : '; partial refund — subscription unchanged'
+				),
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);
 		}

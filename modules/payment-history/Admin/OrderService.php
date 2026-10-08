@@ -116,21 +116,29 @@ class OrderService {
 		);
 	}
 
-	public function get_user_form_order_detail( $user_id ) {
+	/**
+	 * Get a form payment's detail from the user's stored invoices.
+	 *
+	 * @param int $user_id       User ID.
+	 * @param int $invoice_index Index in the user's ur_payment_invoices meta.
+	 * @return array Order detail, empty when the user does not exist.
+	 */
+	public function get_user_form_order_detail( $user_id, $invoice_index = 0 ) {
 		$user = get_user_by( 'ID', $user_id );
 		if ( ! empty( $user ) ) {
 			$meta_value = get_user_meta( $user->ID, 'ur_payment_invoices', true );
+			$invoice    = isset( $meta_value[ $invoice_index ] ) ? $meta_value[ $invoice_index ] : ( $meta_value[0] ?? array() );
 
-			$invoice_item         = ( isset( $meta_value ) && ! empty( $meta_value ) ) ? json_decode( $meta_value[0]['invoice_item'][0], true ) : array();
+			$invoice_item         = ! empty( $invoice['invoice_item'][0] ) ? json_decode( $invoice['invoice_item'][0], true ) : array();
 			$total_items          = array(
 				'user_id'        => $user->ID,
 				'display_name'   => $user->user_login,
 				'user_nicename'  => $user->user_nicename,
 				'user_email'     => $user->user_email,
-				'transaction_id' => $meta_value[0]['invoice_no'] ?? '',
-				'post_title'     => $meta_value[0]['invoice_plan'] ?? '',
+				'transaction_id' => $invoice['invoice_no'] ?? '',
+				'post_title'     => $invoice['invoice_plan'] ?? '',
 				'status'         => get_user_meta( $user->ID, 'ur_payment_status', true ),
-				'created_at'     => $meta_value[0]['invoice_date'] ?? '',
+				'created_at'     => $invoice['invoice_date'] ?? '',
 				'type'           => $invoice_item[0]['label'] ?? '',
 				'payment_method' => get_user_meta( $user->ID, 'ur_payment_method', true ),
 				'total_amount'   => get_user_meta( $user->ID, 'ur_payment_total_amount', true ),
