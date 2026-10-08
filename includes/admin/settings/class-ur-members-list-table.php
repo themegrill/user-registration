@@ -1494,6 +1494,26 @@ if ( ! class_exists( 'User_Registration_Members_ListTable' ) ) {
 					$search_like
 				);
 
+				// Also match the full name (e.g. "John Smith") when first/last name are stored
+				// as separate usermeta rather than combined into a single field like display_name.
+				$search_conditions[] = $wpdb->prepare(
+					"EXISTS (
+						SELECT 1
+						FROM {$wpdb->usermeta} umfn
+						JOIN {$wpdb->usermeta} umln
+							ON umln.user_id = umfn.user_id
+							AND umln.meta_key = 'last_name'
+						WHERE umfn.user_id = {$wpdb->users}.ID
+						AND umfn.meta_key = 'first_name'
+						AND (
+							CONCAT( umfn.meta_value, ' ', umln.meta_value ) LIKE %s
+							OR CONCAT( umln.meta_value, ' ', umfn.meta_value ) LIKE %s
+						)
+					)",
+					$search_like,
+					$search_like
+				);
+
 				$search_conditions[] = $wpdb->prepare(
 					"EXISTS (
 						SELECT 1
