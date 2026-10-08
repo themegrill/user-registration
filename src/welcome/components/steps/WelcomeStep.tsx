@@ -24,27 +24,26 @@ interface MembershipOptionProps {
 }
 
 const BRAND_COLOR = "#475BB2";
-const BRAND_TINT = "#F5F7FD";
 
 const MembershipOption: React.FC<MembershipOptionProps> = ({
 	value,
 	title,
 	isSelected
 }) => {
-	// gray.500 is about 4:1 on white, above the 3:1 non-text contrast minimum (WCAG 1.4.11).
-	const defaultBorder = useColorModeValue("gray.500", "gray.600");
-	const hoverBorder = useColorModeValue("gray.600", "gray.500");
-	const selectedBg = useColorModeValue(BRAND_TINT, "whiteAlpha.100");
-	const titleColor = useColorModeValue("gray.800", "white");
+	// Matches the plan Type options on the Membership step.
+	const defaultBorder = useColorModeValue("gray.200", "gray.600");
+	const hoverBorder = useColorModeValue("gray.300", "gray.500");
+	// The circle keeps gray.500 (about 4:1 on white) to meet the 3:1 non-text contrast minimum (WCAG 1.4.11).
+	const controlBorder = useColorModeValue("gray.500", "gray.400");
+	const titleColor = useColorModeValue("#222222", "gray.400");
 
 	// Card styles live on this wrapper: Chakra's Radio forwards most style props to its hidden input, not its root label.
 	return (
 		<Box
-			borderRadius="6px"
-			borderWidth="2px"
+			borderRadius="4px"
+			borderWidth="1px"
 			borderColor={isSelected ? BRAND_COLOR : defaultBorder}
-			bg={isSelected ? selectedBg : undefined}
-			transition="border-color 0.15s ease, background-color 0.15s ease"
+			transition="border-color 0.2s ease"
 			_hover={{ borderColor: isSelected ? BRAND_COLOR : hoverBorder }}
 			sx={{
 				// Selection is driven by state, so only the focus ring needs :has(); without it Chakra keeps its own focus shadow.
@@ -61,24 +60,30 @@ const MembershipOption: React.FC<MembershipOptionProps> = ({
 					display: "flex",
 					alignItems: "center",
 					w: "100%",
-					minH: "52px",
+					minH: "38px",
 					px: 4,
-					py: 3,
+					py: 2,
 					cursor: "pointer"
 				},
 				"& .chakra-radio__control": {
-					borderColor: defaultBorder
+					borderColor: controlBorder
 				},
 				"& .chakra-radio__control[data-checked]": {
-					bg: BRAND_COLOR,
+					bg: "transparent",
+					borderColor: BRAND_COLOR,
+					color: BRAND_COLOR,
+					_before: { w: "8px", h: "8px" }
+				},
+				"& .chakra-radio__control[data-checked]:hover": {
+					bg: "transparent",
 					borderColor: BRAND_COLOR
 				},
 				"& .chakra-radio__label": {
-					ms: 3,
-					fontWeight: 600,
-					fontSize: "15px",
-					lineHeight: "22px",
-					color: titleColor
+					ms: 2,
+					fontWeight: 400,
+					fontSize: "14px",
+					lineHeight: "20px",
+					color: isSelected ? BRAND_COLOR : titleColor
 				}
 			}}
 		>
@@ -199,7 +204,9 @@ const WelcomeStep: React.FC = () => {
 								key={option.value}
 								value={option.value}
 								title={option.title}
-								isSelected={membershipSetupType === option.value}
+								isSelected={
+									membershipSetupType === option.value
+								}
 							/>
 						))}
 					</SimpleGrid>

@@ -117,6 +117,36 @@ test.describe("setup wizard membership question @fresh", () => {
     await expect(page.getByRole("radio", { name: "Not now" })).toBeChecked();
   });
 
+  test("the answer cannot be picked until the saved one loads, so it is not overwritten @fresh @setup-wizard", async ({ page }) => {
+    await seedMembershipType(page, "paid_membership", original);
+
+    // Hold the wizard's loading requests so the test, not network speed, decides when they return.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const isWizardRequest = (url: URL) => /getting-started/.test(decodeURIComponent(url.href));
+    await page.route(isWizardRequest, async (route) => {
+      if (route.request().method() === "GET") await gate;
+      await route.continue();
+    });
+
+    await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
+    await expect(page.getByText("Loading...")).toBeAttached();
+    await expect(page.getByRole("radio", { name: "Not now" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Next/ })).toHaveCount(0);
+
+    release();
+    await expect(page.getByRole("radio", { name: "Yes" })).toBeChecked();
+    await page.unroute(isWizardRequest);
+
+    await page.getByText("Not now", { exact: true }).click();
+    await expect(page.getByRole("radio", { name: "Not now" })).toBeChecked();
+    const saved = page.waitForResponse(
+      (response) => response.url().includes("getting-started/welcome") && response.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: /Next/ }).click();
+    expect((await saved).request().postDataJSON().membership_type).toBe("normal");
+  });
+
   test("choosing Yes and clicking Next saves paid_membership @fresh @setup-wizard", async ({ page }) => {
     await seedMembershipType(page, "normal", original);
     await openWizard(page);
