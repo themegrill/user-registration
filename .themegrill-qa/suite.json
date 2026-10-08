@@ -51,6 +51,9 @@
       "includes/admin/settings/class-ur-settings-security.php",
       "includes/class-ur-install.php"
     ],
+    "content-restriction": [
+      "modules/content-restriction/**"
+    ],
     "membership": [
       "modules/membership/**"
     ],
