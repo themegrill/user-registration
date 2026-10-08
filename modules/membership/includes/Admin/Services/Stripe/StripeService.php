@@ -49,6 +49,13 @@ class StripeService {
 	protected $orders_repository;
 
 	/**
+	 * Set when a missed-payment backfill skipped an invoice it could not resolve or save during this request.
+	 *
+	 * @var bool
+	 */
+	private $backfill_failed = false;
+
+	/**
 	 * Construct.
 	 */
 	public function __construct() {
@@ -1761,8 +1768,8 @@ class StripeService {
 					update_user_meta( $member_id, 'urm_stripe_schedule_id', sanitize_text_field( $schedule->id ) );
 
 					// UR-4386: schedule created (sub_sched_ returned) -> billing is set up, so activate
-					// now. First charge is one period later; a later charge failure reverts to pending
-					// via handle_failed_invoice().
+					// now. First charge is one period later; if it fails, handle_failed_invoice() reverts
+					// to pending once Stripe has no retry left.
 					$this->members_orders_repository->update(
 						$member_order['ID'],
 						array(
@@ -2500,7 +2507,7 @@ class StripeService {
 			try {
 				$event_id        = sanitize_text_field( $event['id'] );
 				$event           = json_decode( wp_json_encode( \Stripe\Event::retrieve( $event_id ) ), true );
-				$subscription_id = $event['data']['object']['subscription'] ?? $subscription_id;
+				$subscription_id = $this->extract_stripe_id( $event['data']['object']['subscription'] ?? $event['data']['object']['parent']['subscription_details']['subscription'] ?? null ) ?? $subscription_id;
 			} catch ( \Exception $e ) {
 				PaymentGatewayLogging::log_webhook_received(
 					'stripe',
@@ -2653,10 +2660,26 @@ class StripeService {
 		if ( is_array( $replaced_subscription ) && ( $replaced_subscription['new'] ?? '' ) === $subscription_id ) {
 			$this->stop_replaced_subscription( $replaced_subscription['old'] ?? '', $subscription_id, $member_id, 'active' );
 		}
-		$membership_id     = $current_subscription['item_id'];
-		$invoice_id        = $event['data']['object']['id'];
-		$payment_intent_id = $this->get_invoice_payment_intent_id( $event['data']['object'] );
-		$invoice_amount    = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
+		$membership_id = $current_subscription['item_id'];
+		$invoice_id    = $event['data']['object']['id'];
+		try {
+			$payment_intent_id = $this->get_invoice_payment_intent_id( $event['data']['object'] );
+		} catch ( \Exception $e ) {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to resolve the PaymentIntent of an invoice' . "\n" . wp_json_encode(
+					array(
+						'error_code'    => 'INVOICE_PAYMENT_LOOKUP_FAILED',
+						'invoice_id'    => $invoice_id,
+						'error_message' => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			wp_die();
+		}
+		$invoice_amount = isset( $event['data']['object']['amount_paid'] ) ? (int) $event['data']['object']['amount_paid'] : (int) ( $event['data']['object']['amount_due'] ?? 0 );
 
 		// $0 invoices (typical first trial invoice) have no payment_intent. Skip duplicate order
 		// creation, but still sync dates/status from Stripe — otherwise a renewal invoice that
@@ -2812,6 +2835,7 @@ class StripeService {
 	 *
 	 * @param array $invoice Invoice object from a Stripe event.
 	 * @return string PaymentIntent id, or an empty string when no PaymentIntent paid the invoice.
+	 * @throws \Exception When the invoice cannot be fetched from Stripe.
 	 */
 	private function get_invoice_payment_intent_id( $invoice ) {
 		$payment_intent_id = $this->extract_stripe_id( $invoice['payment_intent'] ?? null );
@@ -2819,32 +2843,16 @@ class StripeService {
 			return $payment_intent_id;
 		}
 
-		try {
-			$payments = \Stripe\Invoice::retrieve(
-				array(
-					'id'     => $invoice['id'],
-					'expand' => array( 'payments' ),
-				)
-			)->toArray()['payments']['data'] ?? array();
-		} catch ( \Exception $e ) {
-			PaymentGatewayLogging::log_error(
-				'stripe',
-				'Failed to resolve the PaymentIntent of an invoice' . "\n" . wp_json_encode(
-					array(
-						'error_code'    => 'INVOICE_PAYMENT_LOOKUP_FAILED',
-						'invoice_id'    => $invoice['id'],
-						'error_message' => $e->getMessage(),
-					),
-					JSON_PRETTY_PRINT
-				)
-			);
-
-			wp_die();
-		}
+		$payments = \Stripe\Invoice::retrieve(
+			array(
+				'id'     => $invoice['id'],
+				'expand' => array( 'payments' ),
+			)
+		)->toArray()['payments']['data'] ?? array();
 
 		foreach ( $payments as $payment ) {
 			if ( 'paid' === ( $payment['status'] ?? '' ) && ! empty( $payment['payment']['payment_intent'] ) ) {
-				return $payment['payment']['payment_intent'];
+				return $this->extract_stripe_id( $payment['payment']['payment_intent'] ) ?? '';
 			}
 		}
 
@@ -2901,6 +2909,25 @@ class StripeService {
 			return;
 		}
 
+		$member_id = $current_subscription['user_id'];
+
+		// Stripe sends this event on every retry; while it is still retrying, a paying member keeps access like the past_due expiry hold.
+		if ( ! empty( $event['data']['object']['next_payment_attempt'] ) && 'active' === ( $current_subscription['status'] ?? '' ) ) {
+			PaymentGatewayLogging::log_webhook_processed(
+				'stripe',
+				'Invoice payment failed, Stripe will retry; subscription status kept',
+				array(
+					'subscription_id'      => $subscription_id,
+					'sub_id'               => $current_subscription['sub_id'],
+					'member_id'            => $member_id,
+					'status'               => $current_subscription['status'],
+					'next_payment_attempt' => $event['data']['object']['next_payment_attempt'],
+				)
+			);
+
+			return;
+		}
+
 		$this->members_subscription_repository->update(
 			$current_subscription['sub_id'],
 			array(
@@ -2908,7 +2935,6 @@ class StripeService {
 			)
 		);
 
-		$member_id = $current_subscription['user_id'];
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
 			'Invoice payment failed handled',
@@ -4540,6 +4566,17 @@ class StripeService {
 	}
 
 	/**
+	 * Whether a missed-payment backfill in this request skipped an invoice it could not resolve or save.
+	 *
+	 * The scheduler keeps the Stripe payment sync time when this is true, so the window is searched again next run.
+	 *
+	 * @return bool
+	 */
+	public function has_backfill_failure() {
+		return $this->backfill_failed;
+	}
+
+	/**
 	 * Backfill missed payments events record.
 	 *
 	 * @param string $last_synced Last synced timestamp to fetch events from.
@@ -4572,24 +4609,74 @@ class StripeService {
 		);
 
 		$count_created = 0;
+		$count_linked  = 0;
 		$count_skipped = 0;
+		$seen_invoices = array();
 
 		foreach ( $events->autoPagingIterator() as $event ) {
-			$invoice           = $event->data->object;
-			$subscription_id   = $invoice->subscription ?? null;
-			$payment_intent_id = $invoice->payment_intent ?? null;
+			$invoice_data    = $event->data->object->toArray();
+			$subscription_id = $this->extract_stripe_id( $invoice_data['subscription'] ?? $invoice_data['parent']['subscription_details']['subscription'] ?? null );
 
-			if ( empty( $subscription_id ) || empty( $payment_intent_id ) ) {
+			// invoice.paid and invoice.payment_succeeded both list the same invoice; handle it once.
+			if ( empty( $subscription_id ) || isset( $seen_invoices[ $invoice_data['id'] ] ) ) {
 				++$count_skipped;
 				continue;
 			}
 
-			$membership_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $subscription_id );
+			$seen_invoices[ $invoice_data['id'] ] = true;
+			$membership_subscription              = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $subscription_id );
 
 			if ( ! empty( $membership_subscription ) ) {
+				try {
+					$payment_intent_id = $this->get_invoice_payment_intent_id( $invoice_data );
+				} catch ( \Exception $e ) {
+					// Skip only this invoice so the rest of the window is still recovered; the flag keeps the window for the next run.
+					$this->backfill_failed = true;
+					$logger->error(
+						sprintf( '[Backfill][Stripe][Payments] Could not resolve the PaymentIntent of invoice %s: %s', $invoice_data['id'] ?? '', $e->getMessage() ),
+						array( 'source' => 'urm-missed-payment-backfill' )
+					);
+					++$count_skipped;
+					continue;
+				}
+
+				if ( empty( $payment_intent_id ) ) {
+					++$count_skipped;
+					continue;
+				}
+
 				$payment = $this->orders_repository->get_order_by_transaction_id( $payment_intent_id );
 
 				if ( empty( $payment ) ) {
+					// Registration can save its order before the PaymentIntent is known; link the signup invoice to it instead of duplicating it.
+					$unlinked_order = 'subscription_create' === ( $invoice_data['billing_reason'] ?? '' ) ? $this->orders_repository->get_unlinked_order_by_subscription( $membership_subscription['ID'] ) : array();
+					if ( ! empty( $unlinked_order ) ) {
+						$linked = $this->orders_repository->update(
+							$unlinked_order['ID'],
+							array(
+								'transaction_id' => sanitize_text_field( $payment_intent_id ),
+								'status'         => 'completed',
+							)
+						);
+
+						if ( false === $linked ) {
+							$this->backfill_failed = true;
+							$logger->error(
+								sprintf( '[Backfill][Stripe][Payments] Could not link PaymentIntent %s to order %d', $payment_intent_id, $unlinked_order['ID'] ),
+								array( 'source' => 'urm-missed-payment-backfill' )
+							);
+							++$count_skipped;
+							continue;
+						}
+
+						++$count_linked;
+						$logger->info(
+							sprintf( '[Backfill][Stripe][Payments] Linked PaymentIntent %s to existing order %d (subscription %s)', $payment_intent_id, $unlinked_order['ID'], $subscription_id ),
+							array( 'source' => 'urm-missed-payment-backfill' )
+						);
+						continue;
+					}
+
 					$payment = $this->orders_repository->get_order_by_transaction_id( $subscription_id );
 					if ( ! empty( $payment ) ) {
 						$this->orders_repository->delete( $payment['ID'] );
@@ -4598,7 +4685,7 @@ class StripeService {
 					$subscription   = $this->members_subscription_repository->retrieve( $membership_subscription['ID'] );
 					$payment_intent = \Stripe\PaymentIntent::retrieve( $payment_intent_id );
 					$paid_amount    = $payment_intent->amount_received / 100; // Convert from cents to dollars
-					$created_at     = gmdate( 'Y-m-d H:i:s', $invoice->created );
+					$created_at     = gmdate( 'Y-m-d H:i:s', $invoice_data['created'] );
 
 					$order_data = array(
 						'orders_data'      => array(
@@ -4622,7 +4709,15 @@ class StripeService {
 							),
 						),
 					);
-					$this->orders_repository->create( $order_data );
+					if ( empty( $this->orders_repository->create( $order_data ) ) ) {
+						$this->backfill_failed = true;
+						$logger->error(
+							sprintf( '[Backfill][Stripe][Payments] Could not save the order for PaymentIntent %s (subscription %s)', $payment_intent_id, $subscription_id ),
+							array( 'source' => 'urm-missed-payment-backfill' )
+						);
+						++$count_skipped;
+						continue;
+					}
 
 					++$count_created;
 					$logger->info(
@@ -4642,6 +4737,7 @@ class StripeService {
 				array(
 					'event_type'     => 'backfill_done',
 					'orders_created' => $count_created,
+					'orders_linked'  => $count_linked,
 					'skipped'        => $count_skipped,
 				),
 				JSON_PRETTY_PRINT

@@ -1778,13 +1778,21 @@ class SubscriptionService {
 							);
 							break;
 						}
+						// Order backfills (idempotent by PaymentIntent) keep a failed Stripe window for the next run; status and dispute replays would re-apply stale snapshots.
+						$stripe_payments_sync_option = 'urm_last_stripe_payment_backfill_sync_time';
+						$stripe_payments_synced_from = (int) get_option( $stripe_payments_sync_option, 0 );
+						if ( $stripe_payments_synced_from <= 0 ) {
+							$stripe_payments_synced_from = $last_synced;
+						}
+						$stripe_synced = false;
 						try {
 							$stripe_service = new StripeService();
 							$stripe_service->run_missed_subscription_backfill( $last_synced );
-							$stripe_service->run_missed_payment_backfill( $last_synced );
-							$stripe_service->run_missed_onetime_payment_backfill( $last_synced );
+							$stripe_service->run_missed_payment_backfill( $stripe_payments_synced_from );
+							$stripe_service->run_missed_onetime_payment_backfill( $stripe_payments_synced_from );
 							$stripe_service->run_missed_refund_backfill( $last_synced );
 							$stripe_service->run_missed_dispute_backfill( $last_synced );
+							$stripe_synced = ! $stripe_service->has_backfill_failure();
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(
@@ -1793,8 +1801,15 @@ class SubscriptionService {
 								),
 								array( 'source' => 'urm-missed-payment-backfill' )
 							);
-							break;
 						}
+						if ( ! $stripe_synced ) {
+							ur_get_logger()->warning(
+								'[Backfill][Stripe] A Stripe request or order write failed; the Stripe payment sync time is kept and this window is searched again next run.',
+								array( 'source' => 'urm-missed-payment-backfill' )
+							);
+						}
+						// Storing the window start on failure also covers a first run, which has no stored Stripe payment sync time yet.
+						update_option( $stripe_payments_sync_option, $stripe_synced ? $now : $stripe_payments_synced_from );
 						break;
 					case 'paypal':
 						try {

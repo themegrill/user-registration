@@ -342,6 +342,25 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		return ! $result ? array() : $result;
 	}
 
+	/**
+	 * The one non-trial Stripe order of a subscription that has no transaction ID yet, such as a registration
+	 * order saved before its PaymentIntent was known.
+	 *
+	 * @param int $subscription_id Local subscription ID.
+	 * @return array Order row, or an empty array when there is no such order or more than one, so a payment is never linked to a guessed order.
+	 */
+	public function get_unlinked_order_by_subscription( $subscription_id ) {
+		$results = $this->wpdb()->get_results(
+			$this->wpdb()->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+				"SELECT * FROM $this->table WHERE subscription_id = %d AND payment_method = 'stripe' AND transaction_id = '' AND trial_status = 'off' LIMIT 2", // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Internal table name; the ID is bound by prepare().
+				$subscription_id // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Bound by prepare(); the sniff trips on the interpolated internal table name.
+			),
+			ARRAY_A
+		);
+
+		return 1 === count( (array) $results ) ? $results[0] : array();
+	}
+
 	public function get_all_delayed_orders( $date ) {
 		$users_meta_table = TableList::users_meta_table();
 
