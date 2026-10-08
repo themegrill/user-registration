@@ -168,7 +168,8 @@ class Orders {
 
 				if ( 'form' === $type ) {
 					$order_service            = new \WPEverest\URMembership\Payment\Admin\OrderService();
-					$order                    = $order_service->get_user_form_order_detail( $id );
+					$invoice_index            = isset( $_GET['invoice'] ) ? absint( $_GET['invoice'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view index, no state change.
+					$order                    = $order_service->get_user_form_order_detail( $id, $invoice_index );
 					$order['order_id']        = 0;
 					$order['is_form_payment'] = true;
 				} else {
@@ -400,14 +401,14 @@ class Orders {
 	 *
 	 * This function adds the payment gateways for the membership plugin to the
 	 * WordPress options table. The payment gateways are stored in the 'ur_payment_gateways'
-	 * option and are an array containing the strings 'Paypal', 'Stripe', and 'Bank'.
+	 * option and are an array containing the strings 'PayPal', 'Stripe', and 'Bank'.
 	 *
 	 * @return void
 	 */
 	public function add_payment_gateway_options() {
 
 		$payment_gateways = array(
-			'paypal'      => __( 'Paypal', 'user-registration' ),
+			'paypal'      => __( 'PayPal', 'user-registration' ),
 			'stripe'      => __( 'Stripe', 'user-registration' ),
 			'credit_card' => __( 'Stripe (Credit Card)', 'user-registration' ),
 			'bank'        => __( 'Bank', 'user-registration' ),

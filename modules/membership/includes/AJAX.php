@@ -865,7 +865,7 @@ class AJAX {
 	 * @param int $member_id Pending member/user ID.
 	 * @return bool
 	 */
-	private static function verify_pending_member_session( $member_id ) {
+	public static function verify_pending_member_session( $member_id ) {
 		$cookie_key   = 'urm_pending_login_' . $member_id;
 		$cookie_token = isset( $_COOKIE[ $cookie_key ] ) ? wp_unslash( $_COOKIE[ $cookie_key ] ) : '';
 
@@ -914,9 +914,12 @@ class AJAX {
 		$is_renewing            = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
 
 		if ( ! $has_pending_order && ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
+			// The failed attempt already discarded the pending registration; show the card error instead of a generic one.
+			$failed_message = 'failed' === sanitize_text_field( wp_unslash( $_POST['payment_status'] ?? '' ) ) && ! empty( $_POST['payment_result']['error']['message'] ) ? sanitize_text_field( wp_unslash( $_POST['payment_result']['error']['message'] ) ) : '';
+
 			wp_send_json_error(
 				array(
-					'message' => __( 'Invalid Request.', 'user-registration' ),
+					'message' => '' !== $failed_message ? $failed_message : __( 'Invalid Request.', 'user-registration' ),
 				)
 			);
 		}
