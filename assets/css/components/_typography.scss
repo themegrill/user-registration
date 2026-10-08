@@ -5,16 +5,21 @@
         text-decoration: none;
     }
 
-    h1, h2, h3, h4, h5, h6 {
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
         color: $grey-400;
         margin: 0;
         font-weight: $semi_bold;
     }
 
-    p {
-        font-size: 14px;
-        line-height: 24px;
-        color: $grey-400;
-        font-weight: $regular;
-    }
+    // p {
+    //     font-size: 14px;
+    //     line-height: 24px;
+    //     color: $grey-400;
+    //     font-weight: $regular;
+    // }
 }
