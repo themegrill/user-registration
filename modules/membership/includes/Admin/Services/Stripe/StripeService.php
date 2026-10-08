@@ -2852,7 +2852,7 @@ class StripeService {
 
 		foreach ( $payments as $payment ) {
 			if ( 'paid' === ( $payment['status'] ?? '' ) && ! empty( $payment['payment']['payment_intent'] ) ) {
-				return $payment['payment']['payment_intent'];
+				return $this->extract_stripe_id( $payment['payment']['payment_intent'] ) ?? '';
 			}
 		}
 
