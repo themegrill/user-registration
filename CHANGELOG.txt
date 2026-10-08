@@ -1,6 +1,89 @@
-= 5.3.0    - 08/10/2026 =
-* Fix - Undefined array key warning on subscription cancel with no order.
-
+= 5.3.0    - 12/10/2026 =
+* Feature  - Set a maximum number of times a coupon can be used.
+* Enhance  - Members and admins get an email when a paid plan changes to a free plan.
+* Enhance  - Setup wizard asks one clear question: whether you want membership plans.
+* Enhance  - Content Rules editor explains how a page rule works with Whole Site rules.
+* Enhance  - Easier to turn on Multiple Registration Forms when you only have one form.
+* Enhance  - New sites use form payment fields only; Stripe is available on the Personal plan.
+* Enhance  - Tools (Logs, System Info, Setup Wizard) redesigned to match the Settings screens.
+* Enhance  - Site Assistant can suggest linking existing WordPress users to registration forms.
+* Add      - Show or hide secret payment keys in the setup wizard.
+* Add      - Read-only WordPress abilities for forms, stats, and members (works with the official MCP Adapter).
+* Fix      - Clearer wording for the Force Captcha setting.
+* Fix      - Profile picture is kept when saving a profile.
+* Fix      - Safer tax amount inputs on membership checkout.
+* Fix      - Member names are cleaned before display in admin.
+* Fix      - Delete User works again from the user edit screen.
+* Fix      - Only allowed captcha and login settings can be saved.
+* Fix      - Send Test Email no longer fires twice from one click.
+* Fix      - Full Stripe refunds cancel the membership subscription.
+* Fix      - Safer refresh of form security tokens on the front end.
+* Fix      - Bulk user status changes require a valid security check.
+* Fix      - Importing a form no longer clears complex form settings.
+* Fix      - Declined Stripe payments show the real error from Stripe.
+* Fix      - Form payment View links open the correct payment history.
+* Fix      - Stronger checks when saving content restriction settings.
+* Fix      - Usage tracking docs link points to the current help page.
+* Fix      - No warning when cancelling a subscription that has no order.
+* Fix      - Renew and upgrade links on My Account open the correct forms.
+* Fix      - Send Test Email now uses your Email Header and Footer template.
+* Fix      - Authorize.Net payments no longer appear twice in payment history.
+* Fix      - Membership emails no longer mix in details from a different order.
+* Fix      - Form import only updates fields that belong on a registration form.
+* Fix      - Hide the "My Account page setting has moved" notice on new installs.
+* Fix      - Marketing and upgrade links include the correct tracking parameters.
+* Fix      - Membership upgrade form shows the correct price and payment options.
+* Fix      - Restricted content stays hidden in feeds and public discovery tools.
+* Fix      - Setup wizard keeps the answer you picked while it was still loading.
+* Fix      - Deleting a subscription in admin also cancels it in Stripe or PayPal.
+* Fix      - Remove an unused payment-approval email option that could never send.
+* Fix      - Login Form Builder View Live button is clickable across its full area.
+* Fix      - Membership Groups list no longer warns when a group has empty content.
+* Fix      - Content restriction applies to WooCommerce product data in the REST API.
+* Fix      - Invite Codes and Popups upgrade prompts show the right text in Settings.
+* Fix      - Locked Pro settings cards show the add-on's full name on licensed sites.
+* Fix      - Stripe can be turned off even if the publishable key format looks wrong.
+* Fix      - Closing the deactivation feedback popup no longer deactivates the plugin.
+* Fix      - Cloudflare Turnstile lets visitors try again after a failed registration.
+* Fix      - Confirm before deactivating your license on Settings and Plugins screens.
+* Fix      - PayPal is labeled correctly and lines up in the My Account payments list.
+* Fix      - Stripe and PayPal secret keys can be shown or hidden in payment settings.
+* Fix      - Stripe webhooks are created when you save payment keys in the setup wizard.
+* Fix      - Members screen no longer crashes for some older Stripe members after renewal.
+* Fix      - Older custom membership templates keep working after recent template changes.
+* Fix      - Opening a member profile no longer overwrites the admin's own uploaded files.
+* Fix      - Settings search finds options inside sections and shows where each result is.
+* Fix      - Member names and other user-controlled tags in messages cannot run shortcodes.
+* Fix      - Upgrade path list shows higher plans first and keeps your drag-and-drop order.
+* Fix      - "Redirect to previous page" after login no longer loops back to the login page.
+* Fix      - Pro upsell headings use the correct label (for example "2FA" instead of "2fa").
+* Fix      - Profile picture upload shows a loading state and a Remove button on My Account.
+* Fix      - Safer handling of checkbox values and form submission security on registration.
+* Fix      - WordPress profile screens no longer load form builder scripts they do not need.
+* Fix      - Extra membership purchases use the registration page from that form's shortcode.
+* Fix      - Stripe and PayPal chargebacks flag the member, remove access, and notify admins.
+* Fix      - No PHP warnings when deleting a user whose registration form was already removed.
+* Fix      - Members who already cancelled at period end no longer get renewal reminder emails.
+* Fix      - Login no longer crashes when the Payment Before Login message contains a % character.
+* Fix      - Multi-step forms no longer show step 1 fields inside step 2 after rows are reordered.
+* Fix      - Remove the stuck database update notice; updates run automatically in the background.
+* Fix      - Failed payments stop retrying after the final attempt and send the final notice email.
+* Fix      - Renewal and expiring-soon reminder emails still send if the daily schedule was missed.
+* Fix      - Forms save correctly when no captcha type is set, and captcha is not skipped by mistake.
+* Fix      - Form preview no longer loads the block editor; Stripe's script loads only when Stripe is on.
+* Fix      - Login and Lost Password show missing-field errors in the browser without a full page reload.
+* Fix      - Addons page sorting and filters (Newest/Oldest, Plan, Status) work together without crashing.
+* Fix      - My Account opens on Profile Details for new installs when you visit the plain My Account URL.
+* Fix      - Turning off the admin cancellation email no longer turns off the member's cancellation email.
+* Fix      - Addon install shows a clear error when it fails; Two-Factor Authentication install works again.
+* Fix      - Logged-out visitors no longer see "You are already logged in" on cached login or account pages.
+* Fix      - Uploaded files are restricted so non-image files cannot be served publicly from upload folders.
+* Fix      - Clearer keyboard focus, required-field markers, and autocomplete on login and lost-password forms.
+* Fix      - A page kept its own content-restriction message or redirect instead of the Whole Site rule taking over.
+* Fix      - Content rules can block WooCommerce product purchases by post type; Whole Site rules no longer turn product rules off.
+* Fix      - Username length setting accepts numbers correctly; form preview and admin screens no longer show related console warnings.
+* Fix      - Paid Stripe renewals are recorded correctly; members stay active while Stripe retries a failed payment; a temporary Stripe error no longer skips a billing period.
+* Fix      - PayPal upgrades no longer double-charge; renewals extend access; old subscription events no longer change the wrong member; missed payments are recovered correctly.
 
 = 5.2.8    - 10/09/2026 =
 * Fix      - Stop retrying deleted Stripe subscriptions.
