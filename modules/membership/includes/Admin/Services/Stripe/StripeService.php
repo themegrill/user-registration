@@ -49,6 +49,13 @@ class StripeService {
 	protected $orders_repository;
 
 	/**
+	 * Set when a missed-payment backfill skipped an invoice it could not resolve during this request.
+	 *
+	 * @var bool
+	 */
+	private $backfill_failed = false;
+
+	/**
 	 * Construct.
 	 */
 	public function __construct() {
@@ -2500,7 +2507,7 @@ class StripeService {
 			try {
 				$event_id        = sanitize_text_field( $event['id'] );
 				$event           = json_decode( wp_json_encode( \Stripe\Event::retrieve( $event_id ) ), true );
-				$subscription_id = $event['data']['object']['subscription'] ?? $subscription_id;
+				$subscription_id = $event['data']['object']['subscription'] ?? $event['data']['object']['parent']['subscription_details']['subscription'] ?? $subscription_id;
 			} catch ( \Exception $e ) {
 				PaymentGatewayLogging::log_webhook_received(
 					'stripe',
@@ -4455,6 +4462,17 @@ class StripeService {
 	}
 
 	/**
+	 * Whether a missed-payment backfill in this request skipped an invoice it could not resolve.
+	 *
+	 * The scheduler keeps the Stripe sync time when this is true, so the window is searched again next run.
+	 *
+	 * @return bool
+	 */
+	public function has_backfill_failure() {
+		return $this->backfill_failed;
+	}
+
+	/**
 	 * Backfill missed payments events record.
 	 *
 	 * @param string $last_synced Last synced timestamp to fetch events from.
@@ -4508,7 +4526,8 @@ class StripeService {
 				try {
 					$payment_intent_id = $this->get_invoice_payment_intent_id( $invoice_data );
 				} catch ( \Exception $e ) {
-					// Skip only this invoice: the sync time advances even when the backfill throws, so aborting would drop the rest of the window.
+					// Skip only this invoice so the rest of the window is still recovered; the flag keeps the window for the next run.
+					$this->backfill_failed = true;
 					$logger->error(
 						sprintf( '[Backfill][Stripe][Payments] Could not resolve the PaymentIntent of invoice %s: %s', $invoice_data['id'] ?? '', $e->getMessage() ),
 						array( 'source' => 'urm-missed-payment-backfill' )

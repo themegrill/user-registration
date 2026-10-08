@@ -1778,13 +1778,20 @@ class SubscriptionService {
 							);
 							break;
 						}
+						// Stripe keeps its own sync time, advanced only on full success, so a window that hit a Stripe error is searched again next run.
+						$stripe_last_synced = (int) get_option( 'urm_last_stripe_backfill_sync_time', 0 );
+						if ( $stripe_last_synced <= 0 ) {
+							$stripe_last_synced = $last_synced;
+						}
+						$stripe_synced = false;
 						try {
 							$stripe_service = new StripeService();
-							$stripe_service->run_missed_subscription_backfill( $last_synced );
-							$stripe_service->run_missed_payment_backfill( $last_synced );
-							$stripe_service->run_missed_onetime_payment_backfill( $last_synced );
-							$stripe_service->run_missed_refund_backfill( $last_synced );
-							$stripe_service->run_missed_dispute_backfill( $last_synced );
+							$stripe_service->run_missed_subscription_backfill( $stripe_last_synced );
+							$stripe_service->run_missed_payment_backfill( $stripe_last_synced );
+							$stripe_service->run_missed_onetime_payment_backfill( $stripe_last_synced );
+							$stripe_service->run_missed_refund_backfill( $stripe_last_synced );
+							$stripe_service->run_missed_dispute_backfill( $stripe_last_synced );
+							$stripe_synced = ! $stripe_service->has_backfill_failure();
 						} catch ( \Exception $e ) {
 							ur_get_logger()->error(
 								sprintf(
@@ -1793,8 +1800,15 @@ class SubscriptionService {
 								),
 								array( 'source' => 'urm-missed-payment-backfill' )
 							);
-							break;
 						}
+						if ( ! $stripe_synced ) {
+							ur_get_logger()->warning(
+								'[Backfill][Stripe] A Stripe request failed; the Stripe sync time is kept and this window is searched again next run.',
+								array( 'source' => 'urm-missed-payment-backfill' )
+							);
+						}
+						// Storing the window start on failure also covers a first run, which has no stored Stripe sync time yet.
+						update_option( 'urm_last_stripe_backfill_sync_time', $stripe_synced ? $now : $stripe_last_synced );
 						break;
 					case 'paypal':
 						try {
