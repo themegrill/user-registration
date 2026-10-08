@@ -1407,7 +1407,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 				);
 
 				$actions['delete'] = sprintf(
-					'<a class="urm-deny" href="%s" rel="noreferrer noopener" target="_blank" data-wp-delete-url="%s">%s<span>%s</span></a>',
+					'<a class="urm-deny" href="%s" data-wp-delete-url="%s">%s<span>%s</span></a>',
 					esc_url( $delete_link ),
 					esc_url_raw( $wp_delete_url ),
 					'<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -1997,7 +1997,8 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 				$meta_value = get_user_meta( $user_id, 'ur_payment_invoices', true );
 
 				if ( 'membership' !== $user_source && ! empty( $meta_value ) && is_array( $meta_value ) ) {
-					foreach ( $meta_value as $invoice_index => $values ) {
+					// The View link needs each invoice's position in the stored list, so the keys are kept.
+					foreach ( ur_get_valid_payment_invoices( $meta_value, true ) as $invoice_index => $values ) {
 						$total_items[] = array(
 							'user_id'        => $user_id,
 							'invoice_index'  => $invoice_index,
@@ -2047,7 +2048,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 									$currency   = isset( $payment['currency'] ) && '' !== $payment['currency'] ? $payment['currency'] : 'USD';
 
 									$symbol = $currencies[ $currency ]['symbol'];
-									$amount = ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( $amount, 2 ) : number_format( $amount, 2 ) . $symbol;
+									$amount = ( ! empty( $currencies[ $currency ]['symbol_pos'] ) && 'left' === $currencies[ $currency ]['symbol_pos'] ) ? $symbol . number_format( (float) $amount, 2 ) : number_format( (float) $amount, 2 ) . $symbol;
 
 									// Form payments have no order row — payment history edit expects user_id + type=form.
 									$order_id  = absint( $payment['order_id'] ?? $payment['ID'] ?? $payment['id'] ?? 0 );

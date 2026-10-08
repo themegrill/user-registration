@@ -2262,6 +2262,14 @@
 												response.success === true
 											) {
 												type = "message";
+												$this
+													.find(".profile-pic-remove")
+													.hide();
+												$this
+													.find(
+														".user_registration_profile_picture_upload"
+													)
+													.show();
 												if (
 													typeof response.data
 														.profile_pic_id !==
@@ -2297,11 +2305,14 @@
 															.find(
 																".profile-pic-remove"
 															)
-															.data(
-																"attachment-id",
-																response.data
-																	.profile_pic_id
-															);
+															.data({
+																"attachment-id":
+																	response.data
+																		.profile_pic_id,
+																"saved-attachment-id":
+																	response.data
+																		.profile_pic_id
+															});
 													}
 												}
 											}
@@ -2606,7 +2617,7 @@
 							'<div class="user-registration-membership-notice__container">' +
 								'<div class="ur-toaster user-registration-membership-notice__red">' +
 									'<span class="user-registration-membership-notice__message"></span>' +
-									'<span class="user-registration-membership__close_notice">&times;</span>' +
+									'<button type="button" class="user-registration-membership__close_notice" aria-label="' + (user_registration_params.ursL10n.dismiss || "Dismiss") + '">&times;</button>' +
 								"</div>" +
 							"</div>"
 						);
@@ -3215,6 +3226,8 @@
 	 * @since 5.0.0
 	 */
 	function calculate_total(membershipData, taxRate) {
+		taxRate = Number(taxRate);
+		taxRate = Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100 ? taxRate : 0;
 		var total_input = $("#ur-membership-total");
 
 		let membershipPrice = parseFloat(membershipData.total);
@@ -3265,19 +3278,14 @@
 
 		$("#ur-tax-details").remove();
 
-		var taxDetailsInput =
-			'<input type="hidden" ' +
-			'id="ur-tax-details" ' +
-			'name="ur_tax_details" ' +
-			'data-tax-rate="' +
-			taxRate +
-			'" ' +
-			'data-tax-calculation-method="' +
-			user_registration_params.tax_calculation_method +
-			'" ' +
-			'data-total="' +
-			total +
-			'">';
+		var taxDetailsInput = $("<input>", {
+			type: "hidden",
+			id: "ur-tax-details",
+			name: "ur_tax_details",
+			"data-tax-rate": taxRate,
+			"data-tax-calculation-method": user_registration_params.tax_calculation_method,
+			"data-total": total,
+		});
 
 		total_input.after(taxDetailsInput);
 	}
