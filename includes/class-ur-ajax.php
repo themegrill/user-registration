@@ -96,6 +96,7 @@ class UR_AJAX {
 			'handle_default_wordpress_login'       => false,
 			'enable_emails'                        => false,
 			'skip_site_assistant_section'          => false,
+			'migrate_existing_users'               => false,
 			'login_settings_page_validation'       => false,
 			'activate_dependent_module'            => false,
 			'add_membership_field_to_default_form' => false,
@@ -576,18 +577,18 @@ class UR_AJAX {
 		$sender_email = apply_filters( 'wp_mail_from', get_option( 'user_registration_email_from_address', get_option( 'admin_email' ) ) );
 		$email        = sanitize_email( isset( $_POST['email'] ) ? wp_unslash( $_POST['email'] ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification
 		/* translators: %s - WP mail from name */
-		$subject = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
-		$header  = array(
+		$subject         = 'User Registration & Membership: ' . sprintf( esc_html__( 'Test email from %s', 'user-registration' ), $from_name );
+		$header          = array(
 			'From:' . $from_name . ' <' . $sender_email . '>',
 			'Reply-To:' . $sender_email,
 			'Content-Type:text/html; charset=UTF-8',
 		);
-		$message =
-			'Congratulations,<br>
-		Your test email has been received successfully.<br>
-		We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.<br>
-		Regards,<br>
-		User Registration & Membership Team';
+		$paragraph_style = 'margin: 0 0 16px 0; color: #000000; font-size: 16px; line-height: 1.6;';
+		$message         = sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'Congratulations,', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'Your test email has been received successfully.', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s</p>', $paragraph_style, esc_html__( 'We thank you for trying out User Registration & Membership and joining our mission to make sure you get your emails delivered.', 'user-registration' ) )
+			. sprintf( '<p style="%s">%s<br>%s</p>', $paragraph_style, esc_html__( 'Regards,', 'user-registration' ), esc_html__( 'User Registration & Membership Team', 'user-registration' ) );
+		$message         = user_registration_process_email_content( ur_wrap_email_body_content( $message ) );
 
 		$status = wp_mail( $email, $subject, $message, $header );
 
@@ -1039,28 +1040,32 @@ class UR_AJAX {
 			wp_send_json_error( array( 'message' => __( 'You do not have permission.', 'user-registration' ) ) );
 		}
 
-		$settings_data = $_POST['data']['setting_data'];
-
-		$settings_data = array_values(
-			array_filter(
-				$settings_data,
-				function ( $item ) {
-					return isset( $item['option'] ) && $item['option'] !== 'user_registration_form_setting_general_advanced';
+		$settings_data = isset( $_POST['data']['setting_data'] ) && is_array( $_POST['data']['setting_data'] ) ? wp_unslash( $_POST['data']['setting_data'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Values are sanitized against declared field types before saving.
+		$login_section = array( 'settings' => array() );
+		foreach ( array( get_login_form_settings(), get_login_field_settings() ) as $definition ) {
+			foreach ( $definition['sections'] as $section ) {
+				foreach ( $section['settings'] as $field ) {
+					if ( ! empty( $field['id'] ) && isset( $field['type'] ) && 'button' !== $field['type'] ) {
+						$login_section['settings'][] = $field;
+					}
 				}
-			)
-		);
-
-		$output = array();
+			}
+		}
+		$allowed_keys = array_column( $login_section['settings'], 'id' );
+		$output       = array();
 		foreach ( $settings_data as $item ) {
-			if ( isset( $item['option'] ) ) {
-				$output[ $item['option'] ] = isset( $item['value'] ) ? $item['value'] : '';
+			if ( is_array( $item ) && isset( $item['option'], $item['value'] ) && is_string( $item['option'] ) && is_scalar( $item['value'] ) && in_array( $item['option'], $allowed_keys, true ) ) {
+				$output[ $item['option'] ] = $item['value'];
 			}
 		}
 
 		do_action( 'user_registration_validation_before_login_form_save', $output );
 
-		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ) ) {
-			if ( '' === $output['user_registration_login_options_configured_captcha_type'] || ! $output['user_registration_login_options_configured_captcha_type'] ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_enable_recaptcha'] ?? false ) ) {
+			$configured_captcha_type = isset( $output['user_registration_login_options_configured_captcha_type'] ) ? $output['user_registration_login_options_configured_captcha_type'] : '';
+
+			// An empty selection is fine as long as the site-wide default type already has usable keys.
+			if ( ! ur_captcha_type_has_keys( $configured_captcha_type ) && ! ur_captcha_type_has_keys( get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' ) ) ) {
 				wp_send_json_error(
 					array(
 						'message' => esc_html__( "Seems like you haven't selected the reCAPTCHA type (Configured Captcha).", 'user-registration' ),
@@ -1069,7 +1074,7 @@ class UR_AJAX {
 			}
 		}
 
-		if ( ur_string_to_bool( $output['user_registration_login_options_prevent_core_login'] ) ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_prevent_core_login'] ?? false ) ) {
 
 			$login_redirect_value = isset( $output['user_registration_login_options_login_redirect_url'] ) ? $output['user_registration_login_options_login_redirect_url'] : '';
 			if ( empty( $login_redirect_value ) || ! is_numeric( $login_redirect_value ) ) {
@@ -1102,7 +1107,7 @@ class UR_AJAX {
 		}
 
 		// check for valid lost password and reset password page.
-		if ( ur_string_to_bool( $output['user_registration_login_options_lost_password'] ) ) {
+		if ( ur_string_to_bool( $output['user_registration_login_options_lost_password'] ?? false ) ) {
 
 			if ( ! empty( $output['user_registration_lost_password_page_id'] ) && ( is_numeric( $output['user_registration_lost_password_page_id'] ) ) ) {
 				$is_page_lost_password_page = ur_find_lost_password_in_page( sanitize_text_field( wp_unslash( $output['user_registration_lost_password_page_id'] ) ) );
@@ -1145,14 +1150,16 @@ class UR_AJAX {
 					update_option( 'user_registration_login_options_login_redirect_url', $settings );
 				}
 			}
-			update_option( $key, $settings );
+			$output[ $key ] = $settings;
 		}
+
+		ur_save_settings_options( $login_section, $output );
 
 		/**
 		 * Action after form setting save.
 		 * Default is the $_POST['data'].
 		 */
-		do_action( 'user_registration_after_login_form_settings_save', wp_unslash( $settings_data ) ); //phpcs:ignore
+		do_action( 'user_registration_after_login_form_settings_save', $settings_data );
 
 		wp_send_json_success(
 			array()
@@ -1710,6 +1717,12 @@ class UR_AJAX {
 			wp_send_json_error( $status );
 		}
 
+		$package_error = ur_get_addon_package_error( $api );
+
+		if ( ! empty( $package_error ) ) {
+			wp_send_json_error( array_merge( $status, $package_error ) );
+		}
+
 		$status['pluginName'] = $api->name;
 
 		$skin     = new WP_Ajax_Upgrader_Skin();
@@ -1799,7 +1812,7 @@ class UR_AJAX {
 
 		$form_id = UR()->form->create( $title, $template );
 
-		if ( $form_id ) {
+		if ( $form_id && ! is_wp_error( $form_id ) ) {
 			$data = array(
 				'id'       => $form_id,
 				'redirect' => add_query_arg(
@@ -2717,10 +2730,133 @@ class UR_AJAX {
 				);
 				break;
 
+			case 'legacy_payment_fields':
+				update_option( 'user_registration_legacy_payment_fields_notice_dismissed', true );
+				wp_send_json_success(
+					array(
+						'message' => __( 'Legacy payment fields notice dismissed.', 'user-registration' ),
+					)
+				);
+				break;
+
 			default:
 				wp_send_json_error( array( 'message' => __( 'Invalid section specified.', 'user-registration' ) ) );
 				break;
 		}
+	}
+
+	/**
+	 * Option name used as the lock that serializes linking of existing users.
+	 */
+	const LINK_USERS_LOCK = 'ur_link_existing_users_lock';
+
+	/**
+	 * Take the lock that stops two requests from linking users at the same time and adding duplicate ur_form_id rows.
+	 *
+	 * The unique option name makes creating the row atomic, as WordPress core does for its own locks.
+	 * A lock older than a minute is treated as left over from a failed request and taken over.
+	 *
+	 * @return bool True if this request now holds the lock.
+	 */
+	private static function acquire_link_users_lock() {
+		global $wpdb;
+
+		$now = time();
+
+		if ( add_option( self::LINK_USERS_LOCK, $now, '', 'no' ) ) {
+			return true;
+		}
+
+		$held_since = (int) $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", self::LINK_USERS_LOCK ) );
+
+		if ( ! $held_since ) {
+			return add_option( self::LINK_USERS_LOCK, $now, '', 'no' );
+		}
+
+		if ( ( $now - $held_since ) < MINUTE_IN_SECONDS ) {
+			return false;
+		}
+
+		// Compare and swap, so only one request can take over a stale lock.
+		return 1 === $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s", $now, self::LINK_USERS_LOCK, $held_since ) );
+	}
+
+	/**
+	 * Migrate unlinked users to a designated registration form in bounded chunks.
+	 *
+	 * @return void
+	 */
+	public static function migrate_existing_users() {
+		check_ajax_referer( 'wp_rest', 'security' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'You do not have permission to link users.', 'user-registration' ),
+				)
+			);
+		}
+
+		$form_id = isset( $_POST['form_id'] ) ? absint( $_POST['form_id'] ) : 0;
+		if ( ! $form_id || 'user_registration' !== get_post_type( $form_id ) || 'publish' !== get_post_status( $form_id ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Invalid or unpublished registration form selected.', 'user-registration' ),
+				)
+			);
+		}
+
+		if ( ! self::acquire_link_users_lock() ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Users are already being linked. Please try again in a moment.', 'user-registration' ),
+				)
+			);
+		}
+
+		$current_user_id = get_current_user_id();
+
+		// Exclude acting admin via query args so fresh single-admin sites don't flag the installer's account.
+		$chunk_size = 500;
+		$user_ids   = get_users( ur_get_unlinked_users_query_args( array( 'number' => $chunk_size + 1 ) ) );
+
+		// The extra row only signals that another batch is needed, so it is not linked in this one.
+		$has_more = count( $user_ids ) > $chunk_size;
+		$user_ids = array_slice( $user_ids, 0, $chunk_size );
+
+		if ( empty( $user_ids ) ) {
+			delete_option( self::LINK_USERS_LOCK );
+			// Another admin may have linked everyone, so this admin's cached count is stale.
+			ur_clear_unlinked_users_count_cache( $current_user_id );
+			wp_send_json_success(
+				array(
+					'message'  => __( 'No unlinked users found to link.', 'user-registration' ),
+					'count'    => 0,
+					'has_more' => false,
+				)
+			);
+		}
+
+		$migrated_count = 0;
+		foreach ( $user_ids as $user_id ) {
+			// Atomically link only if not already associated by a concurrent process.
+			$added = add_user_meta( (int) $user_id, 'ur_form_id', $form_id, true );
+			if ( $added ) {
+				$migrated_count++;
+			}
+		}
+
+		delete_option( self::LINK_USERS_LOCK );
+		ur_clear_unlinked_users_count_cache( $current_user_id );
+
+		wp_send_json_success(
+			array(
+				/* translators: %d: number of users migrated */
+				'message'  => sprintf( _n( '%d user successfully linked to registration form.', '%d users successfully linked to registration form.', $migrated_count, 'user-registration' ), $migrated_count ),
+				'count'    => $migrated_count,
+				'has_more' => $has_more,
+			)
+		);
 	}
 
 	public static function login_settings_page_validation() {

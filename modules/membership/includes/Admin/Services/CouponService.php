@@ -74,6 +74,11 @@ class CouponService {
 			return $this->set_coupon_response( false, 422, 'Coupon expired.' );
 		}
 
+		// A checkout that just claimed the last use re-validates afterwards and must keep its discount.
+		if ( function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( $coupon_details ) && ! ( function_exists( 'ur_coupon_claimed_this_request' ) && ur_coupon_claimed_this_request( $coupon ) ) ) {
+			return $this->set_coupon_response( false, 422, 'This coupon has reached its usage limit.' );
+		}
+
 		if ( 'membership' !== $coupon_details['coupon_for'] ) {
 			return $this->set_coupon_response( false, 422, 'Invalid coupon type.', );
 		}

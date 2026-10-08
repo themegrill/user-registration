@@ -45,7 +45,8 @@ namespace {
 		throw new SecurityResponse( false, 'wp_die', 500 );
 	}
 
-	eval( 'class StripeInvoiceResolver {' . security_function( 'modules/membership/includes/Admin/Services/Stripe/StripeService.php', 'get_invoice_payment_intent_id' ) . '}' );
+	$stripe_service = 'modules/membership/includes/Admin/Services/Stripe/StripeService.php';
+	eval( 'class StripeInvoiceResolver {' . security_function( $stripe_service, 'extract_stripe_id' ) . security_function( $stripe_service, 'get_invoice_payment_intent_id' ) . '}' );
 	$resolver = new ReflectionMethod( 'StripeInvoiceResolver', 'get_invoice_payment_intent_id' );
 	$resolver->setAccessible( true );
 	$resolve = function ( $invoice, $payments = array(), $throws = false ) use ( $resolver ) {
@@ -66,6 +67,18 @@ namespace {
 		'Legacy invoice payment_intent is used as is'
 	);
 	security_assert( array() === $GLOBALS['retrieve_calls'], 'No API call when the invoice already carries payment_intent' );
+
+	// An expanded payment_intent object resolves to its id without an API call.
+	security_assert(
+		'pi_expanded' === $resolve(
+			array(
+				'id'             => 'in_x',
+				'payment_intent' => array( 'id' => 'pi_expanded' ),
+			)
+		),
+		'Expanded payment_intent object resolves to its id'
+	);
+	security_assert( array() === $GLOBALS['retrieve_calls'], 'No API call for an expanded payment_intent' );
 
 	// Basil-or-later event: the field is gone, the paid payment lists the PaymentIntent.
 	$paid = array(

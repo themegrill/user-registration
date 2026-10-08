@@ -39,18 +39,37 @@ if ( ! class_exists( 'UR_Settings_Captcha' ) ) :
 			add_action( 'urm_save_captcha_settings', array( $this, 'save_captcha_settings' ), 10, 2 );
 		}
 
+		/**
+		 * Save only fields declared by the selected CAPTCHA section.
+		 *
+		 * @param array  $form_data Submitted settings.
+		 * @param string $setting_id Selected section ID.
+		 * @return void
+		 */
 		public function save_captcha_settings( $form_data, $setting_id ) {
-			foreach ( $form_data as $key => $value ) {
-				update_option( $key, sanitize_text_field( $value ) );
+			if ( ! is_array( $form_data ) ) {
+				return;
 			}
 
-			// Update the global captcha version to match the current setting
-			if ( in_array( $setting_id, array( 'v2', 'v3', 'hCaptcha', 'cloudflare' ) ) ) {
-				update_option( 'user_registration_captcha_setting_recaptcha_version', $setting_id );
-			}
+			foreach ( $this->get_captcha_global_settings() as $section ) {
+				if ( ! isset( $section['id'] ) || $section['id'] !== $setting_id ) {
+					continue;
+				}
+				// Buttons are UI controls, and CAPTCHA fields accept scalar values only.
+				$section['settings'] = array_filter(
+					$section['settings'],
+					function ( $field ) {
+						return 'button' !== ( $field['type'] ?? '' );
+					}
+				);
+				ur_save_settings_options( $section, array_filter( $form_data, 'is_scalar' ) );
 
-			// Mark captcha as enabled/connected after successful save
-			update_option( 'user_registration_captcha_setting_recaptcha_enable_' . $setting_id, true );
+				if ( in_array( $setting_id, array( 'v2', 'v3', 'hCaptcha', 'cloudflare' ), true ) ) {
+					update_option( 'user_registration_captcha_setting_recaptcha_version', $setting_id );
+					update_option( 'user_registration_captcha_setting_recaptcha_enable_' . $setting_id, true );
+				}
+				return;
+			}
 		}
 
 		/**
