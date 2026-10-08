@@ -6,7 +6,7 @@
  */
 
 // Test doubles and fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.Files.FileName.InvalidClassFileName, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.WP.AlternativeFunctions.file_system_read_fwrite, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
+// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.Files.FileName.InvalidClassFileName, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.WP.AlternativeFunctions.file_system_operations_fwrite, WordPress.WP.AlternativeFunctions.file_system_read_fwrite, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents,WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound
 
 require __DIR__ . '/bootstrap.php';
 
@@ -59,6 +59,10 @@ function wp_get_post_parent_id( $id ) {
 	return $post ? $post->post_parent : 0; }
 function get_post_meta( $id, $key, $single ) {
 	return ''; }
+class WC_Product {
+	public function get_id() {
+		return 755; }
+}
 function ur_string_to_bool( $value ) {
 	return true === $value || 'yes' === $value || 'on' === $value || 1 === $value; }
 $frontend = 'modules/content-restriction/class-urcr-frontend.php';
@@ -69,6 +73,8 @@ eval(
 	. security_function( $frontend, 'get_rule_product_id' )
 	. ' public '
 	. security_function( $frontend, 'ur_user_can_purchase_woocommerce_product' )
+	. ' public '
+	. security_function( $frontend, 'hide_wc_price_if_restricted' )
 	. ' }'
 );
 
@@ -107,6 +113,14 @@ function product_allowed( $rules, $user_matches, $product_id = 755 ) {
 	return $runner->ur_user_can_purchase_woocommerce_product( $product_id );
 }
 
+function product_price( $rules, $user_matches, $user_can_edit = false ) {
+	$GLOBALS['user_matches_rule'] = $user_matches;
+	$GLOBALS['access_rules']      = $rules;
+	$GLOBALS['caps']              = $user_can_edit ? array( 'edit_post' ) : array();
+	$runner                       = new ProductRestrictionRunner();
+	return $runner->hide_wc_price_if_restricted( '<span>$49.99</span>', new WC_Product() );
+}
+
 $post_type_rule = product_rule( 'post_types' );
 $whole_site     = product_rule( 'whole_site', true, 'access', array( 'x' ) );
 
@@ -132,6 +146,11 @@ try {
 	security_assert( false === product_allowed( array( $restrict_rule_subscr, product_rule( 'post_types', true, 'restrict', array( 'product' ), true ) ), false ), 'An unmatched Restrict rule must not cancel a matching Restrict rule' );
 	security_assert( true === product_allowed( array( product_rule( 'post_types', true, 'access', array( 'product' ), true ), product_rule( 'post_types', true, 'restrict', array( 'product' ), true ) ), false ), 'A matching Access rule still wins over a matching Restrict rule' );
 	security_assert( true === product_allowed( array( $post_type_rule ), false, 757 ), 'A variation without a parent is left open instead of falling back to the current post' );
+	security_assert( '' === product_price( array( $post_type_rule ), false ), 'The price of a restricted product must be hidden from a non-member' );
+	security_assert( '<span>$49.99</span>' === product_price( array( $post_type_rule ), true ), 'A member still sees the price' );
+	security_assert( '<span>$49.99</span>' === product_price( array(), false ), 'An unrestricted product keeps its price' );
+	security_assert( '<span>$49.99</span>' === product_price( array( $post_type_rule ), false, true ), 'A user who can edit the product still sees its price' );
+	security_assert( 1 === preg_match( "/^\s*add_filter\( 'woocommerce_get_price_html', array\( \\\$this, 'hide_wc_price_if_restricted' \)/m", (string) file_get_contents( $frontend ) ), 'The price filter must be registered on woocommerce_get_price_html' );
 } catch ( Throwable $e ) {
 	fwrite( STDERR, $e->getMessage() . "\n" );
 	exit( 1 );
