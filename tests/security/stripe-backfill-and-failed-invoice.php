@@ -164,7 +164,12 @@ namespace {
 				'retrieve'                                 => $subscription_row,
 			)
 		);
-		$service->orders_repository               = new SecurityRepository( $order_returns );
+		$service->orders_repository               = new SecurityRepository(
+			$order_returns + array(
+				'create' => array( 'ID' => 99 ),
+				'update' => 1,
+			)
+		);
 		return $service;
 	};
 	$backfill           = function ( $invoices, $subscription_row, $payments = array(), $order_returns = array() ) use ( $harness ) {
@@ -255,6 +260,12 @@ namespace {
 	security_assert( array( 'pi_legacy' ) === $transaction_ids( $service ), 'The backfill continues after a failed lookup' );
 	security_assert( $service->has_backfill_failure(), 'A failed lookup flags the run so the scheduler keeps the window' );
 
+	// 7b. An order that cannot be saved, or linked, flags the run so the window is searched again.
+	$service = $backfill( array( $basil_invoice( 'in_db_down' ) ), $local_subscription, $paid_by_pi, array( 'create' => array() ) );
+	security_assert( $service->has_backfill_failure() && false !== strpos( $GLOBALS['logged_errors'][0] ?? '', 'Could not save the order' ), 'A failed order write flags the run' );
+	$service = $backfill( array( $basil_invoice( 'in_link_down' ) + array( 'billing_reason' => 'subscription_create' ) ), $local_subscription, $paid_by_pi, $unlinked + array( 'update' => false ) );
+	security_assert( $service->has_backfill_failure() && false !== strpos( $GLOBALS['logged_errors'][0] ?? '', 'Could not link' ), 'A failed order link flags the run' );
+
 	// 8. A $0 invoice (no payments) still creates no order.
 	$service = $backfill( array( $basil_invoice( 'in_trial' ) ), $local_subscription );
 	security_assert( array() === $transaction_ids( $service ), 'No order for an invoice without a PaymentIntent' );
@@ -299,7 +310,7 @@ namespace {
 	}
 
 	// 12. A webhook from an endpoint on a current API version names the subscription only under parent.subscription_details.
-	eval( 'class StripeWebhookHarness { public $handled = array(); ' . security_function( $stripe_service, 'handle_webhook' ) . ' public function handle_failed_invoice( $event, $subscription_id ) { $this->handled[] = $subscription_id; } }' );
+	eval( 'class StripeWebhookHarness { public $handled = array(); ' . security_function( $stripe_service, 'handle_webhook' ) . security_function( $stripe_service, 'extract_stripe_id' ) . ' public function handle_failed_invoice( $event, $subscription_id ) { $this->handled[] = $subscription_id; } }' );
 	$webhook = function ( $invoice ) {
 		$GLOBALS['stripe_event'] = array(
 			'id'   => 'evt_1',
@@ -317,15 +328,15 @@ namespace {
 	eval( 'class StripeSchedulerHarness { ' . security_function( 'modules/membership/includes/Admin/Services/SubscriptionService.php', 'urm_backfill_missed_payment_events' ) . '}' );
 	$schedule = function ( $outcome, $stripe_sync ) {
 		$GLOBALS['options']          = array(
-			'ur_membership_payment_gateways'     => array( 'stripe' => array() ),
-			'urm_last_stripe_backfill_sync_time' => $stripe_sync,
+			'ur_membership_payment_gateways'             => array( 'stripe' => array() ),
+			'urm_last_stripe_payment_backfill_sync_time' => $stripe_sync,
 		);
 		$GLOBALS['writes']           = array();
 		$GLOBALS['logged_warnings']  = array();
 		$GLOBALS['backfill_windows'] = array();
 		$GLOBALS['stripe_outcome']   = $outcome;
 		( new StripeSchedulerHarness() )->urm_backfill_missed_payment_events( 1000, 2000 );
-		return $GLOBALS['writes']['urm_last_stripe_backfill_sync_time'] ?? null;
+		return $GLOBALS['writes']['urm_last_stripe_payment_backfill_sync_time'] ?? null;
 	};
 	security_assert( 2000 === $schedule( 'ok', 0 ), 'A successful first run stores the current time' );
 	security_assert( 1000 === $GLOBALS['backfill_windows']['run_missed_payment_backfill'], 'A first run starts from the shared sync time' );
@@ -335,4 +346,5 @@ namespace {
 	security_assert( 1500 === $schedule( 'skipped', 1500 ), 'A skipped invoice keeps the stored Stripe sync time' );
 	security_assert( 2000 === $schedule( 'ok', 1500 ), 'The next successful run moves the Stripe sync time forward' );
 	security_assert( 1500 === $GLOBALS['backfill_windows']['run_missed_payment_backfill'], 'The retried run searches from the kept Stripe sync time' );
+	security_assert( 1000 === $GLOBALS['backfill_windows']['run_missed_subscription_backfill'] && 1000 === $GLOBALS['backfill_windows']['run_missed_dispute_backfill'], 'Status and dispute backfills stay on the shared sync time' );
 }

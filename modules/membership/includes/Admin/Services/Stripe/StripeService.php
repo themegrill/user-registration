@@ -49,7 +49,7 @@ class StripeService {
 	protected $orders_repository;
 
 	/**
-	 * Set when a missed-payment backfill skipped an invoice it could not resolve during this request.
+	 * Set when a missed-payment backfill skipped an invoice it could not resolve or save during this request.
 	 *
 	 * @var bool
 	 */
@@ -2507,7 +2507,7 @@ class StripeService {
 			try {
 				$event_id        = sanitize_text_field( $event['id'] );
 				$event           = json_decode( wp_json_encode( \Stripe\Event::retrieve( $event_id ) ), true );
-				$subscription_id = $event['data']['object']['subscription'] ?? $event['data']['object']['parent']['subscription_details']['subscription'] ?? $subscription_id;
+				$subscription_id = $this->extract_stripe_id( $event['data']['object']['subscription'] ?? $event['data']['object']['parent']['subscription_details']['subscription'] ?? null ) ?? $subscription_id;
 			} catch ( \Exception $e ) {
 				PaymentGatewayLogging::log_webhook_received(
 					'stripe',
@@ -4462,9 +4462,9 @@ class StripeService {
 	}
 
 	/**
-	 * Whether a missed-payment backfill in this request skipped an invoice it could not resolve.
+	 * Whether a missed-payment backfill in this request skipped an invoice it could not resolve or save.
 	 *
-	 * The scheduler keeps the Stripe sync time when this is true, so the window is searched again next run.
+	 * The scheduler keeps the Stripe payment sync time when this is true, so the window is searched again next run.
 	 *
 	 * @return bool
 	 */
@@ -4547,13 +4547,23 @@ class StripeService {
 					// Registration can save its order before the PaymentIntent is known; link the signup invoice to it instead of duplicating it.
 					$unlinked_order = 'subscription_create' === ( $invoice_data['billing_reason'] ?? '' ) ? $this->orders_repository->get_unlinked_order_by_subscription( $membership_subscription['ID'] ) : array();
 					if ( ! empty( $unlinked_order ) ) {
-						$this->orders_repository->update(
+						$linked = $this->orders_repository->update(
 							$unlinked_order['ID'],
 							array(
 								'transaction_id' => sanitize_text_field( $payment_intent_id ),
 								'status'         => 'completed',
 							)
 						);
+
+						if ( false === $linked ) {
+							$this->backfill_failed = true;
+							$logger->error(
+								sprintf( '[Backfill][Stripe][Payments] Could not link PaymentIntent %s to order %d', $payment_intent_id, $unlinked_order['ID'] ),
+								array( 'source' => 'urm-missed-payment-backfill' )
+							);
+							++$count_skipped;
+							continue;
+						}
 
 						++$count_linked;
 						$logger->info(
@@ -4595,7 +4605,15 @@ class StripeService {
 							),
 						),
 					);
-					$this->orders_repository->create( $order_data );
+					if ( empty( $this->orders_repository->create( $order_data ) ) ) {
+						$this->backfill_failed = true;
+						$logger->error(
+							sprintf( '[Backfill][Stripe][Payments] Could not save the order for PaymentIntent %s (subscription %s)', $payment_intent_id, $subscription_id ),
+							array( 'source' => 'urm-missed-payment-backfill' )
+						);
+						++$count_skipped;
+						continue;
+					}
 
 					++$count_created;
 					$logger->info(
