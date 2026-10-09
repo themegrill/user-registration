@@ -12374,6 +12374,7 @@ if ( ! function_exists( 'ur_get_payment_gateway_label' ) ) {
 
 		$labels = array(
 			'paypal'          => __( 'PayPal', 'user-registration' ),
+			'paypal_rest'     => __( 'PayPal', 'user-registration' ),
 			'paypal_standard' => __( 'PayPal Standard', 'user-registration' ),
 			'stripe'          => __( 'Stripe', 'user-registration' ),
 			'credit_card'     => __( 'Stripe (Credit Card)', 'user-registration' ),
