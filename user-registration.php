@@ -29,6 +29,7 @@ if ( ! class_exists( 'UserRegistration' ) ) :
 	 * @class   UserRegistration
 	 * @version 1.0.0
 	 */
+	
 	final class UserRegistration {
 
 		/**
