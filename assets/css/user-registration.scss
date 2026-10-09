@@ -4015,23 +4015,28 @@ body.user-registration-page {
 
 // WCAG 2.4.7: !important beats the per-form `outline: none` resets above.
 .ur-frontend-form {
-	input:focus-visible,
-	textarea:focus-visible,
-	select:focus-visible,
-	button:focus-visible {
+	// Buttons have no primary border on focus — outline is the sole indicator.
+	button:focus-visible,
+	input[type="submit"]:focus-visible,
+	input[type="button"]:focus-visible,
+	input[type="reset"]:focus-visible {
 		outline: 2px solid var(--ur-primary-color, $primary_color) !important;
 		outline-offset: 2px;
 	}
 
-	// Bordered fields already turn the border primary on focus; no gap keeps it one ring.
+	// Text fields already get a primary border on :focus. Do not stack a second
+	// outline ring (offset 0 still reads as a thicker/darker double border).
 	input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="image"]):focus-visible,
 	textarea:focus-visible,
 	select:focus-visible {
+		outline: none !important;
 		outline-offset: 0;
 	}
 
 	input[type="radio"]:focus-visible,
 	input[type="checkbox"]:focus-visible {
+		outline: 2px solid var(--ur-primary-color, $primary_color) !important;
+		outline-offset: 2px;
 		outline-style: auto !important;
 	}
 }
