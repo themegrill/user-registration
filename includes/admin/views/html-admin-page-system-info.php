@@ -119,12 +119,18 @@ $ur_sections[] = array(
 );
 
 // Required pages.
+// Lost Password is the primary reset flow; a separate Reset Password page is legacy/optional only.
 $ur_plugin_pages = array(
-	'user_registration_login_page_id'          => __( 'Login Page', 'user-registration' ),
-	'user_registration_lost_password_page_id'  => __( 'Lost Password Page', 'user-registration' ),
-	'user_registration_reset_password_page_id' => __( 'Reset Password Page', 'user-registration' ),
-	'user_registration_myaccount_page_id'      => __( 'My Account Page', 'user-registration' ),
+	'user_registration_login_page_id'         => __( 'Login Page', 'user-registration' ),
+	'user_registration_lost_password_page_id' => __( 'Lost Password Page', 'user-registration' ),
+	'user_registration_myaccount_page_id'     => __( 'My Account Page', 'user-registration' ),
 );
+
+// Only list the deprecated Reset Password page when it is configured (legacy installs).
+$ur_reset_password_page_id = absint( get_option( 'user_registration_reset_password_page_id', 0 ) );
+if ( $ur_reset_password_page_id ) {
+	$ur_plugin_pages['user_registration_reset_password_page_id'] = __( 'Reset Password Page', 'user-registration' );
+}
 
 if ( ur_check_module_activation( 'membership' ) ) {
 	$ur_plugin_pages['user_registration_member_registration_page_id'] = __( 'Membership Registration Page', 'user-registration' );
