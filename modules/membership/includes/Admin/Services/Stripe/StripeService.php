@@ -2791,19 +2791,48 @@ class StripeService {
 			'notice'
 		);
 
-		$next_billing_date = SubscriptionService::get_expiry_date( date( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] );
+		$invoice_period = $this->get_invoice_period( $event['data']['object'] );
+		$stored         = $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] );
 
-		$this->members_subscription_repository->update(
-			$current_subscription['sub_id'],
-			array(
-				'start_date'        => date( 'Y-m-d 00:00:00' ),
+		// Stripe redelivers events and Resend replays old ones; an invoice the stored expiry already covers must not extend access again.
+		$extends_access = empty( $invoice_period ) || strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) > (int) strtotime( $stored['expiry_date'] ?? '' );
+
+		if ( ! $extends_access && 'expired' === ( $current_subscription['status'] ?? '' ) ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'Invoice already covered by the subscription; expired subscription left unchanged' . "\n" . wp_json_encode(
+					array(
+						'event_type'      => 'invoice_already_applied',
+						'subscription_id' => $subscription_id,
+						'invoice_id'      => $invoice_id,
+						'member_id'       => $member_id,
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+
+			return;
+		}
+
+		$subscription_update = array( 'status' => $subscription_status );
+		$next_billing_date   = null;
+
+		if ( $extends_access ) {
+			$next_billing_date   = empty( $invoice_period ) ? SubscriptionService::get_expiry_date( gmdate( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] ) : gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
+			$subscription_update = array(
+				'start_date'        => empty( $invoice_period ) ? gmdate( 'Y-m-d 00:00:00' ) : gmdate( 'Y-m-d 00:00:00', $invoice_period['start'] ),
 				'next_billing_date' => $next_billing_date,
 				'expiry_date'       => $next_billing_date,
-				'status'            => $subscription_status,
-			)
-		);
+			) + $subscription_update;
+		}
+
+		if ( $extends_access || ( $current_subscription['status'] ?? '' ) !== $subscription_status ) {
+			$this->members_subscription_repository->update( $current_subscription['sub_id'], $subscription_update );
+		}
+
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
+		$is_renewing        = $extends_access && $this->is_renewing_membership( $membership_process, $membership_id );
 
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
@@ -2812,7 +2841,7 @@ class StripeService {
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
-			'Subscription renewed successfully',
+			$extends_access ? 'Subscription renewed successfully' : 'Invoice already covered by the subscription; dates left unchanged',
 			array(
 				'subscription_id'     => $subscription_id,
 				'new_billing_date'    => $next_billing_date,
@@ -2825,6 +2854,32 @@ class StripeService {
 		if ( $is_renewing ) {
 			delete_transient( 'urm_pending_login_' . $member_id );
 		}
+	}
+
+	/**
+	 * Get the billing period an invoice paid for, from its line items.
+	 *
+	 * The invoice's own period fields describe usage, not the subscription cycle, so the line with the latest
+	 * end decides (a proration credit ends inside the cycle the recurring charge opens).
+	 *
+	 * @param array $invoice Invoice object from a Stripe event.
+	 * @return array Timestamps under `start` and `end`; empty when the invoice carries no line period.
+	 */
+	private function get_invoice_period( $invoice ) {
+		$period = array();
+
+		foreach ( $invoice['lines']['data'] ?? array() as $line ) {
+			$end = (int) ( $line['period']['end'] ?? 0 );
+
+			if ( $end > ( $period['end'] ?? 0 ) ) {
+				$period = array(
+					'start' => (int) ( $line['period']['start'] ?? 0 ),
+					'end'   => $end,
+				);
+			}
+		}
+
+		return $period;
 	}
 
 	/**
