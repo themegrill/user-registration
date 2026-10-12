@@ -91,49 +91,46 @@ test.describe("login methods @fresh", () => {
   /**
    * @area    login-forms
    * @tier    fresh
-   * @guards  #1725
-   * @source  verify-fix 2026-10-05
-   * @why     Every front-end form control had `outline: none` with no replacement
-   *          that survived the per-form resets, so a keyboard user could not see
-   *          where they were (WCAG 2.4.7). Asserts a drawn outline on a focused
-   *          login field and on the submit button. Deliberately does not assert
-   *          the ring's colour or width — those are the theme's to tune.
+   * @guards  #1725 #1896
+   * @source  verify-fix 2026-10-11
+   * @why     WCAG 2.4.7 needs a visible focus indicator (#1725), but a bordered
+   *          text field that also drew the 2px focus ring read as a thick double
+   *          border (#1896). On a text field the border turning primary is the
+   *          one indicator, so the ring must be gone. Asserts the border changes
+   *          and no outline is drawn, not the colour or width — those are the
+   *          theme's to tune.
    */
-  test("a focused login field and the login button show a visible outline @fresh @login-forms", async ({ browser }) => {
+  test("a focused login field shows one border and no second ring @fresh @login-forms", async ({ browser }) => {
     const visitor = await newVisitor(browser);
     const guest = await visitor.newPage();
     await guest.goto("/my-account/");
 
-    await guest.locator("#username").focus();
-    await expect(guest.locator("#username")).toHaveCSS("outline-style", "solid");
-
-    await guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first().focus();
-    await expect(
-      guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first(),
-    ).toHaveCSS("outline-style", "solid");
+    const username = guest.locator("#username");
+    const unfocusedBorder = await username.evaluate((el) => getComputedStyle(el).borderTopColor);
+    await username.focus();
+    await expect(username).not.toHaveCSS("border-top-color", unfocusedBorder);
+    await expect(username).toHaveCSS("outline-style", "none");
     await visitor.close();
   });
 
   /**
    * @area    login-forms
    * @tier    fresh
-   * @guards  #1896
-   * @source  verify-fix 2026-10-08
-   * @why     A focused login field showed its primary border and, 2px outside it,
-   *          the focus ring, which read as a double border. The ring now sits
-   *          flush against the border on bordered fields while the submit button
-   *          keeps its gap. Asserts only that offset, not the ring's colour.
+   * @guards  #1725 #1896
+   * @source  verify-fix 2026-10-11
+   * @why     The submit button has no border change on focus, so its outline is
+   *          the only indicator (WCAG 2.4.7) and it keeps a gap from the button
+   *          edge. Guards against the single-ring fix for text fields being
+   *          applied to buttons too.
    */
-  test("a focused login field has no gap between its border and focus ring @fresh @login-forms", async ({ browser }) => {
+  test("a focused login button keeps its outline and gap @fresh @login-forms", async ({ browser }) => {
     const visitor = await newVisitor(browser);
     const guest = await visitor.newPage();
     await guest.goto("/my-account/");
 
-    await guest.locator("#username").focus();
-    await expect(guest.locator("#username")).toHaveCSS("outline-offset", "0px");
-
     const submit = guest.locator(".ur-frontend-form button[type=submit], .ur-frontend-form .ur-submit-button").first();
     await submit.focus();
+    await expect(submit).toHaveCSS("outline-style", "solid");
     await expect(submit).not.toHaveCSS("outline-offset", "0px");
     await visitor.close();
   });
