@@ -999,7 +999,8 @@ class PaypalService {
 		// Read before the renewal below clears the counter.
 		$retry_attempts = intval( get_user_meta( $member_id, 'urm_is_payment_retrying', true ) );
 
-		if ( $is_renewing ) {
+		// A failed IPN must not roll the billing dates forward or clear the retry counter.
+		if ( $is_renewing && 'completed' === $payment_status ) {
 			$subscription_service = new SubscriptionService();
 			$subscription_service->update_subscription_data_for_renewal( $subscription, $membership_metas );
 		}

@@ -74,4 +74,5 @@ $read_at = strpos( $paypal, '$retry_attempts = intval(' );
 $renewal = strpos( $paypal, 'update_subscription_data_for_renewal(' );
 security_assert( false !== $read_at && false !== $renewal && $read_at < $renewal, 'PayPal reads the retry counter before the renewal clears it' );
 security_assert( false !== strpos( $paypal, "1 <= \$retry_attempts && 'completed' !== \$payment_status" ), 'PayPal sends the retry-failed email on every failed attempt but not after a completed payment' );
+security_assert( false !== strpos( $paypal, "if ( \$is_renewing && 'completed' === \$payment_status )" ), 'PayPal renews, and so clears the counter, only on a completed payment' );
 security_assert( 0 === preg_match( '/1\s*===\s*(?:\$retry_attempts|intval)/', $paypal ), 'PayPal does not gate the retry-failed email on the counter being exactly 1' );
