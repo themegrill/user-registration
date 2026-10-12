@@ -966,7 +966,9 @@ class SubscriptionService {
 
 					$user_membership_group_ids = array_values( array_unique( $user_membership_group_ids ) );
 
-					if ( ! in_array( $membership_group, $user_membership_group_ids ) ) {
+					// A plan in a group the member holds nothing in is not an extra plan of that group, so the group's setting does not apply.
+					// A plan outside every group is never allowed on top of an existing membership.
+					if ( ! empty( $membership_group['ID'] ) && ! in_array( absint( $membership_group['ID'] ), array_map( 'absint', $user_membership_group_ids ), true ) ) {
 						$multiple_allowed = true;
 					}
 				}
