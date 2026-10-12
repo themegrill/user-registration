@@ -1348,6 +1348,16 @@ class SubscriptionService {
 		update_user_meta( $member_id, 'urm_is_member_renewing', true );
 	}
 
+	/**
+	 * Roll a subscription's billing dates forward after a successful renewal or retry.
+	 *
+	 * Also clears the payment-retry counter so a later, unrelated failure starts
+	 * counting from zero instead of from where a recovered failure left off.
+	 *
+	 * @param array $member_subscription Row from MembersSubscriptionRepository.
+	 * @param array $membership_metas    The membership's meta, including the subscription duration.
+	 * @return void
+	 */
 	public function update_subscription_data_for_renewal( $member_subscription, $membership_metas ) {
 
 		$subscription_value    = $membership_metas['subscription']['value'];
@@ -1370,6 +1380,10 @@ class SubscriptionService {
 			)
 		);
 		update_user_meta( $member_subscription['user_id'], 'urm_last_renewed_on', date( 'Y-m-d 00:00:00' ) );
+
+		// A recovered failure is over - a later, unrelated one must not inherit its count.
+		delete_user_meta( $member_subscription['user_id'], 'urm_is_payment_retrying' );
+
 		$membership_process = urm_get_membership_process( $member_subscription['user_id'] );
 
 		if ( ! empty( $membership_process ) && in_array( $member_subscription['item_id'], $membership_process['renew'] ) ) {

@@ -1001,8 +1001,8 @@ class PaypalService {
 			$subscription_service->update_subscription_data_for_renewal( $subscription, $membership_metas );
 		}
 
-		// only send email if IPN is received for failed attempt.
-		if ( 1 === intval( get_user_meta( $member_id, 'urm_is_payment_retrying', true ) ) ) {
+		// urm_is_payment_retrying is a counter, not a one-shot flag - notify on every attempt.
+		if ( 1 <= intval( get_user_meta( $member_id, 'urm_is_payment_retrying', true ) ) ) {
 			$email_service = new EmailService();
 			$email_data    = array(
 				'subscription'     => $subscription,

@@ -4157,7 +4157,8 @@ class StripeService {
 					if ( ! empty( $current_subscription ) ) {
 						$member_id = $current_subscription['user_id'];
 
-						if ( 1 === (int) get_user_meta( $member_id, 'urm_is_payment_retrying', true ) ) {
+						// urm_is_payment_retrying is a counter, not a one-shot flag - notify on every attempt.
+						if ( 1 <= (int) get_user_meta( $member_id, 'urm_is_payment_retrying', true ) ) {
 							$latest_order     = $this->members_orders_repository->get_member_orders( $member_id );
 							$membership       = $this->membership_repository->get_single_membership_by_ID( $current_subscription['item_id'] );
 							$membership_metas = wp_unslash( json_decode( $membership['meta_value'], true ) );
