@@ -13,7 +13,8 @@ Follow OWASP ASVS and the WordPress plugin security handbook. This file records 
 | Role / membership assignment | membership create/upgrade, registration | Derive roles and plan from stored server-side config keyed by a validated id, never from request fields. |
 | Restricted content | `modules/content-restriction/` | Enforce on every delivery channel (render, REST, feeds, search, AJAX, blocks). |
 | Secrets | gateway keys and webhook secrets in options | Never log, echo, export or place in a response/PR/commit. `PaymentGatewayLogging` already logs request data: do not add secrets or card data to it. |
-| File / import surfaces | form import/export, profile picture upload, user export | Validate type and size, sanitize decoded data, and treat imported JSON as untrusted. |
+| File / import surfaces | form import/export, profile picture upload, user export | Validate type and size, sanitize decoded data, and treat imported JSON as untrusted. Profile-picture and temp-upload URLs are public and image-only by design: never store identity documents or other private files there (`docs/security/public-uploads.md`, including the Nginx caveat). |
+| Abilities | `UR_Abilities` read-only abilities, each with a `permission_callback` | Keep every ability behind a capability check and the documented page and date limits; they return member data. |
 
 ## Mistakes fixed in 5.2.8 (see CHANGELOG.txt)
 - Content restriction bypassed through the core REST API (only template flow was enforced).
@@ -22,6 +23,9 @@ Follow OWASP ASVS and the WordPress plugin security handbook. This file records 
 - Privilege escalation via membership role, and an open redirect after login.
 - Non-timing-safe comparison of email confirmation and approval tokens.
 - Team edit-form nonce not scoped to the object being edited.
+
+## Regression tests
+`tests/security/<case>.php` holds isolated regressions for security fixes on `develop` (bulk status, form import, checkout links, nonce refresh, Stripe invoice and backfill paths, smart tags, REST product restriction and others). Run the case for the handler you touch with `php tests/security/<case>.php`; add one for a new security fix (`tests/security/README.md`).
 
 ## Review checklist for a diff
 1. New or changed entry point: who can call it (logged-out? which role?), what does it verify, and what does it return?

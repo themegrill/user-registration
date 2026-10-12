@@ -73,7 +73,18 @@ test("php change: phpcs, e2e area, security review note, no-phpunit reminder", (
 	assert.ok(p.commands.some((c) => c.startsWith("php vendor/bin/phpcs")));
 	assert.deepEqual(p.e2eAreas, ["registration"]);
 	assert.ok(p.notes.some((n) => n.includes("ur-reviewer")));
-	assert.ok(p.notes.some((n) => n.includes("No PHP unit tests")));
+	assert.ok(p.notes.some((n) => n.includes("No PHPUnit suite")));
+});
+
+test("a changed security case is planned as a runnable php command, bootstrap and README are not", () => {
+	const p = planChecks(["tests/security/form-import.php", "tests/security/bootstrap.php", "tests/security/README.md"], areas);
+	assert.deepEqual(p.commands.filter((c) => c.startsWith("php 'tests/security")).length, 1);
+	assert.ok(p.commands.some((c) => c.startsWith("php 'tests/security/form-import.php'")));
+});
+
+test("the abilities classes expose member data and trigger the reviewer", () => {
+	assert.ok(planChecks(["includes/class-ur-abilities.php"], areas).notes.some((n) => n.includes("ur-reviewer")));
+	assert.ok(planChecks(["includes/class-ur-abilities-data.php"], areas).notes.some((n) => n.includes("ur-reviewer")));
 });
 
 test("unmapped php is reported so the gap is visible", () => {

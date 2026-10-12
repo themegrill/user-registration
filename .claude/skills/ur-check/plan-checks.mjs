@@ -59,8 +59,9 @@ export function listWithOverflow(items) {
 	return lines;
 }
 
+const SECURITY_CASE = /^tests\/security\/(?!bootstrap\.php$)[^/]+\.php$/;
 const REVIEW_PATHS =
-	/^(modules\/(membership|content-restriction|content-drip|stripe|paypal|payment-history)\/|includes\/(class-ur-ajax|class-ur-form-handler|class-ur-install|class-ur-email-|class-ur-user-approval|frontend\/|RestApi\/)|includes\/functions-ur-(core|update)\.php)/;
+	/^(modules\/(membership|content-restriction|content-drip|stripe|paypal|payment-history)\/|includes\/(class-ur-ajax|class-ur-abilities|class-ur-form-handler|class-ur-install|class-ur-email-|class-ur-user-approval|frontend\/|RestApi\/)|includes\/functions-ur-(core|update)\.php)/;
 const CONTRACT_REMOVAL =
 	/^-.*\b(apply_filters|do_action|add_shortcode|register_rest_route|register_post_type|do_action_ref_array)\s*\(|^-.*['"]wp_ajax_(nopriv_)?[a-z_]+/m;
 
@@ -108,6 +109,9 @@ export function planChecks(files, areaPaths, diffText = "", allFiles = files) {
 	if (files.some((f) => /^\.claude\/(hooks|skills\/ur-check)\/.*\.mjs$/.test(f))) {
 		commands.push("node --test .claude/hooks/hooks.test.mjs .claude/skills/ur-check/plan-checks.test.mjs   # the Claude Code setup's own tests");
 	}
+	for (const f of files.filter((f) => SECURITY_CASE.test(f))) {
+		commands.push(`php ${shellQuote(f)}   # isolated security regression, no site needed (a few cases take an argument: tests/security/README.md)`);
+	}
 	if (frontendSrc.length || scss.length) commands.push("pnpm prettier");
 	if (ts.length) commands.push("pnpm typecheck");
 	if (legacyJs.length) commands.push("pnpm exec grunt js   # regenerates *.min.js; commit the outputs");
@@ -123,7 +127,7 @@ export function planChecks(files, areaPaths, diffText = "", allFiles = files) {
 	const review = allFiles.filter((f) => REVIEW_PATHS.test(f));
 	if (review.length) notes.push(`Security-sensitive paths changed (${review.slice(0, 5).join(", ")}${review.length > 5 ? ", ..." : ""}): run the ur-reviewer agent.`);
 	if (CONTRACT_REMOVAL.test(diffText)) notes.push("The diff removes a hook, shortcode, REST route, post type or AJAX action line: this may break a public contract. Confirm it is intentional and shimmed.");
-	if (php.length) notes.push("No PHP unit tests exist in this repo; do not report them as run.");
+	if (php.length) notes.push("No PHPUnit suite exists in this repo; do not report it as run. tests/security/<case>.php covers only the handlers it names, so run the case for the handler you changed.");
 	return { commands, notes, e2eAreas, unmapped };
 }
 

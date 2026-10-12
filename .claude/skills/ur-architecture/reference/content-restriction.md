@@ -1,6 +1,6 @@
 # Content restriction
 
-Read from `modules/content-restriction/` (`functions-urcr-core.php`, `class-urcr-frontend.php`, `class-urcr-rest-restriction.php`, `class-urcr-post-types.php`). Loaded unconditionally by `user-registration.php`; membership-based conditions need the membership module on.
+Read from `modules/content-restriction/` (`functions-urcr-core.php`, `class-urcr-frontend.php`, `class-urcr-rest-restriction.php`, `class-urcr-post-types.php`, `class-urcr-syndication-restriction.php`). Loaded unconditionally by `user-registration.php`; membership-based conditions need the membership module on.
 
 ## Two restriction systems coexist
 1. **Access rules (current).** Posts of type `urcr_access_rule`; the rule is **JSON in `post_content`**: `enabled`, `target_contents[]` (each with a `type`; `whole_site` is one), `logic_map` (a tree with `conditions`), `actions[]` (`actions[0].access_control` is `access` or `restrict`, plus the message/redirect/etc.). Only published rules count (`urcr_get_published_access_rules()`, cached per request in a static).
@@ -26,10 +26,12 @@ Read from `modules/content-restriction/` (`functions-urcr-core.php`, `class-urcr
 ## Enforcement channels (each is separate code)
 - Page render: `URCR_Frontend::run_content_restrictions` on `template_redirect`, plus a `the_content` filter at `PHP_INT_MAX` for message replacement, plus whole-site (`restrict_whole_site`) and blog-page handling.
 - Core REST API: `URCR_REST_Restriction` filters `rest_prepare_<post_type>` at `PHP_INT_MAX` and calls `urcr_is_content_access_granted()`. It exists because the template flow does not run for REST (a bypass fixed in 5.2.8).
+- Core REST also covers WooCommerce: `URCR_REST_Restriction` filters `woocommerce_rest_prepare_*` and, through `rest_request_after_callbacks`, the `/wc/store/*` routes and `/wc/v*/products` (variations, linked products, restricted cart and checkout items).
+- Feeds, search, oEmbed and sitemaps: `URCR_Syndication_Restriction` (included from `user-registration-content-restriction.php`) filters `posts_results`, feed content and excerpts, comment feeds, `oembed_response_data` and the sitemap query through `urcr_is_content_access_granted()`.
 - WooCommerce: product visibility, purchasability and shop queries have their own handlers in `class-urcr-frontend.php`.
 - Elementor: section-level restriction with the cache disabled for restricted elements.
 - Shortcodes `urcr_restrict` and `urm-content-restriction`; the Gutenberg block `class-ur-block-content-restriction.php`; file restriction `ur_restrict_files`.
-A new way of delivering content (feeds, search, oEmbed, AJAX, blocks, attachments) must be wired to `urcr_is_content_access_granted()` explicitly; whether the existing channels above already cover a given one was not audited.
+A new way of delivering content (AJAX, blocks, attachments or any other not listed above) must be wired to `urcr_is_content_access_granted()` explicitly; whether the existing channels already cover a given one was not audited.
 
 ## Related
 Content drip (`modules/content-drip`) only loads when membership, content restriction and content drip are all on, and adds a delay layer on top of the decision above.

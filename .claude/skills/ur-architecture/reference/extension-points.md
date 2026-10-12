@@ -12,6 +12,7 @@ Everything below is called by code you cannot see from this checkout: Pro (synce
 | Shortcodes | `includes/shortcodes/`, membership `ShortCodes.php`, `urcr_restrict`, `urm-content-restriction` | `Grep "add_shortcode"` |
 | Templates | `templates/**` loaded by `ur_get_template()` (path is filterable; themes override) | file names and the `$args` keys passed in |
 | Stored data | options `user_registration_*`, `urm_*`, `urcr_*`; post/user meta keys; CPTs `user_registration`, `ur_membership`, `ur_membership_groups`; the four `ur_membership_*` tables | `Grep "(get\|update)_option\("`, `TableList` |
+| Abilities | `user-registration/*` abilities (`UR_Abilities`, WordPress 6.9+), read-only; names, inputs and result shapes documented in `includes/README-abilities.md` | `Grep "wp_register_ability" includes` |
 | Pro switch | `UR_PRO_ACTIVE` gates behaviour in `includes/functions-ur-core.php` | `Grep UR_PRO_ACTIVE` |
 
 ## Dynamic hook names defeat literal grep
