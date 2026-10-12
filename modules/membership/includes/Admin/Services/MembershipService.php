@@ -128,6 +128,108 @@ class MembershipService {
 	}
 
 	/**
+	 * Resolve the configured Free membership for Social Connect fallback assignment.
+	 *
+	 * Prefers the plan selected in Membership settings. Falls back to the first active
+	 * Free plan when the setting is empty or no longer valid.
+	 *
+	 * @since 5.3.0
+	 *
+	 * @return int Free membership post ID, or 0 when none is available.
+	 */
+	public function get_default_free_membership_id_for_social_connect() {
+		$configured_id = absint( get_option( 'user_registration_membership_social_connect_default_plan', 0 ) );
+		$free_ids      = array();
+
+		foreach ( $this->list_active_memberships() as $membership ) {
+			$type = isset( $membership['type'] ) ? $membership['type'] : '';
+			if ( 'free' !== $type ) {
+				continue;
+			}
+
+			$id = isset( $membership['ID'] ) ? absint( $membership['ID'] ) : 0;
+			if ( $id ) {
+				$free_ids[] = $id;
+			}
+		}
+
+		if ( empty( $free_ids ) ) {
+			return 0;
+		}
+
+		if ( $configured_id && in_array( $configured_id, $free_ids, true ) ) {
+			return $configured_id;
+		}
+
+		return (int) $free_ids[0];
+	}
+
+	/**
+	 * Assign the default Free membership to a Social Connect registrant who has no plan.
+	 *
+	 * Reuses create_membership_order_and_subscription so role, subscription and order
+	 * records match a normal Free registration.
+	 *
+	 * @since 5.3.0
+	 *
+	 * @param int $user_id Newly registered user ID.
+	 * @return array|false Assignment result array on success, false when skipped or failed.
+	 */
+	public function assign_default_free_membership_for_social_connect( $user_id ) {
+		$user_id = absint( $user_id );
+		$user    = get_userdata( $user_id );
+
+		if ( ! $user ) {
+			return false;
+		}
+
+		$members_subscription_repository = new MembersSubscriptionRepository();
+		$existing_subscriptions          = $members_subscription_repository->get_member_subscriptions( $user_id );
+
+		if ( ! empty( $existing_subscriptions ) ) {
+			return false;
+		}
+
+		$membership_id = $this->get_default_free_membership_id_for_social_connect();
+		if ( ! $membership_id ) {
+			$this->logger->error(
+				sprintf(
+					'Assign Free Membership is enabled for Social Connect but no active Free plan is available for user #%d.',
+					$user_id
+				),
+				array( 'source' => 'urm-social-connect-membership' )
+			);
+			return false;
+		}
+
+		$data = array(
+			'username'                => $user->user_login,
+			'email'                   => $user->user_email,
+			'membership'              => $membership_id,
+			'payment_method'          => 'free',
+			'start_date'              => gmdate( 'Y-m-d' ),
+			'is_initial_registration' => true,
+		);
+
+		$result = $this->create_membership_order_and_subscription( $data );
+
+		if ( empty( $result['status'] ) ) {
+			$this->logger->error(
+				sprintf(
+					'Failed to assign default Free membership (%1$d) to Social Connect user #%2$d: %3$s',
+					$membership_id,
+					$user_id,
+					isset( $result['message'] ) ? $result['message'] : 'unknown error'
+				),
+				array( 'source' => 'urm-social-connect-membership' )
+			);
+			return false;
+		}
+
+		return $result;
+	}
+
+	/**
 	 * Whether a payment method is one the membership actually accepts.
 	 *
 	 * Shared by the registration, additional-purchase and upgrade paths so the three cannot drift.
