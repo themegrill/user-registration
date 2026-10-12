@@ -77,6 +77,9 @@ function get_user_meta( $user_id, $key, $single = false ) {
 	return '';
 }
 function delete_transient( $key ) {}
+function esc_html__( $text, $domain = null ) {
+	return $text;
+}
 function wp_json_encode( $value, $flags = 0 ) {
 	return json_encode( $value, $flags );
 }
@@ -101,22 +104,23 @@ const PERIOD_END   = 1794096000;
 /**
  * Deliver one invoice.payment_succeeded event for a subscription row and return what the handler wrote.
  *
- * @param array $row     Stored subscription row (status, start_date, expiry_date).
+ * @param array $row     Stored subscription row (status, expiry_date).
  * @param array $invoice Invoice fields merged over a paid renewal invoice.
- * @param array $options existing_order and renewing flags.
+ * @param array $options `order` is the order already stored for the PaymentIntent (none by default, as on a first
+ *                       delivery); `renewing` marks a renewal the member started.
  */
 $deliver = function ( $row, $invoice = array(), $options = array() ) {
-	$GLOBALS['general_logs']      = array();
-	$GLOBALS['logged_errors']     = array();
-	$GLOBALS['orders_created']    = array();
-	$GLOBALS['renewals']          = array();
-	$GLOBALS['existing_order']    = $options['existing_order'] ?? array( 'ID' => 55 );
+	$GLOBALS['general_logs']       = array();
+	$GLOBALS['logged_errors']      = array();
+	$GLOBALS['orders_created']     = array();
+	$GLOBALS['renewals']           = array();
+	$GLOBALS['existing_order']     = $options['order'] ?? array();
 	$GLOBALS['membership_process'] = empty( $options['renewing'] ) ? array() : array( 'renew' => array( 12 ) );
 
-	$service                                  = new StripeReplayHarness();
-	$service->members_subscription_repository = new SubscriptionRepositoryDouble();
+	$service                                       = new StripeReplayHarness();
+	$service->members_subscription_repository      = new SubscriptionRepositoryDouble();
 	$service->members_subscription_repository->row = $row;
-	$service->membership_repository           = new MembershipRepositoryDouble();
+	$service->membership_repository                = new MembershipRepositoryDouble();
 
 	$invoice += array(
 		'id'             => 'in_renewal',
@@ -138,68 +142,83 @@ $deliver = function ( $row, $invoice = array(), $options = array() ) {
 	return $service->members_subscription_repository->writes;
 };
 
+$settled = array( 'order' => array( 'ID' => 55, 'status' => 'completed' ) );
 $renewed = array(
 	'status'      => 'active',
-	'start_date'  => '2026-10-08 00:00:00',
 	'expiry_date' => '2026-11-08 00:00:00',
 );
+$due     = array( 'expiry_date' => '2026-10-08 00:00:00' ) + $renewed;
 
 // 1. Stripe resends an event whose invoice the subscription already reflects: nothing changes.
-$writes = $deliver( $renewed );
+$writes = $deliver( $renewed, array(), $settled );
 security_assert( array() === $writes, 'A redelivered invoice leaves the subscription dates and status alone' );
 security_assert( array() === $GLOBALS['orders_created'], 'A redelivered invoice creates no second order' );
+security_assert( 1 === count( $GLOBALS['general_logs'] ) && false !== strpos( $GLOBALS['general_logs'][0], 'invoice_already_applied' ), 'A redelivered invoice is logged as already applied, not as a new renewal order' );
 
-// 2. The same, when the redelivery arrives days later and the stored expiry carries a time of day from a Stripe sync.
-$writes = $deliver( array( 'expiry_date' => '2026-11-08 13:45:10' ) + $renewed );
+// 2. The same when the stored expiry carries a time of day written by a Stripe sync.
+$writes = $deliver( array( 'expiry_date' => '2026-11-08 13:45:10' ) + $renewed, array(), $settled );
 security_assert( array() === $writes, 'A redelivery does not move an expiry that already covers the invoice period' );
 
 // 3. An older invoice resent after a later renewal must not pull the dates back or extend them.
-$writes = $deliver( array( 'expiry_date' => '2026-12-08 00:00:00' ) + $renewed );
+$writes = $deliver( array( 'expiry_date' => '2026-12-08 00:00:00' ) + $renewed, array(), $settled );
 security_assert( array() === $writes, 'An older invoice does not rewrite a later expiry' );
 
-// 4. An expired member is not reactivated by a replayed old invoice, which carries no new payment.
-$writes = $deliver( array( 'status' => 'expired', 'expiry_date' => '2026-11-08 00:00:00' ) + $renewed );
-security_assert( array() === $writes, 'A replayed invoice does not reactivate an expired subscription' );
+// 4. A replayed old invoice carries no new payment: it reactivates neither an expired nor a payment-failed subscription.
+foreach ( array( 'expired', 'pending', 'canceled' ) as $status ) {
+	$writes = $deliver( array( 'status' => $status ) + $renewed, array(), $settled );
+	security_assert( array() === $writes, 'A replayed invoice leaves a ' . $status . ' subscription alone' );
+}
 
-// 5. A replay that lands while a renewal is pending does not run the renewal bookkeeping.
-$deliver( $renewed, array(), array( 'renewing' => true ) );
+// 5. A replay that lands while the member has a renewal pending does not run the renewal.
+$deliver( $renewed, array(), $settled + array( 'renewing' => true ) );
 security_assert( array() === $GLOBALS['renewals'], 'A replayed invoice does not renew a pending renewal' );
 
 // 6. The first delivery of a renewal takes its dates from the invoice period, not from the delivery day.
-$before = array( 'expiry_date' => '2026-10-08 00:00:00' ) + $renewed;
-$writes = $deliver( $before );
-security_assert( 1 === count( $writes ), 'The first delivery of a renewal updates the subscription once' );
+$writes = $deliver( $due );
+security_assert( 1 === count( $writes ) && 1 === count( $GLOBALS['orders_created'] ), 'The first delivery of a renewal creates its order and updates the subscription once' );
 security_assert( '2026-10-08 00:00:00' === $writes[0]['start_date'], 'The start date is the invoice period start' );
 security_assert( '2026-11-08 00:00:00' === $writes[0]['expiry_date'] && '2026-11-08 00:00:00' === $writes[0]['next_billing_date'], 'The expiry and next billing date are the invoice period end' );
 security_assert( 'active' === $writes[0]['status'], 'The renewed subscription is active' );
 
 // 7. That first delivery still renews a pending renewal.
-$deliver( $before, array(), array( 'renewing' => true ) );
+$deliver( $due, array(), array( 'renewing' => true ) );
 security_assert( array( 7 ) === $GLOBALS['renewals'], 'The first delivery runs the pending renewal' );
 
-// 8. A late renewal on an expired subscription extends it and reactivates it.
+// 8. A Stripe sync or the retry cron already wrote the period end before the webhook arrived: the delivery is still a first one.
+$deliver( $renewed, array(), array( 'renewing' => true ) );
+security_assert( array( 7 ) === $GLOBALS['renewals'] && 1 === count( $GLOBALS['orders_created'] ), 'A first delivery after a Stripe sync still creates its order and runs the renewal' );
+
+// 9. The backfill saved the order but never touched the dates: the late webhook still extends the subscription.
+$writes = $deliver( $due, array(), $settled );
+security_assert( 1 === count( $writes ) && '2026-11-08 00:00:00' === $writes[0]['expiry_date'], 'A late webhook for a backfilled order extends the subscription' );
+
+// 10. An order still pending (checkout not confirmed) does not make the webhook a replay.
+$writes = $deliver( array( 'status' => 'pending' ) + $renewed, array(), array( 'order' => array( 'ID' => 55, 'status' => 'pending' ) ) );
+security_assert( 1 === count( $writes ) && 'active' === $writes[0]['status'], 'A webhook for a pending order activates the subscription' );
+
+// 11. A late renewal on an expired subscription extends it and reactivates it.
 $writes = $deliver( array( 'status' => 'expired', 'expiry_date' => '2026-10-08 00:00:00' ) + $renewed );
 security_assert( 1 === count( $writes ) && 'active' === $writes[0]['status'] && '2026-11-08 00:00:00' === $writes[0]['expiry_date'], 'A late renewal reactivates and extends an expired subscription' );
 
-// 9. A subscription that never had an expiry (zero date) is extended by its first invoice.
-$writes = $deliver( array( 'expiry_date' => '0000-00-00 00:00:00' ) + $renewed );
+// 12. A subscription that never had an expiry (zero date) is extended by its first invoice, even with a settled order.
+$writes = $deliver( array( 'expiry_date' => '0000-00-00 00:00:00' ) + $renewed, array(), $settled );
 security_assert( 1 === count( $writes ) && '2026-11-08 00:00:00' === $writes[0]['expiry_date'], 'An unset expiry is filled from the invoice period' );
 
-// 10. The first paid invoice after a trial activates the member even when the locally computed expiry is a few days past Stripe's.
+// 13. The first paid invoice after a trial activates the member even when the locally computed expiry is a few days past Stripe's.
 $writes = $deliver( array( 'status' => 'trial', 'expiry_date' => '2026-11-10 00:00:00' ) + $renewed );
-security_assert( 1 === count( $writes ) && array( 'status' => 'active' ) === $writes[0], 'A trial member becomes active without their expiry being rewritten' );
+security_assert( 1 === count( $writes ) && 'active' === $writes[0]['status'], 'A trial member becomes active on their first paid invoice' );
 
-// 11. A canceled subscription stays canceled when its invoice is redelivered or first delivered.
-$writes = $deliver( array( 'status' => 'canceled' ) + $before );
+// 14. A canceled subscription stays canceled on a first delivery.
+$writes = $deliver( array( 'status' => 'canceled' ) + $due );
 security_assert( 'canceled' === $writes[0]['status'], 'A canceled subscription stays canceled' );
 
-// 12. An invoice that carries no period keeps the previous behaviour instead of dropping the payment.
-$writes = $deliver( $renewed, array( 'lines' => array( 'data' => array() ) ) );
+// 15. An invoice that carries no period keeps the previous behaviour instead of dropping the payment.
+$writes = $deliver( $renewed, array( 'lines' => array( 'data' => array() ) ), $settled );
 security_assert( 1 === count( $writes ) && gmdate( 'Y-m-d 00:00:00' ) === $writes[0]['start_date'], 'An invoice without a billing period still renews from today' );
 
-// 13. Several lines on the invoice (a proration credit next to the recurring charge): the latest period end wins.
+// 16. Several lines on the invoice (a proration credit next to the recurring charge): the latest period end wins.
 $writes = $deliver(
-	$before,
+	$due,
 	array(
 		'lines' => array(
 			'data' => array(

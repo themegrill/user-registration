@@ -2774,37 +2774,44 @@ class StripeService {
 			$order_id = $existing_order['ID'] ?? $existing_order['id'] ?? '';
 		}
 
-		PaymentGatewayLogging::log_general(
-			'stripe',
-			'New renewal order created via webhook' . "\n" . wp_json_encode(
-				array(
-					'event_type'      => 'renewal_order_created',
-					'order_id'        => $order_id,
-					'subscription_id' => $subscription_id,
-					'invoice_id'      => $invoice_id,
-					'amount'          => $membership_metas['amount'],
-					'member_id'       => $member_id,
-					'membership_type' => $membership_type,
-				),
-				JSON_PRETTY_PRINT
-			),
-			'notice'
-		);
-
-		$invoice_period = $this->get_invoice_period( $event['data']['object'] );
-		$stored         = $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] );
-
-		// Stripe redelivers events and Resend replays old ones; an invoice the stored expiry already covers must not extend access again.
-		$extends_access = empty( $invoice_period ) || strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) > (int) strtotime( $stored['expiry_date'] ?? '' );
-
-		if ( ! $extends_access && 'expired' === ( $current_subscription['status'] ?? '' ) ) {
+		if ( empty( $existing_order ) ) {
 			PaymentGatewayLogging::log_general(
 				'stripe',
-				'Invoice already covered by the subscription; expired subscription left unchanged' . "\n" . wp_json_encode(
+				'New renewal order created via webhook' . "\n" . wp_json_encode(
+					array(
+						'event_type'      => 'renewal_order_created',
+						'order_id'        => $order_id,
+						'subscription_id' => $subscription_id,
+						'invoice_id'      => $invoice_id,
+						'amount'          => $membership_metas['amount'],
+						'member_id'       => $member_id,
+						'membership_type' => $membership_type,
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+		}
+
+		$invoice_period = $this->get_invoice_period( $event['data']['object'] );
+		if ( empty( $invoice_period ) ) {
+			$invoice_period = array(
+				'start' => time(),
+				'end'   => strtotime( SubscriptionService::get_expiry_date( gmdate( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] ) . ' UTC' ),
+			);
+		}
+
+		// Stripe redelivers events and Resend replays old ones; a settled order whose period the stored expiry already covers was applied before.
+		$stored_expiry = (int) strtotime( $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] )['expiry_date'] ?? '' );
+		if ( ! empty( $existing_order ) && 'pending' !== ( $existing_order['status'] ?? '' ) && strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) <= $stored_expiry ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'Invoice already applied; subscription left unchanged' . "\n" . wp_json_encode(
 					array(
 						'event_type'      => 'invoice_already_applied',
 						'subscription_id' => $subscription_id,
 						'invoice_id'      => $invoice_id,
+						'order_id'        => $order_id,
 						'member_id'       => $member_id,
 					),
 					JSON_PRETTY_PRINT
@@ -2815,24 +2822,19 @@ class StripeService {
 			return;
 		}
 
-		$subscription_update = array( 'status' => $subscription_status );
-		$next_billing_date   = null;
+		$next_billing_date = gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
 
-		if ( $extends_access ) {
-			$next_billing_date   = empty( $invoice_period ) ? SubscriptionService::get_expiry_date( gmdate( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] ) : gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
-			$subscription_update = array(
-				'start_date'        => empty( $invoice_period ) ? gmdate( 'Y-m-d 00:00:00' ) : gmdate( 'Y-m-d 00:00:00', $invoice_period['start'] ),
+		$this->members_subscription_repository->update(
+			$current_subscription['sub_id'],
+			array(
+				'start_date'        => gmdate( 'Y-m-d 00:00:00', $invoice_period['start'] ),
 				'next_billing_date' => $next_billing_date,
 				'expiry_date'       => $next_billing_date,
-			) + $subscription_update;
-		}
-
-		if ( $extends_access || ( $current_subscription['status'] ?? '' ) !== $subscription_status ) {
-			$this->members_subscription_repository->update( $current_subscription['sub_id'], $subscription_update );
-		}
-
+				'status'            => $subscription_status,
+			)
+		);
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = $extends_access && $this->is_renewing_membership( $membership_process, $membership_id );
+		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
 
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
@@ -2841,7 +2843,7 @@ class StripeService {
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
-			$extends_access ? 'Subscription renewed successfully' : 'Invoice already covered by the subscription; dates left unchanged',
+			'Subscription renewed successfully',
 			array(
 				'subscription_id'     => $subscription_id,
 				'new_billing_date'    => $next_billing_date,
