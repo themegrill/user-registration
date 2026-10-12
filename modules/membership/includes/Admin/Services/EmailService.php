@@ -643,8 +643,8 @@ class EmailService {
 	}
 
 	public function send_membership_renewal_email( $data ) {
-		// Renewal reminder only applies to automatic renewal; manual sites get the expiring soon email instead.
-		if ( 'automatic' !== get_option( 'user_registration_renewal_behaviour', 'automatic' ) ) {
+		// Renewal reminder only applies to automatic renewal; a subscription under manual renewal gets the expiring soon email instead.
+		if ( 'automatic' !== urm_get_renewal_behaviour( $data['member_id'], $data['subscription_id'] ?? 0 ) ) {
 			return false;
 		}
 
@@ -669,8 +669,8 @@ class EmailService {
 	}
 
 	public function send_membership_expiring_soon_email( $data ) {
-		// Expiring soon only applies to manual renewal; automatic sites get the renewal reminder email instead.
-		if ( 'manual' !== get_option( 'user_registration_renewal_behaviour', 'automatic' ) ) {
+		// Expiring soon only applies to manual renewal; a subscription under automatic renewal gets the renewal reminder email instead.
+		if ( 'manual' !== urm_get_renewal_behaviour( $data['member_id'], $data['subscription_id'] ?? 0 ) ) {
 			return false;
 		}
 

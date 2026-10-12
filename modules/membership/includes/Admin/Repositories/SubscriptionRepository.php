@@ -27,6 +27,22 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	}
 
 	/**
+	 * Create a subscription and remember the renewal behaviour it is created under.
+	 *
+	 * @param array $data Subscription data.
+	 * @return array|false|mixed|object|\stdClass|void
+	 */
+	public function create( $data ) {
+		$subscription = parent::create( $data );
+
+		if ( ! empty( $subscription['ID'] ) && ! empty( $subscription['user_id'] ) ) {
+			urm_save_renewal_behaviour( $subscription['user_id'], $subscription['ID'] );
+		}
+
+		return $subscription;
+	}
+
+	/**
 	 * cancel_subscription_by_id
 	 *
 	 * @param int  $subscription_id Subscription ID.

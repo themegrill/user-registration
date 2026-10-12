@@ -535,6 +535,42 @@ if ( ! function_exists( 'check_membership_field_in_form' ) ) {
 	}
 }
 
+if ( ! function_exists( 'urm_get_renewal_behaviour' ) ) {
+	/**
+	 * Get the renewal behaviour a subscription was created or last renewed under.
+	 *
+	 * The gateway subscription is set up once with the behaviour of that moment (for example a Stripe
+	 * `cancel_at` for manual renewal), so reminder emails follow it instead of the current setting.
+	 * A subscription without a saved value falls back to the current setting.
+	 *
+	 * @param int $member_id       Member user ID.
+	 * @param int $subscription_id Local subscription ID.
+	 * @return string `automatic` or `manual`.
+	 */
+	function urm_get_renewal_behaviour( $member_id, $subscription_id = 0 ) {
+		$stored = $subscription_id ? get_user_meta( absint( $member_id ), 'urm_renewal_behaviour_' . absint( $subscription_id ), true ) : '';
+
+		return in_array( $stored, array( 'automatic', 'manual' ), true ) ? $stored : get_option( 'user_registration_renewal_behaviour', 'automatic' );
+	}
+}
+
+if ( ! function_exists( 'urm_save_renewal_behaviour' ) ) {
+	/**
+	 * Save the current renewal behaviour on a subscription.
+	 *
+	 * @param int $member_id       Member user ID.
+	 * @param int $subscription_id Local subscription ID.
+	 * @return void
+	 */
+	function urm_save_renewal_behaviour( $member_id, $subscription_id ) {
+		if ( ! $member_id || ! $subscription_id ) {
+			return;
+		}
+
+		update_user_meta( absint( $member_id ), 'urm_renewal_behaviour_' . absint( $subscription_id ), 'manual' === get_option( 'user_registration_renewal_behaviour', 'automatic' ) ? 'manual' : 'automatic' );
+	}
+}
+
 if ( ! function_exists( 'urm_get_membership_process' ) ) {
 	/**
 	 * Get or initialize the membership process structure for a user.

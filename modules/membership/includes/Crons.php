@@ -55,7 +55,8 @@ class Crons {
 	 * @return void
 	 */
 	public function membership_renewal_check() {
-		if ( ! ur_option_checked( 'user_registration_membership_enable_renewal_reminder_user_email', true ) || 'automatic' !== get_option( 'user_registration_renewal_behaviour', 'automatic' ) ) {
+		// Each subscription is matched to the reminder of the renewal behaviour it was created under.
+		if ( ! ur_option_checked( 'user_registration_membership_enable_renewal_reminder_user_email', true ) ) {
 			return;
 		}
 		$subscription_service = new SubscriptionService();
@@ -69,7 +70,7 @@ class Crons {
 	 */
 	public function membership_expiring_soon_check() {
 
-		if ( ! ur_option_checked( 'user_registration_membership_enable_expiring_soon_user_email', true ) || 'manual' !== get_option( 'user_registration_renewal_behaviour', 'automatic' ) ) {
+		if ( ! ur_option_checked( 'user_registration_membership_enable_expiring_soon_user_email', true ) ) {
 			return;
 		}
 

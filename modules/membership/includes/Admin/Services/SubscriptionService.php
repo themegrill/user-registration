@@ -292,7 +292,15 @@ class SubscriptionService {
 			if ( get_user_meta( $user_id, $sent_key, true ) === $subscription['next_billing_date'] || get_user_meta( $user_id, 'urm_billing_reminder_sent_for_date', true ) === $subscription['next_billing_date'] ) {
 				continue;
 			}
-			$email_service->send_email( $subscription, 'membership_renewal' );
+			// A subscription created under manual renewal gets the expiring soon email instead.
+			if ( 'automatic' !== urm_get_renewal_behaviour( $user_id, $subscription['subscription_id'] ) ) {
+				continue;
+			}
+
+			// An email that was not sent leaves the cycle open, so a later run can still send it.
+			if ( false === $email_service->send_email( $subscription, 'membership_renewal' ) ) {
+				continue;
+			}
 			update_user_meta( $user_id, $sent_key, $subscription['next_billing_date'] );
 		}
 	}
@@ -1275,6 +1283,9 @@ class SubscriptionService {
 			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 		}
 
+		// The gateway renewal below follows the current setting, so reminders for this subscription do too from now on.
+		urm_save_renewal_behaviour( $member_id, $member_subscription['ID'] );
+
 		$orders_data     = $order_service->prepare_orders_data( $members_data, $member_id, $member_subscription, array(), true ); // prepare data for orders table.
 		$order           = $this->orders_repository->create( $orders_data );
 		$payment_service = new PaymentService( $selected_pg, $membership['ID'], $user->data->user_email );
@@ -1412,7 +1423,15 @@ class SubscriptionService {
 			if ( get_user_meta( $user_id, $sent_key, true ) === $subscription['next_billing_date'] || get_user_meta( $user_id, 'urm_expiring_reminder_sent_for_date', true ) === $subscription['next_billing_date'] ) {
 				continue;
 			}
-			$email_service->send_email( $subscription, 'membership_expiring_soon' );
+			// A subscription created under automatic renewal gets the renewal reminder instead.
+			if ( 'manual' !== urm_get_renewal_behaviour( $user_id, $subscription['subscription_id'] ) ) {
+				continue;
+			}
+
+			// An email that was not sent leaves the cycle open, so a later run can still send it.
+			if ( false === $email_service->send_email( $subscription, 'membership_expiring_soon' ) ) {
+				continue;
+			}
 			update_user_meta( $user_id, $sent_key, $subscription['next_billing_date'] );
 		}
 	}
