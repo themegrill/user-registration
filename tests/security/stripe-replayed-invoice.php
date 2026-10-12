@@ -226,11 +226,19 @@ $writes = $deliver( array( 'status' => 'canceled' ) + $due );
 security_assert( 'canceled' === $writes[0]['status'], 'A canceled subscription stays canceled' );
 
 // 15. An invoice that carries no period keeps the previous behaviour instead of dropping the payment.
-$writes = $deliver( $renewed, array( 'lines' => array( 'data' => array() ) ), $settled );
-security_assert( 1 === count( $writes ) && gmdate( 'Y-m-d 00:00:00' ) === $writes[0]['start_date'], 'An invoice without a billing period still renews from today' );
+$no_period = array( 'lines' => array( 'data' => array() ) );
+$writes    = $deliver( $renewed, $no_period );
+security_assert( 1 === count( $writes ) && gmdate( 'Y-m-d 00:00:00' ) === $writes[0]['start_date'], 'An invoice without a billing period still renews from today on its first delivery' );
+$writes = $deliver( array( 'expiry_date' => gmdate( 'Y-m-d 00:00:00', strtotime( '+10 days' ) ) ) + $renewed, $no_period, $settled );
+security_assert( array() === $writes, 'A redelivered invoice without a billing period does not extend again on a later day' );
+
+// 15a. A failed order for the PaymentIntent is not proof the payment was applied: the success webhook recovers it.
+$writes = $deliver( $due, array(), array( 'order' => array( 'ID' => 55, 'status' => 'failed' ) ) );
+security_assert( 1 === count( $writes ) && '2026-11-08 00:00:00' === $writes[0]['expiry_date'], 'A success webhook for a failed order extends the subscription' );
+security_assert( array( array( 'status' => 'active' ) ) === $deliver( $renewed, array(), array( 'order' => array( 'ID' => 55, 'status' => 'failed' ), 'renewing' => true ) ) && array( 7 ) === $GLOBALS['renewals'], 'A failed order does not make the success webhook a replay' );
 
 // 15b. A line without a period start cannot anchor a billing period, so it is not trusted for a 1970 start date.
-$writes = $deliver( $renewed, array( 'lines' => array( 'data' => array( array( 'period' => array( 'end' => PERIOD_END ) ) ) ) ), $settled );
+$writes = $deliver( $renewed, array( 'lines' => array( 'data' => array( array( 'period' => array( 'end' => PERIOD_END ) ) ) ) ) );
 security_assert( 1 === count( $writes ) && gmdate( 'Y-m-d 00:00:00' ) === $writes[0]['start_date'], 'A line without a period start is ignored' );
 
 // 16. Several lines on the invoice (a proration credit next to the recurring charge): the latest period end wins.

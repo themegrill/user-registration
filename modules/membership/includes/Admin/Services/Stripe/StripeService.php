@@ -2603,6 +2603,10 @@ class StripeService {
 	/**
 	 * Handle successful invoice webhook.
 	 *
+	 * Records the invoice's order and moves the subscription to the invoice's billing period. An invoice whose order is
+	 * already settled and whose period the stored expiry already covers is a redelivery and changes nothing, so a replay
+	 * or an out-of-order invoice never extends or shortens access.
+	 *
 	 * @param array  $event           Event.
 	 * @param string $subscription_id Subscription ID.
 	 * @return void
@@ -2794,7 +2798,8 @@ class StripeService {
 		}
 
 		$invoice_period = $this->get_invoice_period( $event['data']['object'] );
-		if ( empty( $invoice_period ) ) {
+		$has_period     = ! empty( $invoice_period );
+		if ( ! $has_period ) {
 			$invoice_period = array(
 				'start' => time(),
 				'end'   => strtotime( SubscriptionService::get_expiry_date( gmdate( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] ) . ' UTC' ),
@@ -2804,7 +2809,9 @@ class StripeService {
 		// Dates only ever move forward: Stripe redelivers events, Resend replays old ones, and invoices can arrive out of order.
 		$stored_expiry  = (int) strtotime( $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] )['expiry_date'] ?? '' );
 		$extends_access = strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) > $stored_expiry;
-		$is_replay      = ! $extends_access && ! empty( $existing_order ) && 'pending' !== ( $existing_order['status'] ?? '' );
+		$order_applied  = ! empty( $existing_order ) && ! in_array( $existing_order['status'] ?? '', array( 'pending', 'failed' ), true );
+		// Without a billing period the end is derived from today, so only the settled order can recognise a redelivery.
+		$is_replay = $order_applied && ( ! $has_period || ! $extends_access );
 
 		// A replay changes nothing, except that a member still waiting for their first payment to be recognised is activated.
 		if ( $is_replay && ! in_array( $current_subscription['status'] ?? '', array( 'pending', 'trial' ), true ) ) {
@@ -2829,7 +2836,7 @@ class StripeService {
 		$subscription_update = array( 'status' => $subscription_status );
 		$next_billing_date   = null;
 
-		if ( $extends_access ) {
+		if ( $extends_access && ! $is_replay ) {
 			$next_billing_date   = gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
 			$subscription_update = array(
 				'start_date'        => gmdate( 'Y-m-d 00:00:00', $invoice_period['start'] ),
