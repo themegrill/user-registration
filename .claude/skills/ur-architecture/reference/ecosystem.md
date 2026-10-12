@@ -7,7 +7,7 @@ This checkout is only the free plugin. Two other kinds of code run on top of it 
 |---|---|---|
 | **Free** (this repo) | `user-registration`, "User Registration & Membership", version 5.x | this repo |
 | **Pro** | A **complete standalone plugin, not an add-on.** `user-registration-pro`, version 6.x, same text domain `user-registration`. It declares its own `UserRegistration` class and `UR()` function, defines `UR_PRO_ACTIVE` as `true`, and contains a synced copy of free's `includes/`, `modules/`, `src/`, `templates/`, `assets/` plus Pro-only code (for example `modules/file-downloads`). | `themegrill/user-registration-pro` |
-| **Add-ons** | About 38 separate plugins, each its own repo, slug, text domain, version and Composer `vendor/`, for example `user-registration-advanced-fields`, `-conditional-logic`, `-two-factor-authentication`, `-stripe`, `-mailchimp`, `-social-connect`, `-multi-part`, `-woocommerce`, `-zapier`. | `themegrill/user-registration-<name>` |
+| **Add-ons** | About 38 separate plugins, each its own repo, slug, text domain, version and Composer `vendor/`, for example `user-registration-advanced-fields`, `-conditional-logic`, `-two-factor-authentication`, `-stripe` (Stripe itself now ships in free core; see "Legacy payment fields" in `membership-payments.md`), `-mailchimp`, `-social-connect`, `-multi-part`, `-woocommerce`, `-zapier`. | `themegrill/user-registration-<name>` |
 
 ## How they relate at runtime
 - **Free and Pro are alternatives, not layers.** Pro's bootstrap guards `UR()` with `function_exists`, and activating Pro deactivates free (`user_registration_free_deactivate()` in Pro's `user-registration.php`). So free code runs in two places: as the free plugin, and as the synced copy inside Pro.

@@ -24,6 +24,9 @@ Follow OWASP ASVS and the WordPress plugin security handbook. This file records 
 - Non-timing-safe comparison of email confirmation and approval tokens.
 - Team edit-form nonce not scoped to the object being edited.
 
+## Hardened on `develop` for 5.3.0
+Subjects from the git history, each with a case in `tests/security/` unless noted: public nonce refresh limited to supported actions and forms (`nonce-refresh.php`); CAPTCHA and login settings writes limited to declared fields (`captcha-options.php`); untrusted smart-tag values can no longer run shortcodes (`smart-tags.php`); form import keeps non-scalar post meta and restricts imported post fields (`form-import.php`); CSRF check on bulk user status actions (`bulk-status.php`); public upload directories serve images only (`upload-directories.php`, `docs/security/public-uploads.md`); content restriction extended to feeds, search, oEmbed, sitemaps and WooCommerce REST responses (see `content-restriction.md`); registration checkbox values hardened and the submission nonce verified (`checkbox.php`); shared front-end tax inputs hardened (`tests/e2e/specs/security-tax-inputs.spec.ts`).
+
 ## Regression tests
 `tests/security/<case>.php` holds isolated regressions for security fixes on `develop` (bulk status, form import, checkout links, nonce refresh, Stripe invoice and backfill paths, smart tags, REST product restriction and others). Run the case for the handler you touch with `php tests/security/<case>.php`; add one for a new security fix (`tests/security/README.md`).
 
