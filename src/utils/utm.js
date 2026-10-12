@@ -62,6 +62,18 @@ export const getUrUtmCampaign = () => {
 };
 
 /**
+ * Lowercase-hyphenate a UTM parameter value.
+ *
+ * @param {string} value Raw value.
+ * @returns {string}
+ */
+const sanitizeUtmValue = (value) =>
+	String(value || "")
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, "-");
+
+/**
  * Build a marketing URL with standardized UTM parameters.
  *
  * @param {string} baseUrl Base URL (existing UTM params are overwritten).
@@ -69,33 +81,31 @@ export const getUrUtmCampaign = () => {
  * @param {string} args.source Required granular location.
  * @param {string} args.medium One of UR_UTM_ALLOWED_MEDIUMS.
  * @param {string} [args.campaign] Defaults to localized campaign.
- * @param {string} [args.content] Optional click target slug.
+ * @param {string} args.content Required click target slug.
  * @returns {string}
  */
 export const urUtmUrl = (baseUrl, args = {}) => {
-	const source = String(args.source || "wp-admin")
-		.trim()
-		.toLowerCase()
-		.replace(/\s+/g, "-");
-	let medium = String(args.medium || "button")
-		.trim()
-		.toLowerCase()
-		.replace(/\s+/g, "-");
+	const source = sanitizeUtmValue(args.source || "wp-admin");
+	let medium = sanitizeUtmValue(args.medium || "button");
 
 	if (!UR_UTM_ALLOWED_MEDIUMS.includes(medium)) {
 		medium = "button";
 	}
 
-	const campaign = String(args.campaign || getUrUtmCampaign())
-		.trim()
-		.toLowerCase()
-		.replace(/\s+/g, "-");
-	const content = args.content
-		? String(args.content)
-				.trim()
-				.toLowerCase()
-				.replace(/\s+/g, "-")
-		: "";
+	const campaign = sanitizeUtmValue(args.campaign || getUrUtmCampaign());
+	const content = sanitizeUtmValue(args.content);
+
+	if (
+		!content &&
+		typeof process !== "undefined" &&
+		process.env &&
+		process.env.NODE_ENV !== "production"
+	) {
+		// eslint-disable-next-line no-console
+		console.warn(
+			"[urUtmUrl] Outbound marketing links must pass a non-empty content argument for utm_content attribution."
+		);
+	}
 
 	try {
 		const url = new URL(baseUrl, window.location.origin);

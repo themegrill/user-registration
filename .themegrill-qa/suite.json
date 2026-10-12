@@ -20,8 +20,16 @@
     "admin": [
       "includes/admin/class-ur-admin-menus.php",
       "includes/admin/class-ur-admin-settings.php",
+      "includes/admin/class-ur-sdk-deactivation-feedback.php",
       "includes/admin/settings/**",
-      "includes/admin/class-ur-admin-assets.php"
+      "includes/admin/class-ur-admin-assets.php",
+      "includes/functions-ur-core.php",
+      "assets/css/settings*",
+      "assets/css/urm-deactivation-popup*",
+      "assets/js/admin/**",
+      "src/welcome/**",
+      "modules/paypal/**",
+      "modules/stripe/**"
     ],
     "registration": [
       "includes/class-ur-form-handler.php",
@@ -42,6 +50,21 @@
     "security": [
       "includes/admin/settings/class-ur-settings-security.php",
       "includes/class-ur-install.php"
+    ],
+    "content-restriction": [
+      "modules/content-restriction/**"
+    ],
+    "membership": [
+      "modules/membership/**"
+    ],
+    "security-and-captcha": [
+      "assets/js/frontend/user-registration-recaptcha*.js",
+      "includes/admin/settings/class-ur-settings-captcha.php",
+      "includes/class-ur-captcha-conflict-manager.php"
+    ],
+    "setup-wizard": [
+      "src/welcome/**",
+      "includes/RestApi/controllers/version1/class-ur-getting-started.php"
     ]
   }
 }

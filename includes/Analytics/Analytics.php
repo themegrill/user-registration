@@ -94,16 +94,6 @@ class Analytics {
 
 		wp_enqueue_style( 'sweetalert2' );
 
-		if ( ! wp_style_is( 'ur-core-builder-style', 'registered' ) ) {
-			wp_register_style(
-				'ur-core-builder-style',
-				UR()->plugin_url() . '/assets/css/admin.css',
-				array(),
-				constant( 'UR_VERSION' )
-			);
-		}
-		wp_enqueue_style( 'ur-core-builder-style' );
-
 		$asset = require $asset_file;
 
 		wp_register_script( 'ur-snackbar', UR()->plugin_url() . '/assets/js/ur-snackbar/ur-snackbar' . $suffix . '.js', array(), constant( 'UR_VERSION' ), true );

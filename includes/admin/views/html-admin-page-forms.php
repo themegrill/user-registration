@@ -18,6 +18,16 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</div>
 		<div id="menu-management">
 			<div class="menu-edit">
+				<?php
+				// Builder-only notice, since it's specific to this form's fields. Inside .menu-edit (fixed-position) so it doesn't scroll away.
+				if ( ! empty( $form_id ) && function_exists( 'ur_form_has_legacy_payment_fields' ) && ur_form_has_legacy_payment_fields( $form_id ) ) {
+					?>
+					<div class="notice notice-warning inline" style="margin: 0;">
+						<p><?php esc_html_e( 'This form uses legacy payment fields. New forms can no longer add them, and current form will keep working as expected.', 'user-registration' ); ?></p>
+					</div>
+					<?php
+				}
+				?>
 				<input type="hidden" name="ur_form_id" id="ur_form_id" value="<?php echo esc_attr( $form_id ); ?>"/>
 				<div id="nav-menu-header">
 					<div class="ur-brand-logo ur-px-2">

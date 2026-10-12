@@ -442,7 +442,7 @@ $order_status = ! empty( $order['status'] ) ? $order['status'] : 'pending';
 										<?php esc_html_e( 'Gateway', 'user-registration' ); ?>
 									</div>
 									<div class="ur-payments__section-value">
-										<?php echo esc_html( ucfirst( $payment_method ) ); ?>
+										<?php echo esc_html( ur_get_payment_gateway_label( $payment_method ) ); ?>
 									</div>
 								</div>
 								<?php endif; ?>

@@ -157,7 +157,7 @@ wp_enqueue_style( 'ur-frontend-small-screen' );
 
 				if ( is_iterable( $form_data_array ) ) {
 					foreach ( $form_data_array as $index => $data ) {
-						$row_id = ( ! empty( $row_ids[ $index ] ) ) ? absint( $row_ids[ $index ] ) : $index;
+						$row_id = ( ! empty( $row_ids ) && isset( $row_ids[ $index ] ) ) ? absint( $row_ids[ $index ] ) : $index;
 
 						/**
 						 * Action to fire before the the rendering of form field row.

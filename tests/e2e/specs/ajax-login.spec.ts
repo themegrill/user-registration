@@ -111,4 +111,34 @@ test.describe("ajax login @fresh", () => {
       if (original !== null) await setAjaxLogin(page, original);
     }
   });
+
+  test("an empty submit is stopped in the browser when Ajax Login is enabled @fresh @login-forms", async ({
+    page,
+    browser,
+  }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+
+    let original: boolean | null = null;
+    try {
+      original = await setAjaxLogin(page, true);
+
+      const visitor = await newVisitor(browser);
+      const user = await visitor.newPage();
+      const requests: string[] = [];
+      user.on("request", (r) => {
+        if (r.url().includes("action=user_registration_ajax_login_submit")) requests.push(r.url());
+      });
+
+      await user.goto("/my-account/");
+      await user.locator("button:has-text('Login'), input[type=submit][name=login]").first().click();
+
+      // The click handler calls preventDefault, so native validation only runs if the handler asks for it.
+      await expect(user.locator("form.login input[name=username]:invalid")).toBeFocused();
+      expect(requests, "an empty login still reached the server").toHaveLength(0);
+      await visitor.close();
+    } finally {
+      if (original !== null) await setAjaxLogin(page, original);
+    }
+  });
 });

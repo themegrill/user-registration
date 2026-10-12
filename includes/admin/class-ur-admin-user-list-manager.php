@@ -643,6 +643,8 @@ class UR_Admin_User_List_Manager {
 			return;
 		}
 
+		check_admin_referer( 'bulk-users' );
+
 		// Check if the current user has permissions to change approvation statuses.
 		if ( ! UR_Admin_User_Manager::is_user_allowed_to_change_status() ) {
 			throw new Exception( 'You have not enough permissions to perform a bulk action on users approval status' );

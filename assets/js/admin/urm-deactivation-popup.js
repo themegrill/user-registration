@@ -1,11 +1,17 @@
 /**
  * URM deactivation popup
+ *
+ * Restyles ThemeGrill SDK uninstall feedback to the Quick Feedback UI.
+ * Popup id is {plugin-folder}_uninstall_feedback_popup (free vs pro folders differ).
  */
 (function ($) {
 	"use strict";
 
 	function initUrmPopup() {
-		var $popup = $("#user-registration_uninstall_feedback_popup");
+		var cfg = window.urmDeactivationPopup || {};
+		var popupId =
+			cfg.popupId || "user-registration_uninstall_feedback_popup";
+		var $popup = $("#" + popupId);
 		if (!$popup.length || $popup.hasClass("urm-popup-initialized")) {
 			return;
 		}
@@ -16,10 +22,7 @@
 		var $h5 = $header.find("h5");
 		var $body = $popup.find(".popup--body");
 
-		var logoUrl =
-			(window.urmDeactivationPopup &&
-				window.urmDeactivationPopup.logoUrl) ||
-			"";
+		var logoUrl = cfg.logoUrl || "";
 		var logoHtml = logoUrl
 			? '<span class="urm-popup-logo"><img src="' +
 			  logoUrl +
@@ -29,9 +32,7 @@
 			'<div class="urm-popup-header-inner">' +
 			logoHtml +
 			'<span class="urm-popup-title">' +
-			((window.urmDeactivationPopup &&
-				window.urmDeactivationPopup.quickFeedback) ||
-				"Quick Feedback") +
+			(cfg.quickFeedback || "Quick Feedback") +
 			"</span>" +
 			"</div>" +
 			'<button type="button" class="urm-popup-close" aria-label="Close">&times;</button>';
@@ -45,22 +46,13 @@
 		}
 		$h5.remove();
 
-		var disclaimer =
-			(window.urmDeactivationPopup &&
-				window.urmDeactivationPopup.disclaimer) ||
-			"* By submitting this form, you will send us non-sensitive diagnostic data, site URL and email.";
-		// $body.append('<p class="urm-popup-disclaimer">' + disclaimer + "</p>");
-
 		var $close = $popup.find(".urm-popup-close");
-		var targetSelector =
-			'tr[data-plugin^="user-registration/"] span.deactivate a';
-		$close.on("click", function () {
-			var $target = $(targetSelector);
+		// X must only dismiss — never follow the plugins-list Deactivate URL (#1677).
+		$close.on("click", function (e) {
+			e.preventDefault();
+			e.stopPropagation();
 			$popup.removeClass("active");
 			$("body").removeClass("tgsdk-feedback-open");
-			if ($target.length && $target.attr("href")) {
-				window.location.href = $target.attr("href");
-			}
 		});
 	}
 

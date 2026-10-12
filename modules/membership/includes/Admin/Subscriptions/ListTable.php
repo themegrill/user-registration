@@ -107,8 +107,8 @@ class ListTable extends \UR_List_Table {
 		);
 		return sprintf(
 			'<a href="%s">%s</a>',
-			$member_edit_url,
-			$user_display_name
+			esc_url( $member_edit_url ),
+			esc_html( $user_display_name )
 		);
 	}
 

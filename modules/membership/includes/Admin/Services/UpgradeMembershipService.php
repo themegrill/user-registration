@@ -324,6 +324,9 @@ class UpgradeMembershipService {
 			return '';
 		}
 
+		// Stored / computed paths are low → high; UI shows highest at top.
+		$upgrade_paths = array_reverse( $upgrade_paths, true );
+
 		ob_start();
 		foreach ( $upgrade_paths as $membership_id => $path ) {
 			$membership_details = $this->membership_service->prepare_single_membership_data(

@@ -151,5 +151,5 @@ if ( empty( $signup_url ) ) {
 	}
 </style>
 <div class="urcr-access-card">
-	<?php echo $message; ?>
+	<?php echo wp_kses_post( $message ); ?>
 </div>

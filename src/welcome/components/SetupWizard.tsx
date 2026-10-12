@@ -1,7 +1,14 @@
 import { ArrowBackIcon, ArrowForwardIcon } from "@chakra-ui/icons";
-import { Box, Button, Flex, Link, useColorModeValue } from "@chakra-ui/react";
+import {
+	Box,
+	Button,
+	Flex,
+	Link,
+	Spinner,
+	useColorModeValue
+} from "@chakra-ui/react";
 import { __ } from "@wordpress/i18n";
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
 	apiGet,
 	apiPost,
@@ -42,8 +49,7 @@ const getVisibleSteps = (
 	let filteredSteps: StepConfig[];
 
 	switch (membershipType) {
-		case "paid":
-		case "free":
+		case "membership":
 			if (hasPaidPlan) {
 				filteredSteps = ALL_STEPS.filter(
 					(step) => step.id !== "settings"
@@ -54,13 +60,10 @@ const getVisibleSteps = (
 				);
 			}
 			break;
-		case "other":
+		default:
 			filteredSteps = ALL_STEPS.filter(
 				(step) => step.id !== "membership" && step.id !== "payment"
 			);
-			break;
-		default:
-			filteredSteps = ALL_STEPS.filter((step) => step.id !== "settings");
 	}
 
 	return filteredSteps.map((step, index) => ({
@@ -83,6 +86,8 @@ const SetupWizard: React.FC = () => {
 	const { state, dispatch } = useStateValue();
 	const { currentStep, isLoading, membershipSetupType, membershipPlans } =
 		state;
+	// Steps stay hidden until the saved answers load, so a choice made earlier can't be overwritten by them.
+	const [isHydrated, setIsHydrated] = useState(false);
 
 	const cardBg = useColorModeValue("white", "gray.800");
 	const textColor = useColorModeValue("gray.800", "white");
@@ -136,17 +141,13 @@ const SetupWizard: React.FC = () => {
 							welcome.admin_email
 								? welcome.admin_email
 								: state.adminEmail,
-						membershipOptions: Array.isArray(
-							welcome?.membership_options
-						)
-							? welcome.membership_options
-							: state.membershipOptions
 					}
 				});
 			} catch (e) {
 				console.error(e);
 			} finally {
 				dispatch({ type: "SET_LOADING", payload: false });
+				setIsHydrated(true);
 			}
 		};
 
@@ -234,7 +235,7 @@ const SetupWizard: React.FC = () => {
 	};
 
 	const handleStepClick = async (stepNumber: number) => {
-		if (stepNumber === currentStep) {
+		if (!isHydrated || stepNumber === currentStep) {
 			return;
 		}
 
@@ -300,8 +301,14 @@ const SetupWizard: React.FC = () => {
 						py={{ base: 5, md: 6 }}
 						boxShadow="0 10px 15px -3px rgba(0, 0, 0, 0.06)"
 					>
-						<Box mb={isFinishStep ? 0 : 6}>{renderStep()}</Box>
-						{!isFinishStep && (
+						{!isHydrated ? (
+							<Flex justify="center" align="center" minH="200px">
+								<Spinner size="lg" color="#475BB2" />
+							</Flex>
+						) : (
+							<Box mb={isFinishStep ? 0 : 6}>{renderStep()}</Box>
+						)}
+						{isHydrated && !isFinishStep && (
 							<Flex
 								justify="space-between"
 								align="center"

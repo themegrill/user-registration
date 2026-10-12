@@ -68,6 +68,16 @@ export async function waitForMessage(
   return null;
 }
 
+/** The rendered HTML body of one message, or null when it cannot be read. */
+export async function messageHtml(id: string): Promise<string | null> {
+  const r = await fetch(`${BASE}/api/v1/message/${encodeURIComponent(id)}`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!r.ok) return null;
+  const body = (await r.json()) as { HTML?: string };
+  return body.HTML ?? null;
+}
+
 /** True when the message is addressed to this exact address. */
 export const addressedTo = (email: string) => (m: Message) =>
   (m.To ?? []).some((t) => t.Address?.toLowerCase() === email.toLowerCase());

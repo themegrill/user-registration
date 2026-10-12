@@ -55,6 +55,9 @@ class ShortCodes {
 		$attributes = array(),
 		$shortcode = ''
 	) {
+		// Membership listings and thank you screens vary with the visitor's own plans.
+		\UR_Cache_Helper::disable_page_cache( 'membership' );
+
 		ob_start();
 		call_user_func( $function, $attributes, $shortcode );
 

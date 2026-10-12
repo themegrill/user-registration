@@ -14,10 +14,17 @@ use WPEverest\URMembership\Admin\Services\Stripe\StripeService;
 
 defined( 'ABSPATH' ) || exit;
 
+// Names are plain text across registration, profile and membership writers.
+add_filter( 'sanitize_user_meta_first_name', 'sanitize_text_field' );
+add_filter( 'sanitize_user_meta_last_name', 'sanitize_text_field' );
+add_filter( 'sanitize_user_meta_nickname', 'sanitize_text_field' );
+
 // Include core functions (available in both admin and frontend).
 require UR_ABSPATH . 'includes/functions-ur-page.php';
 require UR_ABSPATH . 'includes/functions-ur-account.php';
 require UR_ABSPATH . 'includes/functions-ur-deprecated.php';
+
+UR_Abilities::init();
 
 /**
  * Define a constant if it is not already defined.
@@ -57,7 +64,7 @@ if ( ! function_exists( 'ur_utm_url' ) ) {
 	 *     @type string $source   Required. Granular UI location (lowercase-hyphenated).
 	 *     @type string $medium   Required. One of ur_utm_allowed_mediums(); falls back to button.
 	 *     @type string $campaign Optional. Defaults to UR()->utm_campaign.
-	 *     @type string $content  Optional. What was clicked (addon/feature slug, etc.).
+	 *     @type string $content  Required. What was clicked (addon/feature/button slug).
 	 * }
 	 * @return string
 	 */
@@ -88,13 +95,21 @@ if ( ! function_exists( 'ur_utm_url' ) ) {
 		}
 		$campaign = sanitize_title( $campaign );
 
+		$content = sanitize_title( (string) $args['content'] );
+		if ( '' === $content ) {
+			_doing_it_wrong(
+				__FUNCTION__,
+				esc_html__( 'Outbound marketing links must pass a non-empty content argument for utm_content attribution.', 'user-registration' ),
+				defined( 'UR_VERSION' ) ? UR_VERSION : ''
+			);
+		}
+
 		$query = array(
 			'utm_source'   => $source,
 			'utm_medium'   => $medium,
 			'utm_campaign' => $campaign,
 		);
 
-		$content = sanitize_title( (string) $args['content'] );
 		if ( '' !== $content ) {
 			$query['utm_content'] = $content;
 		}
@@ -418,6 +433,9 @@ function ur_get_template( $template_name, $args = array(), $template_path = '', 
 		if ( ! empty( $ur_template_args ) && is_array( $ur_template_args ) ) {
 			extract( $ur_template_args, EXTR_SKIP ); // phpcs:ignore WordPress.PHP.DontExtract.extract_extract
 		}
+		if ( ! is_array( $ur_template_args ) || ! array_key_exists( 'args', $ur_template_args ) ) {
+			$args = $ur_template_args; // Back-compat for template overrides copied before 5.2.0.
+		}
 		include $ur_template_file; // phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
 	} )( $located, $args );
 
@@ -527,7 +545,14 @@ function ur_render_premium_feature_gate_template( $args = array() ) {
 	}
 
 	if ( empty( $args['upgrade_url'] ) ) {
-		$args['upgrade_url'] = ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => $args['utm_source'], 'medium' => 'upgrade-link' ) );
+		$args['upgrade_url'] = ur_utm_url(
+			'https://wpuserregistration.com/upgrade/',
+			array(
+				'source'  => $args['utm_source'],
+				'medium'  => 'upgrade-link',
+				'content' => ! empty( $args['template_id'] ) ? $args['template_id'] : 'premium-feature-gate',
+			)
+		);
 	}
 
 	static $rendered_templates = array();
@@ -568,7 +593,14 @@ function ur_render_premium_feature_gate( $args = array() ) {
 		return;
 	}
 
-	$args['upgrade_url'] = ur_utm_url( 'https://wpuserregistration.com/upgrade/', array( 'source' => $args['utm_source'], 'medium' => 'upgrade-link' ) );
+	$args['upgrade_url'] = ur_utm_url(
+		'https://wpuserregistration.com/upgrade/',
+		array(
+			'source'  => $args['utm_source'],
+			'medium'  => 'upgrade-link',
+			'content' => ! empty( $args['template_id'] ) ? $args['template_id'] : 'premium-feature-gate',
+		)
+	);
 
 	if ( ! empty( $args['render_template'] ) ) {
 		ur_render_premium_feature_gate_template( $args );
@@ -2324,6 +2356,11 @@ function ur_get_recaptcha_node( $context, $recaptcha_enabled = false, $form_id =
 
 	}
 
+	// An empty or stale per-form/per-login type falls back to the site-wide default rather than matching no type at all.
+	if ( 'test_captcha' !== $context && ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+		$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
+	}
+
 	if ( 'v2' === $recaptcha_type && ! $invisible_recaptcha ) {
 		$recaptcha_site_key    = get_option( 'user_registration_captcha_setting_recaptcha_site_key' );
 		$recaptcha_site_secret = get_option( 'user_registration_captcha_setting_recaptcha_site_secret' );
@@ -2341,9 +2378,10 @@ function ur_get_recaptcha_node( $context, $recaptcha_enabled = false, $form_id =
 		$recaptcha_site_secret = get_option( 'user_registration_captcha_setting_recaptcha_site_secret_hcaptcha' );
 		$enqueue_script        = 'ur-recaptcha-hcaptcha';
 	} elseif ( 'cloudflare' === $recaptcha_type ) {
+		// Turnstile rejects anything but dark|light|auto, so an unsaved theme must not reach it as false.
 		$recaptcha_site_key    = get_option( 'user_registration_captcha_setting_recaptcha_site_key_cloudflare' );
 		$recaptcha_site_secret = get_option( 'user_registration_captcha_setting_recaptcha_site_secret_cloudflare' );
-		$theme_mod             = get_option( 'user_registration_captcha_setting_recaptcha_cloudflare_theme' );
+		$theme_mod             = get_option( 'user_registration_captcha_setting_recaptcha_cloudflare_theme', 'light' );
 		$enqueue_script        = 'ur-recaptcha-cloudflare';
 	}
 	static $rc_counter = 0;
@@ -3493,6 +3531,48 @@ if ( ! function_exists( 'user_registration_pro_get_field_data' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_addon_package_error' ) ) {
+	/**
+	 * Explains why the updater API response cannot be installed, or returns an empty array when it can.
+	 *
+	 * A non-object response means the request failed (version() returns false on transport or
+	 * non-200 errors). The API sends an empty `download_link` when no license is set and omits
+	 * the item entirely (empty `name`) when it does not recognise the requested addon name.
+	 *
+	 * @param mixed $api Decoded response of UR_Updater_Key_API::version().
+	 *
+	 * @return array Empty when installable, otherwise array with `errorCode` and `errorMessage`.
+	 */
+	function ur_get_addon_package_error( $api ) {
+		if ( ! is_object( $api ) ) {
+			return array(
+				'errorCode'    => 'updater_unavailable',
+				'errorMessage' => esc_html__( 'Could not reach the update server. Please try again in a moment.', 'user-registration' ),
+			);
+		}
+
+		if ( empty( $api->name ) ) {
+			return array(
+				'errorCode'    => 'addon_not_found',
+				'errorMessage' => esc_html__( 'This addon was not found on the update server. Please download and install it manually.', 'user-registration' ),
+			);
+		}
+
+		if ( empty( $api->download_link ) ) {
+			$has_license = ! empty( get_option( 'user-registration_license_key' ) );
+
+			return array(
+				'errorCode'    => 'no_download_link',
+				'errorMessage' => $has_license
+					? esc_html__( 'No download is available for this addon with your current license. Please check your license plan and try again.', 'user-registration' )
+					: esc_html__( 'No valid license found for this addon. Please activate a valid license and try again.', 'user-registration' ),
+			);
+		}
+
+		return array();
+	}
+}
+
 if ( ! function_exists( 'ur_install_extensions' ) ) {
 	/**
 	 * This function return boolean according to string to avoid colision of 1, true, yes.
@@ -3555,6 +3635,15 @@ if ( ! function_exists( 'ur_install_extensions' ) ) {
 
 			if ( is_wp_error( $api ) ) {
 				$status['errorMessage'] = $api->get_error_message();
+
+				/* translators: %1$s: Activation error message */
+				throw new Exception( sprintf( __( '<strong>Activation error:</strong> %1$s', 'user-registration' ), $status['errorMessage'] ) );
+			}
+
+			$package_error = ur_get_addon_package_error( $api );
+
+			if ( ! empty( $package_error ) ) {
+				$status = array_merge( $status, $package_error );
 
 				/* translators: %1$s: Activation error message */
 				throw new Exception( sprintf( __( '<strong>Activation error:</strong> %1$s', 'user-registration' ), $status['errorMessage'] ) );
@@ -3760,25 +3849,28 @@ if ( ! function_exists( 'ur_delete_user_files_on_user_delete' ) ) {
 		if ( class_exists( 'URFU_Uploaded_Data' ) ) {
 			$post = get_post( ur_get_form_id_by_userid( $user_id ) );
 
-			$form_data_object = json_decode( $post->post_content );
+			// Skip file cleanup if the registration form was deleted after the user registered.
+			if ( $post ) {
+				$form_data_object = json_decode( $post->post_content );
 
-			$file_fields = URFU_Uploaded_Data::get_file_field( $form_data_object );
+				$file_fields = URFU_Uploaded_Data::get_file_field( $form_data_object );
 
-			foreach ( $file_fields as $field ) {
+				foreach ( $file_fields as $field ) {
 
-				$meta_key = isset( $field['key'] ) ? $field['key'] : '';
+					$meta_key = isset( $field['key'] ) ? $field['key'] : '';
 
-				$attachment_ids = get_user_meta( $user->ID, 'user_registration_' . $meta_key, true );
+					$attachment_ids = get_user_meta( $user->ID, 'user_registration_' . $meta_key, true );
 
-				if ( is_string( $attachment_ids ) ) {
-					$attachment_ids = explode( ',', $attachment_ids );
-				}
+					if ( is_string( $attachment_ids ) ) {
+						$attachment_ids = explode( ',', $attachment_ids );
+					}
 
-				foreach ( $attachment_ids as $attachment_id ) {
-					$file_path = get_attached_file( $attachment_id );
+					foreach ( $attachment_ids as $attachment_id ) {
+						$file_path = get_attached_file( $attachment_id );
 
-					if ( file_exists( $file_path ) ) {
-						unlink( $file_path );
+						if ( file_exists( $file_path ) ) {
+							unlink( $file_path );
+						}
 					}
 				}
 			}
@@ -4159,10 +4251,24 @@ if ( ! function_exists( 'ur_get_license_plan' ) ) {
 				if ( ! empty( $license_data->item_name ) ) {
 					$license_data->item_plan = strtolower( str_replace( 'LifeTime', '', str_replace( 'User Registration', '', $license_data->item_name ) ) );
 					set_transient( 'ur_pro_license_plan', $license_data, WEEK_IN_SECONDS );
+				} else {
+					// Cache failed/empty lookups briefly so every admin page load does not hit the API.
+					// Use an empty array as the failure sentinel — empty objects are truthy in PHP.
+					set_transient( 'ur_pro_license_plan', array(), HOUR_IN_SECONDS );
+					return false;
 				}
 			}
 
-			return isset( $license_data ) ? $license_data : false;
+			// Failure sentinel from a previous empty/failed API lookup.
+			if ( empty( $license_data ) || ( is_array( $license_data ) && empty( $license_data ) ) ) {
+				return false;
+			}
+
+			if ( is_object( $license_data ) && empty( $license_data->item_name ) ) {
+				return false;
+			}
+
+			return $license_data;
 		}
 
 		return false;
@@ -4314,7 +4420,7 @@ if ( ! function_exists( 'ur_clean_tmp_files' ) ) {
 		$lifespan = (int) apply_filters( 'user_registration_clean_tmp_files_lifespan', DAY_IN_SECONDS );
 
 		foreach ( $files as $file ) {
-			if ( ! is_file( $file ) ) {
+			if ( in_array( basename( $file ), array( 'index.html', '.htaccess', 'web.config' ), true ) || ! is_file( $file ) ) {
 				continue;
 			}
 
@@ -4326,6 +4432,80 @@ if ( ! function_exists( 'ur_clean_tmp_files' ) ) {
 
 			if ( ( time() - $modified ) >= $lifespan ) {
 				@unlink( $file ); // phpcs:ignore.WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+		}
+	}
+}
+
+if ( ! function_exists( 'ur_get_public_upload_directory_rules' ) ) {
+	/**
+	 * Get the generated public-image server rules, including the previous policy for migration.
+	 *
+	 * @param bool $legacy Whether to return the previous generated rules.
+	 * @return array
+	 */
+	function ur_get_public_upload_directory_rules( $legacy = false ) {
+		$apache = <<<'APACHE'
+<IfModule mod_authz_core.c>
+    Require all denied
+    <FilesMatch "(?i)^(?!.*\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx)(?:\.|$)).+\.(?:jpe?g|png|gif)$">
+        Require all granted
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Deny from all
+    <FilesMatch "(?i)^(?!.*\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx)(?:\.|$)).+\.(?:jpe?g|png|gif)$">
+        Allow from all
+    </FilesMatch>
+</IfModule>
+APACHE;
+
+		$iis = <<<'IIS'
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration><system.webServer>
+<directoryBrowse enabled="false" />
+<security><requestFiltering><fileExtensions allowUnlisted="false">
+<clear /><add fileExtension=".jpg" allowed="true" /><add fileExtension=".jpeg" allowed="true" />
+<add fileExtension=".png" allowed="true" /><add fileExtension=".gif" allowed="true" />
+</fileExtensions></requestFiltering></security>
+</system.webServer></configuration>
+IIS;
+
+		if ( $legacy ) {
+			$apache = "Options -Indexes\n" . $apache;
+			$iis    = str_replace( '<directoryBrowse enabled="false" />', '<directoryBrowse enabled="false" />' . "\n" . '<handlers accessPolicy="Read" />', $iis );
+		}
+
+		return array(
+			'index.html' => '',
+			'.htaccess'  => $apache,
+			'web.config' => $iis,
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_protect_public_upload_directory' ) ) {
+	/**
+	 * Keep profile images public while denying non-image files.
+	 * Nginx hosts must configure the equivalent static-image-only location.
+	 *
+	 * @param string $directory Public upload directory.
+	 * @return void
+	 */
+	function ur_protect_public_upload_directory( $directory ) {
+		if ( apply_filters( 'user_registration_install_skip_create_files', false ) ) {
+			return;
+		}
+		if ( ! wp_mkdir_p( $directory ) || ! wp_is_writable( $directory ) ) {
+			return;
+		}
+		$files        = ur_get_public_upload_directory_rules();
+		$legacy_files = ur_get_public_upload_directory_rules( true );
+		foreach ( $files as $name => $content ) {
+			$path = trailingslashit( $directory ) . $name;
+			// Only replace an exact match for our previous rules; preserve administrator changes.
+			if ( ! file_exists( $path ) || ( 'index.html' !== $name && file_get_contents( $path ) === $legacy_files[ $name ] ) ) { // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- Read local generated rules for exact-byte migration.
+				file_put_contents( $path, $content ); // phpcs:ignore WordPress.WP.AlternativeFunctions
 			}
 		}
 	}
@@ -4344,11 +4524,7 @@ if ( ! function_exists( 'ur_get_tmp_dir' ) ) {
 			wp_mkdir_p( $tmp_root );
 		}
 
-		$index = trailingslashit( $tmp_root ) . 'index.html';
-
-		if ( ! file_exists( $index ) ) {
-			file_put_contents( $index, '' ); // phpcs:ignore.WordPress.WP.AlternativeFunctions
-		}
+		ur_protect_public_upload_directory( $tmp_root );
 
 		return $tmp_root;
 	}
@@ -4382,6 +4558,7 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 	 *
 	 * @param [array] $valid_form_data Valid Form Data.
 	 * @param [int]   $user_id User Id.
+	 * @return bool True when the picture was saved or cleared, false on failure.
 	 */
 	function ur_upload_profile_pic( $valid_form_data, $user_id ) {
 		$attachment_id = array();
@@ -4401,6 +4578,10 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 		if ( ! file_exists( $upload_path ) ) {
 			wp_mkdir_p( $upload_path );
 		}
+		// A filtered path may be shared with unrelated WordPress uploads.
+		if ( UR_UPLOAD_PATH . 'profile-pictures' === $upload_path ) {
+			ur_protect_public_upload_directory( $upload_path );
+		}
 		$valid_extensions = array( 'image/jpeg', 'image/jpg', 'image/gif', 'image/png' );
 		$upload_file      = $valid_form_data['profile_pic_url']->value;
 		$valid_ext        = array();
@@ -4415,59 +4596,81 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 			}
 		}
 
+		if ( '' === $upload_file ) {
+			update_user_meta( $user_id, 'user_registration_profile_pic_url', '' );
+			return true;
+		}
+
 		if ( ! is_numeric( $upload_file ) ) {
 			$upload = ur_maybe_unserialize( crypt_the_string( $upload_file, 'd' ) );
+			$logger = ur_get_logger();
+
+			if ( ! isset( $upload['file_name'], $upload['file_path'], $upload['file_extension'] ) || ! file_exists( $upload['file_path'] ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: the uploaded file is no longer available.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
 			if ( function_exists( 'mime_content_type' ) ) {
-				$upload_file_type = isset( $upload['file_path'] ) ? mime_content_type( $upload['file_path'] ) : '';
+				$upload_file_type = mime_content_type( $upload['file_path'] );
 			} else {
-				$upload_file_info = isset( $upload['file_path'] ) ? wp_check_filetype( $upload['file_path'] ) : '';
+				$upload_file_info = wp_check_filetype( $upload['file_path'] );
 				$upload_file_type = ! empty( $upload_file_info ) ? $upload_file_info['type'] : '';
 			}
 
-			if ( isset( $upload['file_name'] ) && isset( $upload['file_path'] ) && isset( $upload['file_extension'] ) && in_array( $upload_file_type, $valid_extensions ) && in_array( $upload['file_extension'], $valid_ext ) ) {
-				$upload_path = $upload_path . '/';
-				$file_name   = wp_unique_filename( $upload_path, $upload['file_name'] );
-				$file_path   = $upload_path . sanitize_file_name( $file_name );
-				// Check the type of file. We'll use this as the 'post_mime_type'.
-				$filetype = wp_check_filetype( basename( $file_name ), null );
-				$moved    = '';
-
-				if ( basename( $upload['file_path'] ) === $upload['file_name'] ) {
-					$moved = rename( $upload['file_path'], $file_path );
-				}
-
-				if ( $moved ) {
-					$attachment_id = wp_insert_attachment(
-						array(
-							'guid'           => $file_path,
-							'post_mime_type' => $filetype['type'],
-							'post_title'     => preg_replace( '/\.[^.]+$/', '', sanitize_file_name( $file_name ) ),
-							'post_content'   => '',
-							'post_status'    => 'inherit',
-						),
-						$file_path
-					);
-
-					if ( ! is_wp_error( $attachment_id ) ) {
-						include_once ABSPATH . 'wp-admin/includes/image.php';
-
-						// Generate and save the attachment metas into the database.
-						wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $file_path ) );
-					}
-				}
+			if ( ! in_array( $upload_file_type, $valid_extensions, true ) || ! in_array( $upload['file_extension'], $valid_ext, true ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: unsupported file type.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
 			}
+
+			if ( basename( $upload['file_path'] ) !== $upload['file_name'] ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: unexpected upload path.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
+			$upload_path = $upload_path . '/';
+			$file_name   = wp_unique_filename( $upload_path, $upload['file_name'] );
+			$file_path   = $upload_path . sanitize_file_name( $file_name );
+			$filetype    = wp_check_filetype( basename( $file_name ), null );
+
+			if ( ! rename( $upload['file_path'], $file_path ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: could not move the file into %s.', $user_id, $upload_path ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
+			$attachment_id = wp_insert_attachment(
+				array(
+					'guid'           => $file_path,
+					'post_mime_type' => $filetype['type'],
+					'post_title'     => preg_replace( '/\.[^.]+$/', '', sanitize_file_name( $file_name ) ),
+					'post_content'   => '',
+					'post_status'    => 'inherit',
+				),
+				$file_path
+			);
+
+			if ( is_wp_error( $attachment_id ) || empty( $attachment_id ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: the attachment could not be created.', $user_id ), array( 'source' => 'user-registration' ) );
+				// The file was already moved into the uploads directory; remove it so it isn't left orphaned.
+				unlink( $file_path );
+				return false;
+			}
+
+			include_once ABSPATH . 'wp-admin/includes/image.php';
+			wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $file_path ) );
 		} else {
 			// A numeric value is sent when the user keeps their existing profile picture
 			// (the template pre-populates the hidden field with the stored attachment ID).
 			// Only allow it if the attachment actually belongs to this user; a bare numeric
 			// ID referencing another user's media must be rejected.
 			if ( (int) get_post_field( 'post_author', $upload_file ) !== (int) $user_id ) {
-				return;
+				return false;
 			}
 			$attachment_id = $upload_file;
 		}
-		$attachment_id = ! empty( $attachment_id ) ? $attachment_id : '';
+
 		update_user_meta( $user_id, 'user_registration_profile_pic_url', $attachment_id );
+
+		return true;
 	}
 }
 
@@ -4526,6 +4729,34 @@ if ( ! function_exists( 'ur_option_checked' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_captcha_type_has_keys' ) ) {
+	/**
+	 * Check whether site-wide keys are configured for a captcha type.
+	 *
+	 * @param string $type Captcha type: v2, v3, hCaptcha or cloudflare.
+	 *
+	 * @return bool
+	 */
+	function ur_captcha_type_has_keys( $type ) {
+		if ( 'v2' === $type ) {
+			// Match the pair the invisible toggle actually selects at runtime, not either pair.
+			if ( ur_option_checked( 'user_registration_captcha_setting_invisible_recaptcha_v2', false ) ) {
+				return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_invisible_site_secret' ) );
+			}
+
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret' ) );
+		} elseif ( 'v3' === $type ) {
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_v3' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_v3' ) );
+		} elseif ( 'hCaptcha' === $type ) {
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_hcaptcha' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_hcaptcha' ) );
+		} elseif ( 'cloudflare' === $type ) {
+			return (bool) ( get_option( 'user_registration_captcha_setting_recaptcha_site_key_cloudflare' ) && get_option( 'user_registration_captcha_setting_recaptcha_site_secret_cloudflare' ) );
+		}
+
+		return false;
+	}
+}
+
 if ( ! function_exists( 'ur_check_captch_keys' ) ) {
 	/**
 	 * Check the site key and secret key for the selected captcha type, are valid or not.
@@ -4550,6 +4781,11 @@ if ( ! function_exists( 'ur_check_captch_keys' ) ) {
 			} else {
 				$recaptcha_type = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_configured_captcha_type', $recaptcha_type );
 			}
+		}
+
+		// An empty or stale per-form/per-login type falls back to the site-wide default rather than matching no type at all.
+		if ( ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+			$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
 		}
 
 		$site_key   = '';
@@ -4652,6 +4888,19 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/profile-connect/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'profile-connect' ) ),
 					),
 				),
+				'popup'           => array(
+					'label'  => esc_html__( 'Popups', 'user-registration' ),
+					'plugin' => 'user-registration-pro',
+					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
+					'name'   => esc_html__( 'User Registration Popups', 'user-registration' ),
+					'upsell' => array(
+						'excerpt'     => 'Display registration or login forms in popups.',
+						'description' => array(
+							'Choose between a registration or a login popup',
+							'Customize the popup header, footer, and size',
+						),
+					),
+				),
 				'invite-code'     => array(
 					'label'  => esc_html__( 'Invite Codes', 'user-registration' ),
 					'plugin' => 'user-registration-invite-codes',
@@ -4660,8 +4909,9 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 					'upsell' => array(
 						'excerpt'      => 'Enable invite-only signups using custom codes.',
 						'description'  => array(
-							'Customize popup content and appearance',
-							'Customize layout, colors, and content',
+							'Require a valid invite code to register on selected forms',
+							'Create codes one by one or generate them in bulk with a prefix',
+							'Set an expiry date and user limit for each code',
 						),
 						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/invite-codes/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'invite-codes' ) ),
 					),
@@ -4907,17 +5157,6 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 						'feature_link' => ur_utm_url( 'https://wpuserregistration.com/features/woocommerce-integration/', array( 'source' => 'settings', 'medium' => 'button', 'content' => 'woocommerce-integration' ) ),
 					),
 				),
-				'popup'           => array(
-					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
-					'plugin' => 'user-registration-pro',
-					'upsell' => array(
-						'excerpt'     => 'Display registration or login forms in popups.',
-						'description' => array(
-							'Customize popup content and appearance',
-							'Control where the popup shows up',
-						),
-					),
-				),
 				'cloud-storage'   => array(
 					'is_collection' => true,
 					'collections'   => array(
@@ -4959,7 +5198,7 @@ if ( ! function_exists( 'ur_premium_settings_tab' ) ) {
 					'label'  => esc_html__( 'Two Factor Authentication', 'user-registration' ),
 					'plugin' => 'user-registration-two-factor-authentication',
 					'plan'   => array( 'personal', 'plus', 'professional', 'themegrill agency' ),
-					'name'   => esc_html__( 'User Registration - Two Factor Authentication', 'user-registration' ),
+					'name'   => 'User Registration Two Factor Authentication',
 					'upsell' => array(
 						'excerpt'      => 'Verify user logins with one-time passwords.',
 						'description'  => array(
@@ -5096,6 +5335,7 @@ if ( ! function_exists( 'ur_get_premium_settings_tab' ) ) {
 				}
 			} else { // scalar section.
 				$detail = $section_details;
+				$settings['sections']['premium_setting_section']['title'] = $detail['label'];
 				if ( ! empty( $license_plan ) ) {
 					$license_plan = trim( str_replace( 'lifetime', '', strtolower( $license_plan ) ) );
 					if ( 'custom-email' === $current_section ) {
@@ -5214,7 +5454,6 @@ if ( ! function_exists( 'ur_get_premium_settings_tab' ) ) {
 						return array();
 					}
 					$description = esc_html__( 'You are currently using the free version of our plugin. Please upgrade to premium version to use this feature.', 'user-registration' );
-					$settings['sections']['premium_setting_section']['title']       = $detail['label'];
 					$settings['sections']['premium_setting_section']['before_desc'] = $description;
 
 					if ( ! empty( $detail['upsell'] ) ) {
@@ -5272,6 +5511,11 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 			$recaptcha_type      = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
 			$recaptcha_type      = get_option( 'user_registration_login_options_configured_captcha_type', $recaptcha_type );
 			$invisible_recaptcha = ur_option_checked( 'user_registration_captcha_setting_invisible_recaptcha_v2', false );
+
+			// An empty or stale login type falls back to the site-wide default rather than matching no type at all.
+			if ( ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+				$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
+			}
 
 			$login_data = array(
 				'user_password' => isset( $post['password'] ) ? $post['password'] : '', //phpcs:ignore.
@@ -5670,6 +5914,14 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 		$recaptcha_type      = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_configured_captcha_type', $recaptcha_type );
 		$invisible_recaptcha = ur_option_checked( 'user_registration_captcha_setting_invisible_recaptcha_v2', false );
 
+		// An empty or stale per-form type falls back to the site-wide default rather than matching no type at all.
+		if ( ! ur_captcha_type_has_keys( $recaptcha_type ) ) {
+			$recaptcha_type = get_option( 'user_registration_captcha_setting_recaptcha_version', 'v2' );
+		}
+
+		$site_key   = '';
+		$secret_key = '';
+
 		if ( 'v2' === $recaptcha_type && ! $invisible_recaptcha ) {
 			$site_key   = get_option( 'user_registration_captcha_setting_recaptcha_site_key' );
 			$secret_key = get_option( 'user_registration_captcha_setting_recaptcha_site_secret' );
@@ -5725,17 +5977,27 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 					$data   = json_decode( wp_remote_retrieve_body( $data ) );
 
 					if ( empty( $data->success ) ) {
+						$error_codes  = isset( $data->{'error-codes'} ) ? (array) $data->{'error-codes'} : array();
+						$logged_codes = empty( $error_codes ) ? 'no error code returned' : implode( ', ', $error_codes );
+
 						$logger->error(
-							sprintf( '[Form #%d] Cloudflare Turnstile verification failed. Submission could not be verified.', $form_id ) . "\n  ",
+							sprintf( '[Form #%d] Cloudflare Turnstile verification failed (%s). Submission could not be verified.', $form_id, $logged_codes ) . "\n  ",
 							array(
 								'source'  => 'form-submission',
 								'form_id' => $form_id,
 							)
 						);
 
+						// A token that is merely spent or expired is the visitor's to retry, not the administrator's to fix.
+						if ( in_array( 'timeout-or-duplicate', $error_codes, true ) ) {
+							$message = __( 'Your captcha has expired. Please solve it again and resubmit the form.', 'user-registration' );
+						} else {
+							$message = __( 'Error on Cloudflare Turnstile. Contact your site administrator.', 'user-registration' );
+						}
+
 						wp_send_json_error(
 							array(
-								'message' => __( 'Error on Cloudflare Turnstile. Contact your site administrator.', 'user-registration' ),
+								'message' => $message,
 							)
 						);
 					}
@@ -7473,12 +7735,14 @@ if ( ! function_exists( 'user_registration_edit_profile_row_template' ) ) {
 									unset( $attachment_ids[ $attachment_key ] );
 								}
 
+								$original_value = is_array( $field['value'] ) ? implode( ',', $field['value'] ) : (string) $field['value'];
 								$field['value'] = ! empty( $attachment_ids ) ? implode( ',', $attachment_ids ) : '';
 
-								$user_id = get_current_user_id();
+								// Clean the profile owner's meta (not the viewing admin's), and only when a missing file was dropped.
+								$profile_owner_id = is_admin() ? $user_id : get_current_user_id();
 
-								if ( current_user_can( 'edit_user', $user_id ) ) {
-									update_user_meta( $user_id, 'user_registration_' . $single_item->general_setting->field_name, $field['value'] );
+								if ( $original_value !== $field['value'] && current_user_can( 'edit_user', $profile_owner_id ) ) {
+									update_user_meta( $profile_owner_id, 'user_registration_' . $single_item->general_setting->field_name, $field['value'] );
 								}
 							}
 						}
@@ -7689,6 +7953,201 @@ if ( ! function_exists( 'ur_get_coupon_details' ) ) {
 		}
 
 		return $posts->posts;
+	}
+}
+
+if ( ! function_exists( 'ur_coupon_has_remaining_uses' ) ) {
+	/**
+	 * Whether a coupon still has redemptions left.
+	 *
+	 * A usage limit of 0 (or missing) means unlimited.
+	 *
+	 * @param array $coupon_details Coupon meta from ur_get_coupon_details().
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_coupon_has_remaining_uses( $coupon_details ) {
+		if ( empty( $coupon_details ) || ! is_array( $coupon_details ) ) {
+			return false;
+		}
+
+		$limit = isset( $coupon_details['coupon_usage_limit'] ) ? absint( $coupon_details['coupon_usage_limit'] ) : 0;
+
+		if ( $limit <= 0 ) {
+			return true;
+		}
+
+		$count = isset( $coupon_details['coupon_usage_count'] ) ? absint( $coupon_details['coupon_usage_count'] ) : 0;
+
+		return $count < $limit;
+	}
+}
+
+if ( ! function_exists( 'ur_update_coupon_meta' ) ) {
+	/**
+	 * Atomically rewrite a coupon's stored meta.
+	 *
+	 * The callback receives the stored meta (an empty array when it cannot be decoded) and returns
+	 * the meta to save, or false to leave it untouched. The write only lands while the row still
+	 * holds what was read, retrying otherwise, so redemptions and admin edits cannot overwrite each other.
+	 *
+	 * @param int      $coupon_id Coupon post ID.
+	 * @param callable $callback  Receives the stored meta array, returns the new meta array or false.
+	 * @return bool True when the stored meta matches the callback's result.
+	 * @since x.x.x
+	 */
+	function ur_update_coupon_meta( $coupon_id, $callback ) {
+		global $wpdb;
+
+		$coupon_id = absint( $coupon_id );
+
+		for ( $attempt = 0; $attempt < 5; $attempt++ ) {
+			$row = $wpdb->get_row( $wpdb->prepare( "SELECT meta_id, meta_value FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s ORDER BY meta_id ASC LIMIT 1", $coupon_id, 'ur_coupon_meta' ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- must read the uncached row for the compare-and-swap below.
+
+			if ( ! $row ) {
+				return false;
+			}
+
+			$meta = json_decode( $row->meta_value, true );
+			$meta = call_user_func( $callback, is_array( $meta ) ? $meta : array() );
+
+			if ( ! is_array( $meta ) ) {
+				return false;
+			}
+
+			$meta_value = wp_json_encode( $meta );
+
+			if ( $meta_value === $row->meta_value ) {
+				return true;
+			}
+
+			// Written raw, not via update_post_meta(), whose wp_unslash() would break the nested JSON strings in this meta.
+			$updated = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->postmeta} SET meta_value = %s WHERE meta_id = %d AND meta_value = %s", $meta_value, $row->meta_id, $row->meta_value ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- atomic conditional update; the meta cache is cleared right after.
+
+			if ( 1 === $updated ) {
+				wp_cache_delete( $coupon_id, 'post_meta' );
+
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'ur_change_coupon_usage' ) ) {
+	/**
+	 * Move a coupon's redemption counter by one step.
+	 *
+	 * @param string $coupon_code   Coupon code.
+	 * @param int    $delta         1 to count a use, -1 to give one back (never below 0).
+	 * @param bool   $enforce_limit Refuse the change when a capped coupon has no uses left.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_change_coupon_usage( $coupon_code, $delta, $enforce_limit = false ) {
+		$coupon_code = sanitize_text_field( $coupon_code );
+
+		if ( '' === $coupon_code ) {
+			return false;
+		}
+
+		$coupon_details = ur_get_coupon_details( $coupon_code );
+
+		if ( empty( $coupon_details['coupon_id'] ) ) {
+			return false;
+		}
+
+		return ur_update_coupon_meta(
+			$coupon_details['coupon_id'],
+			function ( $meta ) use ( $delta, $enforce_limit ) {
+				if ( empty( $meta ) || ( $enforce_limit && ! ur_coupon_has_remaining_uses( $meta ) ) ) {
+					return false;
+				}
+
+				$count                      = isset( $meta['coupon_usage_count'] ) ? absint( $meta['coupon_usage_count'] ) : 0;
+				$meta['coupon_usage_count'] = max( 0, $count + (int) $delta );
+
+				return $meta;
+			}
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_claim_coupon_usage' ) ) {
+	/**
+	 * Reserve one use of a coupon at checkout, refusing once a capped coupon is used up.
+	 *
+	 * The check and the increment happen in one compare-and-swap, so concurrent signups cannot
+	 * exceed the cap. Uncapped coupons are always counted. Give the use back with
+	 * ur_release_coupon_usage() if the checkout never completes.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when a use was claimed.
+	 * @since x.x.x
+	 */
+	function ur_claim_coupon_usage( $coupon_code ) {
+		$claimed = ur_change_coupon_usage( $coupon_code, 1, true );
+
+		if ( $claimed ) {
+			ur_coupon_claimed_this_request( $coupon_code, true );
+		}
+
+		return $claimed;
+	}
+}
+
+if ( ! function_exists( 'ur_release_coupon_usage' ) ) {
+	/**
+	 * Give back a use claimed by ur_claim_coupon_usage(), floored at 0.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_release_coupon_usage( $coupon_code ) {
+		ur_coupon_claimed_this_request( $coupon_code, false );
+
+		return ur_change_coupon_usage( $coupon_code, -1 );
+	}
+}
+
+if ( ! function_exists( 'ur_coupon_claimed_this_request' ) ) {
+	/**
+	 * Track coupons this request has claimed a use of.
+	 *
+	 * @param string    $coupon_code Coupon code.
+	 * @param bool|null $state       True to mark claimed, false to clear, null to only read.
+	 * @return bool Whether this request holds a claim on the coupon.
+	 * @since x.x.x
+	 */
+	function ur_coupon_claimed_this_request( $coupon_code, $state = null ) {
+		static $claimed = array();
+
+		$coupon_code = sanitize_text_field( (string) $coupon_code );
+
+		if ( true === $state ) {
+			$claimed[ $coupon_code ] = true;
+		} elseif ( false === $state ) {
+			unset( $claimed[ $coupon_code ] );
+		}
+
+		return isset( $claimed[ $coupon_code ] );
+	}
+}
+
+if ( ! function_exists( 'ur_increment_coupon_usage' ) ) {
+	/**
+	 * Bump a coupon's redemption counter without checking its cap.
+	 *
+	 * Checkout uses ur_claim_coupon_usage(); this stays for existing callers.
+	 *
+	 * @param string $coupon_code Coupon code.
+	 * @return bool True when the counter was updated.
+	 * @since x.x.x
+	 */
+	function ur_increment_coupon_usage( $coupon_code ) {
+		return ur_change_coupon_usage( $coupon_code, 1 );
 	}
 }
 
@@ -8291,7 +8750,7 @@ if ( ! function_exists( 'ur_email_send_failed_handler' ) ) {
 			$error_message = wp_kses_post(
 				sprintf(
 					__( 'Please check the `ur_mail_logs` log under <a target="_blank" href="%s">Status Log</a> section.', 'user-registration' ),
-					admin_url( 'admin.php?page=user-registration-status' )
+					admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' )
 				)
 			);
 		} else {
@@ -10632,6 +11091,9 @@ if ( ! function_exists( 'ur_sanitize_value_by_type' ) ) {
 			case 'tinymce':
 				$value = wpautop( $raw_value );
 				break;
+			case 'password':
+				$value = is_string( $raw_value ) ? trim( $raw_value ) : '';
+				break;
 
 			default:
 				$value = ur_clean( $raw_value );
@@ -10957,6 +11419,35 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 
 		$membership_field_handled = ( ! $membership_enabled ) || $default_form_has_membership || $membership_field_skipped;
 
+		$has_legacy_payment_fields     = function_exists( 'ur_has_forms_with_legacy_payment_fields' ) && ur_has_forms_with_legacy_payment_fields();
+		$legacy_payment_fields_handled = ! $has_legacy_payment_fields || ur_string_to_bool( get_option( 'user_registration_legacy_payment_fields_notice_dismissed', false ) );
+
+		// Single-form sites without multiple registration go straight to that form, same as the builder's own redirect; everyone else lands on the forms list.
+		$all_published_forms       = ur_get_all_user_registration_form();
+		$legacy_payment_fields_url = ( ! empty( $all_published_forms ) && count( $all_published_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) )
+			? admin_url( 'admin.php?page=add-new-registration&edit-registration=' . key( $all_published_forms ) )
+			: admin_url( 'admin.php?page=user-registration' );
+
+		$forms_list = array();
+		foreach ( (array) $all_published_forms as $form_id => $form_title ) {
+			$forms_list[] = array(
+				'id'    => (int) $form_id,
+				// The form list is already HTML-escaped and React escapes again, so decode it here.
+				'title' => wp_specialchars_decode( (string) $form_title, ENT_QUOTES ),
+			);
+		}
+
+		$unlinked_users_count = ur_get_unlinked_users_count();
+		// With no published form there is nothing to link to, so the step is not pending (the card needs a form to render).
+		$unlinked_users_handled = empty( $forms_list ) || ur_is_unlinked_users_handled( $unlinked_users_count );
+
+		// Validate default form: only use default_form_id if it exists in published forms, otherwise fall back to first published form.
+		$validated_default_form_id = 0;
+		if ( ! empty( $forms_list ) ) {
+			$form_ids                  = wp_list_pluck( $forms_list, 'id' );
+			$validated_default_form_id = in_array( (int) $default_form_id, $form_ids, true ) ? (int) $default_form_id : (int) $forms_list[0]['id'];
+		}
+
 		$site_assistant_data = array(
 			'users_can_register'                => ur_users_can_register(),
 			'has_default_form'                  => ! empty( $default_form_post ),
@@ -10970,9 +11461,142 @@ if ( ! function_exists( 'ur_get_site_assistant_data' ) ) {
 			'default_form_has_membership_field' => $default_form_has_membership,
 			'membership_field_handled'          => $membership_field_handled,
 			'has_membership_plans'              => $has_membership_plans,
+			'legacy_payment_fields_handled'     => $legacy_payment_fields_handled,
+			'legacy_payment_fields_url'         => $legacy_payment_fields_url,
+			'unlinked_users_count'              => $unlinked_users_count,
+			'unlinked_users_handled'            => $unlinked_users_handled,
+			'registration_forms'                => $forms_list,
+			'default_form_id'                   => $validated_default_form_id,
 		);
 
 		return apply_filters( 'ur_site_assistant_data', $site_assistant_data );
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_query_args' ) ) {
+	/**
+	 * Build get_users() arguments for users of the current site that have no registration form.
+	 *
+	 * The acting admin is left out on purpose, so a site with a single admin does not get a step for its own account.
+	 * get_users() only returns members of the current site on multisite, unlike a raw query on the shared users table.
+	 *
+	 * @param array $args Arguments that override the defaults, such as number or fields.
+	 * @return array Arguments for get_users() or WP_User_Query.
+	 */
+	function ur_get_unlinked_users_query_args( $args = array() ) {
+		return wp_parse_args(
+			$args,
+			array(
+				'fields'     => 'ID',
+				'exclude'    => array( get_current_user_id() ),
+				'orderby'    => 'ID',
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query
+					array(
+						'key'     => 'ur_form_id',
+						'compare' => 'NOT EXISTS',
+					),
+				),
+			)
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_count' ) ) {
+	/**
+	 * Get count of users without an associated registration form, excluding current user.
+	 * Memoized per request and cached via transient to prevent expensive admin queries.
+	 *
+	 * @return int Number of unlinked user accounts.
+	 */
+	function ur_get_unlinked_users_count() {
+		static $memoized_count = null;
+
+		if ( null !== $memoized_count ) {
+			return $memoized_count;
+		}
+
+		$current_user_id = get_current_user_id();
+		$transient_key   = 'ur_unlinked_users_count_' . $current_user_id;
+		$cached_count    = get_transient( $transient_key );
+
+		if ( false !== $cached_count ) {
+			$memoized_count = absint( $cached_count );
+			return $memoized_count;
+		}
+
+		$query = new WP_User_Query(
+			ur_get_unlinked_users_query_args(
+				array(
+					'number'      => 1,
+					'count_total' => true,
+				)
+			)
+		);
+
+		$memoized_count = absint( $query->get_total() );
+		set_transient( $transient_key, $memoized_count, 5 * MINUTE_IN_SECONDS );
+
+		return $memoized_count;
+	}
+}
+
+if ( ! function_exists( 'ur_clear_unlinked_users_count_cache' ) ) {
+	/**
+	 * Clear cached counts of users without a registration form, including the one behind the Profile Connect notice.
+	 *
+	 * @param int $user_id Optional user ID to clear cache for, defaults to current user.
+	 * @return void
+	 */
+	function ur_clear_unlinked_users_count_cache( $user_id = 0 ) {
+		$target_id = $user_id ? (int) $user_id : get_current_user_id();
+		delete_transient( 'ur_unlinked_users_count_' . $target_id );
+		delete_transient( 'urm_users_not_from_urm_forms' );
+	}
+}
+
+if ( ! function_exists( 'ur_get_unlinked_users_preview' ) ) {
+	/**
+	 * Get display names and avatars for a few users without an associated registration form, excluding current user.
+	 *
+	 * @param int $limit Maximum number of users to return.
+	 * @return array[] List of arrays with 'id', 'name' and 'avatar' keys.
+	 */
+	function ur_get_unlinked_users_preview( $limit = 3 ) {
+		$users = get_users(
+			ur_get_unlinked_users_query_args(
+				array(
+					'fields' => array( 'ID', 'display_name', 'user_login' ),
+					'number' => absint( $limit ),
+					'order'  => 'DESC',
+				)
+			)
+		);
+
+		$preview = array();
+		foreach ( $users as $user ) {
+			$preview[] = array(
+				'id'     => (int) $user->ID,
+				// WordPress stores display names HTML-escaped and React escapes again, so decode here.
+				'name'   => wp_specialchars_decode( '' !== trim( (string) $user->display_name ) ? (string) $user->display_name : (string) $user->user_login, ENT_QUOTES ),
+				'avatar' => (string) get_avatar_url( (int) $user->ID, array( 'size' => 64 ) ),
+			);
+		}
+
+		return $preview;
+	}
+}
+
+if ( ! function_exists( 'ur_is_unlinked_users_handled' ) ) {
+	/**
+	 * Check if the unlinked users step is done, meaning no unlinked users are left.
+	 *
+	 * @param int|null $unlinked_count Optional known count of unlinked users.
+	 * @return bool True if no unlinked users exist, false otherwise.
+	 */
+	function ur_is_unlinked_users_handled( $unlinked_count = null ) {
+		$count = null !== $unlinked_count ? (int) $unlinked_count : ur_get_unlinked_users_count();
+
+		return 0 === $count;
 	}
 }
 
@@ -11201,13 +11825,14 @@ if ( ! function_exists( 'ur_should_show_site_assistant_menu' ) ) {
 			! $site_assistant_data['users_can_register']
 			|| ! $site_assistant_data['has_default_form']
 			|| ! empty( $site_assistant_data['missing_pages'] )
+			|| ( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 )
 			|| ! $site_assistant_data['disabled_emails_handled']
 			|| ! $site_assistant_data['test_email_sent']
 			|| ! $site_assistant_data['spam_protection_handled']
 			|| ! $site_assistant_data['payment_setup_handled']
+			|| ! $site_assistant_data['legacy_payment_fields_handled']
 		);
 	}
-
 }
 
 if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
@@ -11215,7 +11840,7 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 	 * Check if site assistant menu should be shown.
 	 * Returns false if all options are handled and set.
 	 *
-	 * @return bool
+	 * @return int
 	 */
 	function ur_site_assistant_config_count() {
 		$site_assistant_data = ur_get_site_assistant_data();
@@ -11224,10 +11849,12 @@ if ( ! function_exists( 'ur_site_assistant_config_count' ) ) {
 			! $site_assistant_data['users_can_register'],
 			! $site_assistant_data['has_default_form'],
 			! empty( $site_assistant_data['missing_pages'] ),
+			( ! $site_assistant_data['unlinked_users_handled'] && (int) $site_assistant_data['unlinked_users_count'] > 0 ),
 			! $site_assistant_data['disabled_emails_handled'],
 			! $site_assistant_data['test_email_sent'],
 			! $site_assistant_data['spam_protection_handled'],
 			! $site_assistant_data['payment_setup_handled'],
+			! $site_assistant_data['legacy_payment_fields_handled'],
 		);
 
 		$count = count( array_filter( $checks ) );
@@ -11283,6 +11910,10 @@ if ( ! function_exists( 'urm_process_profile_fields' ) ) {
 				if ( false !== ( $key ) ) {
 					unset( $profile[ $key ] );
 				}
+			}
+			// Preserve fields omitted from a partial profile update.
+			if ( ! array_key_exists( $key, $single_field ) ) {
+				continue;
 			}
 			// Get Value.
 			switch ( $field['type'] ) {
@@ -11403,6 +12034,7 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 	function urm_update_user_profile_data( $user, $profile, $single_field, $form_id ) {
 
 		$user_data = array();
+		$meta_data = array();
 		/**
 		 * Filter to modify the email change confirmation.
 		 * Default vallue is 'true'.
@@ -11421,6 +12053,9 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 		$profile = apply_filters( 'user_registration_before_save_profile_details', $profile, $user_id, $form_id );
 
 		foreach ( $profile as $key => $field ) {
+			if ( ! array_key_exists( $key, $single_field ) ) {
+				continue;
+			}
 			$new_key = str_replace( 'user_registration_', '', $key );
 
 			if ( $is_email_change_confirmation && 'user_email' === $new_key ) {
@@ -11448,14 +12083,21 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 				$disabled = isset( $field['custom_attributes']['disabled'] ) ? $field['custom_attributes']['disabled'] : '';
 
 				if ( 'disabled' !== $disabled ) {
-					update_user_meta( $user_id, $update_key, $single_field[ $key ] );
+					$meta_data[ $update_key ] = in_array( $update_key, array( 'first_name', 'last_name', 'nickname' ), true ) ? sanitize_text_field( $single_field[ $key ] ) : $single_field[ $key ];
 				}
 			}
 		}
 
 		if ( count( $user_data ) > 0 ) {
 			$user_data['ID'] = $user_id;
-			wp_update_user( $user_data );
+			$result          = wp_update_user( $user_data );
+			if ( is_wp_error( $result ) ) {
+				wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+			}
+		}
+
+		foreach ( $meta_data as $meta_key => $meta_value ) {
+			update_user_meta( $user_id, $meta_key, $meta_value );
 		}
 
 		return array( $email_updated, $pending_email );
@@ -11712,6 +12354,62 @@ if ( ! function_exists( 'ur_has_membership_plans' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_get_payment_gateway_label' ) ) {
+	/**
+	 * Human-readable label for a payment gateway slug.
+	 *
+	 * Prefer this over ucfirst( $slug ): brands like PayPal need mid-word capitals.
+	 *
+	 * @param string $gateway Gateway slug (e.g. paypal, stripe, bank).
+	 * @return string Translated label, or a safe fallback.
+	 * @since x.x.x
+	 */
+	function ur_get_payment_gateway_label( $gateway ) {
+		// Callers may pass display-formatted slugs like 'paypal standard'; sanitize_key() would drop the space.
+		$gateway = strtolower( sanitize_key( str_replace( ' ', '_', trim( (string) $gateway ) ) ) );
+
+		if ( '' === $gateway ) {
+			return '';
+		}
+
+		$labels = array(
+			'paypal'          => __( 'PayPal', 'user-registration' ),
+			'paypal_standard' => __( 'PayPal Standard', 'user-registration' ),
+			'stripe'          => __( 'Stripe', 'user-registration' ),
+			'credit_card'     => __( 'Stripe (Credit Card)', 'user-registration' ),
+			'bank'            => __( 'Bank Transfer', 'user-registration' ),
+			'authorize'       => __( 'Authorize.Net', 'user-registration' ),
+			'mollie'          => __( 'Mollie', 'user-registration' ),
+			'manual'          => __( 'Manual', 'user-registration' ),
+			'free'            => __( 'Free', 'user-registration' ),
+		);
+
+		/**
+		 * Filter payment gateway display labels keyed by slug.
+		 *
+		 * @param array  $labels  Map of slug => label.
+		 * @param string $gateway Requested gateway slug.
+		 */
+		$labels = apply_filters( 'user_registration_payment_gateway_labels', $labels, $gateway );
+
+		if ( isset( $labels[ $gateway ] ) ) {
+			return $labels[ $gateway ];
+		}
+
+		$membership_gateways = get_option( 'ur_membership_payment_gateways', array() );
+		if ( is_array( $membership_gateways ) && isset( $membership_gateways[ $gateway ] ) ) {
+			return $membership_gateways[ $gateway ];
+		}
+
+		$payment_gateways = get_option( 'ur_payment_gateways', array() );
+		if ( is_array( $payment_gateways ) && isset( $payment_gateways[ $gateway ] ) ) {
+			return $payment_gateways[ $gateway ];
+		}
+
+		return ucfirst( str_replace( '_', ' ', $gateway ) );
+	}
+}
+
 if ( ! function_exists( 'ur_has_payment_entries' ) ) {
 	/**
 	 * Check whether the Payments page has at least one record to display.
@@ -11797,97 +12495,130 @@ if ( ! function_exists( 'ur_has_subscription_entries' ) ) {
 	}
 }
 
-if ( ! function_exists( 'ur_has_payment_enabled_form' ) ) {
+if ( ! function_exists( 'ur_forms_have_payment_field' ) ) {
 	/**
-	 * Check whether any published registration form collects a payment.
+	 * Whether any registration form in the given statuses uses one of the given payment fields.
 	 *
-	 * There is no per-form "payments enabled" flag; payment fields live inside the
-	 * form's post_content JSON, so this matches on the `"field_key":"..."` markers
-	 * the same way MembershipRepository::get_membership_forms() does.
+	 * Matches the `"field_key":"..."` markers in post_content the same way
+	 * MembershipRepository::get_membership_forms() does. A `range` field counts only
+	 * when its payment slider is on, which has to be confirmed in PHP.
 	 *
+	 * @param array $field_keys Payment field keys to look for.
+	 * @param array $statuses   Post statuses to scan.
 	 * @return bool
 	 * @since x.x.x
 	 */
-	function ur_has_payment_enabled_form() {
+	function ur_forms_have_payment_field( $field_keys, $statuses = array( 'publish' ) ) {
 		global $wpdb;
 
-		static $has_form = null;
-
-		if ( null !== $has_form ) {
-			return $has_form;
-		}
-
-		/**
-		 * Field keys that on their own make a registration form charge the user.
-		 *
-		 * Deliberately narrower than user_registration_payment_fields(): `total_field`
-		 * and `quantity_field` are payment fields but never trigger a gateway by
-		 * themselves. This list matches the gateway check in
-		 * UR_Pro_Payments_Frontend::payment_process_after_registration().
-		 *
-		 * @param array $field_keys Charging field keys.
-		 *
-		 * @since x.x.x
-		 */
-		$field_keys = apply_filters(
-			'user_registration_payments_menu_field_keys',
-			array( 'single_item', 'multiple_choice', 'subscription_plan' )
-		);
-
-		$conditions = array();
+		$status_clause = $wpdb->prepare( 'post_status IN (' . implode( ',', array_fill( 0, count( $statuses ), '%s' ) ) . ')', $statuses ); // phpcs:ignore WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Placeholders built from $statuses count.
+		$conditions    = array();
 
 		foreach ( (array) $field_keys as $field_key ) {
-			$pattern      = '%' . $wpdb->esc_like( '"field_key":"' . $field_key . '"' ) . '%';
-			$conditions[] = 'post_content LIKE ' . $wpdb->prepare( '%s', $pattern );
+			$conditions[] = $wpdb->prepare( 'post_content LIKE %s', '%' . $wpdb->esc_like( '"field_key":"' . $field_key . '"' ) . '%' );
 		}
 
 		if ( ! empty( $conditions ) ) {
-			$where_clause = implode( ' OR ', $conditions );
+			$found = $wpdb->get_var( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'user_registration' AND {$status_clause} AND (" . implode( ' OR ', $conditions ) . ') LIMIT 1' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery -- Every clause prepared above.
 
-			$fields_query = "SELECT ID FROM {$wpdb->posts}
-				WHERE post_type = 'user_registration'
-				AND post_status = 'publish'
-				AND ({$where_clause})
-				LIMIT 1";
-
-			$has_form = (bool) $wpdb->get_var( $fields_query ); // phpcs:ignore
-
-			if ( $has_form ) {
-				return $has_form;
+			if ( $found ) {
+				return true;
 			}
 		}
 
-		$has_form = false;
-
-		// A `range` field only charges when its payment slider is enabled. The stored
-		// value is boolean-ish, so candidate forms have to be confirmed in PHP.
 		if ( ! function_exists( 'ur_get_form_fields' ) ) {
-			return $has_form;
+			return false;
 		}
 
-		$candidates = $wpdb->get_col(
-			$wpdb->prepare(
-				"SELECT ID FROM {$wpdb->posts}
-				WHERE post_type = 'user_registration'
-				AND post_status = 'publish'
-				AND post_content LIKE %s",
-				'%' . $wpdb->esc_like( 'enable_payment_slider' ) . '%'
-			)
-		);
+		$candidates = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'user_registration' AND {$status_clause} AND post_content LIKE %s", '%' . $wpdb->esc_like( 'enable_payment_slider' ) . '%' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery -- Status clause prepared above.
 
 		foreach ( $candidates as $form_id ) {
 			foreach ( (array) ur_get_form_fields( $form_id ) as $field ) {
 				if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
 					&& 'range' === $field->field_key
 					&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
-					$has_form = true;
-
-					return $has_form;
+					return true;
 				}
 			}
 		}
 
+		return false;
+	}
+}
+
+if ( ! function_exists( 'ur_get_frozen_payment_field_keys' ) ) {
+	/**
+	 * Field keys of the frozen payment fields.
+	 *
+	 * The charging keys plus `total_field` and `quantity_field`, which never trigger a
+	 * gateway alone but are still part of the frozen set.
+	 *
+	 * @return array
+	 * @since x.x.x
+	 */
+	function ur_get_frozen_payment_field_keys() {
+		return array_merge(
+			(array) apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) ),
+			array( 'total_field', 'quantity_field' )
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_has_payment_enabled_form' ) ) {
+	/**
+	 * Check whether any published registration form collects a payment.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_has_payment_enabled_form() {
+		static $has_form = null;
+
+		if ( null === $has_form ) {
+			/**
+			 * Field keys that on their own make a registration form charge the user.
+			 *
+			 * Deliberately narrower than user_registration_payment_fields(): `total_field`
+			 * and `quantity_field` are payment fields but never trigger a gateway by
+			 * themselves. This list matches the gateway check in
+			 * UR_Pro_Payments_Frontend::payment_process_after_registration().
+			 *
+			 * @param array $field_keys Charging field keys.
+			 *
+			 * @since x.x.x
+			 */
+			$field_keys = apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) );
+			$has_form   = ur_forms_have_payment_field( $field_keys );
+		}
+
 		return $has_form;
+	}
+}
+
+if ( ! function_exists( 'ur_site_has_any_frozen_payment_field' ) ) {
+	/**
+	 * Whether any form, published or not, uses a frozen payment field.
+	 *
+	 * Used only to snapshot the initial value of the legacy flag (fresh install and
+	 * version migration). Drafts and private forms count, since they can be published later.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_site_has_any_frozen_payment_field() {
+		return ur_forms_have_payment_field( ur_get_frozen_payment_field_keys(), array( 'publish', 'future', 'draft', 'pending', 'private' ) );
+	}
+}
+
+if ( ! function_exists( 'ur_has_forms_with_legacy_payment_fields' ) ) {
+	/**
+	 * Whether a published form still uses a payment field the builder no longer offers.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_has_forms_with_legacy_payment_fields() {
+		return ur_legacy_payment_fields_enabled() && ur_forms_have_payment_field( ur_get_frozen_payment_field_keys() );
 	}
 }
 
@@ -11917,6 +12648,243 @@ if ( ! function_exists( 'ur_should_show_payments_menu' ) ) {
 		 * @since x.x.x
 		 */
 		return (bool) apply_filters( 'user_registration_show_payments_menu', $show );
+	}
+}
+
+if ( ! function_exists( 'ur_legacy_payment_fields_enabled' ) ) {
+	/**
+	 * Whether the legacy form payment fields stay available on this site.
+	 *
+	 * Payment fields are frozen: sites that already charge through them keep them,
+	 * new sites take payments through the membership field only. The verdict is
+	 * recorded once by UR_Install::install(); the live check is only a fallback for
+	 * the request that runs before the option lands.
+	 *
+	 * Deliberately does not consult ur_has_payment_entries(), which also counts
+	 * membership orders and would mark a membership-only site as legacy.
+	 *
+	 * Pass $form_id to check one form instead of the site: a legacy site's brand
+	 * new form is frozen exactly like a new site's, and only a form that already
+	 * carries a frozen field keeps it. $form_id = 0 (a form with no ID yet) is
+	 * always frozen; omit the argument entirely for the old site-wide check.
+	 *
+	 * @param int|null $form_id Optional. Check this form instead of the site.
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_legacy_payment_fields_enabled( $form_id = null ) {
+		if ( null !== $form_id ) {
+			$is_legacy = $form_id ? ur_form_has_legacy_payment_fields( $form_id ) : false;
+		} else {
+			$is_legacy = get_option( 'urm_is_legacy_payment_fields_user', null );
+
+			if ( null === $is_legacy ) {
+				$is_legacy = ur_has_payment_enabled_form();
+			}
+		}
+
+		/**
+		 * Filters whether the legacy form payment fields stay available, site-wide or for one form.
+		 *
+		 * @param bool $is_legacy Whether payment fields remain available.
+		 *
+		 * @since x.x.x
+		 */
+		return (bool) apply_filters( 'user_registration_legacy_payment_fields_enabled', (bool) $is_legacy );
+	}
+}
+
+if ( ! function_exists( 'ur_get_legacy_payment_form_template_slugs' ) ) {
+	/**
+	 * Remote form-template slugs that still ship legacy payment fields.
+	 *
+	 * These stay off the Add New library for every site — including legacy payment
+	 * sites. Existing forms that already carry payment fields keep working; new
+	 * forms cannot pick up those fields through a CDN template.
+	 *
+	 * @return string[]
+	 * @since x.x.x
+	 */
+	function ur_get_legacy_payment_form_template_slugs() {
+		/**
+		 * Filters which remote form templates are treated as legacy payment templates.
+		 *
+		 * @param string[] $slugs Template slugs.
+		 *
+		 * @since x.x.x
+		 */
+		return (array) apply_filters(
+			'user_registration_legacy_payment_form_template_slugs',
+			array(
+				'pre-order-form',
+				'e-learning-registration-form',
+				'course-registration-form',
+				'donation-form',
+				'paypal-event-registration-form',
+				'conference-registration-form',
+				'car-race-registration-form',
+			)
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_exclude_legacy_payment_form_templates' ) ) {
+	/**
+	 * Strip legacy payment templates from the Add New library.
+	 *
+	 * Always removed: a new form is never a legacy form, even on a site that still
+	 * has other forms with frozen payment fields.
+	 *
+	 * @param array $sections Template section data from templates1.json.
+	 * @return array
+	 * @since x.x.x
+	 */
+	function ur_exclude_legacy_payment_form_templates( $sections ) {
+		if ( empty( $sections ) || ! is_array( $sections ) ) {
+			return $sections;
+		}
+
+		$slugs = ur_get_legacy_payment_form_template_slugs();
+
+		foreach ( $sections as $section ) {
+			if ( empty( $section->templates ) || ! is_array( $section->templates ) ) {
+				continue;
+			}
+
+			$section->templates = array_values(
+				array_filter(
+					$section->templates,
+					static function ( $template ) use ( $slugs ) {
+						return empty( $template->slug ) || ! in_array( $template->slug, $slugs, true );
+					}
+				)
+			);
+		}
+
+		return $sections;
+	}
+}
+
+if ( ! function_exists( 'ur_legacy_ecommerce_addons_enabled' ) ) {
+	/**
+	 * Whether the standalone PayPal Payment / Stripe addon tiles stay visible on the Addons screen.
+	 *
+	 * Stripe now ships built into core and PayPal's form-level path is frozen along with the
+	 * rest of legacy payment fields, so a new site has no use for either tile. A site that
+	 * already had one of them enabled keeps seeing both, unaffected. The verdict is recorded
+	 * once by UR_Install::install(), same as the other legacy flags.
+	 *
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_legacy_ecommerce_addons_enabled() {
+		return (bool) apply_filters(
+			'user_registration_legacy_ecommerce_addons_enabled',
+			ur_string_to_bool( get_option( 'urm_is_legacy_ecommerce_addons_user', false ) )
+		);
+	}
+}
+
+if ( ! function_exists( 'ur_form_has_legacy_payment_fields' ) ) {
+	/**
+	 * Whether one specific form already carries a frozen payment field.
+	 *
+	 * @param int $form_id Form ID.
+	 * @return bool
+	 * @since x.x.x
+	 */
+	function ur_form_has_legacy_payment_fields( $form_id ) {
+		$form_id = absint( $form_id );
+
+		if ( ! $form_id ) {
+			return false;
+		}
+
+		static $cache = array();
+
+		if ( isset( $cache[ $form_id ] ) ) {
+			return $cache[ $form_id ];
+		}
+
+		$post         = get_post( $form_id );
+		$post_content = $post ? (string) $post->post_content : '';
+		$has_field    = false;
+
+		// Same charging keys ur_has_payment_enabled_form() filters on, plus total/quantity - fields that never
+		// trigger a gateway on their own, but still need to keep working on a form that already has them.
+		$field_keys = array_merge(
+			apply_filters( 'user_registration_payments_menu_field_keys', array( 'single_item', 'multiple_choice', 'subscription_plan' ) ),
+			array( 'total_field', 'quantity_field' )
+		);
+
+		foreach ( $field_keys as $field_key ) {
+			if ( false !== strpos( $post_content, '"field_key":"' . $field_key . '"' ) ) {
+				$has_field = true;
+				break;
+			}
+		}
+
+		if ( ! $has_field && false !== strpos( $post_content, 'enable_payment_slider' ) && function_exists( 'ur_get_form_fields' ) ) {
+			foreach ( (array) ur_get_form_fields( $form_id ) as $field ) {
+				if ( isset( $field->field_key, $field->advance_setting->enable_payment_slider )
+					&& 'range' === $field->field_key
+					&& ur_string_to_bool( $field->advance_setting->enable_payment_slider ) ) {
+					$has_field = true;
+					break;
+				}
+			}
+		}
+
+		$cache[ $form_id ] = $has_field;
+
+		return $has_field;
+	}
+}
+
+if ( ! function_exists( 'ur_get_synced_field_value' ) ) {
+	/**
+	 * Resolve the value a member submitted for one or more mapped form fields.
+	 *
+	 * Shared by every gateway's field sync (Stripe, Authorize.Net, Mollie), which each live in their
+	 * own plugin, so this is the one place the resolution runs.
+	 *
+	 * @param int          $member_id Member (user) ID.
+	 * @param string|array $field     Mapped field name, or several names whose values are space-joined.
+	 * @return string The resolved value, or an empty string when the member or the value is missing.
+	 * @since 5.3
+	 */
+	function ur_get_synced_field_value( $member_id, $field ) {
+		$user = get_userdata( $member_id );
+
+		if ( ! $user ) {
+			return '';
+		}
+
+		$parts = array();
+
+		foreach ( (array) $field as $name ) {
+			$name = sanitize_text_field( $name );
+
+			if ( '' === $name ) {
+				continue;
+			}
+
+			$key   = ur_get_field_name_with_prefix_usermeta( $name );
+			$value = isset( $user->$key ) ? $user->$key : '';
+
+			// Checkbox and multi-select fields store an array, so join it instead of dropping the value.
+			if ( is_array( $value ) ) {
+				$value = implode( ', ', array_map( 'strval', array_filter( $value, 'is_scalar' ) ) );
+			}
+
+			if ( ! is_scalar( $value ) || '' === (string) $value ) {
+				continue;
+			}
+
+			$parts[] = (string) $value;
+		}
+
+		return trim( implode( ' ', $parts ) );
 	}
 }
 
@@ -12878,5 +13846,32 @@ if ( ! function_exists( 'ur_maybe_flush_rewrite_rules' ) ) {
 				return;
 			}
 		}
+	}
+}
+
+if ( ! function_exists( 'ur_get_valid_payment_invoices' ) ) {
+	/**
+	 * Get the invoices out of a member's stored invoice list.
+	 *
+	 * Renewals once saved the list nested inside another list, so anything that is not an invoice is skipped
+	 * instead of being read as a payment with no amount.
+	 *
+	 * @param mixed $meta_value    Value of the `ur_payment_invoices` user meta.
+	 * @param bool  $preserve_keys Keep each invoice's position in the stored list, for links that point at it.
+	 * @return array[] Invoices.
+	 */
+	function ur_get_valid_payment_invoices( $meta_value, $preserve_keys = false ) {
+		if ( ! is_array( $meta_value ) ) {
+			return array();
+		}
+
+		$invoices = array_filter(
+			$meta_value,
+			function ( $invoice ) {
+				return is_array( $invoice ) && ( isset( $invoice['invoice_date'] ) || isset( $invoice['invoice_no'] ) );
+			}
+		);
+
+		return $preserve_keys ? $invoices : array_values( $invoices );
 	}
 }

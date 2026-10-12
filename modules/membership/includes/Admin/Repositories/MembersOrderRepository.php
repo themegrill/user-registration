@@ -64,6 +64,8 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 	}
 
 	public function delete_member_order( $member_id, $delete_all = true ) {
+		( new OrdersRepository() )->release_member_coupon_claims( $member_id, ! $delete_all );
+
 		if ( $delete_all ) {
 			// Delete all orders for the member
 			$deleted = $this->wpdb()->query(

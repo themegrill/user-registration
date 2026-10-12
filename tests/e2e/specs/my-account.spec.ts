@@ -90,6 +90,27 @@ test.describe("my account profile fields @demo", () => {
 });
 
 test.describe("my account @fresh", () => {
+  test("bare My Account URL highlights the tab whose content it shows @fresh @my-account", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+    const url = await registrationPageFor(page, await firstFormId(page));
+
+    const visitor = await newVisitor(browser);
+    const user = await visitor.newPage();
+    const account = await registerOn(user, url);
+    await loginToMyAccount(user, account.username, account.password);
+
+    // A new install hides Dashboard and renders Profile Details at the bare
+    // URL, so Profile Details is the tab that must be active — not none.
+    await user.goto("/my-account/", { waitUntil: "domcontentloaded" });
+    const active = user.locator(".user-registration-MyAccount-navigation li.is-active");
+    await expect(active).toHaveCount(1);
+    await expect(active).toHaveClass(/user-registration-MyAccount-navigation-link--edit-profile/);
+
+    await deleteUserByEmail(page, account.email);
+    await visitor.close();
+  });
+
   test("change password rejects reusing the current password @fresh @my-account", async ({ page, browser }) => {
     await loginAsAdmin(page);
     await ensureFirstRun(page);
@@ -146,6 +167,70 @@ test.describe("my account @fresh", () => {
 
     await deleteUserByEmail(page, account.email);
     await visitor.close();
+  });
+
+  /**
+   * @area    my-account
+   * @tier    fresh
+   * @guards  themegrill/user-registration-pro#1648
+   * @source  write-spec 2026-10-02
+   * @why     The profile picture JS reveals a `.profile-pic-remove` button after an
+   *          upload, but no template rendered one, so a wrong pick could not be
+   *          undone before saving. Guards that the control exists and is revealed.
+   *          Clicking Remove must restore the default avatar, empty the hidden URL and
+   *          bring the edit button back. Those behaviours live in my-account.js, so
+   *          this suite must serve a my-account.min.js built from this source. The
+   *          spinner and disabled state are not asserted.
+   */
+  test("profile picture upload reveals a Remove control after an image is chosen @fresh @my-account", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+    const url = await registrationPageFor(page, await firstFormId(page));
+
+    const visitor = await newVisitor(browser);
+    const user = await visitor.newPage();
+    const account = await registerOn(user, url);
+    await loginToMyAccount(user, account.username, account.password);
+
+    await user.goto("/my-account/edit-profile/?action=edit", { waitUntil: "domcontentloaded" });
+    const remove = user.locator(".profile-pic-remove");
+    const edit = user.locator(".user_registration_profile_picture_upload");
+    await expect(edit).toBeVisible();
+    await expect(remove).toHaveCount(1);
+    await expect(remove).toBeHidden();
+
+    await user.setInputFiles("#ur-profile-pic", {
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+
+    await expect(remove).toBeVisible({ timeout: 20_000 });
+    await expect(edit).toBeHidden();
+
+    await remove.click();
+    await expect(remove).toBeHidden();
+    await expect(edit).toBeVisible();
+    await expect(user.locator("#profile_pic_url")).toHaveValue("");
+    const defaultImage = await user.locator('input[name="profile-default-image"]').inputValue();
+    await expect(user.locator("img.profile-preview")).toHaveAttribute("src", defaultImage);
+
+    await deleteUserByEmail(page, account.email);
+    await visitor.close();
+  });
+
+  // themegrill/user-registration-pro#1720 — the "setting has moved" notice is for upgraders only.
+  test("a fresh install does not show the My Account page setting moved notice @fresh @my-account", async ({ page }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+
+    await page.goto("/wp-admin/admin.php?page=user-registration-settings&tab=my_account");
+    // Without this the absence below would also pass on a page that never rendered.
+    await expect(page.locator(".user-registration-card__title", { hasText: "General" }).first()).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("My Account page setting has moved");
   });
 });
 

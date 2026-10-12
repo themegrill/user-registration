@@ -82,13 +82,11 @@ class UR_Frontend {
 			return $profile;
 		}
 
-		if ( ! ur_option_checked( 'user_registration_ajax_form_submission_on_edit_profile', false ) ) {
-			if ( isset( $_POST['profile_pic_url'] ) || isset( $_POST['profile-pic-url'] ) ) {
-				$value = isset( $_POST['profile_pic_url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile_pic_url'] ) ) : ( isset( $_POST['profile-pic-url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile-pic-url'] ) ) : '' );
-				if ( ! is_array( $value ) && ! ur_is_valid_url( $value ) ) {
-					$valid_form_data['profile_pic_url']        = new stdClass();
-					$valid_form_data['profile_pic_url']->value = $value;
-				}
+		if ( isset( $_POST['profile_pic_url'] ) || isset( $_POST['profile-pic-url'] ) ) {
+			$value = isset( $_POST['profile_pic_url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile_pic_url'] ) ) : ( isset( $_POST['profile-pic-url'] ) ? sanitize_text_field( wp_unslash( $_POST['profile-pic-url'] ) ) : '' );
+			if ( ! is_array( $value ) && ! ur_is_valid_url( $value ) ) {
+				$valid_form_data['profile_pic_url']        = new stdClass();
+				$valid_form_data['profile_pic_url']->value = $value;
 			}
 		} elseif ( isset( $_POST['form_data'] ) ) {
 				$form_data = json_decode( wp_unslash( $_POST['form_data'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
@@ -111,17 +109,20 @@ class UR_Frontend {
 				(array) json_decode( sanitize_text_field( wp_unslash( $_POST['ur_removed_profile_pic'] ) ) ) :
 				array();
 
-			if ( ! empty( $previous_attachment_id ) && ! empty( $removed_attachment_id ) && ! empty( $previous_attachment_id[0] ) ) {
-				if ( in_array( $previous_attachment_id[0], $removed_attachment_id ) ) {
-					// Verify the attachment belongs to this user before deleting.
-					if ( (int) get_post_field( 'post_author', $previous_attachment_id[0] ) !== (int) $user_id ) {
-						return $profile;
-					}
-					unlink( get_attached_file( $previous_attachment_id[0] ) );
-					wp_delete_attachment( $previous_attachment_id[0], true );
+			$remove_previous_attachment = ! empty( $previous_attachment_id ) && ! empty( $removed_attachment_id ) && ! empty( $previous_attachment_id[0] ) && in_array( $previous_attachment_id[0], $removed_attachment_id );
+
+			if ( $remove_previous_attachment ) {
+				// Verify the attachment belongs to this user before deleting.
+				if ( (int) get_post_field( 'post_author', $previous_attachment_id[0] ) !== (int) $user_id ) {
+					return $profile;
 				}
 			}
-			ur_upload_profile_pic( $valid_form_data, $user_id );
+
+			// Only delete the previous picture once the new one is confirmed saved, so a failed upload never leaves the meta pointing at a deleted file.
+			if ( ur_upload_profile_pic( $valid_form_data, $user_id ) && $remove_previous_attachment ) {
+				unlink( get_attached_file( $previous_attachment_id[0] ) );
+				wp_delete_attachment( $previous_attachment_id[0], true );
+			}
 		}
 		if ( isset( $profile['user_registration_profile_pic_url'] ) ) {
 			unset( $profile['user_registration_profile_pic_url'] );
@@ -228,8 +229,16 @@ class UR_Frontend {
 				ur_get_logger()->info( sprintf( 'Invalid page ID %s set for after login redirection.', $page_id ), array( 'source' => 'user-registration' ) );
 			}
 		} elseif ( 'previous-page' === $redirect_option ) {
-			if ( wp_get_referer() ) {
-				$redirect = wp_get_referer();
+			$referer = ! empty( $_REQUEST['previous_page'] ) ? esc_url_raw( wp_unslash( $_REQUEST['previous_page'] ) ) : wp_get_referer();
+			$referer = $referer ? wp_validate_redirect( $referer, '' ) : '';
+
+			if ( $referer ) {
+				$login_page_id = absint( get_option( 'user_registration_login_page_id' ) );
+				if ( $login_page_id && $login_page_id === url_to_postid( $referer ) ) {
+					$redirect = ur_get_my_account_url();
+				} else {
+					$redirect = $referer;
+				}
 			}
 		}
 		return apply_filters( 'user_registration_login_redirect_url', $redirect, $user, $redirect_option );
@@ -544,7 +553,7 @@ class UR_Frontend {
 		$meta_value = get_user_meta( $user_id, 'ur_payment_invoices', true );
 		if ( 'membership' !== $user_source ) {
 			if ( ! empty( $meta_value ) && is_array( $meta_value ) ) {
-				foreach ( $meta_value as $values ) {
+				foreach ( ur_get_valid_payment_invoices( $meta_value ) as $values ) {
 					$total_items[] = array(
 						'user_id'        => $user_id,
 						'transaction_id' => $values['invoice_no'] ?? '',
@@ -836,12 +845,22 @@ class UR_Frontend {
 				'type'   => 'subscription',
 				'status' => 'active' === $ur_payment_subscription_status,
 			);
-			$payment_details['membership']['status']             = $ur_payment_subscription_status;
-			$payment_details['membership']['expiry_date']        = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
-			$payment_details['subscription_data']['expiry_date'] = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
+			$payment_details['membership']['status'] = $ur_payment_subscription_status;
+
+			$subscription_expiry = get_user_meta( $user_id, 'ur_payment_subscription_expiry', true );
+			$next_billing_date   = get_user_meta( $user_id, 'ur_payment_next_billing_date', true );
+			$is_renewing         = 'active' === $ur_payment_subscription_status && empty( $payment_details['membership']['cancel_sub'] );
+
+			// The period end is only the next billing date while the subscription still renews.
+			if ( $is_renewing && empty( $next_billing_date ) && ! empty( $subscription_expiry ) ) {
+				$next_billing_date = $subscription_expiry;
+			}
+
+			$payment_details['membership']['expiry_date']        = $subscription_expiry;
+			$payment_details['subscription_data']['expiry_date'] = $subscription_expiry;
 			$payment_details['membership']['start_date']         = $user->user_registered;
 			$payment_details['subscription_data']['start_date']  = $user->user_registered;
-			$payment_details['membership']['next_billing_date']  = get_user_meta( $user_id, 'ur_payment_next_billing_date', true );
+			$payment_details['membership']['next_billing_date']  = $next_billing_date;
 
 			if ( 'paypal_standard' === $payment_method ) {
 				$payment_details['membership']['billing_amount'] = get_user_meta( $user_id, 'ur_payment_total_amount', true );

@@ -282,7 +282,7 @@ class UR_Email_Confirmation {
 						$toast_content         = '<div class="user-registration-membership-notice__container">
 									<div class="ur-toaster user-registration-membership-notice__red">
 										<span class="user-registration-membership-notice__message"></span>
-										<span class="user-registration-membership__close_notice">&times;</span>
+										<button type="button" class="user-registration-membership__close_notice" aria-label="' . esc_attr__( 'Dismiss', 'user-registration' ) . '">&times;</button>
 									</div>
 								</div>';
 

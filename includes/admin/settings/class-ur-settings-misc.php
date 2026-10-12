@@ -89,7 +89,7 @@ if ( ! class_exists( 'UR_Settings_Misc' ) ) :
 								),
 								array(
 									'title'   => __( 'Allow Usage Tracking', 'user-registration' ),
-									'desc'    => __( 'Help us improve the plugin\'s features by sharing <a href="https://docs.wpuserregistration.com/docs/miscellaneous-settings/#1-toc-title" rel="noreferrer noopener" target="_blank">non-sensitive plugin data</a> with us.', 'user-registration' ),
+									'desc'    => __( 'Help us improve the plugin\'s features by sharing <a href="https://docs.wpuserregistration.com/global-settings/advanced-settings/#allow-usage-tracking" rel="noreferrer noopener" target="_blank">non-sensitive plugin data</a> with us.', 'user-registration' ),
 									'id'      => 'user_registration_allow_usage_tracking',
 									'type'    => 'toggle',
 									'css'     => '',

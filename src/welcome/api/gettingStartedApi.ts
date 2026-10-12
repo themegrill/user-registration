@@ -66,24 +66,16 @@ export const apiPost = async <T = any>(
 };
 
 export const mapSetupToApiType = (type: MembershipSetupType): string => {
-	switch (type) {
-		case "paid":
-			return "paid_membership";
-		case "free":
-			return "free_membership";
-		default:
-			return "normal";
-	}
+	return type === "membership" ? "paid_membership" : "normal";
 };
 
 export const mapApiToSetupType = (apiType: string): MembershipSetupType => {
 	switch (apiType) {
 		case "paid_membership":
-			return "paid";
 		case "free_membership":
-			return "free";
+			return "membership";
 		default:
-			return "other";
+			return "registration";
 	}
 };
 

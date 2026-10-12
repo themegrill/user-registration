@@ -1,3 +1,7 @@
+= 5.3.0    - 08/10/2026 =
+* Fix - Undefined array key warning on subscription cancel with no order.
+
+
 = 5.2.8    - 10/09/2026 =
 * Fix      - Stop retrying deleted Stripe subscriptions.
 * Fix      - Show specific error for existing email/username.

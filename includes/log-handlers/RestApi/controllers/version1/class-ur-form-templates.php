@@ -176,7 +176,7 @@ class UR_Form_Templates {
 		$form_id = UR()->form->create( $title, $slug );
 
 		// Check if form creation was successful.
-		if ( $form_id ) {
+		if ( $form_id && ! is_wp_error( $form_id ) ) {
 			$data = array(
 				'id'       => $form_id,
 				'redirect' => add_query_arg(

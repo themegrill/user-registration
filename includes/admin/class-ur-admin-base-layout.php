@@ -186,8 +186,12 @@ class UR_Base_Layout {
 
 	/**
 	 * No items found text.
+	 *
+	 * @param string $type                       Item type label, e.g. "Memberships".
+	 * @param string $secondary_message_override Optional. Overrides the generic secondary
+	 *                                            message (only when not showing search results).
 	 */
-	public static function no_items( $type ) {
+	public static function no_items( $type, $secondary_message_override = '' ) {
 		$image_url    = esc_url( plugin_dir_url( UR_PLUGIN_FILE ) . 'assets/images/empty-table.png' );
 		$search_value = isset( $_GET['s'] ) ? sanitize_text_field( wp_unslash( $_GET['s'] ) ) : '';
 		$is_searching = '' !== trim( $search_value );
@@ -206,7 +210,9 @@ class UR_Base_Layout {
 				esc_html( $type )
 			);
 
-			if ( 'Memberships' === $type ) {
+			if ( '' !== $secondary_message_override ) {
+				$secondary_message = $secondary_message_override;
+			} elseif ( 'Memberships' === $type ) {
 				$secondary_message = sprintf(
 				/* translators: %s: type */
 					__( 'Need help setting up your %s?', 'user-registration' ),

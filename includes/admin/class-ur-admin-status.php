@@ -16,44 +16,114 @@ if ( ! defined( 'ABSPATH' ) ) {
 class UR_Admin_Status {
 
 	/**
-	 * Handles output of the reports page in admin.
-	 */
-	public static function output() {
-		include_once __DIR__ . '/views/html-admin-page-status.php';
-	}
-
-
-	/**
-	 * Show the logs page.
-	 */
-	public static function status_logs() {
-		self::status_logs_file();
-	}
-
-
-	/**
 	 * Show the log page contents for file log handler.
 	 */
 	public static function status_logs_file() {
+		include_once __DIR__ . '/class-ur-log-list-table.php';
+
+		$deleting = false;
 
 		if ( ! empty( $_REQUEST['handle'] ) ) {
 			self::remove_log();
+			$deleting = true;
 		}
 		if ( ! empty( $_REQUEST['handle_all'] ) ) {
 			self::remove_all_logs();
+			$deleting = true;
+		}
+		if ( 'delete' === self::get_bulk_action() && ! empty( $_REQUEST['sources'] ) ) {
+			self::remove_selected_logs();
+			$deleting = true;
 		}
 
-		$logs = self::scan_log_files();
+		// Files only change on a delete; otherwise reuse this request's scan.
+		$sources = UR_Log_List_Table::scan_sources( $deleting );
 
-		if ( ! empty( $_REQUEST['log_file'] ) && isset( $logs[ sanitize_title( wp_unslash( $_REQUEST['log_file'] ) ) ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			$viewed_log = $logs[ sanitize_title( wp_unslash( $_REQUEST['log_file'] ) ) ]; // phpcs:ignore WordPress.Security.NonceVerification
-		} elseif ( ! empty( $logs ) ) {
-			$viewed_log = current( $logs );
+		$viewed_handle = '';
+		$viewed_file   = '';
+
+		$requested_handle = isset( $_REQUEST['log'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['log'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+		$requested_file   = isset( $_REQUEST['log_file'] ) ? sanitize_title( wp_unslash( $_REQUEST['log_file'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
+
+		foreach ( $sources as $source_handle => $source ) {
+			foreach ( $source['files'] as $file ) {
+				if ( '' !== $requested_file && sanitize_title( $file['filename'] ) === $requested_file ) {
+					$viewed_handle = $source_handle;
+					$viewed_file   = $file['filename'];
+					break 2;
+				}
+			}
 		}
 
-		$handle = ! empty( $viewed_log ) ? self::get_log_file_handle( $viewed_log ) : '';
+		if ( '' === $viewed_handle && '' !== $requested_handle && isset( $sources[ $requested_handle ] ) ) {
+			$viewed_handle = $requested_handle;
+		}
+
+		if ( '' === $viewed_handle && 1 === count( $sources ) ) {
+			$viewed_handle = (string) key( $sources );
+		}
+
+		if ( '' !== $viewed_handle && '' === $viewed_file ) {
+			$viewed_file = $sources[ $viewed_handle ]['files'][0]['filename'];
+		}
 
 		include_once 'views/html-admin-page-status-logs.php';
+	}
+
+	/**
+	 * Current bulk action from the list table's top or bottom selector.
+	 *
+	 * @return string Action slug, or '' when none is chosen.
+	 */
+	public static function get_bulk_action() {
+		foreach ( array( 'action', 'action2' ) as $key ) {
+			if ( isset( $_REQUEST[ $key ] ) && '-1' !== $_REQUEST[ $key ] && '' !== $_REQUEST[ $key ] ) { // phpcs:ignore WordPress.Security.NonceVerification
+				return sanitize_key( wp_unslash( $_REQUEST[ $key ] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Delete every file (current and rotated) of the given log sources.
+	 *
+	 * Only handles that exist on disk are acted on, and each file is removed
+	 * through the file handler's own realpath-guarded remove().
+	 *
+	 * @param string[] $handles Source handles.
+	 */
+	public static function delete_sources( $handles ) {
+		$sources     = UR_Log_List_Table::scan_sources();
+		$log_handler = new UR_Log_Handler_File();
+
+		foreach ( $handles as $handle ) {
+			if ( ! isset( $sources[ $handle ] ) ) {
+				continue;
+			}
+
+			foreach ( $sources[ $handle ]['files'] as $file ) {
+				$log_handler->remove( sanitize_title( $file['filename'] ) );
+			}
+		}
+	}
+
+	/**
+	 * Bulk-delete the log sources ticked in the list table.
+	 */
+	public static function remove_selected_logs() {
+		if ( ! current_user_can( 'manage_user_registration' ) || empty( $_REQUEST['ur_logs_nonce'] ) || ! wp_verify_nonce( sanitize_key( wp_unslash( $_REQUEST['ur_logs_nonce'] ) ), 'bulk-logs' ) ) {
+			wp_die( esc_html__( 'Action failed. Please refresh the page and retry.', 'user-registration' ) );
+		}
+
+		$handles = empty( $_REQUEST['sources'] ) ? array() : array_map( 'sanitize_text_field', (array) wp_unslash( $_REQUEST['sources'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+		self::delete_sources( $handles );
+		?>
+		<script>
+		window.location.href = <?php echo wp_json_encode( esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ) ); ?>;
+		</script>
+		<?php
 	}
 
 
@@ -167,17 +237,24 @@ class UR_Admin_Status {
 	 */
 	public static function remove_log() {
 
-		if ( empty( $_REQUEST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( wp_unslash( $_REQUEST['_wpnonce'] ) ), 'remove_log' ) ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! current_user_can( 'manage_user_registration' ) || empty( $_REQUEST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( wp_unslash( $_REQUEST['_wpnonce'] ) ), 'remove_log' ) ) { // phpcs:ignore WordPress.Security.NonceVerification
 			wp_die( esc_html__( 'Action failed. Please refresh the page and retry.', 'user-registration' ) );
 		}
 
 		if ( ! empty( $_REQUEST['handle'] ) ) {
-			$log_handler = new UR_Log_Handler_File();
-			$log_handler->remove( sanitize_text_field( wp_unslash( $_REQUEST['handle'] ) ) );
+			$handle  = sanitize_text_field( wp_unslash( $_REQUEST['handle'] ) );
+			$sources = UR_Log_List_Table::scan_sources();
+
+			if ( isset( $sources[ $handle ] ) ) {
+				self::delete_sources( array( $handle ) );
+			} else {
+				$log_handler = new UR_Log_Handler_File();
+				$log_handler->remove( $handle );
+			}
 		}
 		?>
 		<script>
-		var redirect = '<?php echo esc_url( admin_url( 'admin.php?page=user-registration-status&tab=logs' ) ); ?>';
+		var redirect = <?php echo wp_json_encode( esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ) ); ?>;
 		window.setTimeout( function () {
 			window.location.href = redirect;
 		})
@@ -189,7 +266,7 @@ class UR_Admin_Status {
 	 * Remove/delete all logs.
 	 */
 	public static function remove_all_logs() {
-		if ( empty( $_REQUEST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( wp_unslash( $_REQUEST['_wpnonce'] ) ), 'remove_all_logs' ) ) {
+		if ( ! current_user_can( 'manage_user_registration' ) || empty( $_REQUEST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_key( wp_unslash( $_REQUEST['_wpnonce'] ) ), 'remove_all_logs' ) ) {
 			wp_die( esc_html__( 'Action failed. Please refresh the page and retry.', 'user-registration' ) );
 		}
 
@@ -200,7 +277,7 @@ class UR_Admin_Status {
 
 		?>
 		<script>
-		var redirect = '<?php echo esc_url( admin_url( 'admin.php?page=user-registration-status&tab=logs' ) ); ?>';
+		var redirect = <?php echo wp_json_encode( esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' ) ) ); ?>;
 		window.setTimeout( function () {
 			window.location.href = redirect;
 		})

@@ -174,6 +174,20 @@ class OrdersListTable extends \UR_List_Table {
 		$args['meta_compare']           = 'EXISTS';
 		$args['meta_query']['relation'] = 'AND';
 
+		// Membership payments are listed from the orders table; the Authorize.Net add-on also stamps ur_payment_status on those users.
+		$args['meta_query'][] = array(
+			'relation' => 'OR',
+			array(
+				'key'     => 'ur_registration_source',
+				'compare' => 'NOT EXISTS',
+			),
+			array(
+				'key'     => 'ur_registration_source',
+				'value'   => 'membership',
+				'compare' => '!=',
+			),
+		);
+
 		$user_query = new \WP_User_Query( $args );
 		$users      = $user_query->get_results();
 
@@ -213,8 +227,9 @@ class OrdersListTable extends \UR_List_Table {
 			case 'created_at':
 				return date_i18n( get_option( 'date_format' ), strtotime( $item[ $column_name ] ) );
 			case 'post_title':
-			case 'payment_method':
 				return esc_html( ucfirst( $item[ $column_name ] ) );
+			case 'payment_method':
+				return esc_html( ur_get_payment_gateway_label( $item[ $column_name ] ?? '' ) );
 			case 'payer_email':
 				return esc_html( $item['user_email'] );
 			default:

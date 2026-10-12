@@ -8,10 +8,13 @@ const shouldShowSiteAssistant =
 		? // Check if any options are not handled
 			!_UR_DASHBOARD_.site_assistant_data.has_default_form ||
 			_UR_DASHBOARD_.site_assistant_data.missing_pages.length > 0 ||
+			(!_UR_DASHBOARD_.site_assistant_data.unlinked_users_handled &&
+				Number(_UR_DASHBOARD_.site_assistant_data.unlinked_users_count) > 0) ||
 			!_UR_DASHBOARD_.site_assistant_data.test_email_sent ||
 			!_UR_DASHBOARD_.site_assistant_data.wordpress_login_handled ||
 			!_UR_DASHBOARD_.site_assistant_data.spam_protection_handled ||
-			!_UR_DASHBOARD_.site_assistant_data.payment_setup_handled
+			!_UR_DASHBOARD_.site_assistant_data.payment_setup_handled ||
+			!_UR_DASHBOARD_.site_assistant_data.legacy_payment_fields_handled
 		: true; // Default to true if data not available
 
 let ROUTES = [

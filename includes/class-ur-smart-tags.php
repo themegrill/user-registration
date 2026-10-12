@@ -15,6 +15,28 @@ defined( 'ABSPATH' ) || exit;
 class UR_Smart_Tags {
 
 	/**
+	 * Strip registered shortcodes from data, including escaped/nested forms.
+	 *
+	 * A single strip_shortcodes() pass unwraps [[tag]] to executable [tag].
+	 * Encode remaining delimiters so fragments from separate fields cannot combine
+	 * into executable shortcodes. HTML rendering preserves literal brackets.
+	 *
+	 * @param mixed $value Untrusted replacement value.
+	 * @return string
+	 */
+	private static function strip_value_shortcodes( $value ) {
+		$value = (string) $value;
+		for ( $pass = 0; $pass < 8; ++$pass ) {
+			$stripped = strip_shortcodes( $value );
+			if ( $stripped === $value ) {
+				return str_replace( array( '[', ']' ), array( '&#91;', '&#93;' ), $value );
+			}
+			$value = $stripped;
+		}
+		return str_replace( array( '[', ']' ), array( '&#91;', '&#93;' ), $value );
+	}
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -227,6 +249,9 @@ class UR_Smart_Tags {
 
 			foreach ( $values as $key => $value ) {
 				$value = ur_format_field_values( $key, $value );
+				if ( is_scalar( $value ) && in_array( $key, array( 'username', 'author_name', 'display_name', 'full_name', 'first_name', 'last_name', 'page_title', 'page_url', 'referrer_url' ), true ) ) {
+					$value = self::strip_value_shortcodes( $value );
+				}
 				if ( ! is_array( $value ) ) {
 					if ( 'profile_pic_url' === $key && $process_type ) {
 						$content = str_replace( '{{' . $key . '}}', '', $content );
@@ -274,7 +299,7 @@ class UR_Smart_Tags {
 						} else {
 							$name = isset( $values['username'] ) ? $values['username'] : '';
 						}
-						$name    = strip_shortcodes( $name );
+						$name    = self::strip_value_shortcodes( $name );
 						$content = str_replace( '{{' . $other_tag . '}}', esc_html( $name ), $content );
 						break;
 
@@ -390,7 +415,7 @@ class UR_Smart_Tags {
 							$all_fields = '';
 						}
 
-						$all_fields = strip_shortcodes( $all_fields );
+						$all_fields = self::strip_value_shortcodes( $all_fields );
 						$content    = str_replace( '{{' . $other_tag . '}}', $all_fields, $content );
 						break;
 
@@ -416,7 +441,7 @@ class UR_Smart_Tags {
 						}
 
 						$page_title = get_the_title( $id );
-						$content    = str_replace( '{{' . $other_tag . '}}', $page_title, $content );
+						$content    = str_replace( '{{' . $other_tag . '}}', self::strip_value_shortcodes( $page_title ), $content );
 						break;
 
 					case 'page_url':
@@ -428,7 +453,7 @@ class UR_Smart_Tags {
 							$page_url = get_permalink( $id );
 						}
 
-						$content = str_replace( '{{' . $other_tag . '}}', $page_url, $content );
+						$content = str_replace( '{{' . $other_tag . '}}', self::strip_value_shortcodes( $page_url ), $content );
 						break;
 
 					case 'page_id':
@@ -467,12 +492,13 @@ class UR_Smart_Tags {
 
 					case 'user_ip_address':
 						$user_ip_add = ur_get_ip_address();
+						$user_ip_add = rest_is_ip_address( $user_ip_add ) ? $user_ip_add : '';
 						$content     = str_replace( '{{' . $other_tag . '}}', $user_ip_add, $content );
 						break;
 
 					case 'referrer_url':
 						$referer = ! empty( $_SERVER['HTTP_REFERER'] ) ? $_SERVER['HTTP_REFERER'] : ''; // @codingStandardsIgnoreLine
-						$content = str_replace( '{{' . $other_tag . '}}', sanitize_text_field( $referer ), $content );
+						$content = str_replace( '{{' . $other_tag . '}}', self::strip_value_shortcodes( esc_url_raw( wp_unslash( $referer ) ) ), $content );
 						break;
 
 					case 'current_date':
@@ -513,7 +539,7 @@ class UR_Smart_Tags {
 
 					case 'author_name':
 						$author  = get_the_author_meta( 'display_name' );
-						$author  = strip_shortcodes( $author );
+						$author  = self::strip_value_shortcodes( $author );
 						$content = str_replace( '{{' . $other_tag . '}}', sanitize_text_field( $author ), $content );
 						break;
 					case 'unique_id':
@@ -590,7 +616,7 @@ class UR_Smart_Tags {
 						$user_id      = ! empty( $values['user_id'] ) ? $values['user_id'] : get_current_user_id();
 						$user_obj     = get_userdata( $user_id );
 						$display_name = isset( $user_obj->display_name ) ? $user_obj->display_name : '';
-						$display_name = strip_shortcodes( $display_name );
+						$display_name = self::strip_value_shortcodes( $display_name );
 						$content      = str_replace( '{{' . $tag . '}}', esc_html( $display_name ), $content );
 						break;
 
@@ -615,7 +641,7 @@ class UR_Smart_Tags {
 							$userdata  = get_userdata( get_current_user_id() );
 							$full_name = isset( $userdata->display_name ) ? $userdata->display_name : '';
 						}
-						$full_name = strip_shortcodes( $full_name );
+						$full_name = self::strip_value_shortcodes( $full_name );
 						$content   = str_replace( '{{' . $tag . '}}', esc_html( $full_name ), $content );
 						break;
 					case 'profile_details_link':
@@ -855,7 +881,7 @@ class UR_Smart_Tags {
 						$user       = get_user_by( 'login', $username );
 						$user_id    = isset( $user->ID ) ? $user->ID : 0;
 						$first_name = get_user_meta( $user_id, 'first_name', true );
-						$first_name = strip_shortcodes( $first_name );
+						$first_name = self::strip_value_shortcodes( $first_name );
 						$content    = str_replace( '{{' . $other_tag . '}}', esc_html( $first_name ), $content );
 						break;
 					case 'first_name':
@@ -863,7 +889,7 @@ class UR_Smart_Tags {
 						$user       = get_user_by( 'login', $username );
 						$user_id    = isset( $user->ID ) ? $user->ID : get_current_user_id();
 						$first_name = get_user_meta( $user_id, 'first_name', true );
-						$first_name = strip_shortcodes( $first_name );
+						$first_name = self::strip_value_shortcodes( $first_name );
 						$content    = str_replace( '{{' . $other_tag . '}}', esc_html( $first_name ), $content );
 						break;
 					case 'last_name':
@@ -871,7 +897,7 @@ class UR_Smart_Tags {
 						$user      = get_user_by( 'login', $username );
 						$user_id   = isset( $user->ID ) ? $user->ID : get_current_user_id();
 						$last_name = get_user_meta( $user_id, 'last_name', true );
-						$last_name = strip_shortcodes( $last_name );
+						$last_name = self::strip_value_shortcodes( $last_name );
 						$content   = str_replace( '{{' . $other_tag . '}}', esc_html( $last_name ), $content );
 						break;
 					case 'membership_end_date':

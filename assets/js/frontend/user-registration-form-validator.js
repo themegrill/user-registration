@@ -27,7 +27,7 @@
 				this.validate_field
 			);
 
-			$(".input-text").keypress(function (event) {
+			$(".input-text").on("keypress", function (event) {
 				$this = $(this);
 				var has_max_words = Number($this.attr("max-words"));
 				var words = $this.val().split(" ").length;
@@ -40,7 +40,7 @@
 			});
 
 			// Prevent invalid key input in number fields.
-			$("[type='number']").keypress(function (event) {
+			$("[type='number']").on("keypress", function (event) {
 				var keyCode = event.keyCode || event.which;
 				var currentValue = $(this).val();
 				if (

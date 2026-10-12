@@ -75,6 +75,41 @@ export async function ensureFirstRun(page: Page): Promise<void> {
   firstRunDone = true;
 }
 
+let membershipEnabledDone = false;
+
+/**
+ * Ensure the Membership module is enabled on the site under test.
+ *
+ * On a fresh install, modules are opt-in and stored in `user_registration_enabled_features`.
+ * Without `user-registration-membership` enabled, `admin.php?page=user-registration-membership`
+ * is not registered and WP returns 403 ("Sorry, you are not allowed to access this page.").
+ * We run the first-run bootstrap and explicitly activate the module.
+ */
+export async function ensureMembershipEnabled(page: Page): Promise<void> {
+  if (membershipEnabledDone) return;
+
+  await ensureFirstRun(page);
+
+  const nonce = await restNonce(page);
+  await page.evaluate(async (nonce) => {
+    await fetch("/wp-json/user-registration/v1/modules/activate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-WP-Nonce": nonce,
+      },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        slug: "user-registration-membership",
+        name: "Membership",
+        type: "feature",
+      }),
+    });
+  }, nonce);
+
+  membershipEnabledDone = true;
+}
+
 /** The id of the first registration form on the site. */
 export async function firstFormId(page: Page): Promise<number> {
   if (cachedFormId) return cachedFormId;
@@ -150,6 +185,24 @@ export type NewUser = { username: string; email: string; password: string };
  * for payment.
  */
 export async function registerOn(page: Page, url: string, user?: Partial<NewUser>): Promise<NewUser> {
+  const { account } = await openRegistrationForm(page, url, user);
+  await submitRegistration(page);
+  return account;
+}
+
+/**
+ * Open a registration page and fill it, stopping short of the submit.
+ *
+ * Split out of `registerOn` so a spec that has to touch the form between
+ * filling and submitting — seeding a captcha token, say — does not have to
+ * restate which optional fields this product's forms can carry. The two are
+ * the same code path; `registerOn` is this plus the click.
+ */
+export async function openRegistrationForm(
+  page: Page,
+  url: string,
+  user?: Partial<NewUser>,
+): Promise<{ account: NewUser; form: ReturnType<Page["locator"]> }> {
   const account: NewUser = {
     username: user?.username ?? uniqueUsername(),
     email: user?.email ?? uniqueEmail(),
@@ -174,8 +227,13 @@ export async function registerOn(page: Page, url: string, user?: Partial<NewUser
   const privacy = form.locator("input[id^='privacy_policy']");
   if (await privacy.count()) await privacy.first().check();
 
+  return { account, form };
+}
+
+/** Submit the registration form opened by `openRegistrationForm`. */
+export async function submitRegistration(page: Page) {
+  const form = page.locator("div.ur-frontend-form form.register");
   await form.locator("button[type=submit], input[type=submit]").first().click();
-  return account;
 }
 
 /**

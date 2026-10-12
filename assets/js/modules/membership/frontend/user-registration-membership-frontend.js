@@ -981,7 +981,8 @@
 			var localCurrency = "";
 			var currency = urmf_data.currency_symbol;
 
-			subTotal = urm_calculated_total;
+			// .data() returns "299.00" as a string, and convert_currency_and_calculate_tax() calls .toFixed() on it.
+			subTotal = parseFloat(urm_calculated_total);
 
 			if ($this.data("local-currency")) {
 				localCurrency = $this.data("local-currency");
@@ -1248,9 +1249,9 @@
 					typeof discount_amount !== "undefined"
 						? parseFloat(discount_amount)
 						: 0,
-				membershipAmount = $membershipRadio.data(
-					"urm-membership-amount"
-				),
+				membershipAmount =
+					parseFloat($membershipRadio.data("urm-membership-amount")) ||
+					0,
 				upgradeType = $membershipRadio.data("urm-upgrade-type") || null;
 
 			totalDetails.total = total;
@@ -1492,6 +1493,9 @@
 							taxRate = regions.rate;
 						}
 
+						taxRate = Number(taxRate);
+						taxRate = Number.isFinite(taxRate) && taxRate >= 0 && taxRate <= 100 ? taxRate : 0;
+
 						if (taxRate > 0) {
 							if (tax_calculation_method) {
 								taxAmount = (total * taxRate) / 100;
@@ -1505,19 +1509,14 @@
 
 					$("#ur-tax-details").remove();
 
-					var taxDetailsInput =
-						'<input type="hidden" ' +
-						'id="ur-tax-details" ' +
-						'name="ur_tax_details" ' +
-						'data-tax-rate="' +
-						taxRate +
-						'" ' +
-						'data-tax-calculation-method="' +
-						tax_calculation_method +
-						'" ' +
-						'data-total="' +
-						total +
-						'">';
+					var taxDetailsInput = $("<input>", {
+						type: "hidden",
+						id: "ur-tax-details",
+						name: "ur_tax_details",
+						"data-tax-rate": taxRate,
+						"data-tax-calculation-method": tax_calculation_method,
+						"data-total": total,
+					});
 
 					total_input.after(taxDetailsInput);
 				}
@@ -2540,8 +2539,13 @@
 				.then(stripe_settings.handleOnComplete)
 				.catch(function (message, error) {
 					ur_membership_frontend_utils.hide_payment_processing_overlay();
+					// Pass the gateway's message on, so a declined payment still says why once its pending order is gone.
+					var failure = { error: {} };
+					if (message && message.data && message.data.message) {
+						failure.error.message = message.data.message;
+					}
 					stripe_settings.update_order_status(
-						{ error: {} },
+						failure,
 						response,
 						data.prepare_members_data,
 						data.form_response
@@ -3848,7 +3852,7 @@
 										$(".user-registration-membership-notice__container").length === 0
 									) {
 										$("body").append(
-											'<div class="user-registration-membership-notice__container urm-notice-error" style="display:none;"><span class="user-registration-membership-notice__message"></span><span class="user-registration-membership__close_notice">&times;</span></div>'
+											'<div class="user-registration-membership-notice__container urm-notice-error" style="display:none;"><span class="user-registration-membership-notice__message"></span><button type="button" class="user-registration-membership__close_notice" aria-label="' + (urmf_data.labels.i18n_dismiss || "Dismiss") + '">&times;</button></div>'
 										);
 									}
 									$(document).trigger("urm_show_action_message", {
@@ -3914,7 +3918,7 @@
 									$(document)
 										.find(".user-registration-page")
 										.prepend(
-											'<div class="user-registration-membership-notice__container"><div class="ur-toaster urm-error user-registration-membership-notice__red"><span class="user-registration-membership-notice__message"></span><span class="user-registration-membership__close_notice">&times;</span></div></div>'
+											'<div class="user-registration-membership-notice__container"><div class="ur-toaster urm-error user-registration-membership-notice__red"><span class="user-registration-membership-notice__message"></span><button type="button" class="user-registration-membership__close_notice" aria-label="' + (urmf_data.labels.i18n_dismiss || "Dismiss") + '">&times;</button></div></div>'
 										);
 								}
 								$(document).trigger("urm_show_action_message", {

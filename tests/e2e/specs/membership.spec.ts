@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { ensureMembershipEnabled } from "../support/urm";
 import { gotoAdminPage, loginAsAdmin } from "../support/wp";
 
 /**
@@ -45,6 +46,7 @@ async function deletePlan(page: import("@playwright/test").Page, name: string) {
 test.describe("membership plans @fresh", () => {
   test("a free membership plan can be created and appears in the list @fresh @membership", async ({ page }) => {
     await loginAsAdmin(page);
+    await ensureMembershipEnabled(page);
     const name = planName();
 
     await gotoAdminPage(page, "user-registration-membership", "&action=add_new_membership");

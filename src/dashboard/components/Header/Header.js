@@ -137,7 +137,8 @@ const Header = () => {
 											"https://wpuserregistration.com/upgrade/",
 										{
 											source: "dashboard-header",
-											medium: "menu-link"
+											medium: "menu-link",
+											content: "header-upgrade-button"
 										}
 									)}
 									isExternal

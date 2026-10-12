@@ -111,6 +111,29 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	}
 
 	/**
+	 * Update a row only if it still carries the PayPal subscription ID the caller last read.
+	 *
+	 * Guards a webhook/backfill write against the row having switched to a different PayPal
+	 * subscription (e.g. an upgrade) between the caller's read and this write.
+	 *
+	 * @param int    $id                       Row ID.
+	 * @param array  $data                     Columns to update.
+	 * @param string $expected_subscription_id PayPal subscription ID the row must still carry.
+	 *
+	 * @return int|false Rows affected (0 means the row had already moved on), false on DB error.
+	 */
+	public function update_if_subscription_id_matches( $id, $data, $expected_subscription_id ) {
+		return $this->wpdb()->update(
+			$this->table,
+			$data,
+			array(
+				'ID'              => $id,
+				'subscription_id' => $expected_subscription_id,
+			)
+		);
+	}
+
+	/**
 	 * Get members subscription by their ID and Membership ID
 	 *
 	 * @param $member_id
@@ -171,35 +194,60 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	}
 
 	/**
-	 * Return all subscription which are about to be billed on the specified date
+	 * Return subscriptions whose next billing date falls in [ $start_date, $end_date ].
 	 *
-	 * @param $check_date
+	 * Used by renewal / expiring-soon reminder crons. A closed range (not a single day)
+	 * lets a missed daily cron catch up on later runs; callers must dedupe per billing
+	 * cycle so a recovered send is not repeated.
 	 *
-	 * @return array|object|stdClass[]
+	 * @param string $start_date Inclusive lower bound (Y-m-d or datetime).
+	 * @param string $end_date   Inclusive upper bound (Y-m-d or datetime).
+	 *
+	 * @return array
 	 */
-	public function get_about_to_expire_subscriptions( $check_date ) {
-		$sql = sprintf(
-			"
-						SELECT wu.user_email,
-						       wu.user_login as username,
-						       wu.ID as member_id,
-						       wp.post_title as membership_plan_name,
-						       wums.item_id as membership,
-						       wums.ID as subscription_id,
-						       wums.next_billing_date,
-						       wums.expiry_date
-						FROM  $this->table wums
-					    LEFT JOIN $this->users_table wu ON wums.user_id = wu.ID
-					    LEFT JOIN $this->posts_table wp ON wums.item_id = wp.ID
-						WHERE NOT wums.status = 'canceled'
-						AND DATE(wums.next_billing_date) = DATE('%s')
-						",
-			$check_date
+	public function get_about_to_expire_subscriptions( $start_date, $end_date = null ) {
+		// Back-compat: single argument used to mean an exact calendar day.
+		if ( null === $end_date ) {
+			$end_date   = $start_date;
+			$start_date = $start_date;
+		}
+
+		$result = $this->wpdb()->get_results(
+			$this->wpdb()->prepare(
+				"SELECT wu.user_email,
+				       wu.user_login as username,
+				       wu.ID as member_id,
+				       wp.post_title as membership_plan_name,
+				       wums.item_id as membership,
+				       wums.ID as subscription_id,
+				       wums.next_billing_date,
+				       wums.expiry_date
+				FROM {$this->table} wums
+				LEFT JOIN {$this->users_table} wu ON wums.user_id = wu.ID
+				LEFT JOIN {$this->posts_table} wp ON wums.item_id = wp.ID
+				WHERE wums.status != %s
+				AND DATE(wums.next_billing_date) >= DATE(%s)
+				AND DATE(wums.next_billing_date) <= DATE(%s)",
+				'canceled',
+				$start_date,
+				$end_date
+			),
+			ARRAY_A
 		);
 
-		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
+		if ( ! $result ) {
+			return array();
+		}
 
-		return ! $result ? array() : $result;
+		// PHP filter, not a SQL join - the per-subscription usermeta key can't be indexed and forces a full table scan.
+		return array_values(
+			array_filter(
+				$result,
+				function ( $subscription ) {
+					return ! get_user_meta( $subscription['member_id'], 'urm_pending_cancel_' . $subscription['subscription_id'], true );
+				}
+			)
+		);
 	}
 
 	/**
@@ -326,7 +374,7 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 			LEFT JOIN $this->users_table wu ON wums.user_id = wu.ID
 			LEFT JOIN $this->posts_table wp ON wums.item_id = wp.ID
 			LEFT JOIN $this->orders_table wo ON wums.ID = wo.subscription_id
-			WHERE (wums.status = 'failed' OR wums.status = 'expired')
+			WHERE wums.status = 'expired'
 			AND wums.updated_at >= '%s'
 			ORDER BY wums.updated_at ASC
 			",
