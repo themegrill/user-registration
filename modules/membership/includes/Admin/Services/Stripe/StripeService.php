@@ -2603,6 +2603,10 @@ class StripeService {
 	/**
 	 * Handle successful invoice webhook.
 	 *
+	 * Records the invoice's order and moves the subscription to the invoice's billing period. An invoice whose order is
+	 * already settled and whose period the stored expiry already covers is a redelivery and changes nothing, so a replay
+	 * or an out-of-order invoice never extends or shortens access.
+	 *
 	 * @param array  $event           Event.
 	 * @param string $subscription_id Subscription ID.
 	 * @return void
@@ -2730,6 +2734,7 @@ class StripeService {
 		$order_service    = new OrderService();
 		$order_repository = new OrdersRepository();
 
+		$order_created  = false;
 		$existing_order = $order_repository->get_order_by_transaction_id( $payment_intent_id );
 		if ( empty( $existing_order ) ) {
 			// Fallback: if registration created an order before the payment_intent_id was persisted,
@@ -2768,46 +2773,93 @@ class StripeService {
 				$order_data['orders_data']['transaction_id']  = $payment_intent_id ? sanitize_text_field( $payment_intent_id ) : '';
 				$order_data['orders_data']['subscription_id'] = $current_subscription['sub_id'];
 
-				$order_id = $order_repository->create( $order_data );
+				$order_id      = $order_repository->create( $order_data );
+				$order_created = true;
 			}
 		} else {
 			$order_id = $existing_order['ID'] ?? $existing_order['id'] ?? '';
 		}
 
-		PaymentGatewayLogging::log_general(
-			'stripe',
-			'New renewal order created via webhook' . "\n" . wp_json_encode(
-				array(
-					'event_type'      => 'renewal_order_created',
-					'order_id'        => $order_id,
-					'subscription_id' => $subscription_id,
-					'invoice_id'      => $invoice_id,
-					'amount'          => $membership_metas['amount'],
-					'member_id'       => $member_id,
-					'membership_type' => $membership_type,
+		if ( $order_created ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'New renewal order created via webhook' . "\n" . wp_json_encode(
+					array(
+						'event_type'      => 'renewal_order_created',
+						'order_id'        => $order_id,
+						'subscription_id' => $subscription_id,
+						'invoice_id'      => $invoice_id,
+						'amount'          => $membership_metas['amount'],
+						'member_id'       => $member_id,
+						'membership_type' => $membership_type,
+					),
+					JSON_PRETTY_PRINT
 				),
-				JSON_PRETTY_PRINT
-			),
-			'notice'
-		);
+				'notice'
+			);
+		}
 
-		$next_billing_date = SubscriptionService::get_expiry_date( date( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] );
+		$invoice_period = $this->get_invoice_period( $event['data']['object'] );
+		$has_period     = ! empty( $invoice_period );
+		if ( ! $has_period ) {
+			$invoice_period = array(
+				'start' => time(),
+				'end'   => strtotime( SubscriptionService::get_expiry_date( gmdate( 'Y-m-d' ), $membership_metas['subscription']['duration'], $membership_metas['subscription']['value'] ) . ' UTC' ),
+			);
+		}
 
-		$this->members_subscription_repository->update(
-			$current_subscription['sub_id'],
-			array(
-				'start_date'        => date( 'Y-m-d 00:00:00' ),
+		// Dates only ever move forward: Stripe redelivers events, Resend replays old ones, and invoices can arrive out of order.
+		$stored_expiry  = (int) strtotime( $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] )['expiry_date'] ?? '' );
+		$extends_access = strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) > $stored_expiry;
+		$order_applied  = ! empty( $existing_order ) && ! in_array( $existing_order['status'] ?? '', array( 'pending', 'failed' ), true );
+		// Without a billing period the end is derived from today, so only the settled order can recognise a redelivery.
+		$is_replay = $order_applied && ( ! $has_period || ! $extends_access );
+
+		// A replay changes nothing, except that a member still waiting for their first payment to be recognised is activated.
+		if ( $is_replay && ! in_array( $current_subscription['status'] ?? '', array( 'pending', 'trial' ), true ) ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'Invoice already applied; subscription left unchanged' . "\n" . wp_json_encode(
+					array(
+						'event_type'      => 'invoice_already_applied',
+						'subscription_id' => $subscription_id,
+						'invoice_id'      => $invoice_id,
+						'order_id'        => $order_id,
+						'member_id'       => $member_id,
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+
+			return;
+		}
+
+		$subscription_update = array( 'status' => $subscription_status );
+		$next_billing_date   = null;
+
+		if ( $extends_access && ! $is_replay ) {
+			$next_billing_date   = gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
+			$subscription_update = array(
+				'start_date'        => gmdate( 'Y-m-d 00:00:00', $invoice_period['start'] ),
 				'next_billing_date' => $next_billing_date,
 				'expiry_date'       => $next_billing_date,
-				'status'            => $subscription_status,
-			)
-		);
+			) + $subscription_update;
+		}
+
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
+		$is_renewing        = ! $is_replay && $this->is_renewing_membership( $membership_process, $membership_id );
 
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
 			$subscription_service->update_subscription_data_for_renewal( $current_subscription, $membership_metas );
+		}
+
+		// The renewal above stamps dates from today, so the invoice's own billing period is written last to win.
+		$this->members_subscription_repository->update( $current_subscription['sub_id'], $subscription_update );
+
+		if ( $is_replay ) {
+			return;
 		}
 
 		PaymentGatewayLogging::log_webhook_processed(
@@ -2825,6 +2877,33 @@ class StripeService {
 		if ( $is_renewing ) {
 			delete_transient( 'urm_pending_login_' . $member_id );
 		}
+	}
+
+	/**
+	 * Get the billing period an invoice paid for, from its line items.
+	 *
+	 * The invoice's own period fields describe usage, not the subscription cycle, so the line with the latest
+	 * end decides (a proration credit ends inside the cycle the recurring charge opens).
+	 *
+	 * @param array $invoice Invoice object from a Stripe event.
+	 * @return array Timestamps under `start` and `end`; empty when the invoice carries no line period.
+	 */
+	private function get_invoice_period( $invoice ) {
+		$period = array();
+
+		foreach ( $invoice['lines']['data'] ?? array() as $line ) {
+			$start = (int) ( $line['period']['start'] ?? 0 );
+			$end   = (int) ( $line['period']['end'] ?? 0 );
+
+			if ( $start > 0 && $end > ( $period['end'] ?? 0 ) ) {
+				$period = array(
+					'start' => $start,
+					'end'   => $end,
+				);
+			}
+		}
+
+		return $period;
 	}
 
 	/**
