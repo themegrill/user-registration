@@ -323,6 +323,7 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 * Fix      - Multi-step forms no longer show step 1 fields inside step 2 after rows are reordered.
 * Fix      - Remove the stuck database update notice; updates run automatically in the background.
 * Fix      - Failed payments stop retrying after the final attempt and send the final notice email.
+* Fix      - A renewed subscription no longer carries an old failed-payment retry count into its next failure, and every failed retry sends the retry-failed email.
 * Fix      - Renewal and expiring-soon reminder emails still send if the daily schedule was missed.
 * Fix      - Forms save correctly when no captcha type is set, and captcha is not skipped by mistake.
 * Fix      - Form preview no longer loads the block editor; Stripe's script loads only when Stripe is on.
