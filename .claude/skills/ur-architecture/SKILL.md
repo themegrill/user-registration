@@ -20,12 +20,12 @@ Reference files (open the one for your area; each was written from the code, and
 
 | Area | Start at | Read |
 |---|---|---|
-| Form builder, form CPT, fields | `includes/class-ur-post-types.php`, `includes/form/`, `includes/abstracts/abstract-ur-form-field.php` | [architecture.md](reference/architecture.md#forms-and-registration) |
-| Registration submit, login options, approval/confirmation | `UR_AJAX::user_form_submit`, `ur_process_registration` (`includes/functions-ur-core.php`), `includes/class-ur-email-*.php`, `class-ur-user-approval.php` | [architecture.md](reference/architecture.md#forms-and-registration) |
-| Account pages, login, lost password | `UR_Form_Handler` (`includes/class-ur-form-handler.php`), `includes/shortcodes/`, `templates/myaccount/` | [architecture.md](reference/architecture.md#forms-and-registration) |
-| Membership, subscriptions, orders, coupons | `modules/membership/`, tables via `TableList` | [architecture.md](reference/architecture.md#membership-and-payments) |
-| Stripe / PayPal, webhooks, renewals | `modules/membership/includes/Admin/Services/` | [architecture.md](reference/architecture.md#membership-and-payments) |
-| Content restriction | `modules/content-restriction/` | [architecture.md](reference/architecture.md#content-restriction) |
+| Form builder, form CPT, fields | `includes/class-ur-post-types.php`, `includes/form/`, `includes/abstracts/abstract-ur-form-field.php` | [subsystems.md](reference/subsystems.md) |
+| Registration submit, login options, approval/confirmation | `UR_AJAX::user_form_submit`, `ur_process_registration` (`includes/functions-ur-core.php`), `includes/class-ur-email-*.php`, `class-ur-user-approval.php` | [registration-and-auth.md](reference/registration-and-auth.md) |
+| Account pages, login, lost password | `UR_Form_Handler` (`includes/class-ur-form-handler.php`), `includes/shortcodes/`, `templates/myaccount/` | [registration-and-auth.md](reference/registration-and-auth.md) |
+| Membership, subscriptions, orders, coupons | `modules/membership/`, tables via `TableList` | [membership-payments.md](reference/membership-payments.md) |
+| Stripe / PayPal, webhooks, renewals | `modules/membership/includes/Admin/Services/` | [membership-payments.md](reference/membership-payments.md) |
+| Content restriction | `modules/content-restriction/` | [content-restriction.md](reference/content-restriction.md) |
 | Pro, add-ons, who consumes what, `UR_PRO_ACTIVE` | `.github/sync-file-list.yml`, `includes/functions-ur-core.php` | [ecosystem.md](reference/ecosystem.md) |
 | Upgrades and stored-data migrations | `UR_Install::$db_updates`, `includes/functions-ur-update.php` | [architecture.md](reference/architecture.md#stored-data-and-migrations) |
 

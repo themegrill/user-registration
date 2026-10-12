@@ -170,3 +170,23 @@ test("phpcs: path resolution respects nested input.cwd", () => {
 	const abs = path.resolve(input.cwd || root, input.tool_input.file_path);
 	assert.equal(norm(abs), norm(path.join(repoRoot, "includes", "functions-ur-core.php")));
 });
+
+test("guard: a crash blocks the edit (exit 2) instead of letting it through", () => {
+	const res = spawnSync("node", [path.join(repoRoot, ".claude", "hooks", "guard-files.mjs")], { input: "not json", encoding: "utf8" });
+	assert.equal(res.status, 2);
+});
+
+test("settings: hook commands resolve from CLAUDE_PROJECT_DIR, not the current directory", () => {
+	const settings = JSON.parse(fs.readFileSync(path.join(repoRoot, ".claude", "settings.json"), "utf8"));
+	const commands = Object.values(settings.hooks).flat().flatMap((entry) => entry.hooks.map((h) => h.command));
+	assert.ok(commands.length > 0);
+	for (const command of commands) assert.ok(command.includes('"${CLAUDE_PROJECT_DIR}/.claude/hooks/'), command);
+});
+
+test("settings: phpcs and composer phpcs are prompted, never auto-allowed", () => {
+	const { permissions } = JSON.parse(fs.readFileSync(path.join(repoRoot, ".claude", "settings.json"), "utf8"));
+	for (const rule of ["Bash(php vendor/bin/phpcs*)", "Bash(composer phpcs*)"]) {
+		assert.ok(!permissions.allow.includes(rule), rule);
+		assert.ok(permissions.ask.includes(rule), rule);
+	}
+});

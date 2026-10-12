@@ -8,8 +8,6 @@
         "Bash(git diff --name-status*)",
         "Bash(git log --name-only*)",
         "Bash(git log --name-status*)",
-        "Bash(php vendor/bin/phpcs*)",
-        "Bash(composer phpcs*)",
         "Bash(pnpm typecheck)",
         "Bash(pnpm prettier)",
         "Bash(pnpm exec grunt js)",
@@ -23,7 +21,9 @@
       "Bash(pnpm test:e2e*)",
       "Bash(pnpm build*)",
       "Bash(pnpm run build*)",
-      "Bash(composer update*)"
+      "Bash(composer update*)",
+      "Bash(php vendor/bin/phpcs*)",
+      "Bash(composer phpcs*)"
     ],
     "deny": [
         "Read(./.themegrill-qa/.env.local)",
@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/guard-files.mjs",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-files.mjs\"",
             "timeout": 10
           }
         ]
@@ -68,7 +68,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/phpcs-changed.mjs",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/phpcs-changed.mjs\"",
             "timeout": 60
           }
         ]

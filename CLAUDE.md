@@ -4,11 +4,11 @@ WordPress plugin `user-registration` (text domain `user-registration`): registra
 
 **Ecosystem (read `.claude/skills/ur-architecture/reference/ecosystem.md` before touching hooks, helpers or shared behaviour).** This is only the free plugin. **Pro (`themegrill/user-registration-pro`) is a full standalone plugin, not an add-on:** it replaces free at runtime, sets `UR_PRO_ACTIVE` to `true`, and holds a synced copy of this repo's code, so free code also runs inside Pro. About 38 separate add-on plugins (`themegrill/user-registration-<name>`: advanced fields, conditional logic, 2FA, Stripe, Mailchimp, social connect, ...) attach to the core through hooks and `ur_*` helpers, and most require Pro. None of that code is in this checkout, so their use of what you change is invisible unless you check it or say you could not.
 
-**This repo feeds Pro.** On every push to `develop`, `.github/workflows/sync.yml` copies `includes/`, `modules/`, `src/`, `templates/`, `assets/` (minus one Divi file), `tests/e2e`, `playwright.config.ts`, `phpcs.xml` and a few other root files (`.github/sync-file-list.yml`) into `themegrill/user-registration-pro`, branch `develop`. Treat every change there as also shipping to Pro.
+**This repo feeds Pro.** On every push to `develop`, `.github/workflows/sync.yml` (repo-file-sync-action) opens a pull request that copies `includes/`, `modules/`, `src/`, `templates/`, `assets/` (minus one Divi file), `tests/e2e`, `playwright.config.ts`, `phpcs.xml` and a few other root files (`.github/sync-file-list.yml`) into `themegrill/user-registration-pro` against its `develop` branch. Treat every change there as also shipping to Pro.
 
 ## Compatibility floor
 - **PHP 7.4** (`readme.txt`, phpcs `testVersion 7.4-`, CI sniffs on 7.4) and **WP 5.5** (`readme.txt`). No union types, `match`, nullsafe `?->`, named arguments, enums or constructor promotion.
-- `CONTRIBUTING.md` ("PHP 5.4+") and `composer.json` (`php >=5.6.20`) disagree with that; 7.4 is the enforced value.
+- `.github/CONTRIBUTING.md` ("PHP 5.4+") and `composer.json` (`php >=5.6.20`) disagree with that; 7.4 is the enforced value.
 
 ## Layout
 - `user-registration.php` bootstraps. `includes/` is core: `class-ur-foo-bar.php` autoloads as `UR_Foo_Bar` (`includes/class-ur-autoloader.php`). Namespaced code (membership, analytics, content drip) autoloads through Composer PSR-4 (`composer.json`), so `vendor/` must exist.
@@ -28,12 +28,12 @@ WordPress plugin `user-registration` (text domain `user-registration`): registra
 | Security regression | `php tests/security/<case>.php` (no site needed; PHP on PATH) |
 | e2e | `pnpm test:e2e` (needs a live site; reads `TGQA_BASE_URL`, `TGQA_ADMIN_USER`, `TGQA_ADMIN_PASS` from the environment or `.themegrill-qa/.env.local`, with local-only defaults in `tests/e2e/support/env.ts` when unset; it changes plugin settings, so ask first). Tiers are title tags, not projects: `pnpm test:e2e:fresh` (`--grep @fresh`, clean install only), `pnpm test:e2e:demo`. One spec: `pnpm exec playwright test tests/e2e/specs/<file>` (add `-g "<title>"` for one test) |
 | Dev build / watch | `pnpm start` (`wp-scripts start`); `build:pro` / `start:pro` set `UR_PRO=true` |
-| Pick checks for a diff | `/ur-check` |
+| Pick checks for a diff | `/ur-check` (user-invoked), or `node .claude/skills/ur-check/plan-checks.mjs` |
 
 ## Git and PRs
-- Branch from `develop` and open PRs against `develop`. `master` is the release branch (`draft-release.yml`). `CONTRIBUTING.md` says `master` for outside contributors.
+- Branch from `develop` and open PRs against `develop`. `master` is the release branch (`draft-release.yml`). `.github/CONTRIBUTING.md` says `master` for outside contributors.
 - Reference the issue number in commits; follow `.github/PULL_REQUEST_TEMPLATE.md` (`Closes #N`, how to test).
-- Do not edit `CHANGELOG.txt` or `languages/*.pot` (release team, per `CONTRIBUTING.md`).
+- Do not edit `CHANGELOG.txt` or `languages/*.pot` (release team, per `.github/CONTRIBUTING.md`).
 - A bug fix should carry a `@fresh` Playwright spec in `tests/e2e/specs`; the header of `.github/workflows/qa-suite.yml` says the spec is committed with the fix. A security fix follows the pattern in `tests/security/README.md`: a `tests/security/<case>.php` case plus its `security-*.spec.ts` wrapper. Whether CI blocks a PR without one is not verified.
 
 ## Where the rest lives
