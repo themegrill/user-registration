@@ -163,10 +163,16 @@ security_assert( array() === $writes, 'A redelivery does not move an expiry that
 $writes = $deliver( array( 'expiry_date' => '2026-12-08 00:00:00' ) + $renewed, array(), $settled );
 security_assert( array() === $writes, 'An older invoice does not rewrite a later expiry' );
 
-// 4. A replayed old invoice carries no new payment: it reactivates neither an expired nor a payment-failed subscription.
-foreach ( array( 'expired', 'pending', 'canceled' ) as $status ) {
+// 4. A replayed old invoice carries no new payment: it leaves an active, expired or canceled subscription alone.
+foreach ( array( 'active', 'expired', 'canceled' ) as $status ) {
 	$writes = $deliver( array( 'status' => $status ) + $renewed, array(), $settled );
 	security_assert( array() === $writes, 'A replayed invoice leaves a ' . $status . ' subscription alone' );
+}
+
+// 4b. A member whose first payment was never recognised (the order was linked by the backfill) is still activated, without touching the dates.
+foreach ( array( 'pending', 'trial' ) as $status ) {
+	$writes = $deliver( array( 'status' => $status ) + $renewed, array(), $settled );
+	security_assert( array( array( 'status' => 'active' ) ) === $writes, 'A replayed invoice activates a ' . $status . ' subscription and nothing else' );
 }
 
 // 5. A replay that lands while the member has a renewal pending does not run the renewal.
@@ -195,6 +201,8 @@ security_assert( 1 === count( $writes ) && '2026-11-08 00:00:00' === $writes[0][
 // 10. An order still pending (checkout not confirmed) does not make the webhook a replay.
 $writes = $deliver( array( 'status' => 'pending' ) + $renewed, array(), array( 'order' => array( 'ID' => 55, 'status' => 'pending' ) ) );
 security_assert( 1 === count( $writes ) && 'active' === $writes[0]['status'], 'A webhook for a pending order activates the subscription' );
+$deliver( $renewed, array(), array( 'order' => array( 'ID' => 55, 'status' => 'pending' ), 'renewing' => true ) );
+security_assert( array( 7 ) === $GLOBALS['renewals'], 'A webhook for a pending order still runs the pending renewal' );
 
 // 11. A late renewal on an expired subscription extends it and reactivates it.
 $writes = $deliver( array( 'status' => 'expired', 'expiry_date' => '2026-10-08 00:00:00' ) + $renewed );
@@ -206,7 +214,12 @@ security_assert( 1 === count( $writes ) && '2026-11-08 00:00:00' === $writes[0][
 
 // 13. The first paid invoice after a trial activates the member even when the locally computed expiry is a few days past Stripe's.
 $writes = $deliver( array( 'status' => 'trial', 'expiry_date' => '2026-11-10 00:00:00' ) + $renewed );
-security_assert( 1 === count( $writes ) && 'active' === $writes[0]['status'], 'A trial member becomes active on their first paid invoice' );
+security_assert( array( array( 'status' => 'active' ) ) === $writes && 1 === count( $GLOBALS['orders_created'] ), 'A trial member becomes active on their first paid invoice without their later expiry being pulled back' );
+
+// 13b. Stripe does not guarantee event order: an older invoice delivered after a later renewal records its payment but never moves the dates back.
+$writes = $deliver( array( 'expiry_date' => '2026-12-08 00:00:00' ) + $renewed );
+security_assert( 1 === count( $GLOBALS['orders_created'] ), 'An out-of-order older invoice still records its payment' );
+security_assert( ! isset( $writes[0]['expiry_date'] ) && ! isset( $writes[0]['start_date'] ) && ! isset( $writes[0]['next_billing_date'] ), 'An out-of-order older invoice does not move the dates back' );
 
 // 14. A canceled subscription stays canceled on a first delivery.
 $writes = $deliver( array( 'status' => 'canceled' ) + $due );
@@ -215,6 +228,10 @@ security_assert( 'canceled' === $writes[0]['status'], 'A canceled subscription s
 // 15. An invoice that carries no period keeps the previous behaviour instead of dropping the payment.
 $writes = $deliver( $renewed, array( 'lines' => array( 'data' => array() ) ), $settled );
 security_assert( 1 === count( $writes ) && gmdate( 'Y-m-d 00:00:00' ) === $writes[0]['start_date'], 'An invoice without a billing period still renews from today' );
+
+// 15b. A line without a period start cannot anchor a billing period, so it is not trusted for a 1970 start date.
+$writes = $deliver( $renewed, array( 'lines' => array( 'data' => array( array( 'period' => array( 'end' => PERIOD_END ) ) ) ) ), $settled );
+security_assert( 1 === count( $writes ) && gmdate( 'Y-m-d 00:00:00' ) === $writes[0]['start_date'], 'A line without a period start is ignored' );
 
 // 16. Several lines on the invoice (a proration credit next to the recurring charge): the latest period end wins.
 $writes = $deliver(

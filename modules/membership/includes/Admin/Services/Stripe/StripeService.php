@@ -2801,9 +2801,13 @@ class StripeService {
 			);
 		}
 
-		// Stripe redelivers events and Resend replays old ones; a settled order whose period the stored expiry already covers was applied before.
-		$stored_expiry = (int) strtotime( $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] )['expiry_date'] ?? '' );
-		if ( ! empty( $existing_order ) && 'pending' !== ( $existing_order['status'] ?? '' ) && strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) <= $stored_expiry ) {
+		// Dates only ever move forward: Stripe redelivers events, Resend replays old ones, and invoices can arrive out of order.
+		$stored_expiry  = (int) strtotime( $this->members_subscription_repository->retrieve( $current_subscription['sub_id'] )['expiry_date'] ?? '' );
+		$extends_access = strtotime( gmdate( 'Y-m-d', $invoice_period['end'] ) ) > $stored_expiry;
+		$is_replay      = ! $extends_access && ! empty( $existing_order ) && 'pending' !== ( $existing_order['status'] ?? '' );
+
+		// A replay changes nothing, except that a member still waiting for their first payment to be recognised is activated.
+		if ( $is_replay && ! in_array( $current_subscription['status'] ?? '', array( 'pending', 'trial' ), true ) ) {
 			PaymentGatewayLogging::log_general(
 				'stripe',
 				'Invoice already applied; subscription left unchanged' . "\n" . wp_json_encode(
@@ -2822,17 +2826,24 @@ class StripeService {
 			return;
 		}
 
-		$next_billing_date = gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
+		$subscription_update = array( 'status' => $subscription_status );
+		$next_billing_date   = null;
 
-		$this->members_subscription_repository->update(
-			$current_subscription['sub_id'],
-			array(
+		if ( $extends_access ) {
+			$next_billing_date   = gmdate( 'Y-m-d 00:00:00', $invoice_period['end'] );
+			$subscription_update = array(
 				'start_date'        => gmdate( 'Y-m-d 00:00:00', $invoice_period['start'] ),
 				'next_billing_date' => $next_billing_date,
 				'expiry_date'       => $next_billing_date,
-				'status'            => $subscription_status,
-			)
-		);
+			) + $subscription_update;
+		}
+
+		$this->members_subscription_repository->update( $current_subscription['sub_id'], $subscription_update );
+
+		if ( $is_replay ) {
+			return;
+		}
+
 		$membership_process = urm_get_membership_process( $member_id );
 		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
 
@@ -2871,11 +2882,12 @@ class StripeService {
 		$period = array();
 
 		foreach ( $invoice['lines']['data'] ?? array() as $line ) {
-			$end = (int) ( $line['period']['end'] ?? 0 );
+			$start = (int) ( $line['period']['start'] ?? 0 );
+			$end   = (int) ( $line['period']['end'] ?? 0 );
 
-			if ( $end > ( $period['end'] ?? 0 ) ) {
+			if ( $start > 0 && $end > ( $period['end'] ?? 0 ) ) {
 				$period = array(
-					'start' => (int) ( $line['period']['start'] ?? 0 ),
+					'start' => $start,
 					'end'   => $end,
 				);
 			}
