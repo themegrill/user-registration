@@ -2734,6 +2734,7 @@ class StripeService {
 		$order_service    = new OrderService();
 		$order_repository = new OrdersRepository();
 
+		$order_created  = false;
 		$existing_order = $order_repository->get_order_by_transaction_id( $payment_intent_id );
 		if ( empty( $existing_order ) ) {
 			// Fallback: if registration created an order before the payment_intent_id was persisted,
@@ -2772,13 +2773,14 @@ class StripeService {
 				$order_data['orders_data']['transaction_id']  = $payment_intent_id ? sanitize_text_field( $payment_intent_id ) : '';
 				$order_data['orders_data']['subscription_id'] = $current_subscription['sub_id'];
 
-				$order_id = $order_repository->create( $order_data );
+				$order_id      = $order_repository->create( $order_data );
+				$order_created = true;
 			}
 		} else {
 			$order_id = $existing_order['ID'] ?? $existing_order['id'] ?? '';
 		}
 
-		if ( empty( $existing_order ) ) {
+		if ( $order_created ) {
 			PaymentGatewayLogging::log_general(
 				'stripe',
 				'New renewal order created via webhook' . "\n" . wp_json_encode(
@@ -2845,18 +2847,19 @@ class StripeService {
 			) + $subscription_update;
 		}
 
-		$this->members_subscription_repository->update( $current_subscription['sub_id'], $subscription_update );
-
-		if ( $is_replay ) {
-			return;
-		}
-
 		$membership_process = urm_get_membership_process( $member_id );
-		$is_renewing        = $this->is_renewing_membership( $membership_process, $membership_id );
+		$is_renewing        = ! $is_replay && $this->is_renewing_membership( $membership_process, $membership_id );
 
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
 			$subscription_service->update_subscription_data_for_renewal( $current_subscription, $membership_metas );
+		}
+
+		// The renewal above stamps dates from today, so the invoice's own billing period is written last to win.
+		$this->members_subscription_repository->update( $current_subscription['sub_id'], $subscription_update );
+
+		if ( $is_replay ) {
+			return;
 		}
 
 		PaymentGatewayLogging::log_webhook_processed(

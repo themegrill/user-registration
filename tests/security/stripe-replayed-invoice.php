@@ -28,7 +28,8 @@ class SubscriptionService {
 		return ( new DateTime( $start ) )->modify( "+{$value} {$period}" )->format( 'Y-m-d' );
 	}
 	public function update_subscription_data_for_renewal( $subscription, $metas ) {
-		$GLOBALS['renewals'][] = $subscription['sub_id'];
+		$GLOBALS['renewals'][]  = $subscription['sub_id'];
+		$GLOBALS['sequence'][] = 'renewal';
 	}
 }
 class OrderService {
@@ -41,7 +42,7 @@ class OrdersRepository {
 		return $GLOBALS['existing_order'];
 	}
 	public function get_order_by_subscription( $subscription_id ) {
-		return false;
+		return $GLOBALS['unlinked_order'];
 	}
 	public function create( $data ) {
 		$GLOBALS['orders_created'][] = $data;
@@ -64,6 +65,7 @@ class SubscriptionRepositoryDouble {
 		return $this->row;
 	}
 	public function update( $id, $data ) {
+		$GLOBALS['sequence'][] = 'dates';
 		$this->writes[] = $data;
 		return 1;
 	}
@@ -114,6 +116,8 @@ $deliver = function ( $row, $invoice = array(), $options = array() ) {
 	$GLOBALS['logged_errors']      = array();
 	$GLOBALS['orders_created']     = array();
 	$GLOBALS['renewals']           = array();
+	$GLOBALS['sequence']           = array();
+	$GLOBALS['unlinked_order']     = $options['unlinked'] ?? false;
 	$GLOBALS['existing_order']     = $options['order'] ?? array();
 	$GLOBALS['membership_process'] = empty( $options['renewing'] ) ? array() : array( 'renew' => array( 12 ) );
 
@@ -254,3 +258,14 @@ $writes = $deliver(
 	)
 );
 security_assert( '2026-11-08 00:00:00' === $writes[0]['expiry_date'], 'The recurring line decides the new expiry' );
+
+// 17. The renewal bookkeeping stamps dates from today, so the invoice's period is written after it and wins.
+$deliver( $due, array(), array( 'renewing' => true ) );
+security_assert( array( 'renewal', 'dates' ) === $GLOBALS['sequence'], 'The invoice dates are written after the renewal bookkeeping' );
+
+// 18. An order the registration saved before the PaymentIntent was known is linked, not duplicated, and no "order created" log is written.
+$deliver( $due, array(), array( 'unlinked' => array( 'ID' => 41, 'transaction_id' => '', 'trial_status' => 'off' ) ) );
+security_assert( array() === $GLOBALS['orders_created'], 'An unlinked registration order is updated, not duplicated' );
+security_assert( array() === array_filter( $GLOBALS['general_logs'], function ( $log ) { return false !== strpos( $log, 'renewal_order_created' ); } ), 'No order-created log when no order was created' );
+$deliver( $due );
+security_assert( 1 === count( array_filter( $GLOBALS['general_logs'], function ( $log ) { return false !== strpos( $log, 'renewal_order_created' ); } ) ), 'The order-created log is written when an order is created' );
