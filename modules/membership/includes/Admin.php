@@ -303,7 +303,7 @@ if ( ! class_exists( 'Admin' ) ) :
 					continue;
 				}
 
-				$title           = isset( $membership['title'] ) ? $membership['title'] : (string) $id;
+				$title          = isset( $membership['title'] ) ? $membership['title'] : (string) $id;
 				$options[ $id ] = $title;
 			}
 
