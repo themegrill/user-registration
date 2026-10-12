@@ -62,9 +62,16 @@ $GLOBALS['umeta'][8]['urm_is_payment_retrying'] = 1;
 $runner->update_subscription_data_for_renewal( $subscription, $metas );
 security_assert( 1 === $GLOBALS['umeta'][8]['urm_is_payment_retrying'], 'Renewing one member does not clear another member\'s retry counter' );
 
-// The retry-failed email must go out on every attempt, not only when the counter is exactly 1.
-foreach ( array( 'Stripe/StripeService.php', 'Paypal/PaypalService.php' ) as $gateway ) {
-	$source = (string) file_get_contents( dirname( __DIR__, 2 ) . '/modules/membership/includes/Admin/Services/' . $gateway );
-	security_assert( 1 === preg_match( '/1\s*<=\s*(?:\(int\)|intval)[^;]*urm_is_payment_retrying/', $source ), $gateway . ' sends the retry-failed email on every failed attempt' );
-	security_assert( 0 === preg_match( '/1\s*===\s*(?:\(int\)|intval)[^;]*urm_is_payment_retrying/', $source ), $gateway . ' does not gate the retry-failed email on the counter being exactly 1' );
-}
+// Stripe sends the retry-failed email on every failed attempt, not only when the counter is exactly 1.
+$services = dirname( __DIR__, 2 ) . '/modules/membership/includes/Admin/Services/';
+$stripe   = (string) file_get_contents( $services . 'Stripe/StripeService.php' );
+security_assert( 1 === preg_match( '/1\s*<=\s*\(int\)[^;]*urm_is_payment_retrying/', $stripe ), 'Stripe sends the retry-failed email on every failed attempt' );
+security_assert( 0 === preg_match( '/1\s*===\s*\(int\)[^;]*urm_is_payment_retrying/', $stripe ), 'Stripe does not gate the retry-failed email on the counter being exactly 1' );
+
+// PayPal does the same, but reads the counter before the renewal clears it and never mails after a completed payment.
+$paypal  = (string) file_get_contents( $services . 'Paypal/PaypalService.php' );
+$read_at = strpos( $paypal, '$retry_attempts = intval(' );
+$renewal = strpos( $paypal, 'update_subscription_data_for_renewal(' );
+security_assert( false !== $read_at && false !== $renewal && $read_at < $renewal, 'PayPal reads the retry counter before the renewal clears it' );
+security_assert( false !== strpos( $paypal, "1 <= \$retry_attempts && 'completed' !== \$payment_status" ), 'PayPal sends the retry-failed email on every failed attempt but not after a completed payment' );
+security_assert( 0 === preg_match( '/1\s*===\s*(?:\$retry_attempts|intval)/', $paypal ), 'PayPal does not gate the retry-failed email on the counter being exactly 1' );

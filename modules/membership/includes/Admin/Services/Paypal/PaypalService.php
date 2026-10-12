@@ -996,13 +996,16 @@ class PaypalService {
 
 		$is_renewing = ! empty( $membership_process['renew'] ) && in_array( $membership_id, $membership_process['renew'] );
 
+		// Read before the renewal below clears the counter.
+		$retry_attempts = intval( get_user_meta( $member_id, 'urm_is_payment_retrying', true ) );
+
 		if ( $is_renewing ) {
 			$subscription_service = new SubscriptionService();
 			$subscription_service->update_subscription_data_for_renewal( $subscription, $membership_metas );
 		}
 
-		// urm_is_payment_retrying is a counter, not a one-shot flag - notify on every attempt.
-		if ( 1 <= intval( get_user_meta( $member_id, 'urm_is_payment_retrying', true ) ) ) {
+		// urm_is_payment_retrying is a counter, not a one-shot flag - notify on every failed attempt, never after a completed payment.
+		if ( 1 <= $retry_attempts && 'completed' !== $payment_status ) {
 			$email_service = new EmailService();
 			$email_data    = array(
 				'subscription'     => $subscription,
