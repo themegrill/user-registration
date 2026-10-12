@@ -7,6 +7,7 @@
 * Enhance  - New sites use form payment fields only; Stripe is available on the Personal plan.
 * Enhance  - Tools (Logs, System Info, Setup Wizard) redesigned to match the Settings screens.
 * Enhance  - Site Assistant can suggest linking existing WordPress users to registration forms.
+* Enhance  - Optionally assign a default free membership when Social Connect skips plan selection.
 * Add      - Show or hide secret payment keys in the setup wizard.
 * Add      - Read-only WordPress abilities for forms, stats, and members (works with the official MCP Adapter).
 * Fix      - Clearer wording for the Force Captcha setting.
