@@ -4040,3 +4040,14 @@ body.user-registration-page {
 		outline-style: auto !important;
 	}
 }
+
+// Each template's select border is more specific than select:focus; restate the focus colour at that specificity (no !important, so the Style Customizer's #form-id rules still win).
+$ur-select-focus-templates: default, bordered, flat, rounded;
+
+body.user-registration-page .user-registration {
+	@each $template in $ur-select-focus-templates {
+		&.ur-frontend-form--#{$template}:not(.login) form .ur-form-row .ur-form-grid select:not([type="radio"]):focus {
+			border-color: var(--ur-primary-color, $primary_color);
+		}
+	}
+}
