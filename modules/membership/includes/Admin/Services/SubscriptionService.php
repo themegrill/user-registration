@@ -229,7 +229,8 @@ class SubscriptionService {
 			case 'bank':
 				return array( 'status' => true );
 			default:
-				return apply_filters( 'user_registration_membership_cancel_subscription', array( 'status' => false ), $order, $subscription );
+				// The fourth argument tells a gateway add-on whether the cancel is immediate, so it only ends access right away then.
+				return apply_filters( 'user_registration_membership_cancel_subscription', array( 'status' => false ), $order, $subscription, $force_cancel );
 		}
 	}
 	public function reactivate_subscription( $order, $subscription ) {
