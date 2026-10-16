@@ -9,12 +9,44 @@
  * Author URI: https://wpuserregistration.com
  * Text Domain: user-registration
  * Domain Path: /languages/
+ * Requires at least: 5.5
+ * Requires PHP: 7.4
  *
  * @package UserRegistration
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
+}
+
+// Bail before loading any file that uses PHP 7.4 syntax, so old PHP gets a notice instead of a fatal error.
+if ( version_compare( PHP_VERSION, '7.4', '<' ) ) {
+	if ( ! function_exists( 'user_registration_php_version_notice' ) ) {
+		/**
+		 * Show an admin notice when the server PHP version is below the plugin minimum.
+		 *
+		 * @since 5.3.1
+		 */
+		function user_registration_php_version_notice() {
+			if ( ! current_user_can( 'activate_plugins' ) ) {
+				return;
+			}
+
+			printf(
+				'<div class="notice notice-error"><p>%s</p></div>',
+				esc_html(
+					sprintf(
+						/* translators: %s: Current PHP version. */
+						__( 'User Registration & Membership requires PHP 7.4 or higher. Your site is running PHP %s, so the plugin has been paused. Please ask your hosting provider to upgrade PHP.', 'user-registration' ),
+						PHP_VERSION
+					)
+				)
+			);
+		}
+	}
+	add_action( 'admin_notices', 'user_registration_php_version_notice' );
+	add_action( 'network_admin_notices', 'user_registration_php_version_notice' );
+	return;
 }
 
 if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
