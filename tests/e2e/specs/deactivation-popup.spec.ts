@@ -39,4 +39,32 @@ test.describe("deactivation popup close @fresh", () => {
 			/\$this->product_key\s*\.\s*'_feedback_deactivate_button_submit'/,
 		);
 	});
+
+	/**
+	 * pro#1950 — Loader::$labels is shared by every ThemeGrill SDK product.
+	 * Replacing its uninstall options drops other products' ids (Everest Forms'
+	 * id6) and fatals the Plugins page on PHP 8, so URM's labels must be merged.
+	 */
+	test("URM merges, not replaces, the shared SDK uninstall labels @fresh @admin", async () => {
+		const php = await readFile(
+			path.join(root, "includes/admin/class-ur-sdk-deactivation-feedback.php"),
+			"utf8",
+		);
+		const method = php.match(
+			/function\s+patch_sdk_labels_after_init\s*\(\s*\)\s*\{[\s\S]*?\n\t\t\}/,
+		);
+
+		expect(method, "patch_sdk_labels_after_init() must exist").not.toBeNull();
+
+		const body = method![0];
+		const assignments = [
+			...body.matchAll(/Loader::\$labels\['uninstall'\]\['options'\]\s*=(?!=)\s*([^;]+);/g),
+		];
+
+		expect(assignments.length, "shared options must be written exactly once").toBe(1);
+		expect(
+			assignments[0][1],
+			"existing labels must be the first array_merge argument so other products keep theirs",
+		).toMatch(/^array_merge\(\s*\\?ThemeGrillSDK\\Loader::\$labels\['uninstall'\]\['options'\]\s*,/);
+	});
 });
