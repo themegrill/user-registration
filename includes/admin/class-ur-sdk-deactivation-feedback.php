@@ -167,9 +167,9 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 		 * The SDK applies themegrill_sdk_labels in Loader::init() on init priority 10.
 		 * This runs at priority 15 and writes Loader::$labels so our options show correctly.
 		 *
-		 * Intentionally replaces (does not merge) uninstall option labels: the shared
-		 * ThemeGrillSDK::$labels static is used by Free and Pro, and merging would leave
-		 * default SDK reasons (e.g. temporary deactivation) alongside URM's four options.
+		 * Merges into the uninstall option labels: the static is shared by every ThemeGrill
+		 * SDK product (e.g. Everest Forms), which still need the default labels. URM's popup
+		 * shows only its four options via the deactivate_options filter.
 		 */
 		public function patch_sdk_labels_after_init() {
 			if ( ! class_exists( 'ThemeGrillSDK\Loader' ) ) {
@@ -195,8 +195,11 @@ if ( ! class_exists( 'UR_SDK_Deactivation_Feedback', false ) ) {
 				),
 			);
 			if ( isset( \ThemeGrillSDK\Loader::$labels['uninstall']['options'] ) && is_array( \ThemeGrillSDK\Loader::$labels['uninstall']['options'] ) ) {
-				// Replace shared SDK uninstall options with URM's set (see method docblock).
-				\ThemeGrillSDK\Loader::$labels['uninstall']['options'] = $our_options;
+				// Merge, not replace: other SDK products crash on PHP 8 when their labels are missing.
+				\ThemeGrillSDK\Loader::$labels['uninstall']['options'] = array_merge(
+					\ThemeGrillSDK\Loader::$labels['uninstall']['options'],
+					$our_options
+				);
 			}
 		}
 	}
