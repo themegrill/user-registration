@@ -4,7 +4,7 @@ Tags: membership, subscription, content restriction, user profile, user registra
 Requires at least: 5.5
 Requires PHP: 7.4
 Tested up to: 7.1
-Stable tag: 5.3.0
+Stable tag: 5.3.1
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
@@ -251,6 +251,9 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 9. Subscription Management
 
 == Changelog ==
+
+= 5.3.1    - 17/10/2026 =
+* Fix      - Plugins page no longer goes blank when Everest Forms is also active on PHP 8.
 
 = 5.3.0    - 12/10/2026 =
 * Feature  - Set a maximum number of times a coupon can be used.

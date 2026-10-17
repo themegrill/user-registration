@@ -1,3 +1,6 @@
+= 5.3.1    - 17/10/2026 =
+* Fix      - Plugins page no longer goes blank when Everest Forms is also active on PHP 8.
+
 = 5.3.0    - 12/10/2026 =
 * Feature  - Set a maximum number of times a coupon can be used.
 * Enhance  - Members and admins get an email when a paid plan changes to a free plan.
