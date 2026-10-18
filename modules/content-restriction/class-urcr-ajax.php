@@ -297,7 +297,7 @@ class URCR_AJAX {
 					wp_send_json_success(
 						array(
 							'rule_id' => $saved_post,
-							'message' => esc_html__( sprintf( 'Successfully %s the Access Rule.', $enabled_text ), 'user-registration' ),
+							'message' => sprintf( esc_html__( 'Successfully %s the Access Rule.', 'user-registration' ), $enabled_text ),
 						)
 					);
 				} else {
@@ -368,7 +368,7 @@ class URCR_AJAX {
 				wp_send_json_success(
 					array(
 						'rule_id' => $saved_post,
-						'message' => esc_html__( sprintf( 'Successfully %s the Access Rule.', $enabled_text ), 'user-registration' ),
+						'message' => sprintf( esc_html__( 'Successfully %s the Access Rule.', 'user-registration' ), $enabled_text ),
 					)
 				);
 			} else {
