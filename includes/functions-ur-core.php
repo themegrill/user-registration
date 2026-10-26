@@ -18,6 +18,8 @@ defined( 'ABSPATH' ) || exit;
 add_filter( 'sanitize_user_meta_first_name', 'sanitize_text_field' );
 add_filter( 'sanitize_user_meta_last_name', 'sanitize_text_field' );
 add_filter( 'sanitize_user_meta_nickname', 'sanitize_text_field' );
+// The bio is saved as user meta, which skips the filtering WordPress does in wp_update_user().
+add_filter( 'sanitize_user_meta_description', 'ur_sanitize_user_description' );
 
 // Include core functions (available in both admin and frontend).
 require UR_ABSPATH . 'includes/functions-ur-page.php';
@@ -235,6 +237,23 @@ function ur_clean( $var ) {
 	} else {
 		return is_scalar( $var ) ? sanitize_text_field( $var ) : $var;
 	}
+}
+
+/**
+ * Sanitize the user biography the way WordPress does when it saves it.
+ *
+ * @since xx.xx.xx
+ *
+ * @param mixed $value Biography value.
+ *
+ * @return mixed
+ */
+function ur_sanitize_user_description( $value ) {
+	if ( ! is_string( $value ) || current_user_can( 'unfiltered_html' ) ) {
+		return $value;
+	}
+
+	return wp_kses( $value, 'user_description' );
 }
 
 /**
