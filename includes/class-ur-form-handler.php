@@ -631,13 +631,9 @@ class UR_Form_Handler {
 	 * @throws Exception Login errors.
 	 */
 	public static function process_registration() {
-		$nonce_value = isset( $_POST['_wpnonce'] ) ? sanitize_key( $_POST['_wpnonce'] ) : '';
-
-		$nonce_value = isset( $_POST['ur_frontend_form_nonce'] ) ? sanitize_key( $_POST['ur_frontend_form_nonce'] ) : $nonce_value;
-
 		if ( ! empty( $_POST['ur_fallback_submit'] ) ) {
 			$_POST['form_data'] = urldecode( $_POST['form_data'] );
-			ur_process_registration( $nonce_value );
+			ur_process_registration();
 		}
 	}
 
