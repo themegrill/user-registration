@@ -85,13 +85,21 @@ test.describe("admin surfaces @fresh", () => {
 
   test("payment settings masks secret keys with show/hide toggle @fresh @admin", async ({ page }) => {
     await gotoAdminPage(page, "user-registration-settings", "&tab=payment");
-    const cardHeader = page.locator("#paypal .user-registration-card__header, #stripe .user-registration-card__header, .user-registration-card__header").first();
-    await cardHeader.click();
+    const paypal = page.locator("#paypal");
+    await paypal.locator(".user-registration-card__header").click();
 
-    const secretInput = page.locator(".user-registration-password-input-wrapper input").first();
+    // A clean install has PayPal off, and its keys only render once it is on. Turning it
+    // on defaults the mode to Production, which hides the test keys, so pick Test mode
+    // rather than relying on whatever the site happened to have saved.
+    if (!(await paypal.locator("#user_registration_paypal_enabled").isChecked())) {
+      await paypal.locator("label[for='user_registration_paypal_enabled'], .user-registration-toggle-slider").first().click();
+    }
+    await paypal.locator("#user_registration_global_paypal_mode").selectOption("test");
+
+    const secretInput = paypal.locator("#user_registration_global_paypal_test_client_secret");
     await expect(secretInput).toHaveAttribute("type", "password");
 
-    const toggleBtn = page.locator(".user-registration-password-input-wrapper .ur-toggle-password").first();
+    const toggleBtn = paypal.locator(".user-registration-password-input-wrapper").filter({ has: page.locator("#user_registration_global_paypal_test_client_secret") }).locator(".ur-toggle-password");
     await expect(toggleBtn).toBeVisible();
     await toggleBtn.click();
     await expect(secretInput).toHaveAttribute("type", "text");
