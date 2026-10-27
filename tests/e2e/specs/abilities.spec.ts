@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-test("read-only abilities permissions, data and MCP integration @fresh", () => {
+test("read-only abilities permissions, data and MCP integration @fresh @security", () => {
   const wordpress = process.env.UR_ABILITIES_WP_PATH;
   test.skip(!wordpress, "Set UR_ABILITIES_WP_PATH to a disposable WordPress 6.9+ install with this plugin and MCP Adapter active.");
   const result = execFileSync("wp", [

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-test("feed and public discovery access legacy @fresh", () => {
+test("feed and public discovery access legacy @fresh @content-restriction", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [
@@ -18,7 +18,7 @@ test("feed and public discovery access legacy @fresh", () => {
   expect(result).toContain("36 assertions passed");
 });
 
-test("feed and public discovery access per-post @fresh", () => {
+test("feed and public discovery access per-post @fresh @content-restriction", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [
@@ -34,7 +34,7 @@ test("feed and public discovery access per-post @fresh", () => {
   expect(result).toContain("36 assertions passed");
 });
 
-test("feed and public discovery access whole-site @fresh", () => {
+test("feed and public discovery access whole-site @fresh @content-restriction", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [
@@ -50,7 +50,7 @@ test("feed and public discovery access whole-site @fresh", () => {
   expect(result).toContain("36 assertions passed");
 });
 
-test("feed and public discovery access post-type @fresh", () => {
+test("feed and public discovery access post-type @fresh @content-restriction", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [
@@ -66,7 +66,7 @@ test("feed and public discovery access post-type @fresh", () => {
   expect(result).toContain("36 assertions passed");
 });
 
-test("feed and public discovery access membership @fresh", () => {
+test("feed and public discovery access membership @fresh @content-restriction", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [

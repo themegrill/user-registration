@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 
-test("PayPal REST keeps its slug and displays the PayPal brand @fresh", async () => {
+test("PayPal REST keeps its slug and displays the PayPal brand @fresh @admin", async () => {
 	const source = path.resolve(__dirname, "../../../includes/functions-ur-core.php");
 	const php = `
 		function sanitize_key($value) { return preg_replace('/[^a-z0-9_-]/', '', strtolower($value)); }
