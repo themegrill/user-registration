@@ -2,6 +2,7 @@
   "runner": "playwright",
   "package_manager": "pnpm",
   "install": "pnpm install --frozen-lockfile",
+  "build": "pnpm run build:no-makepot",
   "command": "pnpm exec playwright test",
   "config": "playwright.config.ts",
   "spec_dir": "tests/e2e/specs",
