@@ -707,7 +707,7 @@ if ( ! class_exists( 'User_Registration_Members_ListTable' ) ) {
 							}
 							break;
 						case 'email':
-							$row .= "<a href='" . esc_url( "mailto:$email" ) . "'>$email</a>";
+							$row .= "<a href='" . esc_url( "mailto:$email" ) . "'>" . esc_html( $email ) . '</a>';
 							break;
 						case 'role':
 							$row .= esc_html( $roles_list );
@@ -1459,7 +1459,7 @@ if ( ! class_exists( 'User_Registration_Members_ListTable' ) ) {
 				$meta_value = get_user_meta( $user_id, $column_name, true );
 			}
 
-			$output .= is_array( $meta_value ) ? implode( ', ', $meta_value ) : $meta_value;
+			$output .= esc_html( is_array( $meta_value ) ? implode( ', ', $meta_value ) : $meta_value );
 
 			return $output;
 		}
