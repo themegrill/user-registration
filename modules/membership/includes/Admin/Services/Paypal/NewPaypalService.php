@@ -5926,6 +5926,7 @@ class NewPaypalService {
 			array( 'name' => 'BILLING.SUBSCRIPTION.SUSPENDED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.CANCELLED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.EXPIRED' ),
+			array( 'name' => 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' ),
 			array( 'name' => 'CUSTOMER.DISPUTE.CREATED' ),
 			array( 'name' => 'CUSTOMER.DISPUTE.RESOLVED' ),
 			array( 'name' => 'CUSTOMER.DISPUTE.UPDATED' ),
