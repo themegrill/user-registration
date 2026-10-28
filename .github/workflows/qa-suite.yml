@@ -62,6 +62,12 @@ jobs:
       product_type: plugin
       qa_ref: feat/state-seeding-helpers
       scope: changed
+      # 35 minutes, up from the shared 30. The first full run of these specs on the
+      # GitHub runner took 22 minutes (62 tests, about twice the local time each), which
+      # leaves little room if the runner is slow on the day. Stays below the 40-minute
+      # job limit: the two must never be equal, or the job ceiling can win the race and
+      # kill the run without naming the spec that was executing.
+      timeout_ms: 2100000
       # The shared default is 45s, and it is too tight for THIS product.
       #
       # Nearly every spec here is a whole user journey — provision a form,
