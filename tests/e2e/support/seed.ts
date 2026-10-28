@@ -1,4 +1,4 @@
-import { request, type APIRequestContext } from "@playwright/test";
+import { request, test, type APIRequestContext } from "@playwright/test";
 
 /**
  * Put the site into a state a click cannot reach, over HTTP.
@@ -16,7 +16,8 @@ import { request, type APIRequestContext } from "@playwright/test";
  * reason — never pass without having seeded what it claims to test.
  */
 
-const ABSENT = "__tgqa_absent__";
+/** The value that means "this option does not exist": posting it deletes, reading it reports a missing one. */
+export const ABSENT = "__tgqa_absent__";
 
 /** The probe URL the runner exported, rewritten to address the seed endpoint. */
 function seedBase(): { origin: string; token: string } | null {
@@ -33,6 +34,23 @@ function seedBase(): { origin: string; token: string } | null {
 
 /** True when the runner staged the seed endpoint for this run. */
 export const seedAvailable = (): boolean => seedBase() !== null;
+
+/**
+ * Skip a spec that needs the seed endpoint when there is none, but FAIL on CI.
+ *
+ * Locally the endpoint is absent whenever someone runs a spec against a site the
+ * runner did not boot, and a skip with a reason is the right answer. On a CI runner
+ * it is always staged, so its absence means the workflow lost it, and a skip there
+ * is the worst outcome: the suite reports "25 skipped", which reads as coverage that
+ * exists, and goes green. That happened on the first live run of these specs.
+ */
+export function requireSeed(reason: string): void {
+  if (seedAvailable()) return;
+  if (process.env.CI) {
+    throw new Error(`${reason} — on CI the runner must stage the seed endpoint, so this is a workflow fault, not a skip`);
+  }
+  test.skip(true, reason);
+}
 
 let ctx: APIRequestContext | null = null;
 
@@ -147,6 +165,8 @@ export type HttpStub = {
   method: string;
   /** The full URL without a query string, e.g. `https://api-m.sandbox.paypal.com/v1/oauth2/token`. */
   url: string;
+  /** Only match requests whose query string contains this. The first matching stub wins, so put a narrow one before a catch-all. */
+  query?: string;
   status?: number;
   body?: unknown;
 };
@@ -191,4 +211,20 @@ export async function postRaw(
   const c = await client();
   const res = await c.post(path, { data: body, headers: { "Content-Type": "application/json", ...headers } });
   return { status: res.status(), text: await res.text() };
+}
+
+export type CapturedMail = { to: string[]; subject: string; message: string; headers: unknown };
+
+/**
+ * Record what `wp_mail()` is asked to send instead of sending it. Turning capture
+ * on clears the log; turning it off leaves the log readable. Always turn it off in
+ * teardown: a capturing site sends no mail at all.
+ */
+export const captureMail = async (on: boolean): Promise<void> => {
+  await call("mail", { capture: on });
+};
+
+export async function capturedMail(): Promise<CapturedMail[]> {
+  const res = await call<{ mail: CapturedMail[] }>("mail");
+  return res.mail;
 }

@@ -10,10 +10,13 @@
     "ur_membership_subscriptions",
     "ur_membership_orders",
     "ur_membership_ordermeta",
-    "ur_membership_subscription_events"
+    "ur_membership_subscription_events",
+    "postmeta",
+    "usermeta"
   ],
   "seed_cron_hooks": [
-    "urm_daily_payment_retry_check"
+    "urm_daily_payment_retry_check",
+    "urm_missed_payment_events_check"
   ],
   "spec_extension": ".spec.ts",
   "json_report": "test-results/results.json",

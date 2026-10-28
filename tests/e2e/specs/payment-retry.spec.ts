@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { seedSubscription, T, type SeededSubscription } from "../support/payments";
+import { seedSubscription, T, useSharedPlan, type SeededSubscription } from "../support/payments";
 import {
   clearStubs,
   restoreOptions,
   runCron,
+  requireSeed,
   seedAvailable,
   selectRows,
   setOptions,
@@ -34,6 +35,7 @@ const stripeSubscription = (status: string) => ({
 });
 
 test.describe("stripe payment retry @fresh", () => {
+  const plan = useSharedPlan({ type: "free" });
   let before: Record<string, unknown> | undefined;
   let sub: SeededSubscription | undefined;
 
@@ -41,7 +43,7 @@ test.describe("stripe payment retry @fresh", () => {
     // Per-test state, so one test's teardown never restores another's leftovers.
     before = undefined;
     sub = undefined;
-    test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so retry state cannot be seeded");
+    requireSeed("the runner did not stage the seed endpoint, so retry state cannot be seeded");
     await loginAsAdmin(page);
   });
 
@@ -56,7 +58,7 @@ test.describe("stripe payment retry @fresh", () => {
   async function arrange(page: import("@playwright/test").Page, retries: number) {
     // The plan first: creating a plan on a site with Stripe enabled makes the
     // product sync a price with Stripe.
-    sub = await seedSubscription(page, { status: "expired", gatewaySubscriptionId: SUB, paymentMethod: "stripe" });
+    sub = await seedSubscription(page, { planId: plan.id, status: "expired", gatewaySubscriptionId: SUB, paymentMethod: "stripe" });
     before = await setOptions({
       user_registration_stripe_enabled: "1",
       user_registration_stripe_test_mode: "1",

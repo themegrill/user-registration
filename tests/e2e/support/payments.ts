@@ -1,9 +1,9 @@
-import type { Page } from "@playwright/test";
-import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
+import { test, type Page } from "@playwright/test";
+import { BASE_URL, uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
 import { createHmac } from "node:crypto";
-import { deleteRows, insertRow, postRaw, selectRows, setHttpStubs, setStripeStubs } from "./seed";
+import { deleteRows, insertRow, postRaw, seedAvailable, selectRows, setHttpStubs, setStripeStubs, type HttpStub } from "./seed";
 import { ensureMembershipEnabled } from "./urm";
-import { gotoAdminPage, restNonce } from "./wp";
+import { gotoAdminPage, loginAsAdmin, restNonce } from "./wp";
 
 /**
  * Membership state for payment specs: a plan, a member, and the subscription and
@@ -141,14 +141,52 @@ async function deleteUser(page: Page, userId: number): Promise<void> {
   );
 }
 
+/**
+ * Give a plan the billing terms a subscription plan carries: `{ value: 1, duration: "month" }`.
+ *
+ * The free plugin refuses to CREATE a subscription-type plan (`validate_membership_data`
+ * needs Pro), but handlers that renew one only read these two fields from the plan's
+ * stored meta. So the terms are added to the meta the product itself wrote, read back
+ * and re-inserted, rather than building the product's JSON document by hand. Needs
+ * `postmeta` in `seed_tables`.
+ */
+export async function setPlanBillingTerms(
+  planId: number,
+  terms: { value: number; duration: "day" | "week" | "month" | "year" },
+): Promise<void> {
+  const [row] = await selectRows<{ meta_id: string; meta_value: string }>("postmeta", {
+    post_id: planId,
+    meta_key: "ur_membership",
+  });
+  if (!row) throw new Error(`plan ${planId} has no ur_membership meta to extend`);
+
+  const meta = { ...JSON.parse(row.meta_value), subscription: terms };
+  await deleteRows("postmeta", { meta_id: row.meta_id });
+  await insertRow("postmeta", { post_id: planId, meta_key: "ur_membership", meta_value: JSON.stringify(meta) });
+}
+
 export type SeedSubscriptionOptions = {
-  /** An existing plan. Without one a free plan is created, and removed in cleanup. */
+  /** An existing plan. Without one a plan is created, and removed in cleanup. */
   planId?: number;
+  /**
+   * The type of the plan created when `planId` is not given. `paid` for anything
+   * that records an order amount: a free plan has an empty amount, and the order
+   * service fatals on it (`number_format('')`), which no real subscription reaches.
+   */
+  planType?: "free" | "paid";
+  /** Billing terms to write onto the plan this call creates. Ignored when `planId` is given. */
+  billingTerms?: { value: number; duration: "day" | "week" | "month" | "year" };
   status?: "active" | "canceled" | "expired" | "trial" | "pending";
   billingCycle?: "day" | "week" | "month" | "year";
   amount?: number;
   /** Days from now. Negative means already due. */
   nextBillingInDays?: number;
+  /**
+   * Exact stored dates (`YYYY-MM-DD HH:MM:SS`). When `expiryDate` is given the next
+   * billing date is set to it too, which is how a renewal handler sees a paid-up cycle.
+   */
+  startDate?: string;
+  expiryDate?: string;
   /** The gateway's own subscription id, which webhooks look the row up by. */
   gatewaySubscriptionId?: string;
   paymentMethod?: string;
@@ -174,7 +212,8 @@ export async function seedSubscription(
   o: SeedSubscriptionOptions = {},
 ): Promise<SeededSubscription> {
   const ownsPlan = o.planId === undefined;
-  const planId = o.planId ?? (await createPlan(page));
+  const planId = o.planId ?? (await createPlan(page, { type: o.planType }));
+  if (ownsPlan && o.billingTerms) await setPlanBillingTerms(planId, o.billingTerms);
   const userId = await createUser(page);
 
   let subscriptionId = 0;
@@ -199,9 +238,9 @@ export async function seedSubscription(
     subscriptionId = await insertRow(T.subscriptions, {
       user_id: userId,
       item_id: planId,
-      start_date: daysFromNow(-30),
-      expiry_date: daysFromNow(335),
-      next_billing_date: daysFromNow(o.nextBillingInDays ?? 0),
+      start_date: o.startDate ?? daysFromNow(-30),
+      expiry_date: o.expiryDate ?? daysFromNow(335),
+      next_billing_date: o.expiryDate ?? daysFromNow(o.nextBillingInDays ?? 0),
       billing_cycle: o.billingCycle ?? "month",
       billing_amount: o.amount ?? 10,
       status: o.status ?? "active",
@@ -273,14 +312,17 @@ export const paypalTestOptions = {
  * Stub PayPal's two calls behind webhook verification: the OAuth token, and the
  * verify-webhook-signature call that decides whether a delivery is genuine.
  *
+ * `extra` adds more stubs (they match first, so they can narrow by `query`).
+ *
  * `SUCCESS` makes every delivery look genuine. That is NOT a test of PayPal's
  * signature scheme: PayPal verifies against a certificate it hosts, so a locally
  * computed signature cannot be made valid. What it does test is everything on
  * the product's side of that call: that a verified event is acted on, and that a
  * refused one is not. Use `FAILURE` for the latter.
  */
-export const stubPaypalVerification = (verdict: "SUCCESS" | "FAILURE") =>
+export const stubPaypalVerification = (verdict: "SUCCESS" | "FAILURE", extra: HttpStub[] = []) =>
   setHttpStubs([
+    ...extra,
     { method: "POST", url: `${PAYPAL_SANDBOX}/v1/oauth2/token`, body: { access_token: "tgqa_token", token_type: "Bearer" } },
     {
       method: "POST",
@@ -305,3 +347,75 @@ export const postPaypalWebhook = (event: { id: string; event_type: string; resou
 /** The `custom_id` PayPal echoes back: `<plan>-<member>-<current plan>-<subscription row>`. */
 export const paypalCustomId = (s: { planId: number; userId: number; subscriptionId: number }) =>
   `${s.planId}-${s.userId}-${s.planId}-${s.subscriptionId}`;
+
+/**
+ * A user-meta value as stored (PHP-serialised when the product saved an array).
+ * Needs `usermeta` in `seed_tables`. Null when the key is absent.
+ */
+export async function userMeta(userId: number, key: string): Promise<string | null> {
+  const [row] = await selectRows<{ meta_value: string | null }>("usermeta", { user_id: userId, meta_key: key });
+  return row ? (row.meta_value ?? "") : null;
+}
+
+/**
+ * One string field out of a serialised PHP array, e.g. `status` from
+ * `a:2:{s:6:"status";s:4:"open";…}`. Enough to assert a flag the product stores as
+ * an array without re-implementing `unserialize`; it reads string values only.
+ */
+export function serialisedField(serialised: string | null, field: string): string | null {
+  if (serialised === null) return null;
+  const m = new RegExp(`s:${field.length}:"${field}";s:\\d+:"([^"]*)"`).exec(serialised);
+  return m ? m[1] : null;
+}
+
+/**
+ * One plan for a whole describe block, instead of one per test.
+ *
+ * Creating a plan goes through the product's admin screen, which is most of the
+ * cost of seeding a subscription: about fifteen seconds of a twenty-second test
+ * locally, and Playground in CI is several times slower than that. A plan is only
+ * the thing a subscription points at, so tests that do not edit it share one.
+ * Call it inside the `describe`, and pass `plan.id` as `planId` to
+ * `seedSubscription`, which then leaves the plan alone in its own cleanup.
+ *
+ * The plan is removed after the block. The product refuses to delete a plan that
+ * still has members, which is fine: every test's cleanup removes its own rows
+ * first, and a plan that cannot be deleted is a leak worth failing on.
+ */
+export function useSharedPlan(opts: {
+  type?: "free" | "paid";
+  billingTerms?: SeedSubscriptionOptions["billingTerms"];
+} = {}): { id: number } {
+  const plan = { id: 0 };
+
+  const adminPage = async (browser: import("@playwright/test").Browser) => {
+    const context = await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    await loginAsAdmin(page);
+    return { context, page };
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    if (!seedAvailable()) return;
+    const { context, page } = await adminPage(browser);
+    try {
+      plan.id = await createPlan(page, { type: opts.type });
+      if (opts.billingTerms) await setPlanBillingTerms(plan.id, opts.billingTerms);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (!plan.id) return;
+    const { context, page } = await adminPage(browser);
+    try {
+      await deletePlan(page, plan.id);
+    } finally {
+      await context.close();
+      plan.id = 0;
+    }
+  });
+
+  return plan;
+}
