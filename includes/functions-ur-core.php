@@ -5844,10 +5844,9 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 	/**
 	 * Process Registration.
 	 *
-	 * @param string $nonce_value Nonce value.
 	 * @return void
 	 */
-	function ur_process_registration( $nonce_value ) {
+	function ur_process_registration() {
 		/**
 		 * Filter to modify user capability.
 		 * Default value is 'create_users'.
