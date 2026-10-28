@@ -42,6 +42,39 @@ import { ensurePage, restNonce } from "./wp";
 let firstRunDone = false;
 let cachedFormId: number | null = null;
 
+/**
+ * Forget what this worker believes about the site, so the next `ensureFirstRun` and
+ * `firstFormId` look again. For a spec that has just changed the site under them.
+ */
+export function resetSiteState(): void {
+  firstRunDone = false;
+  cachedFormId = null;
+}
+
+/**
+ * Trash every registration form, so the next `ensureFirstRun` provisions a fresh
+ * default one.
+ *
+ * For a spec that changes the default form itself. The setup wizard's Next button
+ * adds a required Membership field to it (`ensure_membership_field_in_default_form`),
+ * and putting the saved answer back does not take the field out again, so every
+ * later spec in the worker that registers a user finds a submit button that stays
+ * disabled for want of a plan to choose, or a registration that fails outright.
+ * The product only ever adds the field, so recreating the form is how it goes back.
+ * Uses the list table's own Trash links, which carry their nonces.
+ */
+export async function discardRegistrationForms(page: Page): Promise<void> {
+  for (let guard = 0; guard < 20; guard++) {
+    await page.goto("/wp-admin/edit.php?post_type=user_registration");
+    const trash = page.locator("#the-list a.submitdelete").first();
+    if (!(await trash.count())) break;
+    const href = await trash.getAttribute("href");
+    if (!href) break;
+    await page.goto(new URL(href, page.url()).toString());
+  }
+  resetSiteState();
+}
+
 export async function ensureFirstRun(page: Page): Promise<void> {
   if (firstRunDone) return;
 

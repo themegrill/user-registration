@@ -16,7 +16,8 @@ import { request, test, type APIRequestContext } from "@playwright/test";
  * reason — never pass without having seeded what it claims to test.
  */
 
-const ABSENT = "__tgqa_absent__";
+/** The value that means "this option does not exist": posting it deletes, reading it reports a missing one. */
+export const ABSENT = "__tgqa_absent__";
 
 /** The probe URL the runner exported, rewritten to address the seed endpoint. */
 function seedBase(): { origin: string; token: string } | null {

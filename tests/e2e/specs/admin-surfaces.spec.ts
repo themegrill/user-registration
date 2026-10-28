@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { ensureFirstRun, ensureMembershipEnabled } from "../support/urm";
+import { ABSENT, getOptions, restoreOptions, seedAvailable } from "../support/seed";
+import { discardRegistrationForms, ensureFirstRun, ensureMembershipEnabled } from "../support/urm";
 import { gotoAdminPage, loginAsAdmin, restNonce } from "../support/wp";
 
 const WIZARD_API = "/index.php?rest_route=/user-registration/v1/getting-started";
@@ -116,11 +117,18 @@ test.describe("admin surfaces @fresh", () => {
 
     // The wizard's Next button SAVES the membership answer, and this test never put it back.
     // Remember the saved answer and restore it, the way setup-wizard.spec.ts does. This puts
-    // the setting back; it does not remove anything the wizard created while it ran.
+    // the setting back; the form it altered is discarded below, because the setting
+    // alone does not undo that.
     const headers = { "X-WP-Nonce": await restNonce(page) };
     const before = await page.request.get(`${WIZARD_API}/welcome`, { headers });
     expect(before.ok()).toBeTruthy();
     const original = (await before.json()).data;
+    // On a fresh site nothing has answered yet, so there is nothing for the REST
+    // call above to put back, and the wizard's "Yes" would stay stored for every
+    // later spec. The seed endpoint can put the option back exactly, including
+    // back to "not set".
+    const answerKey = "urm_onboarding_membership_type";
+    const savedAnswer = seedAvailable() ? await getOptions(answerKey) : null;
 
     try {
       await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
@@ -167,6 +175,24 @@ test.describe("admin surfaces @fresh", () => {
             allow_usage_tracking: original.allow_usage_tracking,
             admin_email: original.admin_email,
           },
+        });
+      }
+      // Next also turns the default registration form into one with a required Membership
+      // field, and putting the answer back leaves it that way. Every later spec that
+      // registers a user then meets a submit button that cannot be pressed, or a
+      // registration that fails. The product only ever adds the field, so the form is
+      // thrown away and the three options that remember it are cleared, which makes the
+      // next first-run bootstrap provision a plain one.
+      //
+      // Only on a disposable site: this deletes forms, and a developer's own site (no seed
+      // endpoint) has real ones. There the answer is restored over REST above, as before.
+      if (savedAnswer) {
+        await restoreOptions(savedAnswer);
+        await discardRegistrationForms(page);
+        await restoreOptions({
+          user_registration_default_form_page_id: ABSENT,
+          user_registration_registration_form: ABSENT,
+          urm_membership_default_form_page_id: ABSENT,
         });
       }
     }
