@@ -19,6 +19,13 @@ class UR_Block_Content_Restriction extends UR_Block_Abstract {
 	protected $block_name = 'content-restriction-enhanced';
 
 	/**
+	 * Inner content is authored by the site owner and may hold shortcodes.
+	 *
+	 * @var bool
+	 */
+	protected $escape_shortcodes = false;
+
+	/**
 	 * Build html.
 	 *
 	 * @param string $content

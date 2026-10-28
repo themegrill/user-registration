@@ -39,7 +39,7 @@ class UR_Query {
 	 * Get any errors from querystring.
 	 */
 	public function get_errors() {
-		$error = ! empty( $_GET['ur_error'] ) ? sanitize_text_field( wp_unslash( $_GET['ur_error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$error = ! empty( $_GET['ur_error'] ) ? ur_escape_shortcodes( sanitize_text_field( wp_unslash( $_GET['ur_error'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 		if ( $error && ! ur_has_notice( $error, 'error' ) ) {
 			ur_add_notice( $error, 'error' );

@@ -37,7 +37,7 @@ class UR_Preview {
 				add_action( 'template_redirect', array( $this, 'handle_preview' ) );
 				add_filter( 'astra_remove_entry_header_content', '__return_true' ); // Need to remove in next version, If astra release the patches.
 
-			} elseif ( isset( $_GET['ur_login_preview'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			} elseif ( isset( $_GET['ur_login_preview'], $_GET['_wpnonce'] ) && current_user_can( 'manage_user_registration' ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'ur_login_preview' ) ) {
 				add_action( 'pre_get_posts', array( $this, 'pre_get_posts' ) );
 				add_action( 'template_redirect', array( $this, 'handle_login_preview' ) );
 				add_filter( 'home_template_hierarchy', array( $this, 'template_include' ) );

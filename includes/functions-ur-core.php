@@ -13876,3 +13876,30 @@ if ( ! function_exists( 'ur_get_valid_payment_invoices' ) ) {
 		return $preserve_keys ? $invoices : array_values( $invoices );
 	}
 }
+
+if ( ! function_exists( 'ur_escape_shortcodes' ) ) {
+	/**
+	 * Replace shortcode brackets with HTML entities so output is never run through do_shortcode().
+	 *
+	 * Script and style blocks are left untouched because entities are not decoded inside them.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param string $html HTML content.
+	 * @return string
+	 */
+	function ur_escape_shortcodes( $html ) {
+		return preg_replace_callback(
+			'#<(script|style)\b.*?</\1\s*>|[\[\]]#is',
+			function ( $match ) {
+				$entities = array(
+					'[' => '&#91;',
+					']' => '&#93;',
+				);
+
+				return isset( $entities[ $match[0] ] ) ? $entities[ $match[0] ] : $match[0];
+			},
+			$html
+		);
+	}
+}
