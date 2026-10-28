@@ -1917,10 +1917,8 @@ class AJAX {
 			$data['coupon'] = sanitize_text_field( $_POST['coupon'] );
 		}
 
-		if ( ! empty( $_POST['tax_rate'] ) ) {
-			$data['tax_rate']               = max( 0, floatval( $_POST['tax_rate'] ) );
-			$data['tax_calculation_method'] = ! empty( $_POST['tax_calculation_method'] ) ? sanitize_text_field( $_POST['tax_calculation_method'] ) : '1';
-		}
+		// Tax comes from the member's saved country and the tax settings, never from the request.
+		$data = array_merge( $data, urm_get_user_tax_details( get_current_user_id() ) );
 
 		$subscription_service = new SubscriptionService();
 		$status               = $subscription_service->can_upgrade( $data );
@@ -2204,10 +2202,8 @@ class AJAX {
 			$data['coupon'] = sanitize_text_field( $_POST['coupon'] );
 		}
 
-		if ( ! empty( $_POST['tax_rate'] ) ) {
-			$data['tax_rate']               = max( 0, floatval( $_POST['tax_rate'] ) );
-			$data['tax_calculation_method'] = ! empty( $_POST['tax_calculation_method'] ) ? sanitize_text_field( $_POST['tax_calculation_method'] ) : '1';
-		}
+		// Tax comes from the member's saved country and the tax settings, never from the request.
+		$data = array_merge( $data, urm_get_user_tax_details( get_current_user_id() ) );
 
 		if ( ! empty( $user_membership_ids ) ) {
 			$subscription_service = new SubscriptionService();

@@ -597,9 +597,13 @@ if ( ! class_exists( 'Admin' ) ) :
 			// Authoritative membership id from the server-side field value, not client members_data.
 			$data['membership'] = $selected_membership;
 
-			// Client-submitted tax_rate must never be negative (would reduce the charge below base).
-			if ( isset( $data['tax_rate'] ) ) {
-				$data['tax_rate'] = max( 0, floatval( $data['tax_rate'] ) );
+			// Tax comes from the submitted country and the tax settings, never from client members_data.
+			unset( $data['tax_rate'], $data['tax_calculation_method'] );
+			foreach ( $valid_form_data as $field_data ) {
+				if ( isset( $field_data->extra_params['field_key'] ) && 'country' === $field_data->extra_params['field_key'] ) {
+					$data = array_merge( $data, urm_get_tax_details( $field_data->value ) );
+					break;
+				}
 			}
 
 			// Validate that the submitted membership ID is one the form is actually configured to offer.
