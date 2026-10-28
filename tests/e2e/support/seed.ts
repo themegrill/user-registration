@@ -147,6 +147,8 @@ export type HttpStub = {
   method: string;
   /** The full URL without a query string, e.g. `https://api-m.sandbox.paypal.com/v1/oauth2/token`. */
   url: string;
+  /** Only match requests whose query string contains this. The first matching stub wins, so put a narrow one before a catch-all. */
+  query?: string;
   status?: number;
   body?: unknown;
 };
@@ -191,4 +193,20 @@ export async function postRaw(
   const c = await client();
   const res = await c.post(path, { data: body, headers: { "Content-Type": "application/json", ...headers } });
   return { status: res.status(), text: await res.text() };
+}
+
+export type CapturedMail = { to: string[]; subject: string; message: string; headers: unknown };
+
+/**
+ * Record what `wp_mail()` is asked to send instead of sending it. Turning capture
+ * on clears the log; turning it off leaves the log readable. Always turn it off in
+ * teardown: a capturing site sends no mail at all.
+ */
+export const captureMail = async (on: boolean): Promise<void> => {
+  await call("mail", { capture: on });
+};
+
+export async function capturedMail(): Promise<CapturedMail[]> {
+  const res = await call<{ mail: CapturedMail[] }>("mail");
+  return res.mail;
 }

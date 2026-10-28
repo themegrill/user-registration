@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
 import { createHmac } from "node:crypto";
-import { deleteRows, insertRow, postRaw, selectRows, setHttpStubs, setStripeStubs } from "./seed";
+import { deleteRows, insertRow, postRaw, selectRows, setHttpStubs, setStripeStubs, type HttpStub } from "./seed";
 import { ensureMembershipEnabled } from "./urm";
 import { gotoAdminPage, restNonce } from "./wp";
 
@@ -312,14 +312,17 @@ export const paypalTestOptions = {
  * Stub PayPal's two calls behind webhook verification: the OAuth token, and the
  * verify-webhook-signature call that decides whether a delivery is genuine.
  *
+ * `extra` adds more stubs (they match first, so they can narrow by `query`).
+ *
  * `SUCCESS` makes every delivery look genuine. That is NOT a test of PayPal's
  * signature scheme: PayPal verifies against a certificate it hosts, so a locally
  * computed signature cannot be made valid. What it does test is everything on
  * the product's side of that call: that a verified event is acted on, and that a
  * refused one is not. Use `FAILURE` for the latter.
  */
-export const stubPaypalVerification = (verdict: "SUCCESS" | "FAILURE") =>
+export const stubPaypalVerification = (verdict: "SUCCESS" | "FAILURE", extra: HttpStub[] = []) =>
   setHttpStubs([
+    ...extra,
     { method: "POST", url: `${PAYPAL_SANDBOX}/v1/oauth2/token`, body: { access_token: "tgqa_token", token_type: "Bearer" } },
     {
       method: "POST",

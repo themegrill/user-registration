@@ -15,7 +15,8 @@
     "usermeta"
   ],
   "seed_cron_hooks": [
-    "urm_daily_payment_retry_check"
+    "urm_daily_payment_retry_check",
+    "urm_missed_payment_events_check"
   ],
   "spec_extension": ".spec.ts",
   "json_report": "test-results/results.json",
