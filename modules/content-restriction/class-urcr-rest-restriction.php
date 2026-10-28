@@ -26,6 +26,8 @@ class URCR_REST_Restriction {
 	public static function init() {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_response_filters' ) );
 		add_filter( 'rest_request_after_callbacks', array( __CLASS__, 'restrict_woocommerce_response' ), PHP_INT_MAX, 3 );
+		add_filter( 'rest_comment_query', array( __CLASS__, 'exclude_restricted_post_comments' ), PHP_INT_MAX );
+		add_filter( 'rest_request_after_callbacks', array( __CLASS__, 'restrict_single_comment' ), PHP_INT_MAX, 3 );
 		foreach ( array( 'product', 'product_variation' ) as $post_type ) {
 			// Legacy WC controllers pass WP_Post; newer controllers pass WC_Product.
 			add_filter( 'woocommerce_rest_prepare_' . $post_type, array( __CLASS__, 'restrict_response' ), PHP_INT_MAX, 3 );
@@ -165,6 +167,65 @@ class URCR_REST_Restriction {
 			return new WP_Error( 'urcr_rest_product_restricted', __( 'Product not found.', 'user-registration' ), array( 'status' => 404 ) );
 		}
 		$response->set_data( $data );
+
+		return $response;
+	}
+
+	/**
+	 * Leave out comments on inaccessible posts from REST comment collections.
+	 * Done in the query so totals and pagination headers stay accurate.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array $args WP_Comment_Query arguments.
+	 * @return array
+	 */
+	public static function exclude_restricted_post_comments( $args ) {
+		global $wpdb;
+
+		if ( ! function_exists( 'urcr_is_content_access_granted' ) ) {
+			return $args;
+		}
+
+		$post_ids = $wpdb->get_col( "SELECT DISTINCT comment_post_ID FROM {$wpdb->comments}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Read only list of commented posts, no user input.
+		$excluded = array();
+
+		foreach ( $post_ids as $post_id ) {
+			if ( ! urcr_is_content_access_granted( absint( $post_id ) ) ) {
+				$excluded[] = absint( $post_id );
+			}
+		}
+
+		if ( $excluded ) {
+			$args['post__not_in'] = array_merge( isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array(), $excluded );
+		}
+
+		return $args;
+	}
+
+	/**
+	 * Hide a single REST comment whose post is inaccessible.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param mixed           $response Callback response.
+	 * @param array           $handler  Matched route handler.
+	 * @param WP_REST_Request $request  REST request.
+	 * @return mixed
+	 */
+	public static function restrict_single_comment( $response, $handler, $request ) {
+		if ( ! function_exists( 'urcr_is_content_access_granted' )
+			|| is_wp_error( $response )
+			|| ! preg_match( '#^/wp/v2/comments/[0-9]+/?$#', $request->get_route() ) ) {
+			return $response;
+		}
+
+		$response = rest_ensure_response( $response );
+		$data     = $response->get_data();
+
+		if ( $response->get_status() < 400 && isset( $data['post'] ) && ! urcr_is_content_access_granted( absint( $data['post'] ) ) ) {
+			return new WP_Error( 'rest_comment_invalid_id', __( 'Invalid comment ID.', 'user-registration' ), array( 'status' => 404 ) );
+		}
 
 		return $response;
 	}
