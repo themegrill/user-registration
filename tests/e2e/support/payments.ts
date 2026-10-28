@@ -1,9 +1,9 @@
-import type { Page } from "@playwright/test";
-import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
+import { test, type Page } from "@playwright/test";
+import { BASE_URL, uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
 import { createHmac } from "node:crypto";
-import { deleteRows, insertRow, postRaw, selectRows, setHttpStubs, setStripeStubs, type HttpStub } from "./seed";
+import { deleteRows, insertRow, postRaw, seedAvailable, selectRows, setHttpStubs, setStripeStubs, type HttpStub } from "./seed";
 import { ensureMembershipEnabled } from "./urm";
-import { gotoAdminPage, restNonce } from "./wp";
+import { gotoAdminPage, loginAsAdmin, restNonce } from "./wp";
 
 /**
  * Membership state for payment specs: a plan, a member, and the subscription and
@@ -366,4 +366,56 @@ export function serialisedField(serialised: string | null, field: string): strin
   if (serialised === null) return null;
   const m = new RegExp(`s:${field.length}:"${field}";s:\\d+:"([^"]*)"`).exec(serialised);
   return m ? m[1] : null;
+}
+
+/**
+ * One plan for a whole describe block, instead of one per test.
+ *
+ * Creating a plan goes through the product's admin screen, which is most of the
+ * cost of seeding a subscription: about fifteen seconds of a twenty-second test
+ * locally, and Playground in CI is several times slower than that. A plan is only
+ * the thing a subscription points at, so tests that do not edit it share one.
+ * Call it inside the `describe`, and pass `plan.id` as `planId` to
+ * `seedSubscription`, which then leaves the plan alone in its own cleanup.
+ *
+ * The plan is removed after the block. The product refuses to delete a plan that
+ * still has members, which is fine: every test's cleanup removes its own rows
+ * first, and a plan that cannot be deleted is a leak worth failing on.
+ */
+export function useSharedPlan(opts: {
+  type?: "free" | "paid";
+  billingTerms?: SeedSubscriptionOptions["billingTerms"];
+} = {}): { id: number } {
+  const plan = { id: 0 };
+
+  const adminPage = async (browser: import("@playwright/test").Browser) => {
+    const context = await browser.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    await loginAsAdmin(page);
+    return { context, page };
+  };
+
+  test.beforeAll(async ({ browser }) => {
+    if (!seedAvailable()) return;
+    const { context, page } = await adminPage(browser);
+    try {
+      plan.id = await createPlan(page, { type: opts.type });
+      if (opts.billingTerms) await setPlanBillingTerms(plan.id, opts.billingTerms);
+    } finally {
+      await context.close();
+    }
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (!plan.id) return;
+    const { context, page } = await adminPage(browser);
+    try {
+      await deletePlan(page, plan.id);
+    } finally {
+      await context.close();
+      plan.id = 0;
+    }
+  });
+
+  return plan;
 }

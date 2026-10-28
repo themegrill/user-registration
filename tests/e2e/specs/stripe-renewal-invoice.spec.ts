@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { postStripeWebhook, seedSubscription, stubEvent, T, type SeededSubscription } from "../support/payments";
+import { postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
 import { clearStubs, restoreOptions, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
 import { loginAsAdmin } from "../support/wp";
 
@@ -28,6 +28,7 @@ const midnight = (daysFromToday: number) => {
 const sqlDate = (ts: number) => new Date(ts * 1000).toISOString().slice(0, 10) + " 00:00:00";
 
 test.describe("stripe renewal invoice @fresh", () => {
+  const plan = useSharedPlan({ type: "paid", billingTerms: { value: 1, duration: "month" } });
   // The cycle the member has already paid for: it began 20 days ago and ends in 10.
   const CYCLE_START = midnight(-20);
   const CYCLE_END = midnight(10);
@@ -41,10 +42,9 @@ test.describe("stripe renewal invoice @fresh", () => {
     test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so renewal state cannot be seeded");
     await loginAsAdmin(page);
     sub = await seedSubscription(page, {
+      planId: plan.id,
       gatewaySubscriptionId: SUB,
       paymentMethod: "stripe",
-      planType: "paid",
-      billingTerms: { value: 1, duration: "month" },
       status: "active",
       startDate: sqlDate(CYCLE_START),
       expiryDate: sqlDate(CYCLE_END),

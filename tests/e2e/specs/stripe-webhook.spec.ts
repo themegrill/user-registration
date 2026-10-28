@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { postStripeWebhook, seedSubscription, stubEvent, T, type SeededSubscription } from "../support/payments";
+import { postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
 import { clearStubs, restoreOptions, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
 import { loginAsAdmin } from "../support/wp";
 
@@ -15,6 +15,7 @@ const SECRET = "whsec_tgqa";
 const SUB = "sub_tgqa_webhook";
 
 test.describe("stripe webhook @fresh", () => {
+  const plan = useSharedPlan({ type: "free" });
   let before: Record<string, unknown> | undefined;
   let sub: SeededSubscription | undefined;
 
@@ -23,7 +24,7 @@ test.describe("stripe webhook @fresh", () => {
     sub = undefined;
     test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so webhook state cannot be seeded");
     await loginAsAdmin(page);
-    sub = await seedSubscription(page, { gatewaySubscriptionId: SUB, paymentMethod: "stripe", status: "active" });
+    sub = await seedSubscription(page, { planId: plan.id, gatewaySubscriptionId: SUB, paymentMethod: "stripe", status: "active" });
     before = await setOptions({
       user_registration_stripe_enabled: "1",
       user_registration_stripe_test_mode: "1",

@@ -7,6 +7,7 @@ import {
   serialisedField,
   stubPaypalVerification,
   T,
+  useSharedPlan,
   userMeta,
   type SeededSubscription,
 } from "../support/payments";
@@ -48,6 +49,7 @@ const PAYPAL_API = "https://api-m.sandbox.paypal.com";
 const ADMIN_MAIL = "payments-admin@example.test";
 
 test.describe("stripe disputes @fresh", () => {
+  const plan = useSharedPlan({ type: "paid" });
   let before: Record<string, unknown> | undefined;
   let sub: SeededSubscription | undefined;
 
@@ -59,7 +61,7 @@ test.describe("stripe disputes @fresh", () => {
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: STRIPE_SUB,
       paymentMethod: "stripe",
-      planType: "paid",
+      planId: plan.id,
       status: "active",
       order: { status: "completed", transactionId: STRIPE_PI },
     });
@@ -223,6 +225,7 @@ test.describe("stripe disputes @fresh", () => {
 });
 
 test.describe("paypal disputes @fresh", () => {
+  const plan = useSharedPlan({ type: "paid" });
   let before: Record<string, unknown> | undefined;
   let sub: SeededSubscription | undefined;
 
@@ -234,7 +237,7 @@ test.describe("paypal disputes @fresh", () => {
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: PAYPAL_SUB,
       paymentMethod: "paypal",
-      planType: "paid",
+      planId: plan.id,
       status: "active",
       order: { status: "completed", transactionId: PAYPAL_TXN },
     });
@@ -385,6 +388,7 @@ test.describe("paypal disputes @fresh", () => {
  * first. A chargeback that depended on a webhook arriving would otherwise be lost.
  */
 test.describe("dispute backfill @fresh", () => {
+  const plan = useSharedPlan({ type: "paid" });
   let before: Record<string, unknown> | undefined;
   let sub: SeededSubscription | undefined;
 
@@ -417,7 +421,7 @@ test.describe("dispute backfill @fresh", () => {
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: STRIPE_SUB,
       paymentMethod: "stripe",
-      planType: "paid",
+      planId: plan.id,
       status: "active",
       order: { status: "completed", transactionId: STRIPE_PI },
     });
@@ -474,7 +478,7 @@ test.describe("dispute backfill @fresh", () => {
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: PAYPAL_SUB,
       paymentMethod: "paypal",
-      planType: "paid",
+      planId: plan.id,
       status: "active",
       order: { status: "completed", transactionId: PAYPAL_TXN },
     });

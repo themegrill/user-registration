@@ -6,6 +6,7 @@ import {
   seedSubscription,
   stubPaypalVerification,
   T,
+  useSharedPlan,
   type SeededSubscription,
 } from "../support/payments";
 import { clearStubs, restoreOptions, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
@@ -23,6 +24,7 @@ import { loginAsAdmin } from "../support/wp";
 const PAYPAL_SUB = "I-TGQAPAYPAL1";
 
 test.describe("paypal webhook @fresh", () => {
+  const plan = useSharedPlan({ type: "free" });
   let before: Record<string, unknown> | undefined;
   let sub: SeededSubscription | undefined;
 
@@ -31,7 +33,7 @@ test.describe("paypal webhook @fresh", () => {
     sub = undefined;
     test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so webhook state cannot be seeded");
     await loginAsAdmin(page);
-    sub = await seedSubscription(page, { gatewaySubscriptionId: PAYPAL_SUB, paymentMethod: "paypal", status: "active" });
+    sub = await seedSubscription(page, { planId: plan.id, gatewaySubscriptionId: PAYPAL_SUB, paymentMethod: "paypal", status: "active" });
     before = await setOptions({ ...paypalTestOptions });
   });
 
