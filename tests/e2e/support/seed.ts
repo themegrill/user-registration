@@ -115,3 +115,55 @@ export async function deleteRows(table: string, where: Record<string, unknown>):
   const res = await call<{ deleted: number }>("rows", { action: "delete", table, where });
   return res.deleted;
 }
+
+export type StripeStub = {
+  method: string;
+  /** The API path only, e.g. `/v1/events/evt_1`. */
+  path: string;
+  status?: number;
+  body?: unknown;
+};
+
+export type StubCall = {
+  via: string;
+  method: string;
+  path: string;
+  params: unknown;
+  matched: boolean;
+};
+
+/**
+ * Answer the Stripe SDK's outbound calls from this list instead of the network.
+ *
+ * While any stub is registered the SDK never reaches api.stripe.com: a call with
+ * no matching stub gets a 500 and shows up in `stubCalls()` as `matched: false`.
+ * Registering replaces the previous list and clears the call log.
+ */
+export const setStripeStubs = async (stubs: StripeStub[]): Promise<void> => {
+  await call("stubs", { set: stubs.map((s) => ({ via: "stripe", ...s })) });
+};
+
+export const clearStubs = async (): Promise<void> => {
+  await call("stubs", { clear: true });
+};
+
+export async function stubCalls(): Promise<StubCall[]> {
+  const res = await call<{ calls: StubCall[] }>("stubs");
+  return res.calls;
+}
+
+/**
+ * POST an exact byte string to the site, and report status and body.
+ *
+ * A webhook signature covers the raw body, so this sends the string as given
+ * rather than letting a JSON helper re-serialise it.
+ */
+export async function postRaw(
+  path: string,
+  body: string,
+  headers: Record<string, string>,
+): Promise<{ status: number; text: string }> {
+  const c = await client();
+  const res = await c.post(path, { data: body, headers: { "Content-Type": "application/json", ...headers } });
+  return { status: res.status(), text: await res.text() };
+}

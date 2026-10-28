@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
-import { deleteRows, insertRow, selectRows } from "./seed";
+import { createHmac } from "node:crypto";
+import { deleteRows, insertRow, postRaw, selectRows, setStripeStubs } from "./seed";
 import { ensureMembershipEnabled } from "./urm";
 import { gotoAdminPage, restNonce } from "./wp";
 
@@ -227,3 +228,32 @@ export async function seedSubscription(
 
   return { userId, planId, subscriptionId, orderId, cleanup };
 }
+
+/** `Stripe-Signature` for a body: `t=<seconds>,v1=HMAC_SHA256(secret, "<t>.<body>")`. */
+export function signStripe(body: string, secret: string, at = Math.floor(Date.now() / 1000)): string {
+  const v1 = createHmac("sha256", secret).update(`${at}.${body}`).digest("hex");
+  return `t=${at},v1=${v1}`;
+}
+
+/**
+ * Deliver a Stripe event to the membership webhook the way Stripe does.
+ *
+ * The signature is real, so the product's own `Webhook::constructEvent` check is
+ * exercised rather than bypassed: seed the signing secret first
+ * (`user_registration_stripe_webhook_secret_test`) and pass the same one here.
+ * The handler then re-fetches the event from Stripe by id, which is why the event
+ * must also be registered with `stubEvent`.
+ */
+export async function postStripeWebhook(
+  event: { id: string; type: string; data: { object: Record<string, unknown> } },
+  secret: string,
+): Promise<{ status: number; text: string }> {
+  const body = JSON.stringify(event);
+  return postRaw("/wp-json/user-registration/stripe-webhook", body, {
+    "Stripe-Signature": signStripe(body, secret),
+  });
+}
+
+/** Register the `GET /v1/events/<id>` answer the handler's re-fetch will ask for. */
+export const stubEvent = (event: { id: string }) =>
+  setStripeStubs([{ method: "GET", path: `/v1/events/${event.id}`, body: { object: "event", ...event } }]);
