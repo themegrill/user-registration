@@ -721,11 +721,42 @@ class PaypalService {
 				)
 			);
 
-			// Validate receiver email and payment amount before any state changes.
+			if ( 'web_accept' === $txn_type ) {
+				$payment_status = strtolower( $data['payment_status'] ?? '' );
+
+				if ( 'completed' !== $payment_status ) {
+					// Pending (e.g. echeck) stays unfulfilled until PayPal sends the Completed IPN.
+					if ( in_array( $payment_status, array( 'denied', 'failed', 'expired', 'voided' ), true ) ) {
+						$this->members_orders_repository->update( $latest_order['ID'], array( 'status' => 'failed' ) );
+					}
+
+					PaymentGatewayLogging::log_transaction_failure(
+						'paypal',
+						sprintf( 'Payment not completed, IPN payment status: %s', $payment_status ),
+						array(
+							'subscription_id' => $subscription_id,
+							'member_id'       => $member_id,
+						)
+					);
+					return;
+				}
+
+				// A replayed verified IPN must not re-run fulfilment.
+				if ( 'completed' === ( $latest_order['status'] ?? '' ) && ! empty( $data['txn_id'] ) && ( $latest_order['transaction_id'] ?? '' ) === $data['txn_id'] ) {
+					return;
+				}
+
+				$currency_meta  = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $latest_order['ID'], 'local_currency' );
+				$order_currency = ! empty( $currency_meta['meta_value'] ) ? $currency_meta['meta_value'] : get_option( 'user_registration_payment_currency', 'USD' );
+			}
+
+			// Validate receiver email, currency and payment amount before any state changes.
 			$ipn_error = '';
 			if ( empty( $receiver_email ) || ! is_email( $receiver_email )
 				|| strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) {
 				$ipn_error = esc_html__( 'Payment failed: recipient emails do not match', 'user-registration' );
+			} elseif ( 'web_accept' === $txn_type && strtolower( $data['mc_currency'] ?? '' ) !== strtolower( $order_currency ) ) {
+				$ipn_error = esc_html__( 'Payment failed: payment currencies do not match', 'user-registration' );
 			} elseif ( 'web_accept' === $txn_type
 				&& ( empty( $latest_order['total_amount'] )
 					|| number_format( (float) ( $data['mc_gross'] ?? 0 ), 2 ) !== number_format( (float) $latest_order['total_amount'], 2 ) ) ) {
