@@ -51,10 +51,16 @@ jobs:
     # is not the command stops here and never starts the reusable workflow,
     # which checks the command again and also who wrote it.
     if: github.event_name != 'issue_comment' || startsWith(github.event.comment.body, '@claudegrill suite')
-    uses: ThemeGrill/claudegrill/.github/workflows/suite.yml@main
+    # VERIFICATION ONLY — DO NOT MERGE THIS PIN. The payment, mail and seeding specs
+    # on this branch need the seed endpoint, which lives on claudegrill's
+    # `feat/state-seeding-helpers` and is not on `main` yet. Both lines below move
+    # together: `@<ref>` picks the workflow, `qa_ref` picks the scripts and mu-plugins
+    # it checks out. Put both back to `main` once that branch is merged.
+    uses: ThemeGrill/claudegrill/.github/workflows/suite.yml@feat/state-seeding-helpers
     with:
       product_slug: user-registration
       product_type: plugin
+      qa_ref: feat/state-seeding-helpers
       scope: changed
       # The shared default is 45s, and it is too tight for THIS product.
       #
@@ -71,5 +77,11 @@ jobs:
       # still capped. It stays well inside the ceilings above it, which the
       # reusable workflow asks for: max_failures (3) x 90s is 4.5 minutes
       # against a 30-minute timeout_ms and a 40-minute job limit.
-      test_timeout_ms: 90000
+      #
+      # Raised to 180s while the payment specs are verified in CI: each seeds a
+      # member, a plan and gateway state before its assertion, about 15s locally on
+      # Playground, and the runner has not been measured. 3 x 180s is still 9
+      # minutes against the 30-minute ceiling. Lower it to the measured worst case
+      # once there is one.
+      test_timeout_ms: 180000
 
