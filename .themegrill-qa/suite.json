@@ -12,6 +12,9 @@
     "ur_membership_ordermeta",
     "ur_membership_subscription_events"
   ],
+  "seed_cron_hooks": [
+    "urm_daily_payment_retry_check"
+  ],
   "spec_extension": ".spec.ts",
   "json_report": "test-results/results.json",
   "env": {
