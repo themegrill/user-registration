@@ -6,6 +6,12 @@
   "command": "pnpm exec playwright test",
   "config": "playwright.config.ts",
   "spec_dir": "tests/e2e/specs",
+  "seed_tables": [
+    "ur_membership_subscriptions",
+    "ur_membership_orders",
+    "ur_membership_ordermeta",
+    "ur_membership_subscription_events"
+  ],
   "spec_extension": ".spec.ts",
   "json_report": "test-results/results.json",
   "env": {
