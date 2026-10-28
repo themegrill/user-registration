@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { ensureFirstRun, ensureMembershipEnabled } from "../support/urm";
-import { gotoAdminPage, loginAsAdmin } from "../support/wp";
+import { gotoAdminPage, loginAsAdmin, restNonce } from "../support/wp";
+
+const WIZARD_API = "/index.php?rest_route=/user-registration/v1/getting-started";
 
 /**
  * Ported from UR-Automation `09_ur_membership` — "Verify Admin Membership Basic
@@ -112,34 +114,61 @@ test.describe("admin surfaces @fresh", () => {
     const bundle = await page.request.get("/wp-content/plugins/user-registration/chunks/welcome.js");
     test.skip(!(bundle.headers()["content-type"] ?? "").includes("javascript"), "chunks/welcome.js is not built on this site; run pnpm build first");
 
-    await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
-    await page.getByRole("button", { name: "Next" }).click();
-    await expect(page.getByRole("heading", { name: "Create Membership" })).toBeVisible();
-    // The Payment tab ignores clicks until the Membership step has finished mounting.
-    await expect(async () => {
-      await page.getByRole("button", { name: "Go to Payment" }).click();
-      await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible({ timeout: 2_000 });
-    }).toPass();
+    // The wizard's Next button SAVES the membership answer, and this test never put it back.
+    // Remember the saved answer and restore it, the way setup-wizard.spec.ts does. This puts
+    // the setting back; it does not remove anything the wizard created while it ran.
+    const headers = { "X-WP-Nonce": await restNonce(page) };
+    const before = await page.request.get(`${WIZARD_API}/welcome`, { headers });
+    expect(before.ok()).toBeTruthy();
+    const original = (await before.json()).data;
 
-    const paypalSwitch = page.getByText(/^pays?pal$/i).locator("xpath=following::label[contains(@class,'chakra-switch')][1]");
-    await expect(paypalSwitch).toBeVisible();
-    const showSecret = page.getByRole("button", { name: "Show secret" });
-    // A clean install has the gateways off, so the secret fields only render once PayPal is on.
-    if (!(await paypalSwitch.locator("input").isChecked())) await paypalSwitch.click();
+    try {
+      await gotoAdminPage(page, "user-registration-welcome", "&tab=setup-wizard");
+      await page.getByRole("button", { name: "Next" }).click();
+      await expect(page.getByRole("heading", { name: "Create Membership" })).toBeVisible();
+      // The Payment tab ignores clicks until the Membership step has finished mounting.
+      await expect(async () => {
+        await page.getByRole("button", { name: "Go to Payment" }).click();
+        await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible({ timeout: 2_000 });
+      }).toPass();
 
-    const secretGroup = page.locator(".chakra-input__group").filter({ has: showSecret }).first();
-    const secretInput = secretGroup.locator("input");
-    await expect(secretInput).toHaveAttribute("type", "password");
+      const paypalSwitch = page.getByText(/^pays?pal$/i).locator("xpath=following::label[contains(@class,'chakra-switch')][1]");
+      await expect(paypalSwitch).toBeVisible();
+      // A clean install has the gateways off, so the secret fields only render once PayPal is on.
+      if (!(await paypalSwitch.locator("input").isChecked())) await paypalSwitch.click();
 
-    await showSecret.first().click();
-    await expect(secretInput).toHaveAttribute("type", "text");
-    await secretGroup.getByRole("button", { name: "Hide secret" }).click();
-    await expect(secretInput).toHaveAttribute("type", "password");
+      // Found by EITHER label. A locator is re-evaluated on every use, and the toggle's name
+      // flips from "Show secret" to "Hide secret" once clicked, so a group found by "Show secret"
+      // alone stops existing the moment the secret is revealed and the input goes with it.
+      const secretGroup = page
+        .locator(".chakra-input__group")
+        .filter({ has: page.getByRole("button", { name: /^(show|hide) secret$/i }) })
+        .first();
+      const secretInput = secretGroup.locator("input");
+      const showSecret = secretGroup.getByRole("button", { name: "Show secret" });
+      await expect(secretInput).toHaveAttribute("type", "password");
 
-    // A secret revealed in one mode must not stay revealed after switching to the other mode.
-    await showSecret.first().click();
-    await expect(secretInput).toHaveAttribute("type", "text");
-    await page.locator("select").filter({ has: page.locator("option", { hasText: "Production" }) }).first().selectOption("production");
-    await expect(page.locator(".chakra-input__group input").first()).toHaveAttribute("type", "password");
+      await showSecret.click();
+      await expect(secretInput).toHaveAttribute("type", "text");
+      await secretGroup.getByRole("button", { name: "Hide secret" }).click();
+      await expect(secretInput).toHaveAttribute("type", "password");
+
+      // A secret revealed in one mode must not stay revealed after switching to the other mode.
+      await showSecret.click();
+      await expect(secretInput).toHaveAttribute("type", "text");
+      await page.locator("select").filter({ has: page.locator("option", { hasText: "Production" }) }).first().selectOption("production");
+      await expect(page.locator(".chakra-input__group input").first()).toHaveAttribute("type", "password");
+    } finally {
+      if (original?.membership_type) {
+        await page.request.post(`${WIZARD_API}/welcome`, {
+          headers,
+          data: {
+            membership_type: original.membership_type,
+            allow_usage_tracking: original.allow_usage_tracking,
+            admin_email: original.admin_email,
+          },
+        });
+      }
+    }
   });
 });
