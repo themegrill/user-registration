@@ -344,3 +344,23 @@ export const postPaypalWebhook = (event: { id: string; event_type: string; resou
 /** The `custom_id` PayPal echoes back: `<plan>-<member>-<current plan>-<subscription row>`. */
 export const paypalCustomId = (s: { planId: number; userId: number; subscriptionId: number }) =>
   `${s.planId}-${s.userId}-${s.planId}-${s.subscriptionId}`;
+
+/**
+ * A user-meta value as stored (PHP-serialised when the product saved an array).
+ * Needs `usermeta` in `seed_tables`. Null when the key is absent.
+ */
+export async function userMeta(userId: number, key: string): Promise<string | null> {
+  const [row] = await selectRows<{ meta_value: string | null }>("usermeta", { user_id: userId, meta_key: key });
+  return row ? (row.meta_value ?? "") : null;
+}
+
+/**
+ * One string field out of a serialised PHP array, e.g. `status` from
+ * `a:2:{s:6:"status";s:4:"open";…}`. Enough to assert a flag the product stores as
+ * an array without re-implementing `unserialize`; it reads string values only.
+ */
+export function serialisedField(serialised: string | null, field: string): string | null {
+  if (serialised === null) return null;
+  const m = new RegExp(`s:${field.length}:"${field}";s:\\d+:"([^"]*)"`).exec(serialised);
+  return m ? m[1] : null;
+}

@@ -11,7 +11,8 @@
     "ur_membership_orders",
     "ur_membership_ordermeta",
     "ur_membership_subscription_events",
-    "postmeta"
+    "postmeta",
+    "usermeta"
   ],
   "seed_cron_hooks": [
     "urm_daily_payment_retry_check"
