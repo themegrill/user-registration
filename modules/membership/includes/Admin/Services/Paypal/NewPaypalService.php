@@ -2782,6 +2782,11 @@ class NewPaypalService {
 			return false;
 		}
 
+		if ( 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' === $event_type ) {
+			// A member whose payment failed must not be auto-logged in from the signup hash.
+			delete_transient( 'urm_pending_login_' . $member_id );
+		}
+
 		if ( 'active' === $new_status ) {
 			$member_order = $this->members_orders_repository->get_member_orders( $member_id );
 			// get_member_orders() is member-wide, not scoped to this subscription — refuse to act on someone else's plan/gateway.
