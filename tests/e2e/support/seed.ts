@@ -140,8 +140,33 @@ export type StubCall = {
  * Registering replaces the previous list and clears the call log.
  */
 export const setStripeStubs = async (stubs: StripeStub[]): Promise<void> => {
-  await call("stubs", { set: stubs.map((s) => ({ via: "stripe", ...s })) });
+  await setStubs(stubs.map((s) => ({ via: "stripe" as const, ...s })));
 };
+
+export type HttpStub = {
+  method: string;
+  /** The full URL without a query string, e.g. `https://api-m.sandbox.paypal.com/v1/oauth2/token`. */
+  url: string;
+  status?: number;
+  body?: unknown;
+};
+
+/**
+ * Answer outbound `wp_remote_*` requests (PayPal, and anything else that goes
+ * through WordPress's HTTP API) from this list. A request to a host that has a
+ * stub but matches none is refused with a 500 and logged as unmatched; a request
+ * to any other host is untouched. Replaces the previous list.
+ */
+export const setHttpStubs = async (stubs: HttpStub[]): Promise<void> => {
+  await setStubs(stubs.map((s) => ({ via: "http" as const, ...s })));
+};
+
+/** Register a mixed list. Prefer the two typed wrappers above. */
+export async function setStubs(
+  stubs: Array<({ via: "stripe" } & StripeStub) | ({ via: "http" } & HttpStub)>,
+): Promise<void> {
+  await call("stubs", { set: stubs });
+}
 
 export const clearStubs = async (): Promise<void> => {
   await call("stubs", { clear: true });

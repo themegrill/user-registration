@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
 import { createHmac } from "node:crypto";
-import { deleteRows, insertRow, postRaw, selectRows, setStripeStubs } from "./seed";
+import { deleteRows, insertRow, postRaw, selectRows, setHttpStubs, setStripeStubs } from "./seed";
 import { ensureMembershipEnabled } from "./urm";
 import { gotoAdminPage, restNonce } from "./wp";
 
@@ -257,3 +257,51 @@ export async function postStripeWebhook(
 /** Register the `GET /v1/events/<id>` answer the handler's re-fetch will ask for. */
 export const stubEvent = (event: { id: string }) =>
   setStripeStubs([{ method: "GET", path: `/v1/events/${event.id}`, body: { object: "event", ...event } }]);
+
+const PAYPAL_SANDBOX = "https://api-m.sandbox.paypal.com";
+
+/** The options a PayPal test-mode account needs before the webhook route will even look at a request. */
+export const paypalTestOptions = {
+  user_registration_paypal_enabled: "1",
+  user_registration_global_paypal_mode: "test",
+  user_registration_global_paypal_test_client_id: "tgqa_client",
+  user_registration_global_paypal_test_client_secret: "tgqa_secret",
+  user_registration_global_paypal_test_webhook_id: "WH-TGQA",
+} as const;
+
+/**
+ * Stub PayPal's two calls behind webhook verification: the OAuth token, and the
+ * verify-webhook-signature call that decides whether a delivery is genuine.
+ *
+ * `SUCCESS` makes every delivery look genuine. That is NOT a test of PayPal's
+ * signature scheme: PayPal verifies against a certificate it hosts, so a locally
+ * computed signature cannot be made valid. What it does test is everything on
+ * the product's side of that call: that a verified event is acted on, and that a
+ * refused one is not. Use `FAILURE` for the latter.
+ */
+export const stubPaypalVerification = (verdict: "SUCCESS" | "FAILURE") =>
+  setHttpStubs([
+    { method: "POST", url: `${PAYPAL_SANDBOX}/v1/oauth2/token`, body: { access_token: "tgqa_token", token_type: "Bearer" } },
+    {
+      method: "POST",
+      url: `${PAYPAL_SANDBOX}/v1/notifications/verify-webhook-signature`,
+      body: { verification_status: verdict },
+    },
+  ]);
+
+/**
+ * Deliver a PayPal event to the membership webhook. The transmission headers are
+ * placeholders; the verification call that would read them is stubbed.
+ */
+export const postPaypalWebhook = (event: { id: string; event_type: string; resource: Record<string, unknown> }) =>
+  postRaw("/wp-json/user-registration/paypal-webhook", JSON.stringify(event), {
+    "PayPal-Transmission-Id": "tgqa-transmission",
+    "PayPal-Transmission-Time": new Date().toISOString(),
+    "PayPal-Cert-Url": "https://api-m.sandbox.paypal.com/tgqa-cert",
+    "PayPal-Auth-Algo": "SHA256withRSA",
+    "PayPal-Transmission-Sig": "tgqa-signature",
+  });
+
+/** The `custom_id` PayPal echoes back: `<plan>-<member>-<current plan>-<subscription row>`. */
+export const paypalCustomId = (s: { planId: number; userId: number; subscriptionId: number }) =>
+  `${s.planId}-${s.userId}-${s.planId}-${s.subscriptionId}`;
