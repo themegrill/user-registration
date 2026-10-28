@@ -60,6 +60,11 @@ class NewPaypalService {
 	const TERMINAL_STATUSES = array( 'canceled', 'expired' );
 
 	/**
+	 * Version of the event list sent to PayPal in register_or_update_webhook().
+	 */
+	const WEBHOOK_EVENTS_VERSION = 2;
+
+	/**
 	 * User-meta key prefix (plus the local subscription row ID) holding the PayPal subscription created for a scheduled downgrade.
 	 */
 	const SCHEDULED_SUBSCRIPTION_META_PREFIX = 'urm_scheduled_paypal_subscription_';
@@ -5918,6 +5923,7 @@ class NewPaypalService {
 	 * @return string|WP_Error Webhook ID on success, WP_Error on failure.
 	 */
 	public function register_or_update_webhook( $paypal_options ) {
+		// Bump WEBHOOK_EVENTS_VERSION whenever this list changes so saved settings re-register the webhook.
 		$webhook_url = $this->get_webhook_url();
 		$event_types = array(
 			array( 'name' => 'CHECKOUT.ORDER.APPROVED' ),
