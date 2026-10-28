@@ -39,6 +39,13 @@ abstract class UR_Block_Abstract {
 	protected $content = '';
 
 	/**
+	 * Whether shortcode brackets in the rendered output are neutralised.
+	 *
+	 * @var bool
+	 */
+	protected $escape_shortcodes = true;
+
+	/**
 	 * Block instance.
 	 *
 	 * @var \WP_Block
@@ -121,7 +128,7 @@ abstract class UR_Block_Abstract {
 			$this->build_html( $this->content ),
 			$this
 		);
-		return $content;
+		return $this->escape_shortcodes ? ur_escape_shortcodes( $content ) : $content;
 	}
 
 	/**
