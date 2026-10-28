@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addressedTo, mailAvailable, messageHtml, waitForMessage } from "../support/mail";
+import { addressedTo, mailAvailable, messageHtml, startMailCapture, stopMailCapture, waitForMessage } from "../support/mail";
 import { ensureFirstRun, firstFormId, registerOn, registrationPageFor } from "../support/urm";
 import { uniqueEmail } from "../support/env";
 import { deleteUserByEmail, gotoAdminPage, loginAsAdmin, newVisitor } from "../support/wp";
@@ -8,12 +8,19 @@ import { deleteUserByEmail, gotoAdminPage, loginAsAdmin, newVisitor } from "../s
  * Ported from UR-Automation `06__email_related_tests` — "Validate Admin Email
  * and Successfully Registered Email" (tag ci_cd).
  *
- * Needs a mail catcher. Local by Flywheel runs Mailpit per site; point
- * TGQA_MAILPIT_URL at another one in CI. Without it these SKIP rather than
- * fail, because a red test for missing infrastructure trains people to ignore
- * red tests.
+ * Needs a mail source: the seed endpoint's capture (every disposable site the
+ * runner boots, including CI) or a Mailpit on a developer machine (Local by
+ * Flywheel runs one per site; TGQA_MAILPIT_URL points at another). With neither
+ * these SKIP rather than fail, because a red test for missing infrastructure
+ * trains people to ignore red tests.
  */
 test.describe("registration emails @fresh", () => {
+  // Recording stops after every test, so a failing assertion cannot leave the site
+  // swallowing mail for whatever runs next.
+  test.afterEach(async () => {
+    await stopMailCapture();
+  });
+
   test("send test email blocks repeated clicks while the request is pending @fresh @admin", async ({ page }) => {
     await loginAsAdmin(page);
 
@@ -75,6 +82,7 @@ test.describe("registration emails @fresh", () => {
       !(await mailAvailable()),
       "no mail catcher reachable — set TGQA_MAILPIT_URL",
     );
+    await startMailCapture();
 
     await loginAsAdmin(page);
     await ensureFirstRun(page);
@@ -123,6 +131,7 @@ test.describe("registration emails @fresh", () => {
       !(await mailAvailable()),
       "no mail catcher reachable — set TGQA_MAILPIT_URL",
     );
+    await startMailCapture();
 
     await loginAsAdmin(page);
     await gotoAdminPage(page, "user-registration-settings", "&tab=email");
