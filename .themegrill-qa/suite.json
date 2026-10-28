@@ -10,7 +10,8 @@
     "ur_membership_subscriptions",
     "ur_membership_orders",
     "ur_membership_ordermeta",
-    "ur_membership_subscription_events"
+    "ur_membership_subscription_events",
+    "postmeta"
   ],
   "seed_cron_hooks": [
     "urm_daily_payment_retry_check"

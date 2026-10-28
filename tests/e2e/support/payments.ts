@@ -141,14 +141,52 @@ async function deleteUser(page: Page, userId: number): Promise<void> {
   );
 }
 
+/**
+ * Give a plan the billing terms a subscription plan carries: `{ value: 1, duration: "month" }`.
+ *
+ * The free plugin refuses to CREATE a subscription-type plan (`validate_membership_data`
+ * needs Pro), but handlers that renew one only read these two fields from the plan's
+ * stored meta. So the terms are added to the meta the product itself wrote, read back
+ * and re-inserted, rather than building the product's JSON document by hand. Needs
+ * `postmeta` in `seed_tables`.
+ */
+export async function setPlanBillingTerms(
+  planId: number,
+  terms: { value: number; duration: "day" | "week" | "month" | "year" },
+): Promise<void> {
+  const [row] = await selectRows<{ meta_id: string; meta_value: string }>("postmeta", {
+    post_id: planId,
+    meta_key: "ur_membership",
+  });
+  if (!row) throw new Error(`plan ${planId} has no ur_membership meta to extend`);
+
+  const meta = { ...JSON.parse(row.meta_value), subscription: terms };
+  await deleteRows("postmeta", { meta_id: row.meta_id });
+  await insertRow("postmeta", { post_id: planId, meta_key: "ur_membership", meta_value: JSON.stringify(meta) });
+}
+
 export type SeedSubscriptionOptions = {
-  /** An existing plan. Without one a free plan is created, and removed in cleanup. */
+  /** An existing plan. Without one a plan is created, and removed in cleanup. */
   planId?: number;
+  /**
+   * The type of the plan created when `planId` is not given. `paid` for anything
+   * that records an order amount: a free plan has an empty amount, and the order
+   * service fatals on it (`number_format('')`), which no real subscription reaches.
+   */
+  planType?: "free" | "paid";
+  /** Billing terms to write onto the plan this call creates. Ignored when `planId` is given. */
+  billingTerms?: { value: number; duration: "day" | "week" | "month" | "year" };
   status?: "active" | "canceled" | "expired" | "trial" | "pending";
   billingCycle?: "day" | "week" | "month" | "year";
   amount?: number;
   /** Days from now. Negative means already due. */
   nextBillingInDays?: number;
+  /**
+   * Exact stored dates (`YYYY-MM-DD HH:MM:SS`). When `expiryDate` is given the next
+   * billing date is set to it too, which is how a renewal handler sees a paid-up cycle.
+   */
+  startDate?: string;
+  expiryDate?: string;
   /** The gateway's own subscription id, which webhooks look the row up by. */
   gatewaySubscriptionId?: string;
   paymentMethod?: string;
@@ -174,7 +212,8 @@ export async function seedSubscription(
   o: SeedSubscriptionOptions = {},
 ): Promise<SeededSubscription> {
   const ownsPlan = o.planId === undefined;
-  const planId = o.planId ?? (await createPlan(page));
+  const planId = o.planId ?? (await createPlan(page, { type: o.planType }));
+  if (ownsPlan && o.billingTerms) await setPlanBillingTerms(planId, o.billingTerms);
   const userId = await createUser(page);
 
   let subscriptionId = 0;
@@ -199,9 +238,9 @@ export async function seedSubscription(
     subscriptionId = await insertRow(T.subscriptions, {
       user_id: userId,
       item_id: planId,
-      start_date: daysFromNow(-30),
-      expiry_date: daysFromNow(335),
-      next_billing_date: daysFromNow(o.nextBillingInDays ?? 0),
+      start_date: o.startDate ?? daysFromNow(-30),
+      expiry_date: o.expiryDate ?? daysFromNow(335),
+      next_billing_date: o.expiryDate ?? daysFromNow(o.nextBillingInDays ?? 0),
       billing_cycle: o.billingCycle ?? "month",
       billing_amount: o.amount ?? 10,
       status: o.status ?? "active",
