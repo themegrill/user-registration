@@ -17,6 +17,7 @@ import {
   clearStubs,
   restoreOptions,
   runCron,
+  requireSeed,
   seedAvailable,
   selectRows,
   setOptions,
@@ -56,7 +57,7 @@ test.describe("stripe disputes @fresh", () => {
   test.beforeEach(async ({ page }) => {
     before = undefined;
     sub = undefined;
-    test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so dispute state cannot be seeded");
+    requireSeed("the runner did not stage the seed endpoint, so dispute state cannot be seeded");
     await loginAsAdmin(page);
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: STRIPE_SUB,
@@ -232,7 +233,7 @@ test.describe("paypal disputes @fresh", () => {
   test.beforeEach(async ({ page }) => {
     before = undefined;
     sub = undefined;
-    test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so dispute state cannot be seeded");
+    requireSeed("the runner did not stage the seed endpoint, so dispute state cannot be seeded");
     await loginAsAdmin(page);
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: PAYPAL_SUB,
@@ -395,7 +396,7 @@ test.describe("dispute backfill @fresh", () => {
   test.beforeEach(async () => {
     before = undefined;
     sub = undefined;
-    test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so backfill state cannot be seeded");
+    requireSeed("the runner did not stage the seed endpoint, so backfill state cannot be seeded");
   });
 
   test.afterEach(async () => {

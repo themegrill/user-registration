@@ -4,6 +4,7 @@ import {
   clearStubs,
   restoreOptions,
   runCron,
+  requireSeed,
   seedAvailable,
   selectRows,
   setOptions,
@@ -42,7 +43,7 @@ test.describe("stripe payment retry @fresh", () => {
     // Per-test state, so one test's teardown never restores another's leftovers.
     before = undefined;
     sub = undefined;
-    test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so retry state cannot be seeded");
+    requireSeed("the runner did not stage the seed endpoint, so retry state cannot be seeded");
     await loginAsAdmin(page);
   });
 

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addressedTo, mailAvailable, messageHtml, startMailCapture, stopMailCapture, waitForMessage } from "../support/mail";
+import { addressedTo, messageHtml, requireMail, startMailCapture, stopMailCapture, waitForMessage } from "../support/mail";
 import { ensureFirstRun, firstFormId, registerOn, registrationPageFor } from "../support/urm";
 import { uniqueEmail } from "../support/env";
 import { deleteUserByEmail, gotoAdminPage, loginAsAdmin, newVisitor } from "../support/wp";
@@ -78,10 +78,7 @@ test.describe("registration emails @fresh", () => {
     page,
     browser,
   }) => {
-    test.skip(
-      !(await mailAvailable()),
-      "no mail catcher reachable — set TGQA_MAILPIT_URL",
-    );
+    await requireMail();
     await startMailCapture();
 
     await loginAsAdmin(page);
@@ -127,10 +124,7 @@ test.describe("registration emails @fresh", () => {
   test("Send Test Email is wrapped in the notification email template @fresh @email-notification", async ({
     page,
   }) => {
-    test.skip(
-      !(await mailAvailable()),
-      "no mail catcher reachable — set TGQA_MAILPIT_URL",
-    );
+    await requireMail();
     await startMailCapture();
 
     await loginAsAdmin(page);

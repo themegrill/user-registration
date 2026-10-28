@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
-import { clearStubs, restoreOptions, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
+import { clearStubs, restoreOptions, requireSeed, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
 import { loginAsAdmin } from "../support/wp";
 
 /**
@@ -22,7 +22,7 @@ test.describe("stripe webhook @fresh", () => {
   test.beforeEach(async ({ page }) => {
     before = undefined;
     sub = undefined;
-    test.skip(!seedAvailable(), "the runner did not stage the seed endpoint, so webhook state cannot be seeded");
+    requireSeed("the runner did not stage the seed endpoint, so webhook state cannot be seeded");
     await loginAsAdmin(page);
     sub = await seedSubscription(page, { planId: plan.id, gatewaySubscriptionId: SUB, paymentMethod: "stripe", status: "active" });
     before = await setOptions({

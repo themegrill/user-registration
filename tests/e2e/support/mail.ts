@@ -1,3 +1,4 @@
+import { test } from "@playwright/test";
 import { capturedMail, captureMail, seedAvailable, type CapturedMail } from "./seed";
 
 /**
@@ -53,6 +54,17 @@ export async function mailBackend(): Promise<Backend | null> {
 
 /** Is any mail source available? Used to skip, not to fail. */
 export const mailAvailable = async (): Promise<boolean> => (await mailBackend()) !== null;
+
+/**
+ * Skip when there is no mail source, but FAIL on CI, where the seed endpoint is
+ * always staged and its absence is a workflow fault. See `requireSeed`.
+ */
+export async function requireMail(): Promise<void> {
+  if (await mailAvailable()) return;
+  const reason = "no mail source: no seed endpoint and no Mailpit — set TGQA_MAILPIT_URL or run on a site the runner booted";
+  if (process.env.CI) throw new Error(`${reason} — on CI this is a workflow fault, not a skip`);
+  test.skip(true, reason);
+}
 
 /** Begin recording mail. Clears what an earlier spec left. A no-op against Mailpit. */
 export async function startMailCapture(): Promise<void> {

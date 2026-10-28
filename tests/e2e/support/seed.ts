@@ -1,4 +1,4 @@
-import { request, type APIRequestContext } from "@playwright/test";
+import { request, test, type APIRequestContext } from "@playwright/test";
 
 /**
  * Put the site into a state a click cannot reach, over HTTP.
@@ -33,6 +33,23 @@ function seedBase(): { origin: string; token: string } | null {
 
 /** True when the runner staged the seed endpoint for this run. */
 export const seedAvailable = (): boolean => seedBase() !== null;
+
+/**
+ * Skip a spec that needs the seed endpoint when there is none, but FAIL on CI.
+ *
+ * Locally the endpoint is absent whenever someone runs a spec against a site the
+ * runner did not boot, and a skip with a reason is the right answer. On a CI runner
+ * it is always staged, so its absence means the workflow lost it, and a skip there
+ * is the worst outcome: the suite reports "25 skipped", which reads as coverage that
+ * exists, and goes green. That happened on the first live run of these specs.
+ */
+export function requireSeed(reason: string): void {
+  if (seedAvailable()) return;
+  if (process.env.CI) {
+    throw new Error(`${reason} — on CI the runner must stage the seed endpoint, so this is a workflow fault, not a skip`);
+  }
+  test.skip(true, reason);
+}
 
 let ctx: APIRequestContext | null = null;
 
