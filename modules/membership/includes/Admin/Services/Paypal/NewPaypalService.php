@@ -60,6 +60,11 @@ class NewPaypalService {
 	const TERMINAL_STATUSES = array( 'canceled', 'expired' );
 
 	/**
+	 * Version of the event list sent to PayPal in register_or_update_webhook().
+	 */
+	const WEBHOOK_EVENTS_VERSION = 2;
+
+	/**
 	 * User-meta key prefix (plus the local subscription row ID) holding the PayPal subscription created for a scheduled downgrade.
 	 */
 	const SCHEDULED_SUBSCRIPTION_META_PREFIX = 'urm_scheduled_paypal_subscription_';
@@ -2780,6 +2785,11 @@ class NewPaypalService {
 		) ) {
 			PaymentGatewayLogging::log_error( 'paypal', sprintf( '[Member ID #%s] Subscription webhook: failed to write status %s.', $member_id, $new_status ), array( 'error_code' => 'SUBSCRIPTION_WRITE_FAILED' ) );
 			return false;
+		}
+
+		if ( 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' === $event_type ) {
+			// A member whose payment failed must not be auto-logged in from the signup hash.
+			delete_transient( 'urm_pending_login_' . $member_id );
 		}
 
 		if ( 'active' === $new_status ) {
@@ -5913,6 +5923,7 @@ class NewPaypalService {
 	 * @return string|WP_Error Webhook ID on success, WP_Error on failure.
 	 */
 	public function register_or_update_webhook( $paypal_options ) {
+		// Bump WEBHOOK_EVENTS_VERSION whenever this list changes so saved settings re-register the webhook.
 		$webhook_url = $this->get_webhook_url();
 		$event_types = array(
 			array( 'name' => 'CHECKOUT.ORDER.APPROVED' ),
@@ -5926,6 +5937,7 @@ class NewPaypalService {
 			array( 'name' => 'BILLING.SUBSCRIPTION.SUSPENDED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.CANCELLED' ),
 			array( 'name' => 'BILLING.SUBSCRIPTION.EXPIRED' ),
+			array( 'name' => 'BILLING.SUBSCRIPTION.PAYMENT.FAILED' ),
 			array( 'name' => 'CUSTOMER.DISPUTE.CREATED' ),
 			array( 'name' => 'CUSTOMER.DISPUTE.RESOLVED' ),
 			array( 'name' => 'CUSTOMER.DISPUTE.UPDATED' ),

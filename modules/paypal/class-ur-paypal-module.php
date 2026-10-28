@@ -282,7 +282,8 @@ class User_Registration_Paypal_Module {
 		}
 
 		$webhook_stored = ! empty( get_option( 'user_registration_global_paypal_' . $mode . '_webhook_id' ) );
-		if ( ! empty( $form_data[ 'user_registration_global_paypal_' . $mode . '_client_id' ] ) && ! empty( $form_data[ 'user_registration_global_paypal_' . $mode . '_client_secret' ] ) && ( $changed || ! $webhook_stored ) ) {
+		$events_stale   = (int) get_option( 'user_registration_global_paypal_' . $mode . '_webhook_events_version', 0 ) < \WPEverest\URMembership\Admin\Services\Paypal\NewPaypalService::WEBHOOK_EVENTS_VERSION;
+		if ( ! empty( $form_data[ 'user_registration_global_paypal_' . $mode . '_client_id' ] ) && ! empty( $form_data[ 'user_registration_global_paypal_' . $mode . '_client_secret' ] ) && ( $changed || ! $webhook_stored || $events_stale ) ) {
 			$client_id      = $form_data[ 'user_registration_global_paypal_' . $mode . '_client_id' ];
 			$client_secret  = $form_data[ 'user_registration_global_paypal_' . $mode . '_client_secret' ];
 			$url            = ( 'production' === $form_data['user_registration_global_paypal_mode'] ) ? 'https://api-m.paypal.com/' : 'https://api-m.sandbox.paypal.com/';
@@ -320,6 +321,7 @@ class User_Registration_Paypal_Module {
 
 			if ( ! is_wp_error( $webhook_result ) ) {
 				update_option( 'user_registration_global_paypal_' . $mode . '_webhook_id', $webhook_result );
+				update_option( 'user_registration_global_paypal_' . $mode . '_webhook_events_version', \WPEverest\URMembership\Admin\Services\Paypal\NewPaypalService::WEBHOOK_EVENTS_VERSION );
 				ur_get_logger()->info(
 					'[PayPal][Webhook] Webhook ID saved to options.' . "\n" . wp_json_encode(
 						array(
