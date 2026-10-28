@@ -708,6 +708,65 @@ if ( ! function_exists( 'convert_to_days' ) ) {
 	}
 }
 
+if ( ! function_exists( 'urm_get_tax_details' ) ) {
+	/**
+	 * Resolve the tax rate and method for a country field value from the saved tax settings.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param string $country_value Country code, or the JSON the country field stores ({"country":"US","state":"CA"}).
+	 * @return array Empty when no tax applies, else tax_rate and tax_calculation_method.
+	 */
+	function urm_get_tax_details( $country_value ) {
+		if ( ! ur_check_module_activation( 'taxes' ) || empty( $country_value ) ) {
+			return array();
+		}
+
+		$location = json_decode( (string) $country_value, true );
+		$location = is_array( $location ) ? $location : array( 'country' => $country_value );
+		$country  = isset( $location['country'] ) ? sanitize_text_field( $location['country'] ) : '';
+		$state    = isset( $location['state'] ) ? sanitize_text_field( $location['state'] ) : '';
+		$settings = get_option( 'user_registration_tax_regions_and_rates', array() );
+
+		if ( empty( $settings['regions'][ $country ] ) ) {
+			return array();
+		}
+
+		$region = $settings['regions'][ $country ];
+		$rate   = isset( $region['states'][ $state ] ) && '' !== $state ? $region['states'][ $state ] : ( isset( $region['rate'] ) ? $region['rate'] : 0 );
+		$rate   = (float) $rate;
+
+		if ( $rate <= 0 || $rate > 100 ) {
+			return array();
+		}
+
+		return array(
+			'tax_rate'               => $rate,
+			'tax_calculation_method' => ur_string_to_bool( get_option( 'user_registration_tax_calculation_during_checkout', 'no' ) ) ? 'true' : 'false',
+		);
+	}
+}
+
+if ( ! function_exists( 'urm_get_user_tax_details' ) ) {
+	/**
+	 * Resolve the tax details for a member from the country they saved on their account.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param int $user_id User ID.
+	 * @return array See urm_get_tax_details().
+	 */
+	function urm_get_user_tax_details( $user_id ) {
+		foreach ( (array) get_user_meta( absint( $user_id ) ) as $key => $values ) {
+			if ( 0 === strpos( $key, 'user_registration_country_' ) && ! empty( $values[0] ) ) {
+				return urm_get_tax_details( $values[0] );
+			}
+		}
+
+		return array();
+	}
+}
+
 if ( ! function_exists( 'urm_get_thank_you_page' ) ) {
 	/**
 	 * Get Thank Yu page url
