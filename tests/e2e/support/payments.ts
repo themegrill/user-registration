@@ -1,9 +1,9 @@
-import { test, type Page } from "@playwright/test";
+import { test, type Browser, type Page } from "@playwright/test";
 import { BASE_URL, uniqueEmail, uniqueUsername, STRONG_PASSWORD } from "./env";
 import { createHmac } from "node:crypto";
 import { deleteRows, insertRow, postRaw, seedAvailable, selectRows, setHttpStubs, setStripeStubs, type HttpStub } from "./seed";
-import { ensureMembershipEnabled } from "./urm";
-import { gotoAdminPage, loginAsAdmin, restNonce } from "./wp";
+import { ensureMembershipEnabled, loginToMyAccount } from "./urm";
+import { gotoAdminPage, loginAsAdmin, newVisitor, restNonce } from "./wp";
 
 /**
  * Membership state for payment specs: a plan, a member, and the subscription and
@@ -109,8 +109,9 @@ export async function deletePlan(page: Page, planId: number): Promise<void> {
   }
 }
 
-async function createUser(page: Page): Promise<number> {
+async function createUser(page: Page): Promise<{ id: number; username: string }> {
   const nonce = await restNonce(page);
+  const username = uniqueUsername("seed");
   const res = await page.evaluate(
     async ({ nonce, username, email, password }) => {
       const r = await fetch("/wp-json/wp/v2/users", {
@@ -121,10 +122,10 @@ async function createUser(page: Page): Promise<number> {
       });
       return { ok: r.ok, status: r.status, json: await r.json() };
     },
-    { nonce, username: uniqueUsername("seed"), email: uniqueEmail("seed"), password: STRONG_PASSWORD },
+    { nonce, username, email: uniqueEmail("seed"), password: STRONG_PASSWORD },
   );
   if (!res.ok) throw new Error(`creating the member failed (HTTP ${res.status}): ${JSON.stringify(res.json)}`);
-  return Number(res.json.id);
+  return { id: Number(res.json.id), username };
 }
 
 async function deleteUser(page: Page, userId: number): Promise<void> {
@@ -195,6 +196,9 @@ export type SeedSubscriptionOptions = {
 
 export type SeededSubscription = {
   userId: number;
+  /** The member's login, so a spec can sign in as them and look at what they see. */
+  username: string;
+  password: string;
   planId: number;
   subscriptionId: number;
   orderId: number | null;
@@ -214,7 +218,7 @@ export async function seedSubscription(
   const ownsPlan = o.planId === undefined;
   const planId = o.planId ?? (await createPlan(page, { type: o.planType }));
   if (ownsPlan && o.billingTerms) await setPlanBillingTerms(planId, o.billingTerms);
-  const userId = await createUser(page);
+  const { id: userId, username } = await createUser(page);
 
   let subscriptionId = 0;
   let orderId: number | null = null;
@@ -247,6 +251,10 @@ export async function seedSubscription(
       subscription_id: o.gatewaySubscriptionId ?? null,
     });
 
+    // The product shows the Membership tab on My Account to a user it registered
+    // as a member; a bare WordPress user would never see the status under test.
+    await insertRow("usermeta", { user_id: userId, meta_key: "ur_registration_source", meta_value: "membership" });
+
     if (o.order !== false) {
       orderId = await insertRow(T.orders, {
         item_id: planId,
@@ -265,7 +273,7 @@ export async function seedSubscription(
     throw err;
   }
 
-  return { userId, planId, subscriptionId, orderId, cleanup };
+  return { userId, username, password: STRONG_PASSWORD, planId, subscriptionId, orderId, cleanup };
 }
 
 /** `Stripe-Signature` for a body: `t=<seconds>,v1=HMAC_SHA256(secret, "<t>.<body>")`. */
@@ -418,4 +426,48 @@ export function useSharedPlan(opts: {
   });
 
   return plan;
+}
+
+/**
+ * Sign in as the seeded member in their own browser context and open the
+ * Membership tab, the screen a member reads their subscription status on.
+ * Returns the page and the status text as printed, e.g. "Active".
+ */
+export async function memberMembershipStatus(
+  browser: Browser,
+  member: Pick<SeededSubscription, "username" | "password">,
+): Promise<{
+  page: Page;
+  status: () => Promise<string>;
+  /** The "Next Billing Date" cell as the member reads it, e.g. "November 8, 2026" or "N/A". */
+  nextBilling: () => Promise<string>;
+  close: () => Promise<void>;
+}> {
+  const context = await newVisitor(browser);
+  const page = await context.newPage();
+  await loginToMyAccount(page, member.username, member.password);
+  await page.goto("/my-account/ur-membership/");
+  const label = page.locator("#ur-membership-status");
+  return {
+    page,
+    status: async () => {
+      await page.goto("/my-account/ur-membership/");
+      return ((await label.first().textContent({ timeout: 15_000 })) ?? "").trim();
+    },
+    nextBilling: async () => {
+      await page.goto("/my-account/ur-membership/");
+      return ((await page.locator(".ur-account-table__cell--billing-date").first().textContent({ timeout: 15_000 })) ?? "").trim();
+    },
+    close: () => context.close(),
+  };
+}
+
+/** What the member's Membership tab says right now, read in a fresh sign-in. */
+export async function memberSees(browser: Browser, member: Pick<SeededSubscription, "username" | "password">): Promise<string> {
+  const m = await memberMembershipStatus(browser, member);
+  try {
+    return await m.status();
+  } finally {
+    await m.close();
+  }
 }

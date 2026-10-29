@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  memberMembershipStatus,
   paypalCustomId,
   paypalTestOptions,
   postPaypalWebhook,
@@ -59,12 +60,19 @@ test.describe("paypal webhook @fresh", () => {
    *          site stops treating an unpaid subscription as paid. The row moves to
    *          pending, which is what the daily retry job then picks up.
    */
-  test("a verified failed-payment event moves the subscription to pending @fresh @membership", async () => {
+  test("a verified failed-payment event moves the subscription to pending @fresh @membership", async ({ browser }) => {
     await stubPaypalVerification("SUCCESS");
+    const member = await memberMembershipStatus(browser, sub!);
+    try {
+      expect(await member.status(), "the member starts out active").toBe("Active");
 
-    const res = await postPaypalWebhook(failedPayment());
+      const res = await postPaypalWebhook(failedPayment());
+      expect(res.status, res.text).toBe(200);
 
-    expect(res.status, res.text).toBe(200);
+      expect(await member.status(), "the member's own Membership tab must no longer say Active").toBe("Pending");
+    } finally {
+      await member.close();
+    }
     expect(await statusOf()).toBe("pending");
     expect((await stubCalls()).filter((c) => !c.matched), "every PayPal call must have been stubbed").toEqual([]);
   });
@@ -77,12 +85,18 @@ test.describe("paypal webhook @fresh", () => {
    *          anyone who could reach the webhook URL could cancel or downgrade any
    *          member by guessing a row id.
    */
-  test("an event PayPal does not verify is refused and changes nothing @fresh @membership", async () => {
+  test("an event PayPal does not verify is refused and changes nothing @fresh @membership", async ({ browser }) => {
     await stubPaypalVerification("FAILURE");
 
     const res = await postPaypalWebhook(failedPayment());
 
     expect(res.status).toBe(401);
+    const member = await memberMembershipStatus(browser, sub!);
+    try {
+      expect(await member.status(), "a refused webhook must leave the member active").toBe("Active");
+    } finally {
+      await member.close();
+    }
     expect(await statusOf()).toBe("active");
     expect(
       (await stubCalls()).map((c) => c.path.replace("https://api-m.sandbox.paypal.com", "")),

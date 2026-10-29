@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  memberSees,
   paypalTestOptions,
   postPaypalWebhook,
   postStripeWebhook,
@@ -127,11 +128,13 @@ test.describe("stripe disputes @fresh", () => {
    *          cancel the membership, stop the Stripe subscription, and flag the
    *          member for the admin.
    */
-  test("a real dispute revokes access, refunds the order and flags the member @fresh @membership", async () => {
+  test("a real dispute revokes access, refunds the order and flags the member @fresh @membership", async ({ browser }) => {
+    expect(await memberSees(browser, sub!), "the member starts out active").toBe("Active");
     await deliver(event("opened", "charge.dispute.created", "needs_response"));
 
     expect((await order()).status).toBe("refunded");
     expect((await subscription()).status).toBe("canceled");
+    expect(await memberSees(browser, sub!), "the member must see the membership cancelled").toBe("Canceled");
     expect(await flag("dispute_id")).toBe("dp_tgqa_1");
     expect(await flag("status")).toBe("open");
     const calls = (await stubCalls()).map((c) => `${c.method} ${c.path}`);
@@ -148,12 +151,13 @@ test.describe("stripe disputes @fresh", () => {
    *          member off on a warning would be its own harm, so an inquiry is only
    *          flagged for the admin and access is left alone.
    */
-  test("an inquiry is flagged but leaves the order and membership alone @fresh @membership", async () => {
+  test("an inquiry is flagged but leaves the order and membership alone @fresh @membership", async ({ browser }) => {
     await deliver(event("inquiry", "charge.dispute.created", "warning_needs_response"));
 
     expect(await flag("status")).toBe("warning_needs_response");
     expect((await order()).status).toBe("completed");
     expect((await subscription()).status).toBe("active");
+    expect(await memberSees(browser, sub!), "an inquiry must not cut the member off").toBe("Active");
     expect((await stubCalls()).map((c) => c.method), "no gateway cancel for an inquiry").not.toContain("DELETE");
   });
 
@@ -167,17 +171,19 @@ test.describe("stripe disputes @fresh", () => {
    *          Stripe can redeliver the opening event after the closing one, which
    *          must not reopen a closed dispute.
    */
-  test("a won dispute stays cancelled and a replayed opening event cannot reopen it @fresh @membership", async () => {
+  test("a won dispute stays cancelled and a replayed opening event cannot reopen it @fresh @membership", async ({ browser }) => {
     await deliver(event("opened", "charge.dispute.created", "needs_response"));
     await deliver(event("closed", "charge.dispute.closed", "won"));
 
     expect(await flag("status")).toBe("won");
     expect((await subscription()).status, "a won dispute still leaves access revoked").toBe("canceled");
+    expect(await memberSees(browser, sub!), "the member still sees it cancelled after a win").toBe("Canceled");
 
     await deliver(event("opened", "charge.dispute.created", "needs_response")); // late redelivery
 
     expect(await flag("status"), "the closed outcome must survive a replayed created event").toBe("won");
     expect((await subscription()).status).toBe("canceled");
+    expect(await memberSees(browser, sub!), "a replayed opening event must not give access back").toBe("Canceled");
   });
 
   /**
@@ -289,11 +295,12 @@ test.describe("paypal disputes @fresh", () => {
    *          membership active. A real dispute (a chargeback stage) must refund the
    *          order, cancel the membership and flag the member.
    */
-  test("a chargeback dispute revokes access, refunds the order and flags the member @fresh @membership", async () => {
+  test("a chargeback dispute revokes access, refunds the order and flags the member @fresh @membership", async ({ browser }) => {
     await deliver(dispute("CHARGEBACK", "OPEN"), "CUSTOMER.DISPUTE.CREATED");
 
     expect((await order()).status).toBe("refunded");
     expect((await subscription()).status).toBe("canceled");
+    expect(await memberSees(browser, sub!), "the member must see the membership cancelled").toBe("Canceled");
     expect(await flag("dispute_id")).toBe("PP-D-TGQA-1");
     expect(await flag("status")).toBe("open");
   });
@@ -306,12 +313,13 @@ test.describe("paypal disputes @fresh", () => {
    * @why     A PayPal inquiry (no chargeback yet) must not cut a member off; it is
    *          flagged only.
    */
-  test("an inquiry-stage dispute is flagged but leaves the order and membership alone @fresh @membership", async () => {
+  test("an inquiry-stage dispute is flagged but leaves the order and membership alone @fresh @membership", async ({ browser }) => {
     await deliver(dispute("INQUIRY", "OPEN"), "CUSTOMER.DISPUTE.CREATED");
 
     expect(await flag("dispute_id")).toBe("PP-D-TGQA-1");
     expect((await order()).status).toBe("completed");
     expect((await subscription()).status).toBe("active");
+    expect(await memberSees(browser, sub!), "an inquiry must not cut the member off").toBe("Active");
   });
 
   /**
@@ -323,17 +331,19 @@ test.describe("paypal disputes @fresh", () => {
    *          dispute is resolved, a late UPDATED must not downgrade its status, and
    *          a seller win still leaves access revoked for an admin to restore.
    */
-  test("a resolved dispute keeps its outcome when a late update arrives @fresh @membership", async () => {
+  test("a resolved dispute keeps its outcome when a late update arrives @fresh @membership", async ({ browser }) => {
     await deliver(dispute("CHARGEBACK", "OPEN"), "CUSTOMER.DISPUTE.CREATED");
     await deliver(dispute("CHARGEBACK", "RESOLVED", "RESOLVED_SELLER_FAVOUR"), "CUSTOMER.DISPUTE.RESOLVED");
 
     expect(await flag("status")).toBe("won");
     expect((await subscription()).status).toBe("canceled");
+    expect(await memberSees(browser, sub!), "the member sees it cancelled after resolution").toBe("Canceled");
 
     await deliver(dispute("CHARGEBACK", "UNDER_REVIEW"), "CUSTOMER.DISPUTE.UPDATED"); // late
 
     expect(await flag("status"), "a late update must not reopen a resolved dispute").toBe("won");
     expect((await subscription()).status).toBe("canceled");
+    expect(await memberSees(browser, sub!), "a late update must not give access back").toBe("Canceled");
   });
 
   /**
@@ -417,7 +427,7 @@ test.describe("dispute backfill @fresh", () => {
    * @why     A Stripe dispute whose webhook was missed must still revoke access when
    *          the hourly job finds the event on Stripe's side.
    */
-  test("the missed-payment job applies a Stripe dispute whose webhook never arrived @fresh @membership", async ({ page }) => {
+  test("the missed-payment job applies a Stripe dispute whose webhook never arrived @fresh @membership", async ({ page, browser }) => {
     await loginAsAdmin(page);
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: STRIPE_SUB,
@@ -463,6 +473,7 @@ test.describe("dispute backfill @fresh", () => {
     expect(run).toMatchObject({ ran: true });
     expect((await selectRows(T.orders, { ID: sub.orderId! }))[0].status).toBe("refunded");
     expect((await selectRows(T.subscriptions, { ID: sub.subscriptionId }))[0].status).toBe("canceled");
+    expect(await memberSees(browser, sub), "the member must see the disputed membership cancelled").toBe("Canceled");
     expect(serialisedField(await userMeta(sub.userId, "urm_stripe_dispute"), "dispute_id")).toBe("dp_tgqa_missed");
   });
 
@@ -474,7 +485,7 @@ test.describe("dispute backfill @fresh", () => {
    * @why     The same safety net for PayPal: a dispute event listed by PayPal's
    *          events API is replayed through the same handler as a webhook.
    */
-  test("the missed-payment job applies a PayPal dispute whose webhook never arrived @fresh @membership", async ({ page }) => {
+  test("the missed-payment job applies a PayPal dispute whose webhook never arrived @fresh @membership", async ({ page, browser }) => {
     await loginAsAdmin(page);
     sub = await seedSubscription(page, {
       gatewaySubscriptionId: PAYPAL_SUB,
@@ -520,6 +531,7 @@ test.describe("dispute backfill @fresh", () => {
     expect(run).toMatchObject({ ran: true });
     expect((await selectRows(T.orders, { ID: sub.orderId! }))[0].status).toBe("refunded");
     expect((await selectRows(T.subscriptions, { ID: sub.subscriptionId }))[0].status).toBe("canceled");
+    expect(await memberSees(browser, sub), "the member must see the disputed membership cancelled").toBe("Canceled");
     expect(serialisedField(await userMeta(sub.userId, "urm_paypal_dispute"), "dispute_id")).toBe("PP-D-MISSED");
   });
 });

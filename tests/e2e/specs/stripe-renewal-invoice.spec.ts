@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
+import { memberMembershipStatus, postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
 import { clearStubs, restoreOptions, requireSeed, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
 import { loginAsAdmin } from "../support/wp";
 
@@ -100,11 +100,20 @@ test.describe("stripe renewal invoice @fresh", () => {
    *          without paying for it. A redelivery must leave the dates and the
    *          orders exactly as they were.
    */
-  test("a redelivered renewal invoice does not extend the membership again @fresh @membership", async () => {
+  test("a redelivered renewal invoice does not extend the membership again @fresh @membership", async ({ browser }) => {
     const paidInvoice = renewal("replay", PAID_PI, CYCLE_START, CYCLE_END);
+    const member = await memberMembershipStatus(browser, sub!);
+    const shownBefore = await member.nextBilling();
+    expect(Date.parse(shownBefore + " UTC"), "the member sees the paid cycle's end").toBe(CYCLE_END * 1000);
 
     await deliver(paidInvoice);
     await deliver(paidInvoice); // the Dashboard's "Resend"
+
+    try {
+      expect(await member.nextBilling(), "the member's next billing date must not move on a redelivery").toBe(shownBefore);
+    } finally {
+      await member.close();
+    }
 
     const r = await row();
     expect(r.expiry_date, "the expiry must stay where the paid cycle ends").toBe(sqlDate(CYCLE_END));
@@ -122,10 +131,17 @@ test.describe("stripe renewal invoice @fresh", () => {
    *          for the next cycle extends the membership to the end of THAT invoice's
    *          billing period (not to today plus a cycle) and records one new order.
    */
-  test("a genuine next-cycle renewal extends to the invoice's period end @fresh @membership", async () => {
+  test("a genuine next-cycle renewal extends to the invoice's period end @fresh @membership", async ({ browser }) => {
     const nextEnd = CYCLE_END + 30 * DAY;
+    const member = await memberMembershipStatus(browser, sub!);
 
     await deliver(renewal("next", "pi_tgqa_cycle_2", CYCLE_END, nextEnd));
+
+    try {
+      expect(Date.parse((await member.nextBilling()) + " UTC"), "the member sees the new cycle's end").toBe(nextEnd * 1000);
+    } finally {
+      await member.close();
+    }
 
     const r = await row();
     expect(r.expiry_date).toBe(sqlDate(nextEnd));
@@ -143,8 +159,17 @@ test.describe("stripe renewal invoice @fresh", () => {
    *          after a later renewal still records its payment, but must not roll the
    *          subscription back to an earlier end date.
    */
-  test("an older invoice delivered late records its payment but never moves the dates back @fresh @membership", async () => {
+  test("an older invoice delivered late records its payment but never moves the dates back @fresh @membership", async ({ browser }) => {
+    const member = await memberMembershipStatus(browser, sub!);
+    const shownBefore = await member.nextBilling();
+
     await deliver(renewal("older", "pi_tgqa_cycle_0", CYCLE_START - 30 * DAY, CYCLE_START));
+
+    try {
+      expect(await member.nextBilling(), "a late old invoice must not move the member's date back").toBe(shownBefore);
+    } finally {
+      await member.close();
+    }
 
     const r = await row();
     expect(r.expiry_date, "an earlier period must not shorten the membership").toBe(sqlDate(CYCLE_END));

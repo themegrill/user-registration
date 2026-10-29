@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { seedSubscription, T, useSharedPlan, type SeededSubscription } from "../support/payments";
+import { memberMembershipStatus, seedSubscription, T, useSharedPlan, type SeededSubscription } from "../support/payments";
 import {
   clearStubs,
   restoreOptions,
@@ -81,8 +81,10 @@ test.describe("stripe payment retry @fresh", () => {
    *          retry job must read Stripe's answer and bring the local row back to
    *          active, not leave a paying member locked out.
    */
-  test("a recovered Stripe subscription is brought back to active @fresh @membership", async ({ page }) => {
+  test("a recovered Stripe subscription is brought back to active @fresh @membership", async ({ page, browser }) => {
     await arrange(page, 3);
+    const member = await memberMembershipStatus(browser, sub!);
+    expect(await member.status(), "the locked-out member sees Expired").toBe("Expired");
     await setStripeStubs([{ method: "GET", path: `/v1/subscriptions/${SUB}`, body: stripeSubscription("active") }]);
 
     const run = await runCron("urm_daily_payment_retry_check");
@@ -91,6 +93,11 @@ test.describe("stripe payment retry @fresh", () => {
     const calls = await stubCalls();
     expect(calls.filter((c) => !c.matched), "every Stripe call must have been stubbed").toEqual([]);
     expect(calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET /v1/subscriptions/${SUB}`);
+    try {
+      expect(await member.status(), "a member whose card recovered must see Active again").toBe("Active");
+    } finally {
+      await member.close();
+    }
     expect(await statusOf()).toBe("active");
   });
 
@@ -102,8 +109,9 @@ test.describe("stripe payment retry @fresh", () => {
    *          must not give up: the row stays expired and no cancellation happens
    *          before the configured number of retries has been used.
    */
-  test("a subscription Stripe still reports past due is retried, not cancelled @fresh @membership", async ({ page }) => {
+  test("a subscription Stripe still reports past due is retried, not cancelled @fresh @membership", async ({ page, browser }) => {
     await arrange(page, 3);
+    const member = await memberMembershipStatus(browser, sub!);
     await setStripeStubs([
       { method: "GET", path: `/v1/subscriptions/${SUB}`, body: stripeSubscription("past_due") },
       { method: "POST", path: `/v1/subscriptions/${SUB}`, body: stripeSubscription("past_due") },
@@ -114,6 +122,11 @@ test.describe("stripe payment retry @fresh", () => {
     const calls = await stubCalls();
     expect(calls.filter((c) => !c.matched), "every Stripe call must have been stubbed").toEqual([]);
     expect(calls.map((c) => `${c.method} ${c.path}`)).toContain(`POST /v1/subscriptions/${SUB}`);
+    try {
+      expect(await member.status(), "still dunning: the member stays Expired, not Canceled").toBe("Expired");
+    } finally {
+      await member.close();
+    }
     expect(await statusOf()).toBe("expired");
   });
 

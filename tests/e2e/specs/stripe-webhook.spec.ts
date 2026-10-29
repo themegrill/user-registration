@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
+import { memberMembershipStatus, postStripeWebhook, seedSubscription, stubEvent, T, useSharedPlan, type SeededSubscription } from "../support/payments";
 import { clearStubs, restoreOptions, requireSeed, seedAvailable, selectRows, setOptions, stubCalls } from "../support/seed";
 import { loginAsAdmin } from "../support/wp";
 
@@ -56,15 +56,24 @@ test.describe("stripe webhook @fresh", () => {
    * @why     When Stripe reports a failed invoice and will not retry, the member
    *          must leave "active" so the site stops treating an unpaid subscription
    *          as paid. When Stripe IS still retrying the status is kept, which this
-   *          does not cover.
+   *          does not cover. Read the way the member reads it: signed in as the
+   *          member, on My Account > Membership.
    */
-  test("a signed failed-invoice event moves the subscription to pending @fresh @membership", async () => {
+  test("a signed failed-invoice event moves the subscription to pending @fresh @membership", async ({ browser }) => {
+    const member = await memberMembershipStatus(browser, sub!);
+    try {
+      expect(await member.status(), "the member starts out active").toBe("Active");
+
+      const event = failedInvoice();
+      await stubEvent(event);
+      const res = await postStripeWebhook(event, SECRET);
+      expect(res.status, res.text).toBe(200);
+
+      expect(await member.status(), "the member's own Membership tab must no longer say Active").toBe("Pending");
+    } finally {
+      await member.close();
+    }
     const event = failedInvoice();
-    await stubEvent(event);
-
-    const res = await postStripeWebhook(event, SECRET);
-
-    expect(res.status, res.text).toBe(200);
     expect(await statusOf()).toBe("pending");
     const calls = await stubCalls();
     expect(calls.map((c) => `${c.method} ${c.path}`)).toContain(`GET /v1/events/${event.id}`);
@@ -79,13 +88,19 @@ test.describe("stripe webhook @fresh", () => {
    *          anything is read or written; otherwise anyone who can reach the
    *          webhook URL could cancel or downgrade a member.
    */
-  test("an event signed with the wrong secret is refused and changes nothing @fresh @membership", async () => {
+  test("an event signed with the wrong secret is refused and changes nothing @fresh @membership", async ({ browser }) => {
     const event = failedInvoice();
     await stubEvent(event);
 
     const res = await postStripeWebhook(event, "whsec_not_the_sites");
 
     expect(res.status).toBe(401);
+    const member = await memberMembershipStatus(browser, sub!);
+    try {
+      expect(await member.status(), "a refused webhook must leave the member active").toBe("Active");
+    } finally {
+      await member.close();
+    }
     expect(await statusOf()).toBe("active");
     expect(await stubCalls(), "a refused request must not reach Stripe").toEqual([]);
   });
