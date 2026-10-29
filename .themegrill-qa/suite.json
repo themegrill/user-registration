@@ -2,9 +2,22 @@
   "runner": "playwright",
   "package_manager": "pnpm",
   "install": "pnpm install --frozen-lockfile",
+  "build": "pnpm run build:no-makepot",
   "command": "pnpm exec playwright test",
   "config": "playwright.config.ts",
   "spec_dir": "tests/e2e/specs",
+  "seed_tables": [
+    "ur_membership_subscriptions",
+    "ur_membership_orders",
+    "ur_membership_ordermeta",
+    "ur_membership_subscription_events",
+    "postmeta",
+    "usermeta"
+  ],
+  "seed_cron_hooks": [
+    "urm_daily_payment_retry_check",
+    "urm_missed_payment_events_check"
+  ],
   "spec_extension": ".spec.ts",
   "json_report": "test-results/results.json",
   "env": {
