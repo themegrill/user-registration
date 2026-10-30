@@ -543,17 +543,9 @@ class UR_Frontend_Form_Handler {
 		$login_option = ur_get_user_login_option( $user_id );
 		update_user_meta( $user_id, 'ur_login_option', $login_option );
 
-		// Server-side payment-gate flag so login fails closed even if the client omits membership signals. UR-4811.
-		if ( 'payment' === $login_option && function_exists( 'ur_check_module_activation' ) && ur_check_module_activation( 'membership' ) ) {
-			$hidden_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( wp_unslash( $_POST['urcl_hide_fields'] ), true ) : array();
-			foreach ( $valid_form_data as $field ) {
-				if ( isset( $field->extra_params['field_key'] ) && 'membership' === $field->extra_params['field_key'] ) {
-					if ( ! in_array( $field->field_name, $hidden_fields, true ) ) {
-						update_user_meta( $user_id, 'ur_requires_payment', 'yes' );
-					}
-					break;
-				}
-			}
+		// Arm the payment gate from the saved form, not the request, so omitting or hiding the membership field cannot skip it. UR-4811.
+		if ( 'payment' === $login_option && function_exists( 'ur_check_module_activation' ) && ur_check_module_activation( 'membership' ) && check_membership_field_in_form( $form_id ) ) {
+			update_user_meta( $user_id, 'ur_requires_payment', 'yes' );
 		}
 
 		$current_language = ur_get_current_language();
