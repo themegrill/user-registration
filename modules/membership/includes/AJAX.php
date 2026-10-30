@@ -911,7 +911,7 @@ class AJAX {
 		$current_membership_id  = isset( $_POST['current_membership_id'] ) && '' !== $_POST['current_membership_id'] ? absint( $_POST['current_membership_id'] ) : 0;
 		$is_upgrading           = ! empty( $membership_process['upgrade'] ) && isset( $membership_process['upgrade'][ $current_membership_id ] ) && empty( absint( $_POST['team_id'] ) );
 		$is_purchasing_multiple = ! empty( $membership_process['multiple'] ) && in_array( $selected_membership_id, $membership_process['multiple'] );
-		$is_renewing            = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
+		$is_renewing            = $has_pending_order && ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
 
 		if ( ! $has_pending_order && ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
 			// The failed attempt already discarded the pending registration; show the card error instead of a generic one.
@@ -1179,7 +1179,7 @@ class AJAX {
 		$current_membership_id  = isset( $_POST['current_membership_id'] ) && '' !== $_POST['current_membership_id'] ? absint( $_POST['current_membership_id'] ) : 0;
 		$is_purchasing_multiple = ! empty( $membership_process['multiple'] ) && in_array( $selected_membership_id, $membership_process['multiple'] );
 		$is_upgrading           = ! empty( $membership_process['upgrade'] ) && isset( $membership_process['upgrade'][ $current_membership_id ] ) && empty( absint( $_POST['team_id'] ) );
-		$is_renewing            = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
+		$is_renewing            = $has_pending_order && ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
 		$team_id                = ! empty( $_POST['team_id'] ) ? absint( $_POST['team_id'] ) : 0;
 
 		if ( ! $has_pending_order && ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
