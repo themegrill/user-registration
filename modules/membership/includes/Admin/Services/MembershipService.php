@@ -288,7 +288,7 @@ class MembershipService {
 		}
 
 		// The coupon must be valid for this exact plan: active, in date, within its usage limit and mapped to the plan.
-		$plan_id  = absint( $data['selected_membership_id'] ?? ( $data['membership'] ?? 0 ) );
+		$plan_id  = absint( $data['membership'] ?? ( $data['selected_membership_id'] ?? 0 ) );
 		$response = ( new CouponService() )->validate(
 			array(
 				'coupon'        => sanitize_text_field( $data['coupon'] ),

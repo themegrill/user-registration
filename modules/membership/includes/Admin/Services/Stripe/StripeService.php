@@ -965,7 +965,7 @@ class StripeService {
 
 		if ( empty( $pi_id ) ) {
 			$existing_order = $this->members_orders_repository->get_member_orders( $member_id );
-			$is_renewing    = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'], true );
+			$is_renewing    = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, array_map( 'absint', $membership_process['renew'] ), true );
 
 			// A completed earlier order is not proof of payment for a renewal, upgrade or extra purchase.
 			if ( ! $is_renewing && ! $is_upgrading && ! $is_purchasing_multiple && ! empty( $existing_order ) && 'completed' === $existing_order['status'] ) {
