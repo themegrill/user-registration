@@ -63,6 +63,18 @@ class UR_Form_Field_Membership extends UR_Form_Field {
 		add_filter( 'user_registration_field_options_general_settings', array( $this, 'settings_override' ), 10, 2 );
 		add_filter( 'user_registration_form_field_args', array( $this, 'set_args_for_membership' ), 10, 3 );
 		add_filter( 'user_registration_form_field_membership', array( $this, 'set_membership_field' ), 10, 5 );
+		add_filter( 'user_registration_membership_advance_class', array( $this, 'set_membership_advance_class' ) );
+	}
+
+	/**
+	 * Point the advance settings loader to this module's settings file.
+	 *
+	 * @param array $file_data { 'file_name', 'file_path' }.
+	 * @return array
+	 */
+	public function set_membership_advance_class( $file_data ) {
+		$file_data['file_path'] = __DIR__ . '/Settings/class-ur-setting-membership.php';
+		return $file_data;
 	}
 
 	public function settings_override( $settings, $id ) {

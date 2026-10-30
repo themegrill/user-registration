@@ -107,9 +107,9 @@ $plugin_url = UR()->plugin_url();
 // Get field label.
 $field_label = esc_html( $this->get_general_setting_data( 'label' ) );
 
-// A single membership is auto-selected and rendered without a selectable radio,
-// both here in the builder preview and on the live frontend.
+// A lone plan of any type is auto-selected and rendered without a selectable radio.
 $memberships_count = count( $memberships );
+$is_single_plan    = 1 === $memberships_count;
 
 ?>
 <div class="ur-input-type-select ur-admin-template">
@@ -169,7 +169,7 @@ $memberships_count = count( $memberships );
 							}
 						}
 						?>
-						<div class="urmg-plan-card <?php echo esc_attr( $selected_class ); ?><?php echo 1 === $memberships_count ? ' ur-membership-single-plan' : ''; ?>"
+						<div class="urmg-plan-card <?php echo esc_attr( $selected_class ); ?><?php echo $is_single_plan ? ' ur-membership-single-plan' : ''; ?>"
 							data-plan-id="<?php echo $plan_id; ?>"
 							data-plan-amount="<?php echo esc_attr( $plan_amount ); ?>"
 							data-plan-type="<?php echo esc_attr( $plan_type ); ?>">
