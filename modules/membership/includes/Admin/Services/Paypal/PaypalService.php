@@ -205,7 +205,8 @@ class PaypalService {
 			}
 		}
 
-		if ( ( 'subscription' === ( $membership_type ) && ! $is_renewing ) || ( $is_automatic && $is_renewing ) ) {
+		// Renew Manually: one-time `_xclick` on signup and renew. Only automatic gets recurring `_xclick-subscriptions`.
+		if ( 'subscription' === $membership_type && $is_automatic ) {
 			$transaction = '_xclick-subscriptions';
 		} else {
 			$transaction = '_xclick';

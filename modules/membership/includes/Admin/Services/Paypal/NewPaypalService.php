@@ -224,7 +224,9 @@ class NewPaypalService {
 			return $this->create_paypal_one_time_order( $context );
 		}
 
-		if ( $context['is_subscription'] ) {
+		// Automatic subscriptions (and manual first signup) use the Billing Subscriptions API.
+		// Manual renewals are one-time orders — same as legacy `_xclick`.
+		if ( $context['is_subscription'] && ( ! empty( $context['is_automatic'] ) || empty( $context['is_renewing'] ) ) ) {
 			return $this->create_paypal_subscription_order( $context );
 		}
 
@@ -1018,10 +1020,11 @@ class NewPaypalService {
 					'interval_unit'  => $interval_unit_map[ $duration ],
 					'interval_count' => $value,
 				);
+				$regular_total_cycles = ! empty( $context['is_automatic'] ) ? 0 : 1;
+				$discounted_price     = ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'];
 
-				if ( $has_priced_first_cycle ) {
+				if ( $has_priced_first_cycle && ! empty( $context['is_automatic'] ) ) {
 					// Coupon or proration: first cycle at the effective price, all subsequent cycles at regular price.
-					$discounted_price           = ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'];
 					$override['billing_cycles'] = array(
 						array(
 							'frequency'      => $frequency_spec,
@@ -1039,7 +1042,7 @@ class NewPaypalService {
 							'frequency'      => $frequency_spec,
 							'tenure_type'    => 'REGULAR',
 							'sequence'       => 2,
-							'total_cycles'   => 0,
+							'total_cycles'   => $regular_total_cycles,
 							'pricing_scheme' => array(
 								'fixed_price' => array(
 									'currency_code' => $context['currency'],
@@ -1049,17 +1052,17 @@ class NewPaypalService {
 						),
 					);
 				} else {
-					// Currency switch only: single REGULAR cycle at converted price.
+					// Currency switch, or Renew Manually: single REGULAR cycle (finite when manual).
 					$override['billing_cycles'] = array(
 						array(
 							'frequency'      => $frequency_spec,
 							'tenure_type'    => 'REGULAR',
 							'sequence'       => 1,
-							'total_cycles'   => 0,
+							'total_cycles'   => $regular_total_cycles,
 							'pricing_scheme' => array(
 								'fixed_price' => array(
 									'currency_code' => $context['currency'],
-									'value'         => ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'],
+									'value'         => $has_priced_first_cycle ? $discounted_price : ( ! empty( $context['tax_rate'] ) ? $context['pre_tax_amount'] : $context['final_amount'] ),
 								),
 							),
 						),
@@ -4315,86 +4318,42 @@ class NewPaypalService {
 
 		$interval_unit = isset( $interval_unit_map[ $duration ] ) ? $interval_unit_map[ $duration ] : 'MONTH';
 
-		$billing_cycles = array(
-			array(
-				'frequency'      => array(
-					'interval_unit'  => $interval_unit,
-					'interval_count' => $value,
-				),
-				'tenure_type'    => 'REGULAR',
-				'sequence'       => 1,
-				'total_cycles'   => 0,
-				'pricing_scheme' => array(
-					'fixed_price' => array(
-						'currency_code' => $context['currency'],
-						'value'         => $context['regular_amount'],
-					),
-				),
-			),
-		);
-		// Coupon/proration upgrade needs a plan TRIAL cycle to override, since PayPal rejects overrides adding cycles the plan lacks.
-		if ( $this->has_priced_first_cycle( $context ) ) {
+		// Renew Manually: one REGULAR cycle then stop. Automatic: 0 = unlimited.
+		$is_automatic          = ! empty( $context['is_automatic'] );
+		$regular_total_cycles  = $is_automatic ? 0 : 1;
+		$effective_first_price = ! empty( $context['tax_rate'] )
+			? ( isset( $context['pre_tax_amount'] ) ? $context['pre_tax_amount'] : $context['regular_amount'] )
+			: ( isset( $context['final_amount'] ) ? $context['final_amount'] : $context['regular_amount'] );
+
+		// Manual + coupon/proration: bill once at the effective first-period price (no follow-on REGULAR).
+		if ( ! $is_automatic && $this->has_priced_first_cycle( $context ) ) {
 			$billing_cycles = array(
 				array(
 					'frequency'      => array(
 						'interval_unit'  => $interval_unit,
 						'interval_count' => $value,
 					),
-					'tenure_type'    => 'TRIAL',
+					'tenure_type'    => 'REGULAR',
 					'sequence'       => 1,
 					'total_cycles'   => 1,
 					'pricing_scheme' => array(
 						'fixed_price' => array(
 							'currency_code' => $context['currency'],
-							'value'         => $context['regular_amount'],
-						),
-					),
-				),
-				array(
-					'frequency'      => array(
-						'interval_unit'  => $interval_unit,
-						'interval_count' => $value,
-					),
-					'tenure_type'    => 'REGULAR',
-					'sequence'       => 2,
-					'total_cycles'   => 0,
-					'pricing_scheme' => array(
-						'fixed_price' => array(
-							'currency_code' => $context['currency'],
-							'value'         => $context['regular_amount'],
+							'value'         => $effective_first_price,
 						),
 					),
 				),
 			);
-		}
-		// Simple trial support.
-		if (
-		! empty( $context['data']['trial_status'] ) &&
-		'on' === $context['data']['trial_status'] &&
-		! empty( $context['data']['trial_data'] )
-		) {
-			$trial_duration = strtoupper( substr( (string) ( isset( $context['data']['trial_data']['duration'] ) ? $context['data']['trial_data']['duration'] : '' ), 0, 1 ) );
-			$trial_value    = max( 1, (int) ( isset( $context['data']['trial_data']['value'] ) ? $context['data']['trial_data']['value'] : 1 ) );
-			$trial_unit     = isset( $interval_unit_map[ $trial_duration ] ) ? $interval_unit_map[ $trial_duration ] : 'MONTH';
-
+		} else {
 			$billing_cycles = array(
 				array(
-					'frequency'    => array(
-						'interval_unit'  => $trial_unit,
-						'interval_count' => $trial_value,
-					),
-					'tenure_type'  => 'TRIAL',
-					'sequence'     => 1,
-					'total_cycles' => 1,
-				),
-				array(
 					'frequency'      => array(
 						'interval_unit'  => $interval_unit,
 						'interval_count' => $value,
 					),
 					'tenure_type'    => 'REGULAR',
-					'sequence'       => 2,
-					'total_cycles'   => 0,
+					'sequence'       => 1,
+					'total_cycles'   => $regular_total_cycles,
 					'pricing_scheme' => array(
 						'fixed_price' => array(
 							'currency_code' => $context['currency'],
@@ -4403,6 +4362,78 @@ class NewPaypalService {
 					),
 				),
 			);
+			// Coupon/proration upgrade needs a plan TRIAL cycle to override, since PayPal rejects overrides adding cycles the plan lacks.
+			if ( $this->has_priced_first_cycle( $context ) ) {
+				$billing_cycles = array(
+					array(
+						'frequency'      => array(
+							'interval_unit'  => $interval_unit,
+							'interval_count' => $value,
+						),
+						'tenure_type'    => 'TRIAL',
+						'sequence'       => 1,
+						'total_cycles'   => 1,
+						'pricing_scheme' => array(
+							'fixed_price' => array(
+								'currency_code' => $context['currency'],
+								'value'         => $context['regular_amount'],
+							),
+						),
+					),
+					array(
+						'frequency'      => array(
+							'interval_unit'  => $interval_unit,
+							'interval_count' => $value,
+						),
+						'tenure_type'    => 'REGULAR',
+						'sequence'       => 2,
+						'total_cycles'   => $regular_total_cycles,
+						'pricing_scheme' => array(
+							'fixed_price' => array(
+								'currency_code' => $context['currency'],
+								'value'         => $context['regular_amount'],
+							),
+						),
+					),
+				);
+			}
+			// Simple trial support.
+			if (
+			! empty( $context['data']['trial_status'] ) &&
+			'on' === $context['data']['trial_status'] &&
+			! empty( $context['data']['trial_data'] )
+			) {
+				$trial_duration = strtoupper( substr( (string) ( isset( $context['data']['trial_data']['duration'] ) ? $context['data']['trial_data']['duration'] : '' ), 0, 1 ) );
+				$trial_value    = max( 1, (int) ( isset( $context['data']['trial_data']['value'] ) ? $context['data']['trial_data']['value'] : 1 ) );
+				$trial_unit     = isset( $interval_unit_map[ $trial_duration ] ) ? $interval_unit_map[ $trial_duration ] : 'MONTH';
+
+				$billing_cycles = array(
+					array(
+						'frequency'    => array(
+							'interval_unit'  => $trial_unit,
+							'interval_count' => $trial_value,
+						),
+						'tenure_type'  => 'TRIAL',
+						'sequence'     => 1,
+						'total_cycles' => 1,
+					),
+					array(
+						'frequency'      => array(
+							'interval_unit'  => $interval_unit,
+							'interval_count' => $value,
+						),
+						'tenure_type'    => 'REGULAR',
+						'sequence'       => 2,
+						'total_cycles'   => $regular_total_cycles,
+						'pricing_scheme' => array(
+							'fixed_price' => array(
+								'currency_code' => $context['currency'],
+								'value'         => $context['regular_amount'],
+							),
+						),
+					),
+				);
+			}
 		}
 
 		$payload = array(
@@ -4457,6 +4488,8 @@ class NewPaypalService {
 				'trial_status'     => isset( $context['data']['trial_status'] ) ? $context['data']['trial_status'] : '',
 				'trial_data'       => isset( $context['data']['trial_data'] ) ? $context['data']['trial_data'] : array(),
 				'tax_rate'         => isset( $context['tax_rate'] ) ? $context['tax_rate'] : 0,
+				// Separate cached plans for Renew Manually (total_cycles=1) vs automatic (unlimited).
+				'is_automatic'     => ! empty( $context['is_automatic'] ),
 				// Key name kept so existing cached plan ids stay valid; proration reuses the same plan shape.
 				'has_coupon_cycle' => $this->has_priced_first_cycle( $context ),
 			)
