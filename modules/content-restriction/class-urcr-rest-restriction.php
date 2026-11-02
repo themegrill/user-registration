@@ -187,7 +187,13 @@ class URCR_REST_Restriction {
 			return $args;
 		}
 
-		$post_ids = $wpdb->get_col( "SELECT DISTINCT comment_post_ID FROM {$wpdb->comments}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Read only list of commented posts, no user input.
+		// A request for specific posts only needs those checked, not every commented post.
+		if ( ! empty( $args['post__in'] ) ) {
+			$post_ids = (array) $args['post__in'];
+		} else {
+			$post_ids = $wpdb->get_col( "SELECT DISTINCT comment_post_ID FROM {$wpdb->comments}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Read only list of commented posts, no user input.
+		}
+
 		$excluded = array();
 
 		foreach ( $post_ids as $post_id ) {
@@ -220,10 +226,10 @@ class URCR_REST_Restriction {
 			return $response;
 		}
 
-		$response = rest_ensure_response( $response );
-		$data     = $response->get_data();
+		// Read the post from the stored comment, as `_fields` can strip it from the response.
+		$comment = get_comment( absint( $request['id'] ) );
 
-		if ( $response->get_status() < 400 && isset( $data['post'] ) && ! urcr_is_content_access_granted( absint( $data['post'] ) ) ) {
+		if ( $comment && ! urcr_is_content_access_granted( absint( $comment->comment_post_ID ) ) ) {
 			return new WP_Error( 'rest_comment_invalid_id', __( 'Invalid comment ID.', 'user-registration' ), array( 'status' => 404 ) );
 		}
 
