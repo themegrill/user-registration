@@ -48,6 +48,8 @@ https://youtu.be/czohMTVfLrw
 
 * __Membership Analytics__: Quickly glance over total registration, approved users, and pending requests with dedicated analytics dashboard.
 
+* __AI Abilities (MCP Ready)__: Let AI assistants securely read your forms, registration stats, and members via WordPress Abilities. Connect in a click with [Easy MCP AI](https://easymcpai.com/) or the official MCP Adapter.
+
  __Custom User Registration__
 
 https://youtu.be/jbiBJdowxG0
@@ -715,11 +717,3 @@ information and activities.
 * Fix      - Admin unable to access content when restricting all content while using the whole site restrict.
 
 [See changelog for all versions](https://raw.githubusercontent.com/wpeverest/user-registration/master/CHANGELOG.txt).
-
-
-== Upgrade Notice ==
-
-= 5.1.2 =
-##Important: Version 5.0 and above is a major update with significant improvements
-We strongly recommend backing up your site before updating. This update includes architectural changes that make your membership management more powerful and easier to use.
-Read the full blog post to see what’s new: [User Registration & Membership v5.0](https://wpuserregistration.com/blog/user-registration-membership-pro-6/)
