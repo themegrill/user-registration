@@ -119,14 +119,26 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 		return false;
 	}
 
-	public function does_transaction_id_exists( $transaction_id, $order_id ) {
+	/**
+	 * Check whether another order already holds a transaction ID.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param string $transaction_id Transaction ID.
+	 * @param int    $order_id       Order ID to leave out, 0 to check every order.
+	 * @param string $status         Only match orders with this status, empty for any.
+	 * @return bool
+	 */
+	public function does_transaction_id_exists( $transaction_id, $order_id, $status = '' ) {
 		global $wpdb;
 
 		$result = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT id FROM {$this->table} WHERE transaction_id = %s AND id != %d LIMIT 1",
+				"SELECT id FROM {$this->table} WHERE transaction_id = %s AND id != %d AND ( %s = '' OR status = %s ) LIMIT 1",
 				$transaction_id,
-				$order_id
+				$order_id,
+				$status,
+				$status
 			)
 		);
 
