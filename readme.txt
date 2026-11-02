@@ -48,7 +48,7 @@ https://youtu.be/czohMTVfLrw
 
 * __Membership Analytics__: Quickly glance over total registration, approved users, and pending requests with dedicated analytics dashboard.
 
-* __AI Abilities (MCP Ready)__: Let AI assistants securely read your forms, registration stats, and members via WordPress Abilities. Connect in a click with [Easy MCP AI](https://easymcpai.com/) or the official MCP Adapter.
+* __AI Abilities (MCP Ready)__: Built-in WordPress Abilities support lets AI assistants easily access and work with your membership site. Connect in a click with [Easy MCP AI](https://easymcpai.com/) or the official MCP Adapter.
 
  __Custom User Registration__
 
