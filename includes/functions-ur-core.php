@@ -249,11 +249,16 @@ function ur_clean( $var ) {
  * @return mixed
  */
 function ur_sanitize_user_description( $value ) {
-	if ( ! is_string( $value ) || current_user_can( 'unfiltered_html' ) ) {
+	if ( current_user_can( 'unfiltered_html' ) ) {
 		return $value;
 	}
 
-	return wp_kses( $value, 'user_description' );
+	// `description[]=...` reaches this filter as an array; clean every string inside it.
+	if ( is_array( $value ) || is_object( $value ) ) {
+		return map_deep( $value, 'ur_sanitize_user_description' );
+	}
+
+	return is_string( $value ) ? wp_kses( $value, 'user_description' ) : $value;
 }
 
 /**
