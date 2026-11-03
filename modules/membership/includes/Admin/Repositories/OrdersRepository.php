@@ -194,7 +194,8 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		);
 
 		if ( ! empty( $payment_date ) ) {
-			$result['created_at'] = $payment_date;
+			$result['order_created_at'] = $result['created_at'];
+			$result['created_at']       = $payment_date;
 		}
 
 		return ! $result ? array() : $result;

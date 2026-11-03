@@ -103,7 +103,8 @@ class UR_Abilities_Data {
 			$filters['registration_status'] = $input['status'];
 		}
 		if ( isset( $input['email_verified'] ) ) {
-			$filters['email_verified'] = $input['email_verified'];
+			// GET requests on WordPress 6.9 pass booleans as strings.
+			$filters['email_verified'] = rest_sanitize_boolean( $input['email_verified'] );
 		}
 		$skip = ( $page['page'] - 1 ) * $page['per_page'];
 		$args = self::member_query( $input ) + array(
@@ -135,6 +136,13 @@ class UR_Abilities_Data {
 				return $page;
 			}
 		}
+		$args['offset'] = 10000;
+		$args['number'] = 1;
+		$args['fields'] = 'ID';
+		$query          = new WP_User_Query( $args );
+		if ( ! $query->get_results() ) {
+			return $page;
+		}
 		return new WP_Error( 'ur_abilities_member_limit', __( 'More than 10000 members to filter. Add a form_id to narrow the list.', 'user-registration' ) );
 	}
 
@@ -151,13 +159,19 @@ class UR_Abilities_Data {
 		$page             = self::page( $input );
 		$repository       = new \WPEverest\URMembership\Admin\Repositories\MembershipRepository();
 		$currency         = get_option( 'user_registration_payment_currency', 'USD' );
-		$plans            = array_slice( array_reverse( $repository->get_all_memberships_without_status_filter() ), ( $page['page'] - 1 ) * $page['per_page'], $page['per_page'] + 1 );
+		$plans            = array_filter(
+			array_reverse( $repository->get_all_memberships_without_status_filter() ),
+			function ( $plan ) {
+				return 'trash' !== $plan['post_status'];
+			}
+		);
+		$plans            = array_slice( $plans, ( $page['page'] - 1 ) * $page['per_page'], $page['per_page'] + 1 );
+		$members          = $repository->count_members_by_membership( 'active' );
 		$page['has_more'] = count( $plans ) > $page['per_page'];
 		foreach ( array_slice( $plans, 0, $page['per_page'] ) as $plan ) {
 			$meta            = is_array( $plan['meta_value'] ) ? $plan['meta_value'] : array();
 			$type            = isset( $meta['type'] ) ? (string) $meta['type'] : '';
 			$billing         = 'subscription' === $type && isset( $meta['subscription']['value'], $meta['subscription']['duration'] );
-			$members         = $repository->check_deletable_membership( $plan['ID'], array( 'active' ) );
 			$page['items'][] = array(
 				'id'               => (int) $plan['ID'],
 				'name'             => wp_strip_all_tags( $plan['post_title'] ),
@@ -167,7 +181,7 @@ class UR_Abilities_Data {
 				'currency'         => $currency,
 				'billing_interval' => $billing ? (int) $meta['subscription']['value'] : null,
 				'billing_period'   => $billing ? (string) $meta['subscription']['duration'] : null,
-				'active_members'   => isset( $members['total'] ) ? (int) $members['total'] : 0,
+				'active_members'   => isset( $members[ $plan['ID'] ] ) ? $members[ $plan['ID'] ] : 0,
 			);
 		}
 		return $page;
@@ -182,6 +196,10 @@ class UR_Abilities_Data {
 	public static function list_subscriptions( $input ) {
 		if ( ! self::membership_ready() ) {
 			return self::membership_unavailable();
+		}
+		$error = self::date_range_error( $input, 'expiry_from', 'expiry_to' );
+		if ( $error ) {
+			return $error;
 		}
 		$page             = self::page( $input );
 		$repository       = new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository();
@@ -199,6 +217,7 @@ class UR_Abilities_Data {
 			)
 		);
 		$page['has_more'] = $page['page'] * $page['per_page'] < $result['total'];
+		cache_users( wp_list_pluck( $result['items'], 'user_id' ) );
 		foreach ( $result['items'] as $subscription ) {
 			$user            = get_userdata( $subscription->user_id );
 			$page['items'][] = array(
@@ -227,6 +246,10 @@ class UR_Abilities_Data {
 		if ( ! self::membership_ready() ) {
 			return self::membership_unavailable();
 		}
+		$error = self::date_range_error( $input, 'date_from', 'date_to' );
+		if ( $error ) {
+			return $error;
+		}
 		$page = self::page( $input );
 		$args = array(
 			'orderby' => 'ID',
@@ -242,8 +265,12 @@ class UR_Abilities_Data {
 		if ( isset( $input['gateway'] ) ) {
 			$args['payment_method'] = $input['gateway'];
 		}
-		$repository       = new \WPEverest\URMembership\Admin\Repositories\OrdersRepository();
-		$orders           = $repository->get_all( $args );
+		$repository = new \WPEverest\URMembership\Admin\Repositories\OrdersRepository();
+		$orders     = $repository->get_all( $args );
+		// The repository returns an empty page shape, not rows, when the table is missing.
+		if ( isset( $orders['items'] ) ) {
+			return $page;
+		}
 		$page['has_more'] = count( $orders ) > $page['per_page'];
 		foreach ( array_slice( $orders, 0, $page['per_page'] ) as $order ) {
 			$page['items'][] = self::order( $order );
@@ -472,8 +499,8 @@ class UR_Abilities_Data {
 	private static function page( $input ) {
 		return array(
 			'items'    => array(),
-			'page'     => isset( $input['page'] ) ? $input['page'] : 1,
-			'per_page' => isset( $input['per_page'] ) ? $input['per_page'] : 20,
+			'page'     => isset( $input['page'] ) ? absint( $input['page'] ) : 1,
+			'per_page' => isset( $input['per_page'] ) ? absint( $input['per_page'] ) : 20,
 			'has_more' => false,
 		);
 	}
@@ -498,8 +525,34 @@ class UR_Abilities_Data {
 			'transaction_id'  => (string) $order['transaction_id'],
 			'amount'          => (string) $order['total_amount'],
 			'currency'        => get_option( 'user_registration_payment_currency', 'USD' ),
-			'created_at'      => (string) $order['created_at'],
+			'created_at'      => (string) ( isset( $order['order_created_at'] ) ? $order['order_created_at'] : $order['created_at'] ),
 		);
+	}
+
+	/**
+	 * Check optional Y-m-d dates are real and in ascending order.
+	 *
+	 * @param array  $input    Validated input.
+	 * @param string $from_key Start date key.
+	 * @param string $to_key   End date key.
+	 * @return WP_Error|null
+	 */
+	private static function date_range_error( $input, $from_key, $to_key ) {
+		$dates = array();
+		foreach ( array( $from_key, $to_key ) as $key ) {
+			if ( ! isset( $input[ $key ] ) ) {
+				continue;
+			}
+			$date = DateTimeImmutable::createFromFormat( '!Y-m-d', $input[ $key ] );
+			if ( ! $date || $date->format( 'Y-m-d' ) !== $input[ $key ] ) {
+				return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates with the start date on or before the end date.', 'user-registration' ) );
+			}
+			$dates[] = $input[ $key ];
+		}
+		if ( 2 === count( $dates ) && $dates[0] > $dates[1] ) {
+			return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates with the start date on or before the end date.', 'user-registration' ) );
+		}
+		return null;
 	}
 
 	/**
