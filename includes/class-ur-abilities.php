@@ -17,17 +17,32 @@ class UR_Abilities {
 
 	/** Register the shared category. */
 	public static function register_category() {
+		if ( ! self::enabled() ) {
+			return;
+		}
 		wp_register_ability_category(
 			'user-registration',
 			array(
 				'label'       => __( 'User Registration', 'user-registration' ),
-				'description' => __( 'Read registration forms and member information.', 'user-registration' ),
+				'description' => __( 'Read registration forms, members, membership plans, subscriptions and payments.', 'user-registration' ),
 			)
 		);
 	}
 
+	/**
+	 * Whether the site admin allows AI abilities.
+	 *
+	 * @return bool
+	 */
+	private static function enabled() {
+		return ur_option_checked( 'user_registration_enable_abilities', true );
+	}
+
 	/** Register bounded inputs and explicit output contracts. */
 	public static function register_abilities() {
+		if ( ! self::enabled() ) {
+			return;
+		}
 		$id                             = array(
 			'type'    => 'integer',
 			'minimum' => 1,
@@ -102,11 +117,11 @@ class UR_Abilities {
 		);
 		$member_detail['required'][]                         = 'membership_available';
 		$member_detail['required'][]                         = 'subscriptions';
-		$date        = array(
+		$date            = array(
 			'type'    => 'string',
 			'pattern' => '^\d{4}-\d{2}-\d{2}$',
 		);
-		$stats       = self::object_schema(
+		$stats           = self::object_schema(
 			array(
 				'date_from' => $date,
 				'date_to'   => $date,
@@ -131,7 +146,70 @@ class UR_Abilities {
 				),
 			)
 		);
-		$definitions = array(
+		$nullable_string = array( 'type' => array( 'string', 'null' ) );
+		$count           = array(
+			'type'    => 'integer',
+			'minimum' => 0,
+		);
+		$key             = array(
+			'type'      => 'string',
+			'pattern'   => '^[a-z0-9_-]+$',
+			'maxLength' => 32,
+		);
+		$plan            = self::object_schema(
+			array(
+				'id'               => $id,
+				'name'             => $string,
+				'enabled'          => array( 'type' => 'boolean' ),
+				'type'             => $string,
+				'amount'           => $string,
+				'currency'         => $string,
+				'billing_interval' => array( 'type' => array( 'integer', 'null' ) ),
+				'billing_period'   => $nullable_string,
+				'active_members'   => $count,
+			)
+		);
+		$subscription    = self::object_schema(
+			array(
+				'id'                => $id,
+				'member_id'         => $count,
+				'member_email'      => $string,
+				'membership_id'     => $count,
+				'membership_name'   => $string,
+				'status'            => $string,
+				'start_date'        => $string,
+				'expiry_date'       => $string,
+				'next_billing_date' => $string,
+				'billing_amount'    => $string,
+			)
+		);
+		$order           = self::object_schema(
+			array(
+				'id'              => $id,
+				'member_email'    => $string,
+				'member_name'     => $string,
+				'membership_id'   => $count,
+				'membership_name' => $string,
+				'subscription_id' => $count,
+				'status'          => $string,
+				'type'            => $string,
+				'gateway'         => $string,
+				'transaction_id'  => $string,
+				'amount'          => $string,
+				'currency'        => $string,
+				'created_at'      => $string,
+			)
+		);
+		$order_detail    = self::object_schema(
+			$order['properties'] + array(
+				'member_id'           => $count,
+				'subscription_status' => $string,
+				'expiry_date'         => $string,
+				'next_billing_date'   => $string,
+				'coupon'              => $string,
+			)
+		);
+		$definitions     = array(
 			'list-forms'             => array( __( 'List registration forms', 'user-registration' ), __( 'List editable registration forms. Pagination follows scanned form pages; inaccessible forms are omitted.', 'user-registration' ), $pagination, array(), self::page_schema( $form ), 'forms_permission' ),
 			'get-form'               => array( __( 'Get registration form', 'user-registration' ), __( 'Read form identity and field definitions without raw settings or default values.', 'user-registration' ), array( 'id' => $id ), array( 'id' ), $detail, 'forms_permission' ),
 			'get-registration-stats' => array(
@@ -146,8 +224,52 @@ class UR_Abilities {
 				$stats,
 				'members_permission',
 			),
-			'list-members'           => array( __( 'List registered members', 'user-registration' ), __( 'List users registered through a form or the membership module on this site.', 'user-registration' ), $pagination + array( 'form_id' => $id ), array(), self::page_schema( $member ), 'members_permission' ),
+			'list-members'           => array(
+				__( 'List registered members', 'user-registration' ),
+				__( 'List users registered through a form or the membership module on this site. Filter by approval status or email verification to find members waiting for review; filtering scans at most 10000 members.', 'user-registration' ),
+				$pagination + array(
+					'form_id'        => $id,
+					'status'         => array(
+						'type' => 'string',
+						'enum' => array( 'approved', 'pending', 'denied' ),
+					),
+					'email_verified' => array( 'type' => 'boolean' ),
+				),
+				array(),
+				self::page_schema( $member ),
+				'members_permission',
+			),
 			'get-member'             => array( __( 'Get registered member', 'user-registration' ), __( 'Read a registered member and their subscriptions. Membership availability is reported explicitly.', 'user-registration' ), array( 'id' => $id ), array( 'id' ), $member_detail, 'members_permission' ),
+			'list-memberships'       => array( __( 'List membership plans', 'user-registration' ), __( 'List membership plans with price, billing period and the number of members with an active subscription.', 'user-registration' ), $pagination, array(), self::page_schema( $plan ), 'members_permission' ),
+			'list-subscriptions'     => array(
+				__( 'List membership subscriptions', 'user-registration' ),
+				__( 'List subscriptions by status, plan, member or expiry date range, for example to find memberships that expire soon.', 'user-registration' ),
+				$pagination + array(
+					'status'        => $key,
+					'membership_id' => $id,
+					'member_id'     => $id,
+					'expiry_from'   => $date,
+					'expiry_to'     => $date,
+				),
+				array(),
+				self::page_schema( $subscription ),
+				'members_permission',
+			),
+			'list-orders'            => array(
+				__( 'List membership payments', 'user-registration' ),
+				__( 'List membership payments, newest first, by status, gateway, plan or payment date range.', 'user-registration' ),
+				$pagination + array(
+					'status'        => $key,
+					'gateway'       => $key,
+					'membership_id' => $id,
+					'date_from'     => $date,
+					'date_to'       => $date,
+				),
+				array(),
+				self::page_schema( $order ),
+				'members_permission',
+			),
+			'get-order'              => array( __( 'Get membership payment', 'user-registration' ), __( 'Read one membership payment with its subscription status and dates.', 'user-registration' ), array( 'id' => $id ), array( 'id' ), $order_detail, 'members_permission' ),
 		);
 		foreach ( $definitions as $name => $definition ) {
 			$input             = self::object_schema( $definition[2] );
