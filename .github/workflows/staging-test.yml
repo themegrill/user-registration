@@ -11,19 +11,25 @@ on:
     branches:
       - develop
 
-concurrency:
-  group: ur-qa-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   qa-automation:
     name: Run UR QA Automation
+    # Only react to the QA labels; an unrelated label must not restart (or cancel) a QA run.
     if: >
       github.event.pull_request.draft == false &&
+      (
+        github.event.action != 'labeled' ||
+        github.event.label.name == 'qa-needed' ||
+        github.event.label.name == 'final-qa'
+      ) &&
       (
         contains(github.event.pull_request.labels.*.name, 'qa-needed') ||
         contains(github.event.pull_request.labels.*.name, 'final-qa')
       )
+    # Job-level so a skipped run never cancels a QA run that is in progress.
+    concurrency:
+      group: ur-qa-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
 
     steps:
@@ -123,6 +129,7 @@ jobs:
 
       #  Run Automation
       - name: Run UR Automation
+        id: automation
         run: |
           mkdir python-code
           cd python-code
@@ -132,18 +139,31 @@ jobs:
           pip install -r requirements.txt
           chmod +x test_ur_free.sh
           bash ./test_ur_free.sh "${{ steps.qa_mode.outputs.mode }}"
+        # Keep going so the report is still published; the final step fails the job.
         continue-on-error: true
+
+      #  Only publish when the suite actually produced a report
+      - name: Check report exists
+        id: report
+        if: always()
+        run: |
+          if [ -f python-code/results/report.html ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
 
       #  Upload Artifact
       - name: Upload Report
         uses: actions/upload-artifact@v4
-        if: success() || failure()
+        if: always() && steps.report.outputs.exists == 'true'
         with:
           name: UR-Report
           path: python-code/results/
 
       - name: Publish Report to Server
-        if: always()
+        id: publish
+        if: always() && steps.report.outputs.exists == 'true'
         run: |
           PR_ID=${{ github.event.pull_request.number }}
           RUN_ID=${{ github.run_number }}
@@ -163,21 +183,38 @@ jobs:
           echo "Report URL:"
           echo "https://anup-urautomation.wp1.site/reports/pr-${PR_ID}/run-${RUN_ID}/report.html"
 
-
       - name: Comment PR with Execution Report
         if: always()
         uses: actions/github-script@v7
+        env:
+          AUTOMATION_OUTCOME: ${{ steps.automation.outcome }}
+          REPORT_PUBLISHED: ${{ steps.publish.outcome == 'success' }}
+          QA_MODE: ${{ steps.qa_mode.outputs.mode }}
         with:
           script: |
             const pr = context.issue.number;
             const run = context.runNumber;
-
+            const passed = process.env.AUTOMATION_OUTCOME === 'success';
+            const published = process.env.REPORT_PUBLISHED === 'true';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const reportUrl = `https://anup-urautomation.wp1.site/reports/pr-${pr}/run-${run}/report.html`;
 
-            const body = `**Latest Report:** ${reportUrl}`;
-            github.rest.issues.createComment({
+            const status = passed ? '✅ Passed' : '❌ Failed';
+            const mode = process.env.QA_MODE || 'smoke';
+            const report = published
+              ? `**Latest Report:** ${reportUrl}`
+              : `No report was published. See the [workflow run](${runUrl}) for details.`;
+
+            await github.rest.issues.createComment({
               issue_number: pr,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: body
+              body: `**UR QA (${mode}):** ${status}\n\n${report}`
             });
+
+      #  Fail the job when the suite failed or never ran (continue-on-error hides it otherwise)
+      - name: Fail if automation did not pass
+        if: always() && steps.automation.outcome != 'success'
+        run: |
+          echo "UR automation outcome: ${{ steps.automation.outcome }}"
+          exit 1
