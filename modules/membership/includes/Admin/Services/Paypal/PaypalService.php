@@ -704,6 +704,23 @@ class PaypalService {
 
 			return;
 		}
+		$currency_meta  = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $latest_order['ID'], 'local_currency' );
+		$order_currency = ! empty( $currency_meta['meta_value'] ) ? $currency_meta['meta_value'] : get_option( 'user_registration_payment_currency', 'USD' );
+
+		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything.
+		if ( in_array( $txn_type, array( 'subscr_signup', 'web_accept', 'subscr_payment' ), true )
+			&& ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) ) {
+			PaymentGatewayLogging::log_transaction_failure(
+				'paypal',
+				esc_html__( 'Payment ignored: recipient emails do not match', 'user-registration' ),
+				array(
+					'subscription_id' => $subscription_id,
+					'member_id'       => $member_id,
+				)
+			);
+			return;
+		}
+
 		// return if first ipn received, change the status of order and subscription to complete and active respectively.
 		if ( 'subscr_signup' === $txn_type || 'web_accept' === $txn_type ) {
 
@@ -761,6 +778,11 @@ class PaypalService {
 				// server-stored order total. subscr_signup carries no payment — the first
 				// real charge arrives via subscr_payment.
 				$ipn_error = esc_html__( 'Payment failed: payment amounts do not match ', 'user-registration' );
+			}
+
+			// Two identical IPNs can both pass the checks above; only the one that moves the order out of pending fulfils it.
+			if ( empty( $ipn_error ) && 'web_accept' === $txn_type && ! $this->members_orders_repository->complete_pending_order( $latest_order['ID'], sanitize_text_field( $data['txn_id'] ?? '' ) ) ) {
+				return;
 			}
 
 			if ( ! empty( $ipn_error ) ) {
@@ -869,8 +891,6 @@ class PaypalService {
 
 			return;
 		}
-		$currency_meta  = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $latest_order['ID'], 'local_currency' );
-		$order_currency = ! empty( $currency_meta['meta_value'] ) ? $currency_meta['meta_value'] : get_option( 'user_registration_payment_currency', 'USD' );
 		$payment_date = \DateTime::createFromFormat( 'H:i:s M d, Y T', $data['payment_date'] ?? date( 'Y-m-d' ), new \DateTimeZone( 'PDT' ) );
 
 		$payment_date = $payment_date->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d' );
