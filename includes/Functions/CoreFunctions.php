@@ -715,10 +715,11 @@ if ( ! function_exists( 'urm_get_tax_details' ) ) {
 	 * @since 5.3.2
 	 *
 	 * @param string $country_value Country code, or the JSON the country field stores ({"country":"US","state":"CA"}).
-	 * @return array Empty when no tax applies, else tax_rate and tax_calculation_method.
+	 * @return array Empty when no tax is charged (no rate, or tax at checkout is off), else tax_rate and tax_calculation_method.
 	 */
 	function urm_get_tax_details( $country_value ) {
-		if ( ! ur_check_module_activation( 'taxes' ) || empty( $country_value ) ) {
+		// With "add tax at checkout" off no tax is charged, so the order total must not add any either.
+		if ( ! ur_check_module_activation( 'taxes' ) || empty( $country_value ) || ! ur_string_to_bool( get_option( 'user_registration_tax_calculation_during_checkout', 'no' ) ) ) {
 			return array();
 		}
 
@@ -742,7 +743,7 @@ if ( ! function_exists( 'urm_get_tax_details' ) ) {
 
 		return array(
 			'tax_rate'               => $rate,
-			'tax_calculation_method' => ur_string_to_bool( get_option( 'user_registration_tax_calculation_during_checkout', 'no' ) ) ? 'true' : 'false',
+			'tax_calculation_method' => 'true',
 		);
 	}
 }
