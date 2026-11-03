@@ -138,7 +138,7 @@ if ( ! class_exists( 'UR_Settings_Advanced' ) ) {
 									'id'      => 'user_registration_enable_abilities',
 									'type'    => 'toggle',
 									'css'     => '',
-									'default' => 'yes',
+									'default' => 'no',
 								),
 							),
 						),

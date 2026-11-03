@@ -32,10 +32,12 @@ class UR_Abilities {
 	/**
 	 * Whether the site admin allows AI abilities.
 	 *
+	 * Off for new installs; existing sites are switched on by ur_update_532_enable_abilities().
+	 *
 	 * @return bool
 	 */
 	private static function enabled() {
-		return ur_option_checked( 'user_registration_enable_abilities', true );
+		return ur_option_checked( 'user_registration_enable_abilities', false );
 	}
 
 	/** Register bounded inputs and explicit output contracts. */
