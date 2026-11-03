@@ -580,7 +580,7 @@ class PaypalService {
 		if ( ! empty( $bound_order ) && 'pending' === $bound_order['status'] ) {
 			// Settle the order this checkout was created for, not the member's newest one.
 			$latest_order = $bound_order;
-		} elseif ( ! empty( $latest_order ) && 'pending' === $latest_order['status'] && 'subscr_cancel' !== $txn_type ) {
+		} elseif ( ! empty( $latest_order ) && 'pending' === $latest_order['status'] && in_array( $txn_type, array( 'subscr_signup', 'web_accept' ), true ) ) {
 			// A pending order this payment is not tied to must never be activated by it.
 			$latest_order = array();
 		}

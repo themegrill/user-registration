@@ -917,7 +917,7 @@ class SubscriptionService {
 		}
 
 		// An unpaid plan can't be the starting point of an upgrade.
-		if ( ! in_array( $subscription['status'], array( 'active', 'trial' ), true ) || empty( $this->orders_repository->get_latest_completed_order_by_subscription_and_item( $subscription['ID'], $subscription['item_id'] ) ) ) {
+		if ( empty( $this->orders_repository->get_latest_completed_order_by_subscription_and_item( $subscription['ID'], $subscription['item_id'] ) ) ) {
 			return array(
 				'status'  => false,
 				'message' => __( 'Sorry, you cannot upgrade a membership that has not been paid for.', 'user-registration' ),

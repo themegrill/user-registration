@@ -1120,6 +1120,42 @@ class NewPaypalService {
 	}
 
 	/**
+	 * Whether a local order is already completed.
+	 *
+	 * @param int $order_id Local order ID.
+	 *
+	 * @return bool
+	 */
+	private function is_local_order_completed( $order_id ) {
+		$order = $this->members_orders_repository->retrieve( absint( $order_id ) );
+
+		return ! empty( $order['status'] ) && 'completed' === $order['status'];
+	}
+
+	/**
+	 * Whether a capture webhook resource is a finished PayPal payment for exactly what the order expects.
+	 *
+	 * @param array $order    Local order.
+	 * @param array $resource Capture resource from the webhook.
+	 *
+	 * @return bool
+	 */
+	private function is_capture_valid_for_order( $order, $resource ) {
+		$expected_amount   = (float) $this->get_order_checkout_meta( $order['ID'], 'urm_paypal_order_amount' );
+		$expected_currency = $this->get_order_checkout_meta( $order['ID'], 'urm_paypal_order_currency' );
+		$captured_amount   = isset( $resource['amount']['value'] ) ? (float) $resource['amount']['value'] : 0.0;
+		$captured_currency = isset( $resource['amount']['currency_code'] ) ? $resource['amount']['currency_code'] : '';
+
+		return 'paypal' === ( isset( $order['payment_method'] ) ? $order['payment_method'] : '' )
+			&& ! empty( $resource['id'] )
+			&& 'COMPLETED' === strtoupper( isset( $resource['status'] ) ? $resource['status'] : '' )
+			&& $expected_amount > 0
+			&& abs( $captured_amount - $expected_amount ) <= 0.01
+			&& ! empty( $expected_currency )
+			&& 0 === strcasecmp( $expected_currency, $captured_currency );
+	}
+
+	/**
 	 * Build custom id.
 	 *
 	 * @param array $context
@@ -1414,9 +1450,8 @@ class NewPaypalService {
 			update_user_meta( $member_id, 'urm_paypal_order_capture_response', wp_json_encode( $capture_response ) );
 
 			$transaction_id = $this->extract_capture_id_from_order_response( $capture_response );
-			// The webhook may have settled this order already; only one of them runs the follow-up steps.
-			if ( ! $this->members_orders_repository->complete_pending_order( $member_order['ID'], $transaction_id ) ) {
-				ur_membership_redirect_to_thank_you_page( $member_id, $this->members_orders_repository->retrieve( $member_order['ID'] ) );
+			// The webhook may have completed the order first. It only marks the order and subscription, so the follow-up steps below still belong to this redirect.
+			if ( ! $this->members_orders_repository->complete_pending_order( $member_order['ID'], $transaction_id ) && ! $this->is_local_order_completed( $member_order['ID'] ) ) {
 				return;
 			}
 
@@ -1541,8 +1576,7 @@ class NewPaypalService {
 				: ( 'on' === ( isset( $member_order['trial_status'] ) ? $member_order['trial_status'] : '' ) ? 'trial' : $new_status );
 
 			if ( ! $is_deferred ) {
-				if ( ! $this->members_orders_repository->complete_pending_order( $member_order['ID'], $transaction_id ) ) {
-					ur_membership_redirect_to_thank_you_page( $member_id, $this->members_orders_repository->retrieve( $member_order['ID'] ) );
+				if ( ! $this->members_orders_repository->complete_pending_order( $member_order['ID'], $transaction_id ) && ! $this->is_local_order_completed( $member_order['ID'] ) ) {
 					return;
 				}
 
@@ -1982,10 +2016,14 @@ class NewPaypalService {
 						return true;
 					}
 
-					// Redirect was missed — complete via transaction ID lookup.
-					if ( false === $this->orders_repository->update( $order['ID'], array( 'status' => 'completed' ) ) ) {
-						PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.CAPTURE.COMPLETED: failed to complete order %d.', $order['ID'] ), array( 'error_code' => 'ORDER_WRITE_FAILED' ) );
+					// Redirect was missed — complete via transaction ID lookup, but only for a finished capture that matches this order.
+					if ( ! $this->is_capture_valid_for_order( $order, $resource ) ) {
+						PaymentGatewayLogging::log_error( 'paypal', sprintf( 'PAYMENT.CAPTURE.COMPLETED ignored: capture does not match order %d.', $order['ID'] ) );
 						return false;
+					}
+
+					if ( ! $this->members_orders_repository->complete_pending_order( $order['ID'], $transaction_id ) ) {
+						return $this->is_local_order_completed( $order['ID'] );
 					}
 
 					$member_subscription = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $order['subscription_id'] );
@@ -2087,15 +2125,7 @@ class NewPaypalService {
 		$captured_amount   = isset( $resource['amount']['value'] ) ? (float) $resource['amount']['value'] : 0.0;
 		$captured_currency = isset( $resource['amount']['currency_code'] ) ? $resource['amount']['currency_code'] : '';
 
-		if (
-			'pending' !== $current_order_status
-			|| empty( $transaction_id )
-			|| 'COMPLETED' !== strtoupper( isset( $resource['status'] ) ? $resource['status'] : '' )
-			|| $expected_amount <= 0
-			|| abs( $captured_amount - $expected_amount ) > 0.01
-			|| empty( $expected_currency )
-			|| 0 !== strcasecmp( $expected_currency, $captured_currency )
-		) {
+		if ( 'pending' !== $current_order_status || ! $this->is_capture_valid_for_order( $member_order, $resource ) ) {
 			PaymentGatewayLogging::log_error(
 				'paypal',
 				sprintf(
