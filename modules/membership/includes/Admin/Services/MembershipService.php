@@ -302,6 +302,11 @@ class MembershipService {
 
 		$coupon_details = ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
 
+		// This check guards an unpaid role grant, so a coupon record with no active flag does not count.
+		if ( empty( $coupon_details ) || empty( $coupon_details['coupon_status'] ) ) {
+			return false;
+		}
+
 		$plan_amount    = floatval( $membership_meta['amount'] ?? 0 );
 		$discount_type  = $coupon_details['coupon_discount_type'] ?? 'fixed';
 		$discount_value = floatval( $coupon_details['coupon_discount'] ?? 0 );

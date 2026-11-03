@@ -543,9 +543,21 @@ class UR_Frontend_Form_Handler {
 		$login_option = ur_get_user_login_option( $user_id );
 		update_user_meta( $user_id, 'ur_login_option', $login_option );
 
-		// Arm the payment gate from the saved form, not the request, so omitting or hiding the membership field cannot skip it. UR-4811.
-		if ( 'payment' === $login_option && function_exists( 'ur_check_module_activation' ) && ur_check_module_activation( 'membership' ) && check_membership_field_in_form( $form_id ) ) {
-			update_user_meta( $user_id, 'ur_requires_payment', 'yes' );
+		// Arm the payment gate from the saved form, not the request, so omitting the membership field cannot skip it. UR-4811.
+		if ( 'payment' === $login_option && function_exists( 'ur_check_module_activation' ) && ur_check_module_activation( 'membership' ) ) {
+			$hidden_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( wp_unslash( $_POST['urcl_hide_fields'] ), true ) : array(); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			foreach ( ur_get_form_fields( $form_id ) as $form_field ) {
+				if ( 'membership' !== $form_field->field_key ) {
+					continue;
+				}
+
+				// Only a membership field the admin made conditional can be hidden, which leaves a plain account with nothing to pay.
+				$is_conditional = isset( $form_field->advance_setting->enable_conditional_logic ) && ur_string_to_bool( $form_field->advance_setting->enable_conditional_logic );
+				if ( ! $is_conditional || ! in_array( $form_field->general_setting->field_name, $hidden_fields, true ) ) {
+					update_user_meta( $user_id, 'ur_requires_payment', 'yes' );
+				}
+				break;
+			}
 		}
 
 		$current_language = ur_get_current_language();
