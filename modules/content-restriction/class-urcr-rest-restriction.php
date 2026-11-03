@@ -187,17 +187,25 @@ class URCR_REST_Restriction {
 			return $args;
 		}
 
+		// Several comment queries in one request (batch, embeds) share the full scan below.
+		static $scanned = array();
+
 		// A request for specific posts only needs those checked, not every commented post.
 		if ( ! empty( $args['post__in'] ) ) {
 			$post_ids = (array) $args['post__in'];
 		} else {
-			$post_ids = $wpdb->get_col( "SELECT DISTINCT comment_post_ID FROM {$wpdb->comments}" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Read only list of commented posts, no user input.
+			$user_id = get_current_user_id();
+			if ( ! isset( $scanned[ $user_id ] ) ) {
+				// Spam and trash are never returned, so their posts need no access check. Pending comments stay, as moderators can read them.
+				$scanned[ $user_id ] = $wpdb->get_col( "SELECT DISTINCT comment_post_ID FROM {$wpdb->comments} WHERE comment_approved NOT IN ( 'spam', 'trash' )" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Read only list of commented posts, no user input.
+			}
+			$post_ids = $scanned[ $user_id ];
 		}
 
 		$excluded = array();
 
 		foreach ( $post_ids as $post_id ) {
-			if ( ! urcr_is_content_access_granted( absint( $post_id ) ) ) {
+			if ( ! self::is_post_access_granted( absint( $post_id ) ) ) {
 				$excluded[] = absint( $post_id );
 			}
 		}
@@ -207,6 +215,26 @@ class URCR_REST_Restriction {
 		}
 
 		return $args;
+	}
+
+	/**
+	 * Access decision for a post, worked out once per user and request.
+	 * Each decision walks every access rule, so repeats are worth avoiding.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param int $post_id Post ID.
+	 * @return bool
+	 */
+	private static function is_post_access_granted( $post_id ) {
+		static $decisions = array();
+
+		$user_id = get_current_user_id();
+		if ( ! isset( $decisions[ $user_id ][ $post_id ] ) ) {
+			$decisions[ $user_id ][ $post_id ] = (bool) urcr_is_content_access_granted( $post_id );
+		}
+
+		return $decisions[ $user_id ][ $post_id ];
 	}
 
 	/**
@@ -229,7 +257,7 @@ class URCR_REST_Restriction {
 		// Read the post from the stored comment, as `_fields` can strip it from the response.
 		$comment = get_comment( absint( $request['id'] ) );
 
-		if ( $comment && ! urcr_is_content_access_granted( absint( $comment->comment_post_ID ) ) ) {
+		if ( $comment && ! self::is_post_access_granted( absint( $comment->comment_post_ID ) ) ) {
 			return new WP_Error( 'rest_comment_invalid_id', __( 'Invalid comment ID.', 'user-registration' ), array( 'status' => 404 ) );
 		}
 
