@@ -701,7 +701,7 @@ if ( ! class_exists( 'User_Registration_Members_ListTable' ) ) {
 					$row .= "<td $attributes>";
 					switch ( $column_name ) {
 						case 'username':
-							$row .= "$avatar <a href='" . $edit_link . "'>$new_user_object->user_login</a>";
+							$row .= "$avatar <a href='" . $edit_link . "'>" . esc_html( $new_user_object->user_login ) . '</a>';
 							if ( ! empty( $actions ) ) {
 								$row .= $this->row_actions( $actions );
 							}
