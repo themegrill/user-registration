@@ -115,10 +115,11 @@ if ( ! $is_passwordless_enabled || $is_passwordless_login_default_login_area_ena
 }
 apply_filters( 'user_registration_login_form_before_notice', ur_print_notices() );
 
-$admin_class = '';
+$admin_class      = '';
+$is_login_preview = class_exists( 'UR_Preview' ) && UR_Preview::is_login_preview();
 if ( isset( $_GET['page'] ) && 'user-registration-login-forms' === $_GET['page'] ) {
 	$admin_class = 'clickable-login-fields ';
-} elseif ( UR_Preview::is_login_preview() ) {
+} elseif ( $is_login_preview ) {
 	$admin_class = 'form-login-preview';
 }
 ?>
@@ -310,13 +311,13 @@ if ( isset( $_GET['page'] ) && 'user-registration-login-forms' === $_GET['page']
 					?>
 					<?php if ( $enable_ajax ) { ?>
 						<button type="submit"
-								class="user-registration-Button button ur-submit-button <?php echo ( $is_login_settings || UR_Preview::is_login_preview() ) ? 'ur-disabled-btn' : ''; ?>"
+								class="user-registration-Button button ur-submit-button <?php echo ( $is_login_settings || $is_login_preview ) ? 'ur-disabled-btn' : ''; ?>"
 								id="user_registration_ajax_login_submit" name="login"
 								value="<?php echo esc_html( $labels['login'] ); ?>"><?php echo esc_html( $labels['login'] ); ?>
 							<span></span></button>
 					<?php } else { ?>
 						<button type="submit"
-								class="user-registration-Button button ur-submit-button <?php echo ( $is_login_settings || UR_Preview::is_login_preview() ) ? 'ur-disabled-btn' : ''; ?> "
+								class="user-registration-Button button ur-submit-button <?php echo ( $is_login_settings || $is_login_preview ) ? 'ur-disabled-btn' : ''; ?> "
 								name="login"
 								value="<?php echo esc_html( $labels['login'] ); ?>"><?php echo esc_html( $labels['login'] ); ?></button>
 					<?php } ?>
