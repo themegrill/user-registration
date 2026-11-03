@@ -446,7 +446,8 @@ class UR_User_Approval {
 
 			$user_manager = new UR_Admin_User_Manager();
 
-			if ( ! $user_manager->can_status_be_changed_by( get_current_user_id() ) ) {
+			// Admins are never logged out by the approval check.
+			if ( current_user_can( 'manage_options' ) ) {
 				return;
 			}
 			/**

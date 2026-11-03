@@ -323,6 +323,11 @@ class MembersService {
 			return false;
 		}
 
+		// A member still waiting for admin approval, or disabled, must not be logged in here.
+		if ( \UR_Admin_User_Manager::APPROVED !== (int) ur_get_user_approval_status( $user_id ) || get_user_meta( $user_id, 'ur_disable_users', true ) ) {
+			return false;
+		}
+
 		$saved_hash = '';
 		if ( $check_just_created ) {
 			$saved_hash = get_transient( 'urm_pending_login_' . $user_id );
