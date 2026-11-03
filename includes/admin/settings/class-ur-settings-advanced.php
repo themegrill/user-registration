@@ -134,7 +134,7 @@ if ( ! class_exists( 'UR_Settings_Advanced' ) ) {
 								),
 								array(
 									'title'   => __( 'Enable AI Abilities', 'user-registration' ),
-									'desc'    => __( 'Let AI assistants connected to WordPress read your forms, members, membership plans, subscriptions and payments. Only administrators can use them.', 'user-registration' ),
+									'desc'    => __( 'Let AI assistants read your site\'s membership data. <a href="https://docs.wpuserregistration.com/global-settings/ai-abilities/" rel="noreferrer noopener" target="_blank">Learn more</a>', 'user-registration' ),
 									'id'      => 'user_registration_enable_abilities',
 									'type'    => 'toggle',
 									'css'     => '',
