@@ -270,7 +270,7 @@ class PaypalService {
 			'charset'       => get_bloginfo( 'charset' ),
 			'cmd'           => $transaction,
 			'currency_code' => $currency,
-			'custom'        => $membership . '-' . $member_id . '-' . $data['current_membership_id'] . '-' . $subscription_id,
+			'custom'        => $membership . '-' . $member_id . '-' . $data['current_membership_id'] . '-' . $subscription_id . '-' . absint( isset( $response_data['order_id'] ) ? $response_data['order_id'] : 0 ),
 			'return'        => $return_url,
 			'rm'            => '2',
 			'tax'           => $tax_amount,
@@ -576,6 +576,14 @@ class PaypalService {
 		$current_membership_id = $custom[2];
 		$subscription_id       = $custom[3];
 		$latest_order          = $this->members_orders_repository->get_member_orders( $member_id );
+		$bound_order           = ! empty( $custom[4] ) ? $this->members_orders_repository->retrieve( absint( $custom[4] ) ) : array();
+		if ( ! empty( $bound_order ) && 'pending' === $bound_order['status'] ) {
+			// Settle the order this checkout was created for, not the member's newest one.
+			$latest_order = $bound_order;
+		} elseif ( ! empty( $latest_order ) && 'pending' === $latest_order['status'] && 'subscr_cancel' !== $txn_type ) {
+			// A pending order this payment is not tied to must never be activated by it.
+			$latest_order = array();
+		}
 		$membership            = $this->membership_repository->get_single_membership_by_ID( $membership_id );
 		$membership_metas      = wp_unslash( json_decode( $membership['meta_value'], true ) );
 		$membership_type       = $membership_metas['type'] ?? 'unknown'; // free, paid, or subscription

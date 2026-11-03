@@ -413,6 +413,30 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		return ! $result ? array() : $result;
 	}
 
+	/**
+	 * Find the local order that holds a given meta value.
+	 *
+	 * @param string $meta_key   Meta key.
+	 * @param string $meta_value Meta value.
+	 *
+	 * @return int Order ID, 0 when none matches.
+	 */
+	public function get_order_id_by_meta( $meta_key, $meta_value ) {
+		$ordermeta_table = $this->wpdb()->prefix . 'ur_membership_ordermeta';
+
+		// phpcs:disable WordPress.DB.PreparedSQL -- Bound by prepare(); the sniff trips on the internal table name.
+		$order_id = (int) $this->wpdb()->get_var(
+			$this->wpdb()->prepare(
+				"SELECT order_id FROM {$ordermeta_table} WHERE meta_key = %s AND meta_value = %s ORDER BY order_id DESC LIMIT 1",
+				$meta_key,
+				$meta_value
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL
+
+		return $order_id;
+	}
+
 	public function update_order_meta( $order_meta ) {
 		$this->wpdb()->insert(
 			TableList::order_meta_table(),
