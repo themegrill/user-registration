@@ -13889,7 +13889,7 @@ if ( ! function_exists( 'ur_escape_shortcodes' ) ) {
 	 * @return string
 	 */
 	function ur_escape_shortcodes( $html ) {
-		return preg_replace_callback(
+		$escaped = preg_replace_callback(
 			'#<(script|style)\b.*?</\1\s*>|[\[\]]#is',
 			function ( $match ) {
 				$entities = array(
@@ -13901,5 +13901,12 @@ if ( ! function_exists( 'ur_escape_shortcodes' ) ) {
 			},
 			$html
 		);
+
+		// PCRE can fail on very large input; escape every bracket rather than return nothing.
+		if ( null === $escaped ) {
+			return str_replace( array( '[', ']' ), array( '&#91;', '&#93;' ), $html );
+		}
+
+		return $escaped;
 	}
 }
