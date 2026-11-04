@@ -1,0 +1,21 @@
+# Lints only the files a PR changes, using this repo's own phpcs.xml / ESLint config.
+# Logic lives in themegrill/workflows (lint.yml); see that repo for inputs.
+name: Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '**.php'
+      - '**.js'
+      - '**.jsx'
+      - '**.ts'
+      - '**.tsx'
+      - '.github/workflows/lint.yml'
+
+jobs:
+  lint:
+    uses: themegrill/workflows/.github/workflows/lint.yml@master
+    with:
+      php-version: '7.4'
+      fail-on-violations: false
