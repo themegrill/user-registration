@@ -27,9 +27,10 @@ jobs:
         contains(github.event.pull_request.labels.*.name, 'final-qa')
       )
     # Job-level so a skipped run never cancels a QA run that is in progress.
+    # One shared QA site: queue runs so one PR never deploys over another PR's test run.
     concurrency:
-      group: ur-qa-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
+      group: ur-qa-site
+      cancel-in-progress: false
     runs-on: ubuntu-latest
 
     steps:
