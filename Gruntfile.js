@@ -353,3 +353,5 @@ module.exports = function (grunt) {
 
 	grunt.registerTask("dev", ["watch"]);
 };
+
+// Lint pilot test.
