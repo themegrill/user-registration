@@ -212,10 +212,10 @@ if ( ! class_exists( 'MembersListTable' ) ) {
 					$row .= "<td $attributes>";
 					switch ( $column_name ) {
 						case 'username':
-							$row .= "$avatar " . '<p>' . $user_object['user_login'] . '</p>';
+							$row .= "$avatar " . '<p>' . esc_html( $user_object['user_login'] ) . '</p>';
 							break;
 						case 'email':
-							$row .= "<a href='" . esc_url( "mailto:$email" ) . "'>$email</a>";
+							$row .= "<a href='" . esc_url( "mailto:$email" ) . "'>" . esc_html( $email ) . '</a>';
 							break;
 						case 'membership':
 							$row .= $user_object['subscriptions'] ?? '';
