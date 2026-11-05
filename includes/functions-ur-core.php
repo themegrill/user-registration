@@ -11127,7 +11127,7 @@ if ( ! function_exists( 'ur_save_settings_options' ) ) {
 			$setting_name = '';
 
 			// Parse array notation (e.g., option_name[setting_name]).
-			if ( str_contains( $option_id, '[' ) && str_contains( $option_id, ']' ) ) {
+			if ( false !== strpos( $option_id, '[' ) && false !== strpos( $option_id, ']' ) ) {
 				if ( preg_match( '/^([^[\]]+)\[([^[\]]+)\]$/', $option_id, $matches ) ) {
 					$option_name  = sanitize_text_field( $matches[1] );
 					$setting_name = sanitize_text_field( $matches[2] );
