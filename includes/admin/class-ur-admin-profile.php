@@ -524,7 +524,11 @@ if ( ! class_exists( 'UR_Admin_Profile', false ) ) :
 								}
 								update_user_meta( absint( $user_id ), sanitize_text_field( $key ), $value );
 							} else {
-								update_user_meta( absint( $user_id ), sanitize_text_field( $key ), '' );
+								// A checkbox with no options is one box on this screen, so a stored list of values must survive a save that leaves it out.
+								$stored_value = 'checkbox' === $field['type'] && empty( $field['choices'] ) && empty( $field['image_options'] ) ? maybe_unserialize( get_user_meta( absint( $user_id ), sanitize_text_field( $key ), true ) ) : '';
+								if ( ! is_array( $stored_value ) ) {
+									update_user_meta( absint( $user_id ), sanitize_text_field( $key ), '' );
+								}
 							}
 							} elseif ( isset( $_POST[ $key ] ) ) { //phpcs:ignore
 							update_user_meta( absint( $user_id ), sanitize_text_field( $key ), sanitize_text_field( $_POST[ $key ] ) ); //phpcs:ignore

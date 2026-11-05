@@ -17,6 +17,17 @@ function ur_string_to_bool( $value ) {
 eval( security_function( 'includes/functions-ur-core.php', 'ur_sanitize_tooltip' ) );
 eval( security_function( 'includes/functions-ur-core.php', 'ur_sanitize_checkbox_profile_value' ) );
 eval( security_function( 'includes/functions-ur-core.php', 'urm_process_profile_fields' ) );
+eval( 'class SecurityAdminProfile { public $fields = array();' . security_function( 'includes/admin/class-ur-admin-profile.php', 'update_user_profile' ) . ' public function get_user_meta_by_form_fields() { return array( array( "fields" => $this->fields ) ); } }' );
+function ur_get_form_id_by_userid() {
+	return 5; }
+function user_registration_form_data() {
+	return array(); }
+function maybe_unserialize( $value ) {
+	return $value; }
+function get_user_meta( $user_id, $key ) {
+	return $GLOBALS['stored'][ $key ] ?? ''; }
+function update_user_meta( $user_id, $key, $value ) {
+	$GLOBALS['saved_meta'][ $key ] = $value; }
 function do_action() {}
 function wp_json_encode( $value ) {
 	return json_encode( $value ); } // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
@@ -87,6 +98,24 @@ $profile                = array(
 $submitted              = array( 'user_registration_colors' => wp_json_encode( array( 'Red', $payload ) ) );
 list( , $saved )        = urm_process_profile_fields( $profile, $submitted, array(), 5, 1 );
 security_assert( array( 'Red' ) === $saved['user_registration_colors'], 'The AJAX profile update keeps only the field options' );
+
+// An admin save that leaves out a no-option checkbox must not erase its stored list.
+$GLOBALS['stored']     = array( 'user_registration_legacy' => array( 'a', 'b' ) );
+$GLOBALS['saved_meta'] = array();
+$admin_profile         = new SecurityAdminProfile();
+$admin_profile->fields = array(
+	'user_registration_legacy' => array(
+		'type'    => 'checkbox',
+		'choices' => array(),
+	),
+	'user_registration_colors' => array(
+		'type'    => 'checkbox',
+		'choices' => array( 'Red', 'Blue' ),
+	),
+);
+$admin_profile->update_user_profile( 3 );
+security_assert( ! array_key_exists( 'user_registration_legacy', $GLOBALS['saved_meta'] ), 'A stored list on a no-option checkbox survives an admin save that omits it' );
+security_assert( '' === $GLOBALS['saved_meta']['user_registration_colors'], 'A checkbox with options is still cleared when unchecked' );
 
 $source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/admin/class-ur-admin-profile.php' );
 security_assert( false === strpos( $source, "\$form_fields[ \$key ]['choices'] = \$unserialized_checkbox_value;" ), 'The admin profile no longer builds options from stored values' );
