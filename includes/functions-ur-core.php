@@ -7877,17 +7877,21 @@ if ( ! function_exists( 'ur_sanitize_checkbox_profile_value' ) ) {
 			}
 		}
 
-		if ( ! is_array( $value ) ) {
-			return is_string( $value ) ? sanitize_text_field( $value ) : ( is_scalar( $value ) ? $value : '' );
-		}
-
 		$options = isset( $field->general_setting->options ) ? (array) $field->general_setting->options : array();
 		if ( empty( $options ) && ! empty( $field->advance_setting->choices ) ) {
 			$options = explode( ',', $field->advance_setting->choices );
 		}
 		$image_choice = ! empty( $field->general_setting->image_choice ) && ur_string_to_bool( $field->general_setting->image_choice );
 		if ( $image_choice && ! empty( $field->general_setting->image_options ) ) {
-			$options = array_keys( (array) $field->general_setting->image_options );
+			// The form builder stores a list of label and image pairs; accept the label or the key, whichever the form renders as the value.
+			$options = array();
+			foreach ( (array) $field->general_setting->image_options as $image_key => $image_option ) {
+				$options[] = (string) $image_key;
+				$label     = is_array( $image_option ) ? ( isset( $image_option['label'] ) ? $image_option['label'] : '' ) : ( isset( $image_option->label ) ? $image_option->label : '' );
+				if ( is_scalar( $label ) && '' !== (string) $label ) {
+					$options[] = (string) $label;
+				}
+			}
 		}
 		$allowed = array_map(
 			function ( $option ) {
@@ -7895,6 +7899,18 @@ if ( ! function_exists( 'ur_sanitize_checkbox_profile_value' ) ) {
 			},
 			$options
 		);
+
+		// A single value must be one of the options too, when the field has any.
+		if ( ! is_array( $value ) ) {
+			if ( ! is_scalar( $value ) ) {
+				return '';
+			}
+			if ( empty( $allowed ) ) {
+				return is_string( $value ) ? sanitize_text_field( $value ) : $value;
+			}
+
+			return in_array( (string) $value, $allowed, true ) ? $value : array();
+		}
 
 		$clean = array();
 		foreach ( $value as $selected ) {
