@@ -75,17 +75,6 @@ if ( ! class_exists( 'UR_Admin_Profile', false ) ) :
 					// if ( isset( $value['field_key'] ) && 'membership' === $value['field_key'] && isset( $_GET['user_id'] ) ) {
 					// unset( $form_fields[ $key ] );
 					// }
-
-					if ( array_key_exists( $key, $all_meta_for_user ) ) {
-						if ( isset( $value['field_key'], $value['choices'] ) && 'checkbox' === $value['field_key'] && empty( $value['choices'] ) ) {
-							$unserialized_checkbox_value = maybe_unserialize( $all_meta_for_user[ $key ] );
-							if ( is_array( $unserialized_checkbox_value ) ) {
-								$form_fields[ $key ]['choices'] = $unserialized_checkbox_value;
-							} else {
-								$form_fields[ $key ]['choices'] = array( $unserialized_checkbox_value );
-							}
-						}
-					}
 				}
 
 				unset( $form_fields['user_registration_profile_pic_url'] );
@@ -361,7 +350,7 @@ if ( ! class_exists( 'UR_Admin_Profile', false ) ) :
 																						}
 																						?>
 														><?php if ( trim( $choice ) !== '1' ) : ?>
-															<?php echo wp_kses_post( trim( $choice ) ); ?>
+															<?php echo esc_html( trim( $choice ) ); ?>
 														<?php endif; ?></label><br/>
 														<?php
 												}

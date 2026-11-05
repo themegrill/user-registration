@@ -7854,6 +7854,66 @@ if ( ! function_exists( 'user_registration_edit_profile_row_template' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_sanitize_checkbox_profile_value' ) ) {
+
+	/**
+	 * Clean a checkbox value submitted through a profile update.
+	 *
+	 * Arrays keep only the options the field offers, using the same matching as the registration check.
+	 * A field with no options keeps plain, sanitized text.
+	 *
+	 * @param mixed       $value Submitted value, an array or its JSON string.
+	 * @param object|null $field Form field definition from ur_get_form_field_data().
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return mixed Array of values, or a sanitized scalar.
+	 */
+	function ur_sanitize_checkbox_profile_value( $value, $field = null ) {
+		if ( is_string( $value ) ) {
+			$decoded = json_decode( $value, true );
+			if ( is_array( $decoded ) || ( null !== $decoded && is_scalar( $decoded ) ) ) {
+				$value = $decoded;
+			}
+		}
+
+		if ( ! is_array( $value ) ) {
+			return is_string( $value ) ? sanitize_text_field( $value ) : ( is_scalar( $value ) ? $value : '' );
+		}
+
+		$options = isset( $field->general_setting->options ) ? (array) $field->general_setting->options : array();
+		if ( empty( $options ) && ! empty( $field->advance_setting->choices ) ) {
+			$options = explode( ',', $field->advance_setting->choices );
+		}
+		$image_choice = ! empty( $field->general_setting->image_choice ) && ur_string_to_bool( $field->general_setting->image_choice );
+		if ( $image_choice && ! empty( $field->general_setting->image_options ) ) {
+			$options = array_keys( (array) $field->general_setting->image_options );
+		}
+		$allowed = array_map(
+			function ( $option ) {
+				return html_entity_decode( ur_sanitize_tooltip( trim( (string) $option ) ) );
+			},
+			$options
+		);
+
+		$clean = array();
+		foreach ( $value as $selected ) {
+			if ( ! is_scalar( $selected ) ) {
+				continue;
+			}
+			$selected = (string) $selected;
+
+			if ( empty( $allowed ) ) {
+				$clean[] = sanitize_text_field( $selected );
+			} elseif ( in_array( $selected, $allowed, true ) ) {
+				$clean[] = $selected;
+			}
+		}
+
+		return $clean;
+	}
+}
+
 if ( ! file_exists( 'user_registration_sanitize_profile_update' ) ) {
 
 	/**
@@ -7870,7 +7930,7 @@ if ( ! file_exists( 'user_registration_sanitize_profile_update' ) ) {
 		switch ( $field_type ) {
 			case 'checkbox':
 				if ( isset( $submitted_data[ $key ] ) && is_array( $submitted_data[ $key ] ) ) { // phpcs:ignore
-					$value = wp_unslash( $submitted_data[ $key ] ); // phpcs:ignore
+					$value = map_deep( wp_unslash( $submitted_data[ $key ] ), 'sanitize_text_field' ); // phpcs:ignore
 				} else {
 					$value = (int) isset( $submitted_data[ $key ] ); // phpcs:ignore
 				}
@@ -11891,6 +11951,14 @@ if ( ! function_exists( 'urm_process_profile_fields' ) ) {
 	 */
 	function urm_process_profile_fields( $profile, $single_field, $form_data, $form_id, $user_id, $is_admin_user = false ) {
 
+		// Checkbox definitions by meta key, to keep submitted values to the options each field offers.
+		$checkbox_fields = array();
+		foreach ( $form_id ? (array) ur_get_form_field_data( $form_id ) : array() as $form_field ) {
+			if ( isset( $form_field->field_key, $form_field->general_setting->field_name ) && 'checkbox' === $form_field->field_key ) {
+				$checkbox_fields[ 'user_registration_' . $form_field->general_setting->field_name ] = $form_field;
+			}
+		}
+
 		foreach ( $profile as $key => $field ) {
 
 			if ( ! isset( $field['type'] ) ) {
@@ -11920,7 +11988,7 @@ if ( ! function_exists( 'urm_process_profile_fields' ) ) {
 				case 'checkbox':
 					if ( isset( $single_field[ $key ] ) ) {
 						// Serialize values fo checkbox field.
-						$single_field[ $key ] = ( json_decode( $single_field[ $key ] ) !== null ) ? json_decode( $single_field[ $key ] ) : sanitize_text_field( $single_field[ $key ] );
+						$single_field[ $key ] = ur_sanitize_checkbox_profile_value( $single_field[ $key ], isset( $checkbox_fields[ $key ] ) ? $checkbox_fields[ $key ] : null );
 					}
 					break;
 				case 'wysiwyg':
