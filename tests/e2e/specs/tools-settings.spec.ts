@@ -37,7 +37,7 @@ test.describe("tools settings parity @fresh", () => {
 		await expect(
 			page
 				.locator(
-					"table.wp-list-table.ur-logs-table, .empty-list-table-container"
+					".ur-log-card"
 				)
 				.first()
 		).toBeVisible();
@@ -53,12 +53,13 @@ test.describe("tools settings parity @fresh", () => {
 		await expect(
 			page.locator(".user-registration-settings--tools")
 		).toBeVisible();
-		// Either the table or the empty state is a correctly-loaded Logs screen —
-		// which one renders depends on whether anything has logged yet.
+		// Which view renders depends on how many log sources exist: none shows the
+		// empty state, exactly one opens that log directly, and two or more show the
+		// table. All three sit in a log card, so that is the stable thing to assert.
 		await expect(
 			page
 				.locator(
-					"table.wp-list-table.ur-logs-table, .empty-list-table-container"
+					".ur-log-card"
 				)
 				.first()
 		).toBeVisible();
@@ -88,25 +89,30 @@ test.describe("tools settings parity @fresh", () => {
 		).toBeVisible();
 		await visitor.close();
 
+		// Open that log by its handle rather than looking for a table row: the list
+		// only renders when two or more logs exist, and a site with exactly one opens
+		// it directly. Targeting the handle works either way.
 		await gotoAdminPage(
 			page,
 			"user-registration-settings",
-			"&tab=tools&section=logs"
+			"&tab=tools&section=logs&log=ur_mail_logs"
 		);
-		const row = page.locator("tr", {
-			has: page.locator(".row-title", { hasText: "Email Delivery" })
+		const header = page.locator(".ur-log-single-header", {
+			hasText: "Email Delivery"
 		});
-		await expect(row).toBeVisible({ timeout: 30_000 });
+		await expect(header).toBeVisible({ timeout: 30_000 });
 
-		await row.hover();
-		await row.locator(".ur-log-delete-link").click();
+		await header.locator(".ur-log-delete-link").click();
 
-		const modal = page.locator(".ur-tools-delete-modal");
+		const modal = page.locator(".user-registration-swal2-modal");
 		await expect(modal).toBeVisible();
 		await expect(modal).toContainText("Delete Log");
-		await modal.locator(".ur-tools-delete-modal__confirm").click();
+		await modal.locator(".swal2-confirm").click();
 
 		await page.waitForLoadState("domcontentloaded");
+		await expect(
+			page.locator(".ur-log-card-header", { hasText: "Email Delivery" })
+		).toHaveCount(0);
 		await expect(
 			page.locator(".row-title", { hasText: "Email Delivery" })
 		).toHaveCount(0);

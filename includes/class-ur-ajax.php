@@ -220,8 +220,7 @@ class UR_AJAX {
 	 * @return void
 	 */
 	public static function user_form_submit() {
-		$nonce_value = isset( $_POST['ur_frontend_form_nonce'] ) ? wp_unslash( sanitize_key( $_POST['ur_frontend_form_nonce'] ) ) : '';
-		ur_process_registration( $nonce_value );
+		ur_process_registration();
 	}
 
 
@@ -2352,68 +2351,13 @@ class UR_AJAX {
 	}
 
 	public static function get_recent_nonce() {
-		// Public forms need public nonce refresh. A request referer is not authorization.
-		if ( ( isset( $_POST['nonce_for'] ) && ! is_string( $_POST['nonce_for'] ) ) ||
-			( isset( $_POST['form_ids'] ) && ! is_string( $_POST['form_ids'] ) ) ) {
-			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
-		}
+		// Only the login form needs a public nonce refresh. A request referer is not authorization.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Public guest nonce refresh does not require an existing nonce.
-		$for = isset( $_POST['nonce_for'] ) ? sanitize_key( wp_unslash( $_POST['nonce_for'] ) ) : 'registration';
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Public refresh; IDs are strictly validated below.
-		$form_ids = isset( $_POST['form_ids'] ) ? array_unique( array_filter( explode( ',', wp_unslash( $_POST['form_ids'] ) ) ) ) : array();
-		if ( ! in_array( $for, array( 'login', 'registration' ), true ) || count( $form_ids ) > 100 ) {
+		if ( ! isset( $_POST['nonce_for'] ) || 'login' !== $_POST['nonce_for'] ) {
 			wp_send_json_error( array( __( 'Invalid nonce request.', 'user-registration' ) ), 400 );
 		}
 
-		if ( 'registration' === $for ) {
-
-			if ( empty( $form_ids ) ) {
-				wp_send_json_error(
-					array(
-						__( 'Form ID is missing!', 'user-registration' ),
-					)
-				);
-			}
-			foreach ( $form_ids as $form_id ) {
-				if ( ! ctype_digit( $form_id ) || (int) $form_id < 1 ) {
-					wp_send_json_error( array( __( 'Invalid form ID.', 'user-registration' ) ), 400 );
-				}
-				$post = get_post( (int) $form_id );
-				if ( ! $post || 'user_registration' !== $post->post_type ||
-					( 'publish' !== $post->post_status && ! current_user_can( 'edit_post', (int) $form_id ) ) ) {
-					wp_send_json_error( array( __( 'Form not found!', 'user-registration' ) ), 404 );
-				}
-				$form = ur_get_form_fields( $form_id );
-				if ( empty( $form ) ) {
-					wp_send_json_error(
-						array(
-							__( 'Form not found!', 'user-registration' ),
-						)
-					);
-				}
-			}
-		}
-
-		$updated_nonce_array = array();
-		switch ( $for ) {
-			case 'registration':
-				foreach ( $form_ids as $form_id ) {
-					$updated_nonce_array[ $form_id ] = wp_create_nonce( 'ur_frontend_form_id-' . $form_id );
-				}
-				break;
-			default:
-				$updated_nonce_array = wp_create_nonce( 'ur_login_form_save_nonce' );
-				break;
-		}
-
-		if ( empty( $updated_nonce_array ) ) {
-			wp_send_json_error(
-				array(
-					__( 'Nonce could not be updated', 'user-registration' ),
-				)
-			);
-		}
-		wp_send_json_success( $updated_nonce_array );
+		wp_send_json_success( wp_create_nonce( 'ur_login_form_save_nonce' ) );
 	}
 
 	public static function validate_payment_currency() {

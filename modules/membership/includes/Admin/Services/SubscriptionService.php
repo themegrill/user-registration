@@ -916,6 +916,14 @@ class SubscriptionService {
 			);
 		}
 
+		// An unpaid plan can't be the starting point of an upgrade.
+		if ( empty( $this->orders_repository->get_latest_completed_order_by_subscription_and_item( $subscription['ID'], $subscription['item_id'] ) ) ) {
+			return array(
+				'status'  => false,
+				'message' => __( 'Sorry, you cannot upgrade a membership that has not been paid for.', 'user-registration' ),
+			);
+		}
+
 		$membership                  = $this->membership_repository->get_single_membership_by_ID( $data['selected_membership_id'] );
 		$selected_membership_details = wp_unslash( json_decode( $membership['meta_value'], true ) );
 
@@ -1322,6 +1330,11 @@ class SubscriptionService {
 			}
 		} else {
 			$this->orders_repository->delete( $order['ID'] );
+
+			// No order is left to pay, so the renewal marker must not outlive it.
+			$membership_process          = urm_get_membership_process( $member_id );
+			$membership_process['renew'] = array_values( array_diff( array_map( 'absint', $membership_process['renew'] ), array( absint( $membership_id ) ) ) );
+			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 		}
 
 		return array(

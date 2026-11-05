@@ -911,7 +911,7 @@ class AJAX {
 		$current_membership_id  = isset( $_POST['current_membership_id'] ) && '' !== $_POST['current_membership_id'] ? absint( $_POST['current_membership_id'] ) : 0;
 		$is_upgrading           = ! empty( $membership_process['upgrade'] ) && isset( $membership_process['upgrade'][ $current_membership_id ] ) && empty( absint( $_POST['team_id'] ) );
 		$is_purchasing_multiple = ! empty( $membership_process['multiple'] ) && in_array( $selected_membership_id, $membership_process['multiple'] );
-		$is_renewing            = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
+		$is_renewing            = $has_pending_order && absint( $member_latest_order['item_id'] ?? 0 ) === $current_membership_id && ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
 
 		if ( ! $has_pending_order && ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
 			// The failed attempt already discarded the pending registration; show the card error instead of a generic one.
@@ -968,7 +968,7 @@ class AJAX {
 
 			$form_response = isset( $_POST['form_response'] ) ? (array) json_decode( wp_unslash( $_POST['form_response'] ), true ) : array();
 			$data          = apply_filters( 'user_registration_membership_before_register_member', isset( $_POST['members_data'] ) ? (array) json_decode( wp_unslash( $_POST['members_data'] ), true ) : array() );
-			if ( ! empty( $form_response ) && isset( $form_response['auto_login'] ) && $payment_status !== 'failed' ) {
+			if ( 'auto_login' === ur_get_user_login_option( $member_id ) && 'failed' !== $payment_status ) {
 				$members_service = new MembersService();
 				$password        = isset( $data['password'] ) ? $data['password'] : '';
 				$logged_in       = $members_service->login_member( $member_id, true, $password );
@@ -1179,7 +1179,7 @@ class AJAX {
 		$current_membership_id  = isset( $_POST['current_membership_id'] ) && '' !== $_POST['current_membership_id'] ? absint( $_POST['current_membership_id'] ) : 0;
 		$is_purchasing_multiple = ! empty( $membership_process['multiple'] ) && in_array( $selected_membership_id, $membership_process['multiple'] );
 		$is_upgrading           = ! empty( $membership_process['upgrade'] ) && isset( $membership_process['upgrade'][ $current_membership_id ] ) && empty( absint( $_POST['team_id'] ) );
-		$is_renewing            = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
+		$is_renewing            = $has_pending_order && absint( $member_latest_order['item_id'] ?? 0 ) === $current_membership_id && ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, $membership_process['renew'] );
 		$team_id                = ! empty( $_POST['team_id'] ) ? absint( $_POST['team_id'] ) : 0;
 
 		if ( ! $has_pending_order && ! $is_upgrading && ! $is_renewing && ! $is_purchasing_multiple ) {
@@ -1220,7 +1220,7 @@ class AJAX {
 
 			$data = apply_filters( 'user_registration_membership_before_register_member', isset( $_POST['members_data'] ) ? (array) json_decode( wp_unslash( $_POST['members_data'] ), true ) : array() );
 
-			if ( $subscription_is_active && ! empty( $form_response ) && isset( $form_response['auto_login'] ) && $form_response['auto_login'] ) {
+			if ( $subscription_is_active && 'auto_login' === ur_get_user_login_option( $member_id ) ) {
 				$members_service = new MembersService();
 				$logged_in       = $members_service->login_member( $member_id, true, isset( $data['password'] ) ? $data['password'] : '' );
 				if ( ! $logged_in ) {
@@ -1917,10 +1917,8 @@ class AJAX {
 			$data['coupon'] = sanitize_text_field( $_POST['coupon'] );
 		}
 
-		if ( ! empty( $_POST['tax_rate'] ) ) {
-			$data['tax_rate']               = max( 0, floatval( $_POST['tax_rate'] ) );
-			$data['tax_calculation_method'] = ! empty( $_POST['tax_calculation_method'] ) ? sanitize_text_field( $_POST['tax_calculation_method'] ) : '1';
-		}
+		// Tax comes from the member's saved country and the tax settings, never from the request.
+		$data = array_merge( $data, urm_get_user_tax_details( get_current_user_id() ) );
 
 		$subscription_service = new SubscriptionService();
 		$status               = $subscription_service->can_upgrade( $data );
@@ -2204,10 +2202,8 @@ class AJAX {
 			$data['coupon'] = sanitize_text_field( $_POST['coupon'] );
 		}
 
-		if ( ! empty( $_POST['tax_rate'] ) ) {
-			$data['tax_rate']               = max( 0, floatval( $_POST['tax_rate'] ) );
-			$data['tax_calculation_method'] = ! empty( $_POST['tax_calculation_method'] ) ? sanitize_text_field( $_POST['tax_calculation_method'] ) : '1';
-		}
+		// Tax comes from the member's saved country and the tax settings, never from the request.
+		$data = array_merge( $data, urm_get_user_tax_details( get_current_user_id() ) );
 
 		if ( ! empty( $user_membership_ids ) ) {
 			$subscription_service = new SubscriptionService();

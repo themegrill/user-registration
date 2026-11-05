@@ -206,6 +206,11 @@ class UR_Form_Handler {
 				$field_name = $field->general_setting->field_name;
 				$key        = 'user_registration_' . $field_name;
 
+				// The profile save below reads the checkbox straight from the post, so clean it first.
+				if ( isset( $field->field_key ) && 'checkbox' === $field->field_key && isset( $_POST[ $key ] ) ) {
+					$_POST[ $key ] = wp_slash( ur_sanitize_checkbox_profile_value( wp_unslash( $_POST[ $key ] ), $field ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+				}
+
 				$field_obj             = new StdClass();
 				$field_obj->field_name = $field_name;
 				$fields[ $field_name ] = user_registration_sanitize_profile_update( $_POST, $field->field_key, $key );
@@ -631,13 +636,9 @@ class UR_Form_Handler {
 	 * @throws Exception Login errors.
 	 */
 	public static function process_registration() {
-		$nonce_value = isset( $_POST['_wpnonce'] ) ? sanitize_key( $_POST['_wpnonce'] ) : '';
-
-		$nonce_value = isset( $_POST['ur_frontend_form_nonce'] ) ? sanitize_key( $_POST['ur_frontend_form_nonce'] ) : $nonce_value;
-
 		if ( ! empty( $_POST['ur_fallback_submit'] ) ) {
 			$_POST['form_data'] = urldecode( $_POST['form_data'] );
-			ur_process_registration( $nonce_value );
+			ur_process_registration();
 		}
 	}
 

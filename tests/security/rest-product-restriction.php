@@ -6,7 +6,7 @@
  */
 
 // WordPress test doubles intentionally use minimal declarations.
-// phpcs:disable Squiz.Commenting.ClassComment, Squiz.Commenting.FunctionComment, Squiz.Commenting.VariableComment, Generic.Files.OneObjectStructurePerFile, Universal.Files.SeparateFunctionsFromOO, Generic.CodeAnalysis.UnusedFunctionParameter, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.PHP.YodaConditions.NotYoda
+// phpcs:disable Squiz.Commenting.ClassComment, Squiz.Commenting.FunctionComment, Squiz.Commenting.VariableComment, Generic.Files.OneObjectStructurePerFile, Universal.Files.SeparateFunctionsFromOO, Generic.CodeAnalysis.UnusedFunctionParameter, WordPress.WP.AlternativeFunctions.json_encode_json_encode, WordPress.PHP.YodaConditions.NotYoda, Generic.Classes.DuplicateClassName
 
 require __DIR__ . '/bootstrap.php';
 
@@ -68,7 +68,8 @@ function rest_ensure_response( $data ) {
 function add_action( $hook, $callback ) {
 	$GLOBALS['hooks'][ $hook ] = $callback; }
 function add_filter( $hook, $callback, $priority = 10, $args = 1 ) {
-	$GLOBALS['hooks'][ $hook ] = $callback; }
+	$GLOBALS['hooks'][ $hook ] = $callback;
+	$GLOBALS['hooks'][ $hook . ':' . ( is_array( $callback ) ? $callback[1] : '' ) ] = $callback; }
 function get_post_types( $args ) {
 	return array( 'product', 'post', 'attachment' ); }
 function apply_filters( $hook, $value, ...$args ) {
@@ -98,7 +99,7 @@ $public                    = array(
 );
 
 function product_response( $route, $data ) {
-	return call_user_func( $GLOBALS['hooks']['rest_request_after_callbacks'], $data, array(), new WP_REST_Request( $route ) );
+	return call_user_func( $GLOBALS['hooks']['rest_request_after_callbacks:restrict_woocommerce_response'], $data, array(), new WP_REST_Request( $route ) );
 }
 function assert_private_absent( $response ) {
 	$data = $response instanceof WP_REST_Response ? $response->get_data() : $response->data;

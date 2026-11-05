@@ -433,7 +433,7 @@ class UR_User_Approval {
 
 		$form_id = ur_get_form_id_by_userid( get_current_user_id() );
 
-		if ( 'admin_approval' === ur_get_user_login_option( get_current_user_id() ) && $form_id ) {
+		if ( in_array( ur_get_user_login_option( get_current_user_id() ), array( 'admin_approval', 'admin_approval_after_email_confirmation' ), true ) && $form_id ) {
 
 			// Try to hide the not approved users from any theme or plugin request in frontend.
 			$disable_pre_get = apply_filters( 'user_registration_disable_pre_get_users', 'no' );
@@ -446,7 +446,8 @@ class UR_User_Approval {
 
 			$user_manager = new UR_Admin_User_Manager();
 
-			if ( ! $user_manager->can_status_be_changed_by( get_current_user_id() ) ) {
+			// Admins are never logged out by the approval check.
+			if ( current_user_can( 'manage_options' ) ) {
 				return;
 			}
 			/**
@@ -460,7 +461,7 @@ class UR_User_Approval {
 			 */
 			do_action( 'ur_user_before_check_status_on_page', $status, $user_manager );
 
-			if ( UR_Admin_User_Manager::APPROVED === $status ) {
+			if ( $user_manager->is_approved() ) {
 				return;
 			}
 

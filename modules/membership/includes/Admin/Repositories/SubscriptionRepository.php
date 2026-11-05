@@ -254,7 +254,9 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	 *     @type int    $item_id        Filter by item ID. Default 0 (all).
 	 *     @type string $start_date     Filter by start date (from). Format: Y-m-d. Default empty.
 	 *     @type string $end_date       Filter by end date (to). Format: Y-m-d. Default empty.
-	 *     @type string $search         Search in subscription_id or email. Default empty.
+	 *     @type string $expiry_from    Filter by expiry date (from). Format: Y-m-d. Default empty.
+	 *     @type string $expiry_to      Filter by expiry date (to). Format: Y-m-d. Default empty.
+	 *     @type string $search        Search in subscription_id or email. Default empty.
 	 * }
 	 * @return array Array containing 'items' and 'total' count
 	 */
@@ -341,6 +343,16 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 		if ( ! empty( $args['end_date'] ) ) {
 			$where_clauses[]  = 'DATE(start_date) <= %s';
 			$prepare_values[] = sanitize_text_field( $args['end_date'] );
+		}
+
+		if ( ! empty( $args['expiry_from'] ) ) {
+			$where_clauses[]  = 'DATE(expiry_date) >= %s';
+			$prepare_values[] = sanitize_text_field( $args['expiry_from'] );
+		}
+
+		if ( ! empty( $args['expiry_to'] ) ) {
+			$where_clauses[]  = 'DATE(expiry_date) <= %s';
+			$prepare_values[] = sanitize_text_field( $args['expiry_to'] );
 		}
 
 		if ( ! empty( $args['search'] ) ) {

@@ -4,7 +4,7 @@ Tags: membership, subscription, content restriction, user profile, user registra
 Requires at least: 5.5
 Requires PHP: 7.4
 Tested up to: 7.1
-Stable tag: 5.3.1
+Stable tag: 5.3.2
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
@@ -47,6 +47,8 @@ https://youtu.be/czohMTVfLrw
 * __10+ Membership Gutenberg Blocks__: Create custom membership pages using our custom blocks: registration, my account, membership pricing, buy now block etc.
 
 * __Membership Analytics__: Quickly glance over total registration, approved users, and pending requests with dedicated analytics dashboard.
+
+* __AI Abilities (MCP Ready)__: Built-in WordPress Abilities support lets AI assistants easily access and work with your membership site. Connect in a click with [Easy MCP AI](https://easymcpai.com/) or the official MCP Adapter.
 
  __Custom User Registration__
 
@@ -251,6 +253,26 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 9. Subscription Management
 
 == Changelog ==
+
+
+= 5.3.2    - 05/11/2026 =
+* Feature  - AI assistants can read membership plans, subscriptions and payments.
+* Enhance  - AI assistants can filter members by approval status and email verification.
+* Add      - Enable AI Abilities setting under Advanced > Others.
+* Fix      - Membership tax is now worked out on the server at checkout.
+* Fix      - Failed renewals no longer move the billing date forward.
+* Fix      - Comments on restricted content are hidden from the REST API.
+* Fix      - Auto login no longer signs in members waiting for approval. Thanks fccsec.dev.
+* Fix      - 100% off coupons must be active, in date and set for the plan. Thanks Maciek Komorowski.
+* Fix      - PayPal payments complete only the order they were started for. Thanks fccsec.dev.
+* Fix      - Checkbox values saved from the profile page are shown safely in admin. Thanks Maciej Komorowski.
+* Fix      - Payment before login now applies to every sign up from that form. Thanks Filip Kecman.
+* Fix      - Shortcodes no longer run from login error notices or the login preview.
+* Fix      - Custom column values in the Users and Members lists are shown safely.
+* Fix      - User Bio is now cleaned on save to block stored script injection. Thanks crow.
+* Fix      - Renewing a membership now needs a pending renewal order. Thanks Wai Linn Oo.
+* Fix      - Legacy PayPal activates memberships only for completed payments in the right currency.
+* Tweak    - Removed unused registration nonce code. Thanks Harry Nguyen.
 
 = 5.3.1    - 17/10/2026 =
 * Fix      - Plugins page no longer goes blank when Everest Forms is also active on PHP 8.
@@ -715,11 +737,3 @@ information and activities.
 * Fix      - Admin unable to access content when restricting all content while using the whole site restrict.
 
 [See changelog for all versions](https://raw.githubusercontent.com/wpeverest/user-registration/master/CHANGELOG.txt).
-
-
-== Upgrade Notice ==
-
-= 5.1.2 =
-##Important: Version 5.0 and above is a major update with significant improvements
-We strongly recommend backing up your site before updating. This update includes architectural changes that make your membership management more powerful and easier to use.
-Read the full blog post to see what’s new: [User Registration & Membership v5.0](https://wpuserregistration.com/blog/user-registration-membership-pro-6/)

@@ -270,7 +270,7 @@ class PaypalService {
 			'charset'       => get_bloginfo( 'charset' ),
 			'cmd'           => $transaction,
 			'currency_code' => $currency,
-			'custom'        => $membership . '-' . $member_id . '-' . $data['current_membership_id'] . '-' . $subscription_id,
+			'custom'        => $membership . '-' . $member_id . '-' . $data['current_membership_id'] . '-' . $subscription_id . '-' . absint( isset( $response_data['order_id'] ) ? $response_data['order_id'] : 0 ),
 			'return'        => $return_url,
 			'rm'            => '2',
 			'tax'           => $tax_amount,
@@ -576,6 +576,14 @@ class PaypalService {
 		$current_membership_id = $custom[2];
 		$subscription_id       = $custom[3];
 		$latest_order          = $this->members_orders_repository->get_member_orders( $member_id );
+		$bound_order           = ! empty( $custom[4] ) ? $this->members_orders_repository->retrieve( absint( $custom[4] ) ) : array();
+		if ( ! empty( $bound_order ) && 'pending' === $bound_order['status'] ) {
+			// Settle the order this checkout was created for, not the member's newest one.
+			$latest_order = $bound_order;
+		} elseif ( ! empty( $latest_order ) && 'pending' === $latest_order['status'] && in_array( $txn_type, array( 'subscr_signup', 'web_accept' ), true ) ) {
+			// A pending order this payment is not tied to must never be activated by it.
+			$latest_order = array();
+		}
 		$membership            = $this->membership_repository->get_single_membership_by_ID( $membership_id );
 		$membership_metas      = wp_unslash( json_decode( $membership['meta_value'], true ) );
 		$membership_type       = $membership_metas['type'] ?? 'unknown'; // free, paid, or subscription
@@ -704,6 +712,23 @@ class PaypalService {
 
 			return;
 		}
+		$currency_meta  = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $latest_order['ID'], 'local_currency' );
+		$order_currency = ! empty( $currency_meta['meta_value'] ) ? $currency_meta['meta_value'] : get_option( 'user_registration_payment_currency', 'USD' );
+
+		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything.
+		if ( in_array( $txn_type, array( 'subscr_signup', 'web_accept', 'subscr_payment' ), true )
+			&& ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) ) {
+			PaymentGatewayLogging::log_transaction_failure(
+				'paypal',
+				esc_html__( 'Payment ignored: recipient emails do not match', 'user-registration' ),
+				array(
+					'subscription_id' => $subscription_id,
+					'member_id'       => $member_id,
+				)
+			);
+			return;
+		}
+
 		// return if first ipn received, change the status of order and subscription to complete and active respectively.
 		if ( 'subscr_signup' === $txn_type || 'web_accept' === $txn_type ) {
 
@@ -721,11 +746,39 @@ class PaypalService {
 				)
 			);
 
-			// Validate receiver email and payment amount before any state changes.
+			if ( 'web_accept' === $txn_type ) {
+				$payment_status = strtolower( $data['payment_status'] ?? '' );
+
+				if ( 'completed' !== $payment_status ) {
+					// Pending (e.g. echeck) stays unfulfilled until PayPal sends the Completed IPN.
+					if ( in_array( $payment_status, array( 'denied', 'failed', 'expired', 'voided' ), true ) ) {
+						$this->members_orders_repository->update( $latest_order['ID'], array( 'status' => 'failed' ) );
+					}
+
+					PaymentGatewayLogging::log_transaction_failure(
+						'paypal',
+						sprintf( 'Payment not completed, IPN payment status: %s', $payment_status ),
+						array(
+							'subscription_id' => $subscription_id,
+							'member_id'       => $member_id,
+						)
+					);
+					return;
+				}
+
+				// A replayed verified IPN must not re-run fulfilment.
+				if ( ! empty( $data['txn_id'] ) && $this->members_orders_repository->does_transaction_id_exists( $data['txn_id'], 0, 'completed' ) ) {
+					return;
+				}
+			}
+
+			// Validate receiver email, currency and payment amount before any state changes.
 			$ipn_error = '';
 			if ( empty( $receiver_email ) || ! is_email( $receiver_email )
 				|| strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) {
 				$ipn_error = esc_html__( 'Payment failed: recipient emails do not match', 'user-registration' );
+			} elseif ( 'web_accept' === $txn_type && strtolower( $data['mc_currency'] ?? '' ) !== strtolower( $order_currency ) ) {
+				$ipn_error = esc_html__( 'Payment failed: payment currencies do not match', 'user-registration' );
 			} elseif ( 'web_accept' === $txn_type
 				&& ( empty( $latest_order['total_amount'] )
 					|| number_format( (float) ( $data['mc_gross'] ?? 0 ), 2 ) !== number_format( (float) $latest_order['total_amount'], 2 ) ) ) {
@@ -733,6 +786,11 @@ class PaypalService {
 				// server-stored order total. subscr_signup carries no payment — the first
 				// real charge arrives via subscr_payment.
 				$ipn_error = esc_html__( 'Payment failed: payment amounts do not match ', 'user-registration' );
+			}
+
+			// Two identical IPNs can both pass the checks above; only the one that moves the order out of pending fulfils it.
+			if ( empty( $ipn_error ) && 'web_accept' === $txn_type && ! $this->members_orders_repository->complete_pending_order( $latest_order['ID'], sanitize_text_field( $data['txn_id'] ?? '' ) ) ) {
+				return;
 			}
 
 			if ( ! empty( $ipn_error ) ) {
@@ -846,15 +904,40 @@ class PaypalService {
 		$payment_date = $payment_date->setTimezone( new \DateTimeZone( 'UTC' ) )->format( 'Y-m-d' );
 		// handle first ipn of the day appart from the signup ipn.
 		if ( 'subscr_payment' === $txn_type && $payment_date == date( 'Y-m-d' ) ) {
-			// Verify receiver email and amount before activating — this path must not
+			$first_payment_status = strtolower( $data['payment_status'] ?? '' );
+
+			if ( 'completed' !== $first_payment_status ) {
+				// Pending (e.g. echeck) stays unfulfilled until PayPal sends the Completed IPN.
+				if ( in_array( $first_payment_status, array( 'denied', 'failed', 'expired', 'voided' ), true ) ) {
+					$this->members_orders_repository->update( $latest_order['ID'], array( 'status' => 'failed' ) );
+				}
+
+				PaymentGatewayLogging::log_transaction_failure(
+					'paypal',
+					sprintf( 'Payment not completed, IPN payment status: %s', $first_payment_status ),
+					array(
+						'subscription_id' => $subscription_id,
+						'member_id'       => $member_id,
+					)
+				);
+				return;
+			}
+
+			// A replayed verified IPN must not re-run activation.
+			if ( ! empty( $data['txn_id'] ) && $this->members_orders_repository->does_transaction_id_exists( $data['txn_id'], 0, 'completed' ) ) {
+				return;
+			}
+
+			// Verify receiver email, currency and amount before activating — this path must not
 			// skip the checks that run below for later payments.
 			if ( empty( $receiver_email ) || ! is_email( $receiver_email )
 				|| strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) )
+				|| strtolower( $data['mc_currency'] ?? '' ) !== strtolower( $order_currency )
 				|| empty( $latest_order['total_amount'] )
 				|| number_format( (float) ( $data['mc_gross'] ?? 0 ), 2 ) !== number_format( (float) $latest_order['total_amount'], 2 ) ) {
 				PaymentGatewayLogging::log_transaction_failure(
 					'paypal',
-					esc_html__( 'Payment failed: receiver email or amount mismatch', 'user-registration' ),
+					esc_html__( 'Payment failed: receiver email, currency or amount mismatch', 'user-registration' ),
 					array(
 						'subscription_id' => $subscription_id,
 						'member_id'       => $member_id,
@@ -864,6 +947,14 @@ class PaypalService {
 
 				return;
 			}
+			// Recording the transaction lets a replay of this IPN be recognised.
+			$this->members_orders_repository->update(
+				$latest_order['ID'],
+				array(
+					'status'         => 'completed',
+					'transaction_id' => sanitize_text_field( $data['txn_id'] ?? '' ),
+				)
+			);
 			$this->members_subscription_repository->update(
 				$subscription_id,
 				array(
@@ -889,6 +980,8 @@ class PaypalService {
 		// Verify receiver's email address.
 		if ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ) !== strtolower( trim( $receiver_email ) ) ) {
 			$error = esc_html__( 'Payment failed: recipient emails do not match', 'user-registration' );
+		} elseif ( strtolower( $data['mc_currency'] ?? '' ) !== strtolower( $order_currency ) ) {
+			$error = esc_html__( 'Payment failed: payment currencies do not match', 'user-registration' );
 		} elseif ( empty( $latest_order['total_amount'] ) || number_format( (float) ( $data['mc_gross'] ?? 0 ), 2 ) !== number_format( (float) $latest_order['total_amount'], 2 ) ) {
 			// Verify amount against the server-stored order total, not the client-influenced base amount.
 			$error = esc_html__( 'Payment failed: payment amounts do not match ', 'user-registration' );
@@ -905,6 +998,11 @@ class PaypalService {
 			);
 			$this->members_orders_repository->update( $latest_order['ID'], array( 'status' => 'failed' ) );
 
+			return;
+		}
+
+		// A replayed verified IPN must not create another order.
+		if ( 'completed' === $payment_status && ! empty( $data['txn_id'] ) && $this->members_orders_repository->does_transaction_id_exists( $data['txn_id'], 0, 'completed' ) ) {
 			return;
 		}
 
@@ -936,7 +1034,8 @@ class PaypalService {
 				)
 			);
 
-			if ( $order_id ) {
+			// Only a completed payment may activate or renew the subscription.
+			if ( $order_id && 'completed' === $payment_status ) {
 				// update subscription
 				if ( isset( $data['next_payment_date'] ) ) {
 					$start_date        = new \DateTime( $data['next_payment_date'] );

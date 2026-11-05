@@ -346,6 +346,27 @@ function ur_update_529_db_version() {
 }
 
 /**
+ * Keep AI abilities on for sites that already had them.
+ *
+ * The setting defaults to off for new installs. Abilities shipped without a
+ * setting in 5.3.0, so existing sites keep them unless the admin chose otherwise.
+ *
+ * @since 5.3.2
+ *
+ * @return void
+ */
+function ur_update_532_enable_abilities() {
+	add_option( 'user_registration_enable_abilities', 'yes' );
+}
+
+/**
+ * Update DB Version.
+ */
+function ur_update_532_db_version() {
+	UR_Install::update_db_version( '5.3.2' );
+}
+
+/**
  * Set Redirect after Registration option in form settings.
  * Change Integration to Captcha Option names.
  *

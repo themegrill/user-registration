@@ -1,5 +1,5 @@
 import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { ADMIN_PASS, ADMIN_USER, BASE_URL } from "./env";
+import { ADMIN_PASS, ADMIN_USER, BASE_URL, GUESSING_CREDENTIALS } from "./env";
 
 /**
  * Log in to wp-admin.
@@ -38,7 +38,19 @@ export async function loginAsAdmin(page: Page, user = ADMIN_USER, pass = ADMIN_P
   // remaining CI flake was: attempt 0 of the run's first test failed here with
   // "#wpadminbar element(s) not found", and the retry passed on a warm site.
   // A cold start is not a regression and should not cost a retry to discover.
-  await expect(page.locator("#wpadminbar")).toBeVisible({ timeout: 45_000 });
+  //
+  // The message is for the developer whose login never completed: the usual cause
+  // on a site that is not Playground is credentials, and the default timeout
+  // wording says nothing about that or about where they are set.
+  const hint =
+    GUESSING_CREDENTIALS && pass === ADMIN_PASS
+      ? ` No admin password was configured for ${BASE_URL}, so "${user}" / "password" was a guess. ` +
+        "Set TGQA_ADMIN_USER and TGQA_ADMIN_PASS in .themegrill-qa/.env.local."
+      : ` Check the credentials in .themegrill-qa/.env.local, and that ${BASE_URL} is reachable.`;
+  await expect(
+    page.locator("#wpadminbar"),
+    `Tried to log in as "${user}" at ${BASE_URL}, but wp-admin never rendered.${hint}`,
+  ).toBeVisible({ timeout: 45_000 });
 }
 
 /**

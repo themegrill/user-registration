@@ -43,7 +43,8 @@ loadEnvLocal();
  *   @fresh — runs against a clean install; safe to run anywhere
  *   @demo  — needs seeded content (an untagged test counts as @demo)
  */
-const baseURL = process.env.TGQA_BASE_URL ?? "http://localhost:8888";
+const baseURL =
+  process.env.TGQA_BASE_URL || process.env.USER_REGISTRATION_BASE_URL || "http://localhost:8888";
 
 export default defineConfig({
   testDir: "tests/e2e/specs",

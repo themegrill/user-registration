@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-test("member names and failed profile update @fresh", () => {
+test("member names and failed profile update @fresh @my-account", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [

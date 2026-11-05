@@ -1,3 +1,23 @@
+= 5.3.2    - 05/11/2026 =
+* Feature  - AI assistants can read membership plans, subscriptions and payments.
+* Enhance  - AI assistants can filter members by approval status and email verification.
+* Add      - Enable AI Abilities setting under Advanced > Others.
+* Fix      - Membership tax is now worked out on the server at checkout.
+* Fix      - Failed renewals no longer move the billing date forward.
+* Fix      - Comments on restricted content are hidden from the REST API.
+* Fix      - Auto login no longer signs in members waiting for approval. Thanks fccsec.dev.
+* Fix      - 100% off coupons must be active, in date and set for the plan. Thanks Maciek Komorowski.
+* Fix      - PayPal payments complete only the order they were started for. Thanks fccsec.dev.
+* Fix      - Checkbox values saved from the profile page are shown safely in admin. Thanks Maciej Komorowski.
+* Fix      - Payment before login now applies to every sign up from that form. Thanks Filip Kecman.
+* Fix      - Shortcodes no longer run from login error notices or the login preview.
+* Fix      - Custom column values in the Users and Members lists are shown safely.
+* Fix      - User Bio is now cleaned on save to block stored script injection. Thanks crow.
+* Fix      - Renewing a membership now needs a pending renewal order. Thanks Wai Linn Oo.
+* Fix      - Legacy PayPal activates memberships only for completed payments in the right currency.
+* Tweak    - Removed unused registration nonce code. Thanks Harry Nguyen.
+
+
 = 5.3.1    - 17/10/2026 =
 * Fix      - Plugins page no longer goes blank when Everest Forms is also active on PHP 8.
 

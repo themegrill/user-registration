@@ -43,6 +43,28 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 	}
 
 	/**
+	 * Mark a pending order completed, only if nobody else has done so first.
+	 *
+	 * @param int    $order_id       Order ID.
+	 * @param string $transaction_id Gateway transaction ID.
+	 *
+	 * @return bool True for the one caller that moved the order from pending to completed.
+	 */
+	public function complete_pending_order( $order_id, $transaction_id ) {
+		// phpcs:disable WordPress.DB.PreparedSQL -- Bound by prepare(); the sniff trips on the internal table name.
+		$updated = $this->wpdb()->query(
+			$this->wpdb()->prepare(
+				"UPDATE $this->table SET status = 'completed', transaction_id = %s WHERE ID = %d AND status = 'pending'",
+				$transaction_id,
+				$order_id
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL
+
+		return 1 === $updated;
+	}
+
+	/**
 	 * get_member_all_orders
 	 *
 	 * @param $member_id
@@ -119,14 +141,26 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 		return false;
 	}
 
-	public function does_transaction_id_exists( $transaction_id, $order_id ) {
+	/**
+	 * Check whether another order already holds a transaction ID.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param string $transaction_id Transaction ID.
+	 * @param int    $order_id       Order ID to leave out, 0 to check every order.
+	 * @param string $status         Only match orders with this status, empty for any.
+	 * @return bool
+	 */
+	public function does_transaction_id_exists( $transaction_id, $order_id, $status = '' ) {
 		global $wpdb;
 
 		$result = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT id FROM {$this->table} WHERE transaction_id = %s AND id != %d LIMIT 1",
+				"SELECT id FROM {$this->table} WHERE transaction_id = %s AND id != %d AND ( %s = '' OR status = %s ) LIMIT 1",
 				$transaction_id,
-				$order_id
+				$order_id,
+				$status,
+				$status
 			)
 		);
 

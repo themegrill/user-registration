@@ -236,7 +236,7 @@ Your base currency is the currency you use for all exchange rate calculations. T
 
 ### Enabling Manual Currency Switching
 
-To allow visitors to manually switch between currencies, toggle on Calculate tax at checkout under the Local Currency settings. When enabled, visitors will see a currency selector on your membership pages where they can choose their preferred currency.
+To allow visitors to manually switch between currencies, toggle on Switch currency option under the Local Currency settings. When enabled, visitors will see a currency selector on your membership pages where they can choose their preferred currency.
 
 ### Connecting MaxMind for Geolocation
 

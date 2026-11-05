@@ -3,11 +3,11 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { runSecurityRegression } from "../support/security";
 
-test("registration does not reject missing or expired cached-page nonces @fresh", async () => {
+test("registration does not reject missing or expired cached-page nonces @fresh @security", async () => {
   await runSecurityRegression("checkbox", 3);
 });
 
-test("checkbox attributes, stored values and configured options @fresh", () => {
+test("checkbox attributes, stored values and configured options @fresh @registration", () => {
   const wordpress = process.env.UR_SECURITY_WP_PATH;
   test.skip(!wordpress, "Set UR_SECURITY_WP_PATH to a disposable WordPress install with this branch active.");
   const result = execFileSync("wp", [

@@ -75,17 +75,6 @@ if ( ! class_exists( 'UR_Admin_Profile', false ) ) :
 					// if ( isset( $value['field_key'] ) && 'membership' === $value['field_key'] && isset( $_GET['user_id'] ) ) {
 					// unset( $form_fields[ $key ] );
 					// }
-
-					if ( array_key_exists( $key, $all_meta_for_user ) ) {
-						if ( isset( $value['field_key'], $value['choices'] ) && 'checkbox' === $value['field_key'] && empty( $value['choices'] ) ) {
-							$unserialized_checkbox_value = maybe_unserialize( $all_meta_for_user[ $key ] );
-							if ( is_array( $unserialized_checkbox_value ) ) {
-								$form_fields[ $key ]['choices'] = $unserialized_checkbox_value;
-							} else {
-								$form_fields[ $key ]['choices'] = array( $unserialized_checkbox_value );
-							}
-						}
-					}
 				}
 
 				unset( $form_fields['user_registration_profile_pic_url'] );
@@ -361,7 +350,7 @@ if ( ! class_exists( 'UR_Admin_Profile', false ) ) :
 																						}
 																						?>
 														><?php if ( trim( $choice ) !== '1' ) : ?>
-															<?php echo wp_kses_post( trim( $choice ) ); ?>
+															<?php echo esc_html( trim( $choice ) ); ?>
 														<?php endif; ?></label><br/>
 														<?php
 												}
@@ -535,7 +524,11 @@ if ( ! class_exists( 'UR_Admin_Profile', false ) ) :
 								}
 								update_user_meta( absint( $user_id ), sanitize_text_field( $key ), $value );
 							} else {
-								update_user_meta( absint( $user_id ), sanitize_text_field( $key ), '' );
+								// A checkbox with no options is one box on this screen, so a stored list of values must survive a save that leaves it out.
+								$stored_value = 'checkbox' === $field['type'] && empty( $field['choices'] ) && empty( $field['image_options'] ) ? maybe_unserialize( get_user_meta( absint( $user_id ), sanitize_text_field( $key ), true ) ) : '';
+								if ( ! is_array( $stored_value ) ) {
+									update_user_meta( absint( $user_id ), sanitize_text_field( $key ), '' );
+								}
 							}
 							} elseif ( isset( $_POST[ $key ] ) ) { //phpcs:ignore
 							update_user_meta( absint( $user_id ), sanitize_text_field( $key ), sanitize_text_field( $_POST[ $key ] ) ); //phpcs:ignore

@@ -30,7 +30,7 @@ test.describe("settings search @fresh", () => {
     await gotoAdminPage(page, "user-registration-settings");
   });
 
-  test("finds settings that live inside a section, and says where @fresh", async ({ page }) => {
+  test("finds settings that live inside a section, and says where @fresh @admin", async ({ page }) => {
     const currency = await search(page, "currency");
     expect(currency.map((r) => `${r.label} | ${r.location}`)).toContain("Currency | Payment → Store");
 
@@ -38,34 +38,34 @@ test.describe("settings search @fresh", () => {
     expect(logout.map((r) => `${r.label} | ${r.location}`)).toContain("User Logout | My Account → Endpoints");
   });
 
-  test("matches on text a user can read, never on a field's type @fresh", async ({ page }) => {
+  test("matches on text a user can read, never on a field's type @fresh @admin", async ({ page }) => {
     for (const fieldType of ["toggle", "checkbox"]) {
       const results = await search(page, fieldType);
       expect(results.map((r) => r.value)).toEqual([NO_RESULT_VALUE]);
     }
   });
 
-  test("ignores the prefix every setting id shares, and too-short queries @fresh", async ({ page }) => {
+  test("ignores the prefix every setting id shares, and too-short queries @fresh @admin", async ({ page }) => {
     for (const term of ["urm_", "ab", ""]) {
       const results = await search(page, term);
       expect(results.map((r) => r.value)).toEqual([NO_RESULT_VALUE]);
     }
   });
 
-  test("never returns a row labelled true @fresh", async ({ page }) => {
+  test("never returns a row labelled true @fresh @admin", async ({ page }) => {
     for (const term of ["email", "page", "enable", "secret"]) {
       const labels = (await search(page, term)).map((r) => r.label);
       expect(labels).not.toContain("true");
     }
   });
 
-  test("a query with no match says so plainly @fresh", async ({ page }) => {
+  test("a query with no match says so plainly @fresh @admin", async ({ page }) => {
     const results = await search(page, "zzzqqqxxx");
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ label: "No settings found", value: NO_RESULT_VALUE });
   });
 
-  test("finds the sections only Pro adds, even though one of them prints markup while loading @fresh", async ({ page }) => {
+  test("finds the sections only Pro adds, even though one of them prints markup while loading @fresh @admin", async ({ page }) => {
     // Pro's Popups section echoes a table while its settings are built; that output once corrupted the JSON.
     await gotoAdminPage(page, "user-registration-settings", "&tab=payment");
     const proSectionsPresent = (await page.locator("a[href*='section=payment-retry']").count()) > 0;
@@ -78,7 +78,7 @@ test.describe("settings search @fresh", () => {
     expect(retry.map((r) => `${r.label} | ${r.location}`)).toContain("Enable Payment Retry | Payment → Payment Retry & Dunning");
   });
 
-  test("picking a result opens its tab and section and highlights the field @fresh", async ({ page }) => {
+  test("picking a result opens its tab and section and highlights the field @fresh @admin", async ({ page }) => {
     await page.locator("#ur-search-settings").pressSequentially("currency");
 
     const row = page.locator(".user-registration-ui-autocomplete li").filter({ hasText: "Payment → Store" });
