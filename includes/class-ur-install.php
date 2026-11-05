@@ -59,6 +59,10 @@ class UR_Install {
 			'ur_update_529_legacy_payment_fields_flag',
 			'ur_update_529_db_version',
 		),
+		'5.3.2'   => array(
+			'ur_update_532_enable_abilities',
+			'ur_update_532_db_version',
+		),
 	);
 
 	/**

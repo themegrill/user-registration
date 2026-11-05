@@ -278,6 +278,21 @@ class MembershipRepository extends BaseRepository implements MembershipInterface
 	}
 
 	/**
+	 * Count distinct members per membership plan for one subscription status.
+	 *
+	 * @since 5.3.0
+	 *
+	 * @param string $status Subscription status.
+	 * @return array Membership ID => member count.
+	 */
+	public function count_members_by_membership( $status ) {
+		global $wpdb;
+		$sql  = "SELECT item_id, COUNT(DISTINCT user_id) AS total FROM {$this->subscription_table} WHERE status = %s GROUP BY item_id";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $status ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.DirectDatabaseQuery -- Internal table name, status is prepared.
+		return array_map( 'intval', array_column( $rows, 'total', 'item_id' ) );
+	}
+
+	/**
 	 * Delete membership post using wp_delete_post to trigger WordPress hooks
 	 *
 	 * @param int $id Membership post ID

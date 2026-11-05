@@ -26,6 +26,9 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	/**
 	 * Get all Orders
 	 *
+	 * Optional keys: membership_id, s, payment_method, status, date_from and
+	 * date_to (Y-m-d), orderby, order, limit and offset.
+	 *
 	 * @param $args
 	 *
 	 * @return array|object|\stdClass[]
@@ -84,11 +87,20 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		if ( isset( $args['status'] ) ) {
 			$sql .= $wpdb->prepare( ' AND urmo.status = %s', $args['status'] );
 		}
+		if ( isset( $args['date_from'] ) ) {
+			$sql .= $wpdb->prepare( ' AND DATE(urmo.created_at) >= %s', $args['date_from'] );
+		}
+		if ( isset( $args['date_to'] ) ) {
+			$sql .= $wpdb->prepare( ' AND DATE(urmo.created_at) <= %s', $args['date_to'] );
+		}
 
 		$allowed_orderby = array( 'created_at', 'status', 'ID' );
 		$orderby         = in_array( $args['orderby'], $allowed_orderby, true ) ? $args['orderby'] : 'created_at';
 		$order           = 'ASC' === strtoupper( $args['order'] ) ? 'ASC' : 'DESC';
-		$sql            .= sprintf( ' ORDER BY %s %s', $orderby, $order );
+		$sql            .= sprintf( ' ORDER BY urmo.%s %s', $orderby, $order );
+		if ( isset( $args['limit'] ) ) {
+			$sql .= $wpdb->prepare( ' LIMIT %d OFFSET %d', $args['limit'], isset( $args['offset'] ) ? $args['offset'] : 0 );
+		}
 
 		$result = $this->wpdb()->get_results( $sql, ARRAY_A );
 
@@ -148,6 +160,7 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 					urmo.notes,
 					urmo.trial_status,
 					urmo.total_amount,
+					urmo.order_type,
 					urms.status as subscription_status,
 					urms.trial_start_date,
 					urms.trial_end_date,
@@ -181,7 +194,8 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		);
 
 		if ( ! empty( $payment_date ) ) {
-			$result['created_at'] = $payment_date;
+			$result['order_created_at'] = $result['created_at'];
+			$result['created_at']       = $payment_date;
 		}
 
 		return ! $result ? array() : $result;
