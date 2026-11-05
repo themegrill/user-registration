@@ -190,6 +190,7 @@ class URCR_Shortcodes {
 
 			$message = empty( $message ) ? __( 'This content is restricted1!', 'user-registration' ) : $message;
 			$message = apply_filters( 'user_registration_process_smart_tags', $message );
+			$message = wp_kses_post( $message ); // Sanitise before shortcodes render, their markup is trusted.
 			$message = do_shortcode( $message );
 
 			if ( isset( $atts['enable_content_restriction'] ) && $atts['enable_content_restriction'] == true ) {

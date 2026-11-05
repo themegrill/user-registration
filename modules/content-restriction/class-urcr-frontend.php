@@ -1412,6 +1412,7 @@ class URCR_Frontend {
 		$message                 = ! empty( $restricted_message ) && $override_global_message ? wp_kses_post( $restricted_message ) : get_option( 'user_registration_content_restriction_message', '' );
 		$message                 = ( false === $message || empty( $message ) ) ? esc_html__( 'This content is restricted!', 'user-registration' ) : $message;
 		$message                 = apply_filters( 'user_registration_process_smart_tags', $message );
+		$message                 = wp_kses_post( $message ); // Sanitise before shortcodes render, their markup is trusted.
 		if ( function_exists( 'apply_shortcodes' ) ) {
 			$message = apply_shortcodes( $message );
 		} else {

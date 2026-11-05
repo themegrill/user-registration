@@ -151,5 +151,5 @@ if ( empty( $signup_url ) ) {
 	}
 </style>
 <div class="urcr-access-card">
-	<?php echo wp_kses_post( $message ); ?>
+	<?php echo $message; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitised by callers before shortcodes render. ?>
 </div>
