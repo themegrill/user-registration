@@ -146,19 +146,34 @@ class UR_Admin_Export_Users {
 		$columns = $this->generate_columns( $form_id, $unchecked_fields, $checked_additional_fields );
 		fputcsv( $handle, array_map( array( $this, 'sanitize_csv_cell' ), array_values( $columns ) ), ',', '"', '\\' );
 
+		// ID breaks ties on identical registration times so offset batches never skip or repeat users.
+		$user_query_args = array(
+			'fields'     => 'ID',
+			'meta_query' => $form_meta_query, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Users are matched by their registration form.
+			'number'     => $batch_size,
+			'orderby'    => array(
+				'registered' => 'ASC',
+				'ID'         => 'ASC',
+			),
+		);
+
+		// Filter by date in the query so users outside the range are never loaded.
+		$date_query = array();
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $from_date ) ) {
+			$date_query['after'] = $from_date . ' 00:00:00';
+		}
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $to_date ) ) {
+			$date_query['before'] = $to_date . ' 23:59:59';
+		}
+		if ( ! empty( $date_query ) ) {
+			$date_query['inclusive']       = true;
+			$user_query_args['date_query'] = array( $date_query );
+		}
+
 		// Loop over users in batches.
 		while ( true ) {
 			// Fetch only user IDs to avoid bulk-loading all usermeta in one query.
-			$user_ids = get_users(
-				array(
-					'fields'     => 'ID',
-					'meta_query' => $form_meta_query, //phpcs:ignore
-					'number'     => $batch_size,
-					'offset'     => $offset,
-					'orderby'    => 'registered',
-					'order'      => 'ASC',
-				)
-			);
+			$user_ids = get_users( array_merge( $user_query_args, array( 'offset' => $offset ) ) );
 
 			// If no users are found, break the loop.
 			if ( empty( $user_ids ) ) {
@@ -177,7 +192,12 @@ class UR_Admin_Export_Users {
 				fputcsv( $handle, array_map( array( $this, 'sanitize_csv_cell' ), $row ), ',', '"', '\\' );
 			}
 
-			wp_cache_flush();
+			// Free memory without wiping a persistent object cache for the whole site.
+			if ( function_exists( 'wp_cache_supports' ) && wp_cache_supports( 'flush_runtime' ) ) {
+				wp_cache_flush_runtime();
+			} else {
+				wp_cache_flush();
+			}
 
 			// Increase the offset for the next batch.
 			$offset += $batch_size;
@@ -428,7 +448,7 @@ class UR_Admin_Export_Users {
 					$user_additional_checked_row['date_created_gmt'] = get_gmt_from_date( $user->data->user_registered );
 				}
 			}
-			$user_registered_date = get_gmt_from_date( $user->data->user_registered );
+			$user_registered_date = $user->data->user_registered;
 			$from_date            = '' !== $from_date ? $from_date : '';
 			$to_date              = '' !== $to_date ? $to_date : gmdate( 'Y-m-d' );
 			if ( gmdate( 'Y-m-d', strtotime( $user_registered_date ) ) >= gmdate( 'Y-m-d', strtotime( $from_date ) ) && gmdate( 'Y-m-d', strtotime( $user_registered_date ) ) <= gmdate( 'Y-m-d', strtotime( $to_date ) ) ) {
