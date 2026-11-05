@@ -287,14 +287,23 @@ class MembershipService {
 			return false;
 		}
 
-		$coupon_details = ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
+		// The coupon must be valid for this exact plan: active, in date, within its usage limit and mapped to the plan.
+		$plan_id  = absint( $data['membership'] ?? ( $data['selected_membership_id'] ?? 0 ) );
+		$response = ( new CouponService() )->validate(
+			array(
+				'coupon'        => sanitize_text_field( $data['coupon'] ),
+				'membership_id' => $plan_id,
+			)
+		);
 
-		if ( empty( $coupon_details ) || empty( $coupon_details['coupon_status'] ) ) {
+		if ( empty( $response['status'] ) ) {
 			return false;
 		}
 
-		// An exhausted capped coupon must not unlock a free order, since this path assigns the role without payment.
-		if ( function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( $coupon_details ) ) {
+		$coupon_details = ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
+
+		// This check guards an unpaid role grant, so a coupon record with no active flag does not count.
+		if ( empty( $coupon_details ) || empty( $coupon_details['coupon_status'] ) ) {
 			return false;
 		}
 

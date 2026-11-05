@@ -1322,6 +1322,11 @@ class SubscriptionService {
 			}
 		} else {
 			$this->orders_repository->delete( $order['ID'] );
+
+			// No order is left to pay, so the renewal marker must not outlive it.
+			$membership_process          = urm_get_membership_process( $member_id );
+			$membership_process['renew'] = array_values( array_diff( array_map( 'absint', $membership_process['renew'] ), array( absint( $membership_id ) ) ) );
+			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 		}
 
 		return array(
