@@ -916,6 +916,14 @@ class SubscriptionService {
 			);
 		}
 
+		// An unpaid plan can't be the starting point of an upgrade.
+		if ( empty( $this->orders_repository->get_latest_completed_order_by_subscription_and_item( $subscription['ID'], $subscription['item_id'] ) ) ) {
+			return array(
+				'status'  => false,
+				'message' => __( 'Sorry, you cannot upgrade a membership that has not been paid for.', 'user-registration' ),
+			);
+		}
+
 		$membership                  = $this->membership_repository->get_single_membership_by_ID( $data['selected_membership_id'] );
 		$selected_membership_details = wp_unslash( json_decode( $membership['meta_value'], true ) );
 

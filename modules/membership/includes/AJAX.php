@@ -968,7 +968,7 @@ class AJAX {
 
 			$form_response = isset( $_POST['form_response'] ) ? (array) json_decode( wp_unslash( $_POST['form_response'] ), true ) : array();
 			$data          = apply_filters( 'user_registration_membership_before_register_member', isset( $_POST['members_data'] ) ? (array) json_decode( wp_unslash( $_POST['members_data'] ), true ) : array() );
-			if ( ! empty( $form_response ) && isset( $form_response['auto_login'] ) && $payment_status !== 'failed' ) {
+			if ( 'auto_login' === ur_get_user_login_option( $member_id ) && 'failed' !== $payment_status ) {
 				$members_service = new MembersService();
 				$password        = isset( $data['password'] ) ? $data['password'] : '';
 				$logged_in       = $members_service->login_member( $member_id, true, $password );
@@ -1220,7 +1220,7 @@ class AJAX {
 
 			$data = apply_filters( 'user_registration_membership_before_register_member', isset( $_POST['members_data'] ) ? (array) json_decode( wp_unslash( $_POST['members_data'] ), true ) : array() );
 
-			if ( $subscription_is_active && ! empty( $form_response ) && isset( $form_response['auto_login'] ) && $form_response['auto_login'] ) {
+			if ( $subscription_is_active && 'auto_login' === ur_get_user_login_option( $member_id ) ) {
 				$members_service = new MembersService();
 				$logged_in       = $members_service->login_member( $member_id, true, isset( $data['password'] ) ? $data['password'] : '' );
 				if ( ! $logged_in ) {
