@@ -65,6 +65,10 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	public function delete_by_user( $user_id ) {
 		$subscription_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE user_id = %d", absint( $user_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table name comes from TableList.
 
+		if ( '' !== $this->wpdb()->last_error ) {
+			return false;
+		}
+
 		foreach ( $subscription_ids as $subscription_id ) {
 			if ( false === $this->delete( $subscription_id ) ) {
 				return false;

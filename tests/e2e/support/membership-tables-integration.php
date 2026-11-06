@@ -132,5 +132,17 @@ check( false === $failed_delete && 1 === count_rows( TableList::subscriptions_ta
 ( new SubscriptionRepository() )->delete( $sub_f );
 check( 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_f ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_f ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_f ), 'the same delete succeeds once the failure is gone' );
 
+// A failed order lookup is a failure, not "no orders": the subscription is kept instead of deleted with its orders left behind.
+list( $sub_l, $order_l ) = make_membership_rows( $user_b );
+$fail_order_lookup       = function ( $query ) {
+	return 0 === strpos( $query, 'SELECT ID FROM ' . TableList::orders_table() . ' WHERE subscription_id' ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_order_lookup );
+$failed_lookup_delete = ( new SubscriptionRepository() )->delete( $sub_l );
+remove_filter( 'query', $fail_order_lookup );
+$wpdb->suppress_errors( false );
+check( false === $failed_lookup_delete && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_l ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_l ), 'a failed order lookup keeps the subscription and its orders' );
+
 wp_delete_user( $user_b );
 echo $assertions . " assertions passed\n";

@@ -461,6 +461,10 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	private function delete_matching( $column, $value ) {
 		$order_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE {$column} = %d", absint( $value ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table and column are internal literals.
 
+		if ( '' !== $this->wpdb()->last_error ) {
+			return false;
+		}
+
 		foreach ( $order_ids as $order_id ) {
 			if ( false === $this->delete( $order_id ) ) {
 				return false;
