@@ -32,7 +32,7 @@ class UR_Abilities {
 	/**
 	 * Whether the site admin allows AI abilities.
 	 *
-	 * Off for new installs; existing sites are switched on by ur_update_532_enable_abilities().
+	 * Off for new installs; existing sites are switched on once by UR_Install on update.
 	 *
 	 * @return bool
 	 */
