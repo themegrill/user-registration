@@ -44,3 +44,13 @@ security_assert( 0 === $GLOBALS['options'][ FLAG ], 'A new install is recorded s
 security_assert( 'no' === abilities_setting_after( false, array( SET => 'no' ) ), 'An admin who saved it off stays off' );
 security_assert( null === abilities_setting_after( false, array( FLAG => 0 ) ), 'A site that started as a new install is not switched on by a later update' );
 security_assert( 'no' === abilities_setting_after( false, array( FLAG => 1, SET => 'no' ) ), 'An admin who turns it off after the update stays off through later updates' ); // phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing
+
+// Where the decision runs matters. An update goes through maybe_run_migrations() and never reaches install(), and a
+// new install must be decided before install() saves its version, or it would look like an existing site.
+$keep      = 'maybe_keep_abilities_for_existing_site';
+$migration = security_function( 'includes/class-ur-install.php', 'maybe_run_migrations' );
+$install   = security_function( 'includes/class-ur-install.php', 'install' );
+
+security_assert( false !== strpos( $migration, 'self::' . $keep . '()' ), 'An update decides about abilities in the migration step it really runs' );
+security_assert( false !== strpos( $install, 'self::' . $keep . '()' ), 'An activation decides about abilities too' );
+security_assert( strpos( $install, 'self::' . $keep . '()' ) < strpos( $install, 'self::update_ur_version()' ), 'A new install is decided before its version is saved' );

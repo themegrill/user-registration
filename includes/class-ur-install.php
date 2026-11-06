@@ -384,6 +384,9 @@ class UR_Install {
 
 		include_once 'functions-ur-update.php';
 
+		// An update does not run install(), so decide here, before the new version is saved.
+		self::maybe_keep_abilities_for_existing_site();
+
 		// Finish any leftover ≤1.6.2 background callbacks / stuck DB version first.
 		self::sync_legacy_db_updates();
 
