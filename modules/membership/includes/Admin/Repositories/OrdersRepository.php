@@ -401,6 +401,67 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		return ! $result ? array() : $result;
 	}
 
+	/**
+	 * Delete an order and its meta, which the schema no longer cascades.
+	 *
+	 * @param int $id Order ID.
+	 * @return bool|int|\mysqli_result|null
+	 */
+	public function delete( $id ) {
+		$this->delete_order_meta( array( 'order_id' => absint( $id ) ) );
+
+		return parent::delete( $id );
+	}
+
+	/**
+	 * Delete several orders and their meta, which the schema no longer cascades.
+	 *
+	 * @param string $ids Comma separated order IDs.
+	 * @return bool|int|\mysqli_result|void|null
+	 */
+	public function delete_multiple( $ids ) {
+		foreach ( array_filter( array_map( 'absint', explode( ',', $ids ) ) ) as $order_id ) {
+			$this->delete_order_meta( array( 'order_id' => $order_id ) );
+		}
+
+		return parent::delete_multiple( $ids );
+	}
+
+	/**
+	 * Delete every order of a subscription, with their meta.
+	 *
+	 * @param int $subscription_id Subscription ID.
+	 * @return void
+	 */
+	public function delete_by_subscription( $subscription_id ) {
+		$this->delete_matching( 'subscription_id', $subscription_id );
+	}
+
+	/**
+	 * Delete every order of a user, with their meta.
+	 *
+	 * @param int $user_id User ID.
+	 * @return void
+	 */
+	public function delete_by_user( $user_id ) {
+		$this->delete_matching( 'user_id', $user_id );
+	}
+
+	/**
+	 * Delete the orders whose column equals the value; the column is always a literal from the callers above.
+	 *
+	 * @param string $column Orders table column.
+	 * @param int    $value  Value to match.
+	 * @return void
+	 */
+	private function delete_matching( $column, $value ) {
+		$order_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE {$column} = %d", absint( $value ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table and column are internal literals.
+
+		foreach ( $order_ids as $order_id ) {
+			$this->delete( $order_id );
+		}
+	}
+
 	public function delete_order_meta( $conditions ) {
 		$result = $this->wpdb()->delete( $this->orders_meta_table, $conditions );
 		return ! $result ? array() : $result;

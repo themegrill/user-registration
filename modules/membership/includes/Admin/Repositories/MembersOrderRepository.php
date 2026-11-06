@@ -88,7 +88,17 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 	public function delete_member_order( $member_id, $delete_all = true ) {
 		( new OrdersRepository() )->release_member_coupon_claims( $member_id, ! $delete_all );
 
+		$orders_meta_table = TableList::order_meta_table();
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table names come from TableList.
 		if ( $delete_all ) {
+			$this->wpdb()->query(
+				$this->wpdb()->prepare(
+					"DELETE m FROM $orders_meta_table m INNER JOIN $this->table o ON o.ID = m.order_id WHERE o.user_id = %d",
+					$member_id
+				)
+			);
+
 			// Delete all orders for the member
 			$deleted = $this->wpdb()->query(
 				$this->wpdb()->prepare(
@@ -97,6 +107,13 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 				)
 			);
 		} else {
+			$this->wpdb()->query(
+				$this->wpdb()->prepare(
+					"DELETE FROM $orders_meta_table WHERE order_id = ( SELECT ID FROM ( SELECT ID FROM $this->table WHERE user_id = %d ORDER BY ID DESC LIMIT 1 ) AS latest )",
+					$member_id
+				)
+			);
+
 			// Delete only the latest order for the member
 
 			$deleted = $this->wpdb()->query(
@@ -114,6 +131,8 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 				)
 			);
 		}
+
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return $deleted !== false && $deleted > 0;
 	}

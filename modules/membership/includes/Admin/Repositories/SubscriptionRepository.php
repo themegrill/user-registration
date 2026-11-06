@@ -43,6 +43,35 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	}
 
 	/**
+	 * Delete a subscription with its orders and events, which the schema no longer cascades.
+	 *
+	 * @param int $id Subscription ID.
+	 * @return bool|int|\mysqli_result|null
+	 */
+	public function delete( $id ) {
+		$this->orders_repository->delete_by_subscription( $id );
+		$this->wpdb()->delete( TableList::subscription_events_table(), array( 'subscription_id' => absint( $id ) ) );
+
+		return parent::delete( $id );
+	}
+
+	/**
+	 * Delete everything membership-related that belongs to a user; hooked to `delete_user`.
+	 *
+	 * @param int $user_id User ID.
+	 * @return void
+	 */
+	public function delete_by_user( $user_id ) {
+		$subscription_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE user_id = %d", absint( $user_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table name comes from TableList.
+
+		foreach ( $subscription_ids as $subscription_id ) {
+			$this->delete( $subscription_id );
+		}
+
+		$this->orders_repository->delete_by_user( $user_id );
+	}
+
+	/**
 	 * cancel_subscription_by_id
 	 *
 	 * @param int  $subscription_id Subscription ID.
