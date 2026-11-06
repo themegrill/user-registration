@@ -81,10 +81,20 @@ list( , $latest )  = make_membership_rows( $user_b );
 check( 0 === count_rows( TableList::orders_table(), 'ID', $latest ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $latest ), 'delete_member_order(latest) removes the latest order and its meta' );
 check( 1 === count_rows( TableList::orders_table(), 'ID', $earlier ) && 1 === count_rows( TableList::order_meta_table(), 'order_id', $earlier ), 'delete_member_order(latest) keeps the earlier order' );
 
-// Deleting a user removes their subscriptions, orders, meta and events through the delete_user hook.
+// Deleting a user removes their subscriptions, orders, meta and events once the user row is gone (deleted_user), not before.
 list( $sub_4, $order_4 ) = make_membership_rows( $user_a );
 require_once ABSPATH . 'wp-admin/includes/user.php';
+$rows_at_delete_user = null;
+add_action(
+	'delete_user',
+	function () use ( $user_a, &$rows_at_delete_user ) {
+		$rows_at_delete_user = count_rows( TableList::subscriptions_table(), 'user_id', $user_a );
+	},
+	99
+);
 wp_delete_user( $user_a );
+check( $rows_at_delete_user >= 1, 'membership rows are still there while delete_user fires' );
+check( false === has_action( 'delete_user', 'ur_delete_membership_records_on_user_delete' ) && false !== has_action( 'deleted_user', 'ur_delete_membership_records_on_user_delete' ), 'the cleanup runs on deleted_user, not delete_user' );
 check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_a ) && 0 === count_rows( TableList::orders_table(), 'user_id', $user_a ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_4 ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_4 ), 'deleting a user removes their subscriptions, orders, order meta and events' );
 check( count_rows( TableList::subscriptions_table(), 'user_id', $user_b ) >= 1 && 1 === count_rows( TableList::orders_table(), 'ID', $order_3 ), 'deleting a user leaves other members\' rows' );
 

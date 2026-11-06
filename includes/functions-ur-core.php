@@ -3911,8 +3911,8 @@ if ( ! function_exists( 'ur_delete_user_files_on_user_delete' ) ) {
 	}
 }
 
-// Runs after the membership module's own priority-10 coupon-claim release, and even while the module is off.
-add_action( 'delete_user', 'ur_delete_membership_records_on_user_delete', 20 );
+// Runs once the user row is gone (after the module's coupon-claim release on delete_user), even while the module is off.
+add_action( 'deleted_user', 'ur_delete_membership_records_on_user_delete' );
 
 if ( ! function_exists( 'ur_delete_membership_records_on_user_delete' ) ) {
 

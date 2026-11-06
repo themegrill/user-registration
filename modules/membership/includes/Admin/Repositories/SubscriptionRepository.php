@@ -56,7 +56,7 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	}
 
 	/**
-	 * Delete everything membership-related that belongs to a user; hooked to `delete_user`.
+	 * Delete everything membership-related that belongs to a user; run on `deleted_user` and before a bulk member delete.
 	 *
 	 * @param int $user_id User ID.
 	 * @return void
