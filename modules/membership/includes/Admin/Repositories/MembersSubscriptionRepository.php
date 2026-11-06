@@ -23,6 +23,16 @@ class MembersSubscriptionRepository extends BaseRepository implements MembersSub
 	}
 
 	/**
+	 * Delete a subscription with its orders and events, which the schema no longer cascades.
+	 *
+	 * @param int $id Subscription ID.
+	 * @return bool|int|\mysqli_result|null False when a dependent row could not be deleted, in which case the subscription is kept.
+	 */
+	public function delete( $id ) {
+		return ( new SubscriptionRepository() )->delete( $id );
+	}
+
+	/**
 	 * Activate subscriptions that were left 'pending' even though their order is 'completed'.
 	 *
 	 * The real-time payment confirmation can mark an order completed without flipping the linked

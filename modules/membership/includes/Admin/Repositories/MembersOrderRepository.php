@@ -88,32 +88,31 @@ class MembersOrderRepository extends BaseRepository implements MembersOrderInter
 	public function delete_member_order( $member_id, $delete_all = true ) {
 		( new OrdersRepository() )->release_member_coupon_claims( $member_id, ! $delete_all );
 
-		if ( $delete_all ) {
-			// Delete all orders for the member
-			$deleted = $this->wpdb()->query(
-				$this->wpdb()->prepare(
-					"DELETE FROM $this->table WHERE user_id = %d",
-					$member_id
-				)
-			);
-		} else {
-			// Delete only the latest order for the member
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table names come from TableList.
+		$order_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM $this->table WHERE user_id = %d ORDER BY ID DESC", $member_id ) );
 
-			$deleted = $this->wpdb()->query(
-				$this->wpdb()->prepare(
-					"DELETE FROM $this->table
-                 WHERE id = (
-                     SELECT id FROM (
-                         SELECT id FROM $this->table
-                         WHERE user_id = %d
-                         ORDER BY id DESC
-                         LIMIT 1
-                     ) AS latest
-                 )",
-					$member_id
-				)
-			);
+		if ( '' !== $this->wpdb()->last_error ) {
+			return false;
 		}
+
+		// Only the latest order for the member, unless all of them are asked for.
+		if ( ! $delete_all ) {
+			$order_ids = array_slice( $order_ids, 0, 1 );
+		}
+
+		if ( empty( $order_ids ) ) {
+			return false;
+		}
+
+		$order_ids_list = implode( ',', array_map( 'absint', $order_ids ) );
+
+		// Without foreign keys the meta goes first; the same ID set is used for both deletes so an order created meanwhile is left whole.
+		if ( false === $this->wpdb()->query( 'DELETE FROM ' . TableList::order_meta_table() . " WHERE order_id IN ( $order_ids_list )" ) ) {
+			return false;
+		}
+
+		$deleted = $this->wpdb()->query( "DELETE FROM $this->table WHERE ID IN ( $order_ids_list )" );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared
 
 		return $deleted !== false && $deleted > 0;
 	}

@@ -1,0 +1,196 @@
+<?php
+// phpcs:ignoreFile
+/**
+ * Regression check for the membership tables on a site whose `wp_users` table is MyISAM.
+ *
+ * `Database::create_tables()` declared FOREIGN KEYs to `wp_users`, which MySQL rejects unless both
+ * tables are InnoDB, so on such sites none of the four membership tables were created and the Members
+ * list stayed empty. The keys are gone; this asserts the tables now exist with no foreign keys, and
+ * that every delete the keys used to cascade (order -> meta, subscription -> orders/meta/events,
+ * user -> subscriptions/orders/meta/events) is still done, and nothing beyond that.
+ *
+ * Writes fixture rows only (own users/subscriptions/orders); run with wp eval-file on a disposable WordPress.
+ */
+
+if ( '1' !== getenv( 'UR_SECURITY_DISPOSABLE' ) ) {
+	throw new RuntimeException( 'Disposable install required.' );
+}
+
+use WPEverest\URMembership\Admin\Database\Database;
+use WPEverest\URMembership\Admin\Repositories\MembersOrderRepository;
+use WPEverest\URMembership\Admin\Repositories\MembersRepository;
+use WPEverest\URMembership\Admin\Repositories\MembersSubscriptionRepository;
+use WPEverest\URMembership\Admin\Repositories\OrdersRepository;
+use WPEverest\URMembership\Admin\Repositories\SubscriptionRepository;
+use WPEverest\URMembership\TableList;
+
+global $wpdb, $assertions;
+$assertions = 0;
+
+function check( $condition, $label ) {
+	global $assertions;
+	if ( ! $condition ) {
+		throw new RuntimeException( 'Failed: ' . $label );
+	}
+	++$assertions;
+}
+
+function count_rows( $table, $column, $value ) {
+	global $wpdb;
+	return (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM $table WHERE $column = %d", $value ) );
+}
+
+/** Insert one subscription with an order, order meta and an event; return their ids. */
+function make_membership_rows( $user_id ) {
+	global $wpdb;
+	$wpdb->insert( TableList::subscriptions_table(), array( 'item_id' => 1, 'user_id' => $user_id, 'start_date' => '2026-01-01 00:00:00', 'billing_cycle' => 'month', 'billing_amount' => 5 ) );
+	$subscription_id = $wpdb->insert_id;
+	$wpdb->insert( TableList::orders_table(), array( 'item_id' => 1, 'user_id' => $user_id, 'subscription_id' => $subscription_id, 'created_by' => $user_id, 'transaction_id' => 't' . $subscription_id, 'total_amount' => 5 ) );
+	$order_id = $wpdb->insert_id;
+	$wpdb->insert( TableList::order_meta_table(), array( 'order_id' => $order_id, 'meta_key' => 'k', 'meta_value' => 'v' ) );
+	$wpdb->insert( TableList::subscription_events_table(), array( 'subscription_id' => $subscription_id, 'user_id' => $user_id, 'event_type' => 'e', 'title' => 't' ) );
+
+	return array( $subscription_id, $order_id );
+}
+
+// Tables exist, with no foreign keys, whatever engine wp_users uses.
+Database::create_tables();
+check( Database::tables_exist(), 'all four membership tables exist' );
+$foreign_keys = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = \'FOREIGN KEY\' AND TABLE_NAME LIKE \'' . $wpdb->esc_like( $wpdb->prefix . 'ur_membership_' ) . '%\'' );
+check( 0 === $foreign_keys, 'no membership table declares a foreign key' );
+
+$user_a = wp_insert_user( array( 'user_login' => 'fk_a_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_a_' . wp_rand() . '@example.com' ) );
+$user_b = wp_insert_user( array( 'user_login' => 'fk_b_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_b_' . wp_rand() . '@example.com' ) );
+
+// Deleting an order removes its meta only.
+list( $sub_1, $order_1 ) = make_membership_rows( $user_a );
+( new OrdersRepository() )->delete( $order_1 );
+check( 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_1 ), 'deleting an order removes its meta' );
+check( 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_1 ), 'deleting an order keeps its subscription' );
+
+// Deleting a subscription removes its orders, meta and events, and leaves other subscriptions alone.
+list( $sub_2, $order_2 ) = make_membership_rows( $user_a );
+list( $sub_3, $order_3 ) = make_membership_rows( $user_b );
+( new SubscriptionRepository() )->delete( $sub_2 );
+check( 0 === count_rows( TableList::orders_table(), 'ID', $order_2 ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_2 ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_2 ), 'deleting a subscription removes its orders, order meta and events' );
+check( 1 === count_rows( TableList::orders_table(), 'ID', $order_3 ) && 1 === count_rows( TableList::order_meta_table(), 'order_id', $order_3 ), 'deleting a subscription leaves another member\'s rows' );
+
+// Deleting only a member's latest order removes that order and its meta, not the earlier one.
+list( , $earlier ) = make_membership_rows( $user_b );
+list( , $latest )  = make_membership_rows( $user_b );
+( new MembersOrderRepository() )->delete_member_order( $user_b, false );
+check( 0 === count_rows( TableList::orders_table(), 'ID', $latest ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $latest ), 'delete_member_order(latest) removes the latest order and its meta' );
+check( 1 === count_rows( TableList::orders_table(), 'ID', $earlier ) && 1 === count_rows( TableList::order_meta_table(), 'order_id', $earlier ), 'delete_member_order(latest) keeps the earlier order' );
+
+// Deleting a user removes their subscriptions, orders, meta and events once the user row is gone (deleted_user), not before.
+list( $sub_4, $order_4 ) = make_membership_rows( $user_a );
+require_once ABSPATH . 'wp-admin/includes/user.php';
+$rows_at_delete_user = null;
+add_action(
+	'delete_user',
+	function () use ( $user_a, &$rows_at_delete_user ) {
+		$rows_at_delete_user = count_rows( TableList::subscriptions_table(), 'user_id', $user_a );
+	},
+	99
+);
+wp_delete_user( $user_a );
+check( $rows_at_delete_user >= 1, 'membership rows are still there while delete_user fires' );
+check( false === has_action( 'delete_user', 'ur_delete_membership_records_on_user_delete' ) && false !== has_action( 'deleted_user', 'ur_delete_membership_records_on_user_delete' ), 'the cleanup runs on deleted_user, not delete_user' );
+check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_a ) && 0 === count_rows( TableList::orders_table(), 'user_id', $user_a ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_4 ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_4 ), 'deleting a user removes their subscriptions, orders, order meta and events' );
+check( count_rows( TableList::subscriptions_table(), 'user_id', $user_b ) >= 1 && 1 === count_rows( TableList::orders_table(), 'ID', $order_3 ), 'deleting a user leaves other members\' rows' );
+
+// Bulk-deleting orders (payment history screen) removes their meta.
+list( , $bulk_1 ) = make_membership_rows( $user_b );
+list( , $bulk_2 ) = make_membership_rows( $user_b );
+( new OrdersRepository() )->delete_multiple( $bulk_1 . ',' . $bulk_2 );
+check( 0 === count_rows( TableList::orders_table(), 'ID', $bulk_1 ) + count_rows( TableList::orders_table(), 'ID', $bulk_2 ) + count_rows( TableList::order_meta_table(), 'order_id', $bulk_1 ) + count_rows( TableList::order_meta_table(), 'order_id', $bulk_2 ), 'bulk-deleting orders removes their order meta' );
+
+// delete_member_order() with $delete_all removes every order of the member with their meta.
+list( , $all_1 ) = make_membership_rows( $user_b );
+list( , $all_2 ) = make_membership_rows( $user_b );
+( new MembersOrderRepository() )->delete_member_order( $user_b );
+check( 0 === count_rows( TableList::orders_table(), 'user_id', $user_b ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $all_1 ) + count_rows( TableList::order_meta_table(), 'order_id', $all_2 ), 'delete_member_order(all) removes every order and its meta' );
+
+// Bulk-deleting members (Members screen) removes their membership rows.
+$user_c = wp_insert_user( array( 'user_login' => 'fk_c_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_c_' . wp_rand() . '@example.com' ) );
+list( $sub_c, $order_c ) = make_membership_rows( $user_c );
+list( , $order_keep )    = make_membership_rows( $user_b );
+( new MembersRepository() )->delete_multiple( (string) $user_c );
+check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_c ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_c ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_c ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_c ), 'bulk-deleting members removes their subscriptions, orders, order meta and events' );
+check( 1 === count_rows( TableList::orders_table(), 'ID', $order_keep ), 'bulk-deleting members leaves another member\'s rows' );
+
+// A failed dependent delete aborts the cascade and keeps the parent rows, so nothing is orphaned and a retry works.
+list( $sub_f, $order_f ) = make_membership_rows( $user_b );
+$fail_meta_delete        = function ( $query ) {
+	return false !== strpos( $query, 'DELETE FROM `' . TableList::order_meta_table() . '`' ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_meta_delete );
+$failed_delete = ( new SubscriptionRepository() )->delete( $sub_f );
+remove_filter( 'query', $fail_meta_delete );
+$wpdb->suppress_errors( false );
+check( false === $failed_delete && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_f ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_f ), 'a failed order-meta delete keeps the order and its subscription' );
+( new SubscriptionRepository() )->delete( $sub_f );
+check( 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_f ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_f ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_f ), 'the same delete succeeds once the failure is gone' );
+
+// A failed order lookup is a failure, not "no orders": the subscription is kept instead of deleted with its orders left behind.
+list( $sub_l, $order_l ) = make_membership_rows( $user_b );
+$fail_order_lookup       = function ( $query ) {
+	return 0 === strpos( $query, 'SELECT ID FROM ' . TableList::orders_table() . ' WHERE subscription_id' ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_order_lookup );
+$failed_lookup_delete = ( new SubscriptionRepository() )->delete( $sub_l );
+remove_filter( 'query', $fail_order_lookup );
+$wpdb->suppress_errors( false );
+check( false === $failed_lookup_delete && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_l ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_l ), 'a failed order lookup keeps the subscription and its orders' );
+
+// wp_delete_user() ignores a failed user-row delete and still fires deleted_user: a user that survives keeps their membership rows.
+$user_k                  = wp_insert_user( array( 'user_login' => 'fk_k_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_k_' . wp_rand() . '@example.com' ) );
+list( $sub_k, $order_k ) = make_membership_rows( $user_k );
+$fail_user_delete        = function ( $query ) use ( $wpdb ) {
+	return 0 === strpos( $query, "DELETE FROM `{$wpdb->users}`" ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_user_delete );
+wp_delete_user( $user_k );
+remove_filter( 'query', $fail_user_delete );
+$wpdb->suppress_errors( false );
+check( 1 === count_rows( $wpdb->users, 'ID', $user_k ) && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_k ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_k ), 'a failed user-row delete keeps the surviving user\'s membership rows' );
+wp_delete_user( $user_k );
+check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_k ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_k ), 'the same user delete cleans up once it succeeds' );
+
+// A bulk member delete that fails on one member leaves every member either fully deleted or fully kept, in order.
+$user_x                  = wp_insert_user( array( 'user_login' => 'fk_x_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_x_' . wp_rand() . '@example.com' ) );
+$user_y                  = wp_insert_user( array( 'user_login' => 'fk_y_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_y_' . wp_rand() . '@example.com' ) );
+list( $sub_x )           = make_membership_rows( $user_x );
+list( $sub_y )           = make_membership_rows( $user_y );
+$fail_member_lookup      = function ( $query ) use ( $user_y ) {
+	return 0 === strpos( $query, 'SELECT ID FROM ' . TableList::subscriptions_table() . ' WHERE user_id = ' . $user_y ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_member_lookup );
+$partial_bulk = ( new MembersRepository() )->delete_multiple( $user_x . ',' . $user_y );
+remove_filter( 'query', $fail_member_lookup );
+$wpdb->suppress_errors( false );
+check( false === $partial_bulk && 0 === count_rows( $wpdb->users, 'ID', $user_x ) && 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_x ), 'a bulk delete failing on a later member still fully deletes the earlier one' );
+check( 1 === count_rows( $wpdb->users, 'ID', $user_y ) && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_y ), 'a bulk delete failing on a member keeps that member and their rows' );
+check( 1 === ( new MembersRepository() )->delete_multiple( (string) $user_y ) && 0 === count_rows( $wpdb->users, 'ID', $user_y ), 'the same member deletes once the failure is gone' );
+
+// Add-ons (e.g. Authorize.net) delete subscriptions through MembersSubscriptionRepository, which must cascade too.
+list( $sub_m, $order_m ) = make_membership_rows( $user_b );
+( new MembersSubscriptionRepository() )->delete( $sub_m );
+check( 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_m ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_m ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_m ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_m ), 'deleting a subscription through MembersSubscriptionRepository removes its orders, order meta and events' );
+
+wp_delete_user( $user_b );
+
+// With the membership tables missing, bulk-deleting members still deletes them: a missing table is nothing to clean, not a failure.
+$wpdb->query( 'DROP TABLE IF EXISTS ' . implode( ', ', array_values( Database::get_tables() ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$user_c = wp_insert_user( array( 'user_login' => 'fk_c_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_c_' . wp_rand() . '@example.com' ) );
+$wpdb->suppress_errors( true );
+( new MembersRepository() )->delete_multiple( (string) $user_c );
+$wpdb->suppress_errors( false );
+check( 0 === count_rows( $wpdb->users, 'ID', $user_c ), 'bulk-deleting members still works while the membership tables are missing' );
+Database::create_tables();
+
+echo $assertions . " assertions passed\n";
