@@ -19,6 +19,7 @@ if ( '1' !== getenv( 'UR_SECURITY_DISPOSABLE' ) ) {
 use WPEverest\URMembership\Admin\Database\Database;
 use WPEverest\URMembership\Admin\Repositories\MembersOrderRepository;
 use WPEverest\URMembership\Admin\Repositories\MembersRepository;
+use WPEverest\URMembership\Admin\Repositories\MembersSubscriptionRepository;
 use WPEverest\URMembership\Admin\Repositories\OrdersRepository;
 use WPEverest\URMembership\Admin\Repositories\SubscriptionRepository;
 use WPEverest\URMembership\TableList;
@@ -175,6 +176,11 @@ $wpdb->suppress_errors( false );
 check( false === $partial_bulk && 0 === count_rows( $wpdb->users, 'ID', $user_x ) && 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_x ), 'a bulk delete failing on a later member still fully deletes the earlier one' );
 check( 1 === count_rows( $wpdb->users, 'ID', $user_y ) && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_y ), 'a bulk delete failing on a member keeps that member and their rows' );
 check( 1 === ( new MembersRepository() )->delete_multiple( (string) $user_y ) && 0 === count_rows( $wpdb->users, 'ID', $user_y ), 'the same member deletes once the failure is gone' );
+
+// Add-ons (e.g. Authorize.net) delete subscriptions through MembersSubscriptionRepository, which must cascade too.
+list( $sub_m, $order_m ) = make_membership_rows( $user_b );
+( new MembersSubscriptionRepository() )->delete( $sub_m );
+check( 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_m ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_m ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_m ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_m ), 'deleting a subscription through MembersSubscriptionRepository removes its orders, order meta and events' );
 
 wp_delete_user( $user_b );
 
