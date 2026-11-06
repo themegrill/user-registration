@@ -3924,8 +3924,8 @@ if ( ! function_exists( 'ur_delete_membership_records_on_user_delete' ) ) {
 	 * @return void
 	 */
 	function ur_delete_membership_records_on_user_delete( $user_id ) {
-		if ( \WPEverest\URMembership\Admin\Database\Database::tables_exist() ) {
-			( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->delete_by_user( $user_id );
+		if ( \WPEverest\URMembership\Admin\Database\Database::tables_exist() && ! ( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->delete_by_user( $user_id ) ) {
+			ur_get_logger()->error( sprintf( 'Membership rows of deleted user #%d could not be fully removed.', $user_id ), array( 'source' => 'urm-user-delete' ) );
 		}
 	}
 }

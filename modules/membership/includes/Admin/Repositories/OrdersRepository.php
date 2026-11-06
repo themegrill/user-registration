@@ -405,10 +405,12 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	 * Delete an order and its meta, which the schema no longer cascades.
 	 *
 	 * @param int $id Order ID.
-	 * @return bool|int|\mysqli_result|null
+	 * @return bool|int|\mysqli_result|null False when its meta could not be deleted, in which case the order is kept.
 	 */
 	public function delete( $id ) {
-		$this->delete_order_meta( array( 'order_id' => absint( $id ) ) );
+		if ( false === $this->wpdb()->delete( $this->orders_meta_table, array( 'order_id' => absint( $id ) ) ) ) {
+			return false;
+		}
 
 		return parent::delete( $id );
 	}
@@ -417,11 +419,13 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	 * Delete several orders and their meta, which the schema no longer cascades.
 	 *
 	 * @param string $ids Comma separated order IDs.
-	 * @return bool|int|\mysqli_result|void|null
+	 * @return bool|int|\mysqli_result|void|null False when any order's meta could not be deleted, in which case no order is deleted.
 	 */
 	public function delete_multiple( $ids ) {
 		foreach ( array_filter( array_map( 'absint', explode( ',', $ids ) ) ) as $order_id ) {
-			$this->delete_order_meta( array( 'order_id' => $order_id ) );
+			if ( false === $this->wpdb()->delete( $this->orders_meta_table, array( 'order_id' => $order_id ) ) ) {
+				return false;
+			}
 		}
 
 		return parent::delete_multiple( $ids );
@@ -431,20 +435,20 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	 * Delete every order of a subscription, with their meta.
 	 *
 	 * @param int $subscription_id Subscription ID.
-	 * @return void
+	 * @return bool False when an order could not be deleted.
 	 */
 	public function delete_by_subscription( $subscription_id ) {
-		$this->delete_matching( 'subscription_id', $subscription_id );
+		return $this->delete_matching( 'subscription_id', $subscription_id );
 	}
 
 	/**
 	 * Delete every order of a user, with their meta.
 	 *
 	 * @param int $user_id User ID.
-	 * @return void
+	 * @return bool False when an order could not be deleted.
 	 */
 	public function delete_by_user( $user_id ) {
-		$this->delete_matching( 'user_id', $user_id );
+		return $this->delete_matching( 'user_id', $user_id );
 	}
 
 	/**
@@ -452,14 +456,18 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	 *
 	 * @param string $column Orders table column.
 	 * @param int    $value  Value to match.
-	 * @return void
+	 * @return bool False as soon as an order could not be deleted.
 	 */
 	private function delete_matching( $column, $value ) {
 		$order_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE {$column} = %d", absint( $value ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table and column are internal literals.
 
 		foreach ( $order_ids as $order_id ) {
-			$this->delete( $order_id );
+			if ( false === $this->delete( $order_id ) ) {
+				return false;
+			}
 		}
+
+		return true;
 	}
 
 	public function delete_order_meta( $conditions ) {

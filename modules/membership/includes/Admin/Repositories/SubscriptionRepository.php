@@ -46,11 +46,12 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	 * Delete a subscription with its orders and events, which the schema no longer cascades.
 	 *
 	 * @param int $id Subscription ID.
-	 * @return bool|int|\mysqli_result|null
+	 * @return bool|int|\mysqli_result|null False when a dependent row could not be deleted, in which case the subscription is kept.
 	 */
 	public function delete( $id ) {
-		$this->orders_repository->delete_by_subscription( $id );
-		$this->wpdb()->delete( TableList::subscription_events_table(), array( 'subscription_id' => absint( $id ) ) );
+		if ( ! $this->orders_repository->delete_by_subscription( $id ) || false === $this->wpdb()->delete( TableList::subscription_events_table(), array( 'subscription_id' => absint( $id ) ) ) ) {
+			return false;
+		}
 
 		return parent::delete( $id );
 	}
@@ -59,16 +60,18 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	 * Delete everything membership-related that belongs to a user; run on `deleted_user` and before a bulk member delete.
 	 *
 	 * @param int $user_id User ID.
-	 * @return void
+	 * @return bool False when a subscription or order could not be deleted.
 	 */
 	public function delete_by_user( $user_id ) {
 		$subscription_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE user_id = %d", absint( $user_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table name comes from TableList.
 
 		foreach ( $subscription_ids as $subscription_id ) {
-			$this->delete( $subscription_id );
+			if ( false === $this->delete( $subscription_id ) ) {
+				return false;
+			}
 		}
 
-		$this->orders_repository->delete_by_user( $user_id );
+		return $this->orders_repository->delete_by_user( $user_id );
 	}
 
 	/**

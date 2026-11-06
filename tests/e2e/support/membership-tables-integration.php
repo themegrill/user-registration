@@ -118,5 +118,19 @@ list( , $order_keep )    = make_membership_rows( $user_b );
 check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_c ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_c ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_c ) && 0 === count_rows( TableList::subscription_events_table(), 'subscription_id', $sub_c ), 'bulk-deleting members removes their subscriptions, orders, order meta and events' );
 check( 1 === count_rows( TableList::orders_table(), 'ID', $order_keep ), 'bulk-deleting members leaves another member\'s rows' );
 
+// A failed dependent delete aborts the cascade and keeps the parent rows, so nothing is orphaned and a retry works.
+list( $sub_f, $order_f ) = make_membership_rows( $user_b );
+$fail_meta_delete        = function ( $query ) {
+	return false !== strpos( $query, 'DELETE FROM `' . TableList::order_meta_table() . '`' ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_meta_delete );
+$failed_delete = ( new SubscriptionRepository() )->delete( $sub_f );
+remove_filter( 'query', $fail_meta_delete );
+$wpdb->suppress_errors( false );
+check( false === $failed_delete && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_f ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_f ), 'a failed order-meta delete keeps the order and its subscription' );
+( new SubscriptionRepository() )->delete( $sub_f );
+check( 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_f ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_f ) && 0 === count_rows( TableList::order_meta_table(), 'order_id', $order_f ), 'the same delete succeeds once the failure is gone' );
+
 wp_delete_user( $user_b );
 echo $assertions . " assertions passed\n";

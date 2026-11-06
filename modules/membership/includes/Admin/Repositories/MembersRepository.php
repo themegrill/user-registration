@@ -26,13 +26,15 @@ class MembersRepository extends BaseRepository implements MembersInterface {
 	 * Delete several users, first removing the membership rows the schema no longer cascades.
 	 *
 	 * @param string $ids Comma separated user IDs.
-	 * @return bool|int|\mysqli_result|void|null
+	 * @return bool|int|\mysqli_result|void|null False when a member's membership rows could not be deleted, in which case no user is deleted.
 	 */
 	public function delete_multiple( $ids ) {
 		$subscriptions_repository = new SubscriptionRepository();
 
 		foreach ( array_filter( array_map( 'absint', explode( ',', $ids ) ) ) as $user_id ) {
-			$subscriptions_repository->delete_by_user( $user_id );
+			if ( ! $subscriptions_repository->delete_by_user( $user_id ) ) {
+				return false;
+			}
 		}
 
 		return parent::delete_multiple( $ids );
