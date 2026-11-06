@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security issue
+    url: https://wpeverest.com/contact/
+    about: Please report security issues through our contact form, not on GitHub, so they cannot be exploited before a patch is released.
+  - name: Support question
+    url: https://wpeverest.com/contact/
+    about: We do not offer technical support on GitHub. Premium customers can submit a ticket here. Free users can use the WordPress.org forums or docs.wpuserregistration.com.

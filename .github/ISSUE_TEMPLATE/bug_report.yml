@@ -1,0 +1,113 @@
+name: Bug report
+description: Something in a ThemeGrill plugin or theme does not work as it should.
+labels: ["bug-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill in what you know. Write "not stated" or "Not known" instead of guessing. See HANDOFF.md in themegrill/.github.
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: Plain-language description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: what-should-happen
+    attributes:
+      label: What should happen
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: Product and edition (free/pro), plugin/theme version, WordPress version, PHP version, other plugins or theme involved.
+      placeholder: |
+        Product: user-registration-pro
+        Version: 4.1.0
+        WordPress: 6.8
+        PHP: 8.2
+        Other plugins/theme: not stated
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, or write "Not known".
+      placeholder: |
+        1.
+        2.
+    validations:
+      required: true
+  - type: dropdown
+    id: reproduced
+    attributes:
+      label: Reproduced?
+      options:
+        - Yes, by me (ran the steps)
+        - Yes, by support
+        - No, inferred from the report and code (say which code you read in "Suspected cause")
+        - No, not reproduced by anyone (the reporter's account only)
+    validations:
+      required: true
+  - type: checkboxes
+    id: isolation
+    attributes:
+      label: Isolation
+      description: Tick a box only when you or the source confirmed it. Leave it unticked if untested; a tick is a claim a developer will rely on.
+      options:
+        - label: Happens with a default WordPress theme
+        - label: Happens with only this plugin active
+        - label: Happens every time (if intermittent, describe when under "What happens")
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity (proposed)
+      description: critical = data loss, security, or broken for everyone. high = core feature broken, no workaround. medium = workaround exists or edge case. low = cosmetic.
+      options:
+        - critical
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: How many customers, and is anyone blocked or losing data?
+      placeholder: 1 customer so far. Not blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Something support can give the customer today, or "None known".
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Exact error text and debug.log lines, with customer data redacted. Drag screenshots or recordings in here; crop or blur names, emails, site URLs and license keys.
+  - type: textarea
+    id: cause
+    attributes:
+      label: Suspected cause
+      description: Where to start looking, if you have an idea. Optional.
+  - type: textarea
+    id: unknown
+    attributes:
+      label: Not known yet
+      description: What you could not confirm.
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Crisp conversation, related issues, forum topic.
+    validations:
+      required: true
