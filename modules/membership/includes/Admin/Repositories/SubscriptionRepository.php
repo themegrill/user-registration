@@ -2,6 +2,7 @@
 
 namespace WPEverest\URMembership\Admin\Repositories;
 
+use WPEverest\URMembership\Admin\Database\Database;
 use WPEverest\URMembership\Admin\Interfaces\SubscriptionInterface;
 use WPEverest\URMembership\Admin\Services\SubscriptionService;
 use WPEverest\URMembership\TableList;
@@ -60,9 +61,13 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	 * Delete everything membership-related that belongs to a user; run on `deleted_user` and before a bulk member delete.
 	 *
 	 * @param int $user_id User ID.
-	 * @return bool False when a subscription or order could not be deleted.
+	 * @return bool False when a subscription or order could not be deleted; true when there is nothing to delete, including when the tables do not exist.
 	 */
 	public function delete_by_user( $user_id ) {
+		if ( ! Database::tables_exist() ) {
+			return true;
+		}
+
 		$subscription_ids = $this->wpdb()->get_col( $this->wpdb()->prepare( "SELECT ID FROM {$this->table} WHERE user_id = %d", absint( $user_id ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared -- table name comes from TableList.
 
 		if ( '' !== $this->wpdb()->last_error ) {

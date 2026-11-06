@@ -145,4 +145,14 @@ $wpdb->suppress_errors( false );
 check( false === $failed_lookup_delete && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_l ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_l ), 'a failed order lookup keeps the subscription and its orders' );
 
 wp_delete_user( $user_b );
+
+// With the membership tables missing, bulk-deleting members still deletes them: a missing table is nothing to clean, not a failure.
+$wpdb->query( 'DROP TABLE IF EXISTS ' . implode( ', ', array_values( Database::get_tables() ) ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+$user_c = wp_insert_user( array( 'user_login' => 'fk_c_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_c_' . wp_rand() . '@example.com' ) );
+$wpdb->suppress_errors( true );
+( new MembersRepository() )->delete_multiple( (string) $user_c );
+$wpdb->suppress_errors( false );
+check( 0 === count_rows( $wpdb->users, 'ID', $user_c ), 'bulk-deleting members still works while the membership tables are missing' );
+Database::create_tables();
+
 echo $assertions . " assertions passed\n";
