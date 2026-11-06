@@ -3911,7 +3911,7 @@ if ( ! function_exists( 'ur_delete_user_files_on_user_delete' ) ) {
 	}
 }
 
-// Runs once the user row is gone (after the module's coupon-claim release on delete_user), even while the module is off.
+// Registered here, not in the module, so it still runs while the Membership module is off.
 add_action( 'deleted_user', 'ur_delete_membership_records_on_user_delete' );
 
 if ( ! function_exists( 'ur_delete_membership_records_on_user_delete' ) ) {
@@ -3924,6 +3924,11 @@ if ( ! function_exists( 'ur_delete_membership_records_on_user_delete' ) ) {
 	 * @return void
 	 */
 	function ur_delete_membership_records_on_user_delete( $user_id ) {
+		// wp_delete_user() fires deleted_user even when the row delete failed (e.g. a RESTRICT key), so keep the rows then.
+		if ( false !== get_userdata( $user_id ) ) {
+			return;
+		}
+
 		if ( ! ( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->delete_by_user( $user_id ) ) {
 			ur_get_logger()->error( sprintf( 'Membership rows of deleted user #%d could not be fully removed.', $user_id ), array( 'source' => 'urm-user-delete' ) );
 		}

@@ -144,6 +144,38 @@ remove_filter( 'query', $fail_order_lookup );
 $wpdb->suppress_errors( false );
 check( false === $failed_lookup_delete && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_l ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_l ), 'a failed order lookup keeps the subscription and its orders' );
 
+// wp_delete_user() ignores a failed user-row delete and still fires deleted_user: a user that survives keeps their membership rows.
+$user_k                  = wp_insert_user( array( 'user_login' => 'fk_k_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_k_' . wp_rand() . '@example.com' ) );
+list( $sub_k, $order_k ) = make_membership_rows( $user_k );
+$fail_user_delete        = function ( $query ) use ( $wpdb ) {
+	return 0 === strpos( $query, "DELETE FROM `{$wpdb->users}`" ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_user_delete );
+wp_delete_user( $user_k );
+remove_filter( 'query', $fail_user_delete );
+$wpdb->suppress_errors( false );
+check( 1 === count_rows( $wpdb->users, 'ID', $user_k ) && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_k ) && 1 === count_rows( TableList::orders_table(), 'ID', $order_k ), 'a failed user-row delete keeps the surviving user\'s membership rows' );
+wp_delete_user( $user_k );
+check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_k ) && 0 === count_rows( TableList::orders_table(), 'ID', $order_k ), 'the same user delete cleans up once it succeeds' );
+
+// A bulk member delete that fails on one member leaves every member either fully deleted or fully kept, in order.
+$user_x                  = wp_insert_user( array( 'user_login' => 'fk_x_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_x_' . wp_rand() . '@example.com' ) );
+$user_y                  = wp_insert_user( array( 'user_login' => 'fk_y_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_y_' . wp_rand() . '@example.com' ) );
+list( $sub_x )           = make_membership_rows( $user_x );
+list( $sub_y )           = make_membership_rows( $user_y );
+$fail_member_lookup      = function ( $query ) use ( $user_y ) {
+	return 0 === strpos( $query, 'SELECT ID FROM ' . TableList::subscriptions_table() . ' WHERE user_id = ' . $user_y ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_member_lookup );
+$partial_bulk = ( new MembersRepository() )->delete_multiple( $user_x . ',' . $user_y );
+remove_filter( 'query', $fail_member_lookup );
+$wpdb->suppress_errors( false );
+check( false === $partial_bulk && 0 === count_rows( $wpdb->users, 'ID', $user_x ) && 0 === count_rows( TableList::subscriptions_table(), 'ID', $sub_x ), 'a bulk delete failing on a later member still fully deletes the earlier one' );
+check( 1 === count_rows( $wpdb->users, 'ID', $user_y ) && 1 === count_rows( TableList::subscriptions_table(), 'ID', $sub_y ), 'a bulk delete failing on a member keeps that member and their rows' );
+check( 1 === ( new MembersRepository() )->delete_multiple( (string) $user_y ) && 0 === count_rows( $wpdb->users, 'ID', $user_y ), 'the same member deletes once the failure is gone' );
+
 wp_delete_user( $user_b );
 
 // With the membership tables missing, bulk-deleting members still deletes them: a missing table is nothing to clean, not a failure.
