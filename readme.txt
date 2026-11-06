@@ -270,7 +270,7 @@ You can report security bugs through the Patchstack Vulnerability Disclosure Pro
 * Fix      - Shortcodes no longer run from login error notices or the login preview.
 * Fix      - Custom column values in the Users and Members lists are shown safely.
 * Fix      - User Bio is now cleaned on save to block stored script injection. Thanks crow.
-* Fix      - Renewing a membership now needs a pending renewal order. Thanks Wai Linn Oo.
+* Fix      - Renewing a membership now needs a verified payment. Thanks Wai Linn Oo.
 * Fix      - Legacy PayPal activates memberships only for completed payments in the right currency.
 * Tweak    - Removed unused registration nonce code. Thanks Harry Nguyen.
 

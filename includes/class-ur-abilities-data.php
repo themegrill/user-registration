@@ -143,7 +143,7 @@ class UR_Abilities_Data {
 		if ( ! $query->get_results() ) {
 			return $page;
 		}
-		return new WP_Error( 'ur_abilities_member_limit', __( 'More than 10000 members to filter. Add a form_id to narrow the list.', 'user-registration' ) );
+		return new WP_Error( 'ur_abilities_member_limit', __( 'More than 10000 members to filter. Add a form_id to narrow the list.', 'user-registration' ), array( 'status' => 400 ) );
 	}
 
 	/**
@@ -351,7 +351,7 @@ class UR_Abilities_Data {
 		$start = DateTimeImmutable::createFromFormat( '!Y-m-d', $from, new DateTimeZone( 'UTC' ) );
 		$end   = DateTimeImmutable::createFromFormat( '!Y-m-d', $to, new DateTimeZone( 'UTC' ) );
 		if ( ! $start || ! $end || $start->format( 'Y-m-d' ) !== $from || $end->format( 'Y-m-d' ) !== $to || $end < $start || $start->diff( $end )->days > 92 ) {
-			return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates in ascending order spanning at most 93 days.', 'user-registration' ) );
+			return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates in ascending order spanning at most 93 days.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 		$args = self::member_query( $input );
 		// Statistics count form registrations, excluding membership-only accounts.
@@ -375,7 +375,7 @@ class UR_Abilities_Data {
 		$query               = new WP_User_Query( $args );
 		$total               = (int) $query->get_total();
 		if ( $total > 10000 ) {
-			return new WP_Error( 'ur_abilities_stats_limit', __( 'More than 10000 registrations match. Narrow the dates or specify a form.', 'user-registration' ) );
+			return new WP_Error( 'ur_abilities_stats_limit', __( 'More than 10000 registrations match. Narrow the dates or specify a form.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 		$groups              = array();
 		$args['number']      = 500;
@@ -545,12 +545,12 @@ class UR_Abilities_Data {
 			}
 			$date = DateTimeImmutable::createFromFormat( '!Y-m-d', $input[ $key ] );
 			if ( ! $date || $date->format( 'Y-m-d' ) !== $input[ $key ] ) {
-				return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates with the start date on or before the end date.', 'user-registration' ) );
+				return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates with the start date on or before the end date.', 'user-registration' ), array( 'status' => 400 ) );
 			}
 			$dates[] = $input[ $key ];
 		}
 		if ( 2 === count( $dates ) && $dates[0] > $dates[1] ) {
-			return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates with the start date on or before the end date.', 'user-registration' ) );
+			return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates with the start date on or before the end date.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 		return null;
 	}
@@ -570,7 +570,7 @@ class UR_Abilities_Data {
 	 * @return WP_Error
 	 */
 	private static function membership_unavailable() {
-		return new WP_Error( 'ur_abilities_membership_disabled', __( 'Membership is not enabled on this site.', 'user-registration' ) );
+		return new WP_Error( 'ur_abilities_membership_disabled', __( 'Membership is not enabled on this site.', 'user-registration' ), array( 'status' => 403 ) );
 	}
 
 	/**
@@ -579,6 +579,6 @@ class UR_Abilities_Data {
 	 * @return WP_Error
 	 */
 	private static function not_found() {
-		return new WP_Error( 'ur_abilities_not_found', __( 'Registration record not found.', 'user-registration' ) );
+		return new WP_Error( 'ur_abilities_not_found', __( 'Registration record not found.', 'user-registration' ), array( 'status' => 404 ) );
 	}
 }

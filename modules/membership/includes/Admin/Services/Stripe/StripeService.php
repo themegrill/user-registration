@@ -967,8 +967,12 @@ class StripeService {
 			$existing_order = $this->members_orders_repository->get_member_orders( $member_id );
 			$is_renewing    = ! empty( $membership_process['renew'] ) && in_array( $current_membership_id, array_map( 'absint', $membership_process['renew'] ), true );
 
-			// A completed earlier order is not proof of payment for a renewal, upgrade or extra purchase.
-			if ( ! $is_renewing && ! $is_upgrading && ! $is_purchasing_multiple && ! empty( $existing_order ) && 'completed' === $existing_order['status'] ) {
+			// A completed earlier order is not proof of payment for a renewal, upgrade or extra purchase, unless the
+			// request names the Stripe subscription saved on it: trials and free coupons have no PaymentIntent to verify.
+			$subscription_ref  = sanitize_text_field( wp_unslash( $data['payment_result']['id'] ?? '' ) );
+			$is_order_verified = 0 === strpos( $subscription_ref, 'sub_' ) && ! empty( $existing_order['transaction_id'] ) && $subscription_ref === $existing_order['transaction_id'];
+
+			if ( ( $is_order_verified || ( ! $is_renewing && ! $is_upgrading && ! $is_purchasing_multiple ) ) && ! empty( $existing_order ) && 'completed' === $existing_order['status'] ) {
 				$response['status']  = true;
 				$response['message'] = __( 'Payment already verified.', 'user-registration' );
 				return $response;
