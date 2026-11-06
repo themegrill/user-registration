@@ -9,12 +9,11 @@
  * that every delete the keys used to cascade (order -> meta, subscription -> orders/meta/events,
  * user -> subscriptions/orders/meta/events) is still done, and nothing beyond that.
  *
- * Writes fixture rows only (own users/subscriptions/orders); run it on a throwaway site, e.g.
- * `wp eval-file tests/manual/test-membership-tables-without-foreign-keys.php`.
+ * Writes fixture rows only (own users/subscriptions/orders); run with wp eval-file on a disposable WordPress.
  */
 
-if ( ! defined( 'ABSPATH' ) ) {
-	exit;
+if ( '1' !== getenv( 'UR_SECURITY_DISPOSABLE' ) ) {
+	throw new RuntimeException( 'Disposable install required.' );
 }
 
 use WPEverest\URMembership\Admin\Database\Database;
@@ -24,13 +23,15 @@ use WPEverest\URMembership\Admin\Repositories\OrdersRepository;
 use WPEverest\URMembership\Admin\Repositories\SubscriptionRepository;
 use WPEverest\URMembership\TableList;
 
-global $wpdb, $failures;
-$failures = 0;
+global $wpdb, $assertions;
+$assertions = 0;
 
 function check( $condition, $label ) {
-	global $failures;
-	echo ( $condition ? 'PASS' : 'FAIL' ) . " - $label\n";
-	$failures += $condition ? 0 : 1;
+	global $assertions;
+	if ( ! $condition ) {
+		throw new RuntimeException( 'Failed: ' . $label );
+	}
+	++$assertions;
 }
 
 function count_rows( $table, $column, $value ) {
@@ -108,5 +109,4 @@ check( 0 === count_rows( TableList::subscriptions_table(), 'user_id', $user_c ) 
 check( 1 === count_rows( TableList::orders_table(), 'ID', $order_keep ), 'bulk-deleting members leaves another member\'s rows' );
 
 wp_delete_user( $user_b );
-echo $failures ? "\n$failures FAILED\n" : "\nAll passed\n";
-exit( $failures ? 1 : 0 );
+echo $assertions . " assertions passed\n";

@@ -17,7 +17,6 @@ use WPEverest\URMembership\Admin\Membership\Membership;
 use WPEverest\URMembership\Admin\Repositories\MembershipRepository;
 use WPEverest\URMembership\Admin\Repositories\MembersRepository;
 use WPEverest\URMembership\Admin\Repositories\OrdersRepository;
-use WPEverest\URMembership\Admin\Repositories\SubscriptionRepository;
 use WPEverest\URMembership\Admin\Services\CouponService;
 use WPEverest\URMembership\Admin\Services\EmailService;
 use WPEverest\URMembership\Admin\Services\MembershipService;
@@ -197,8 +196,6 @@ if ( ! class_exists( 'Admin' ) ) :
 			add_action( 'user_registration_check_token_complete', array( $this, 'send_membership_welcome_on_email_confirmation' ), 10, 2 );
 			// Orders cascade away with their user, so unfinished ones give their coupon use back first.
 			add_action( 'delete_user', array( new OrdersRepository(), 'release_member_coupon_claims' ) );
-			// Nothing cascades without foreign keys, so the user's membership rows go once the coupon claims are released.
-			add_action( 'delete_user', array( new SubscriptionRepository(), 'delete_by_user' ), 20 );
 			add_action( 'user_registration_after_register_user_action', array( $this, 'maybe_assign_default_free_membership_on_social_connect' ), 25, 3 );
 			add_filter( 'user_registration_other_social_settings', array( $this, 'add_social_connect_membership_settings' ), 10, 1 );
 		}

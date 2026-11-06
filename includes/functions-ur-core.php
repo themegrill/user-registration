@@ -3911,6 +3911,25 @@ if ( ! function_exists( 'ur_delete_user_files_on_user_delete' ) ) {
 	}
 }
 
+// Runs after the membership module's own priority-10 coupon-claim release, and even while the module is off.
+add_action( 'delete_user', 'ur_delete_membership_records_on_user_delete', 20 );
+
+if ( ! function_exists( 'ur_delete_membership_records_on_user_delete' ) ) {
+
+	/**
+	 * Delete a user's membership rows, which the key-less membership tables no longer cascade.
+	 *
+	 * @param int $user_id User ID.
+	 *
+	 * @return void
+	 */
+	function ur_delete_membership_records_on_user_delete( $user_id ) {
+		if ( \WPEverest\URMembership\Admin\Database\Database::tables_exist() ) {
+			( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->delete_by_user( $user_id );
+		}
+	}
+}
+
 if ( ! function_exists( 'ur_format_field_values' ) ) {
 
 	/**
