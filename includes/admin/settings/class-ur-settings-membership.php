@@ -125,7 +125,7 @@ if ( ! class_exists( 'UR_Settings_Membership' ) ) {
 				$card['settings'] = array(
 					array(
 						'title'    => __( 'Renewal Behaviour', 'user-registration' ),
-						'desc'     => __( 'Choose how membership subscriptions are renewed, automatically through the payment provider or manually by the user', 'user-registration' ),
+						'desc'     => __( 'Choose how membership subscriptions are renewed. Renew Automatically bills each cycle through the payment provider. Renew Manually charges for one period only (Stripe, PayPal, Authorize.Net, Mollie); members renew from My Account.', 'user-registration' ),
 						'id'       => 'user_registration_renewal_behaviour',
 						'type'     => 'select',
 						'default'  => 'automatic',
