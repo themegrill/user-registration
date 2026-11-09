@@ -1,0 +1,78 @@
+name: Feature request
+description: A capability that does not exist today.
+title: "Feature: "
+labels: ["feature-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lead with the problem, not the solution. If the capability already exists and should work better, use "Enhancement". If someone cannot find it, that is a support question. Do not include customer names, emails, site URLs or license keys. The same sections are used by the `create-themegrill-issue` skill and the Crisp bot.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: "When <situation>, I want <motivation>, so I can <outcome>. Describe the need without naming the feature. Someone should be able to read it and build a different solution."
+    validations:
+      required: true
+  - type: textarea
+    id: who
+    attributes:
+      label: Who and how often
+      description: Who is affected and how often it comes up. "1 customer so far" is a fine answer.
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current workaround
+      description: What people do today, or "None".
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What success looks like, in observable terms.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: Fill in what is known; write "not stated" for the rest.
+      value: |
+        - Product and edition (free/pro):
+        - Plugin/theme version:
+        - Area of the product:
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+      description: Optional. An idea, marked as a suggestion.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional.
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Requests, votes, support volume, a competitor's behavior if relevant. No personal data. Screenshots can be added here.
+  - type: textarea
+    id: unknown
+    attributes:
+      label: Not known yet
+      description: What you could not confirm. This is also the list support can take back to the customer.
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Source (Crisp conversation, forum topic) and related issues. Write "none found" after searching, matching the exact capability, not the general area.
+      value: |
+        - Source:
+        - Related issues:
+    validations:
+      required: true
