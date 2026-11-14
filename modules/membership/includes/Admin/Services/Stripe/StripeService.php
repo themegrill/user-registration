@@ -2431,7 +2431,27 @@ class StripeService {
 		$response           = array(
 			'status' => false,
 		);
-		$subscription       = \Stripe\Subscription::retrieve( $subscription_id );
+		try {
+			$subscription = \Stripe\Subscription::retrieve( $subscription_id );
+		} catch ( \Exception $e ) {
+			// stripe-php throws on a missing/other-mode id instead of returning an empty object.
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Subscription could not be retrieved for reactivation' . "\n" . wp_json_encode(
+					array(
+						'error_code'      => 'SUBSCRIPTION_NOT_FOUND_IN_STRIPE',
+						'subscription_id' => $subscription_id,
+						'error_message'   => $e->getMessage(),
+					),
+					JSON_PRETTY_PRINT
+				)
+			);
+
+			return array(
+				'status'  => false,
+				'message' => __( 'This subscription can no longer be reactivated. Please purchase the membership again.', 'user-registration' ),
+			);
+		}
 		$local_subscription = $this->members_subscription_repository->get_subscription_by_subscription_id_meta( $subscription_id );
 		if ( isset( $subscription->id ) ) {
 
@@ -2475,6 +2495,7 @@ class StripeService {
 					),
 					'info'
 				);
+				$response['message'] = __( 'This subscription can no longer be reactivated. Please purchase the membership again.', 'user-registration' );
 			}
 		} else {
 			PaymentGatewayLogging::log_error(

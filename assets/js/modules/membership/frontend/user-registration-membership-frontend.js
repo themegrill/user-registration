@@ -3929,6 +3929,15 @@
 								location.reload();
 							}
 						},
+						error: function () {
+							// Show non-2xx responses through the same notice as a JSON error (`this` is the ajax settings).
+							this.success({
+								success: false,
+								data: {
+									message: urmf_data.labels.i18n_reactivate_error
+								}
+							});
+						},
 						complete: function () {
 							ur_membership_frontend_utils.remove_spinner($this);
 							ur_membership_frontend_utils.toggleSaveButtons(false, $this);

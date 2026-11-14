@@ -211,7 +211,15 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 			$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 			$subscription_service = new SubscriptionService();
-			$subscription_service->reactivate_subscription( $order, $subscription );
+			$gateway_result       = $subscription_service->reactivate_subscription( $order, $subscription );
+
+			// A refused gateway reactivation must not restore access without billing; rows with no gateway subscription have nothing to resume.
+			if ( ! empty( $subscription['subscription_id'] ) && empty( $gateway_result['status'] ) ) {
+				return array(
+					'status'  => false,
+					'message' => $gateway_result['message'] ?? esc_html__( 'Failed to reactivate subscription with payment gateway.', 'user-registration' ),
+				);
+			}
 
 			// Only restore to 'active' if the order's payment has actually been approved/completed
 			// (e.g. Bank Transfer orders stay 'pending' until an admin approves them); otherwise
