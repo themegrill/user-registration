@@ -108,14 +108,8 @@ jobs:
         run: zip -r user-registration.zip user-registration
 
       #  Deploy to QA Server
-      - name: Remove old plugin
-        run: |
-          sshpass -p "${{ secrets.QA_AUTOMATION_SERVER_PASS }}" ssh -o StrictHostKeyChecking=no \
-          ${{ secrets.QA_AUTOMATION_SERVER_USERNAME }}@${{ secrets.QA_AUTOMATION_SERVER_IP }} << 'EOF'
-          cd /var/www/anup-urautomation.wp1.site/wp-content/plugins/
-          rm -rf user-registration
-          EOF
-
+      # No separate "remove old plugin" step: deleting the free plugin while add-ons that
+      # depend on it are active crashes WordPress, and then WP-CLI cannot reinstall it.
       - name: Upload plugin
         run: |
           sshpass -p "${{ secrets.QA_AUTOMATION_SERVER_PASS }}" scp -o StrictHostKeyChecking=no \
@@ -126,10 +120,25 @@ jobs:
         run: |
           sshpass -p "${{ secrets.QA_AUTOMATION_SERVER_PASS }}" ssh -o StrictHostKeyChecking=no \
           ${{ secrets.QA_AUTOMATION_SERVER_USERNAME }}@${{ secrets.QA_AUTOMATION_SERVER_IP }} << 'EOF'
+          set -e
           cd /var/www/anup-urautomation.wp1.site/
-          wp plugin install wp-content/plugins/user-registration.zip --activate
+          # --skip-plugins/--skip-themes: load WordPress without add-ons that call free-plugin
+          # functions, so the install works even if the current copy is missing or broken.
+          # --force replaces the existing copy in place.
+          wp --skip-plugins --skip-themes plugin install wp-content/plugins/user-registration.zip --force --activate
           rm -f wp-content/plugins/user-registration.zip
+          wp --skip-plugins --skip-themes plugin get user-registration --field=version
           EOF
+
+      #  Stop early if the QA site is not serving pages (e.g. a PHP fatal after deploy)
+      - name: Check QA site health
+        run: |
+          code=$(curl -s -o /dev/null -m 30 -w '%{http_code}' https://anup-urautomation.wp1.site/wp-login.php)
+          echo "wp-login.php returned HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::QA site is not healthy after deploy (HTTP $code). Check the site's PHP error log."
+            exit 1
+          fi
 
       #  Browser Setup
       - name: Setup Chrome
