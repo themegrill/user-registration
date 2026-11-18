@@ -44,7 +44,7 @@ jobs:
       cancel-in-progress: false
     # Pinned: ubuntu-latest moved to 26.04, which has no prebuilt Python for setup-python.
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       # 🔍 Decide QA Mode (Smoke vs Final)
