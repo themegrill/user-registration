@@ -10,6 +10,17 @@ on:
       - labeled
     branches:
       - develop
+      - 'v*.*.*'
+    # Docs and translation changes cannot affect the automation result.
+    paths-ignore:
+      - '**.md'
+      - 'readme.txt'
+      - 'languages/**'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 
 jobs:
   qa-automation:
@@ -31,7 +42,9 @@ jobs:
     concurrency:
       group: ur-qa-site
       cancel-in-progress: false
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which has no prebuilt Python for setup-python.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
 
     steps:
       # 🔍 Decide QA Mode (Smoke vs Final)
@@ -68,7 +81,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -126,7 +139,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.12.1
+          python-version: '3.12'
 
       #  Run Automation
       - name: Run UR Automation
@@ -206,12 +219,24 @@ jobs:
               ? `**Latest Report:** ${reportUrl}`
               : `No report was published. See the [workflow run](${runUrl}) for details.`;
 
-            await github.rest.issues.createComment({
+            // Keep one QA comment per PR and update it, instead of adding a new one every run.
+            const marker = '<!-- ur-qa-automation-report -->';
+            const body = `${marker}\n**UR QA (${mode}):** ${status} — run #${run}\n\n${report}`;
+            const { owner, repo } = context.repo;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
               issue_number: pr,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `**UR QA (${mode}):** ${status}\n\n${report}`
+              per_page: 100
             });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: pr, body });
+            }
 
       #  Fail the job when the suite failed or never ran (continue-on-error hides it otherwise)
       - name: Fail if automation did not pass
