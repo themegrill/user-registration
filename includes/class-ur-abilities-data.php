@@ -9,6 +9,9 @@ defined( 'ABSPATH' ) || exit;
 
 /** Ability callbacks. Input validation and authorization belong to WP_Ability. */
 class UR_Abilities_Data {
+	/** Form meta that marks a form an AI assistant created, holding the UTC time it was made. */
+	const AI_CREATED_META = '_ur_created_by_ai';
+
 	/**
 	 * List a bounded page of forms.
 	 *
@@ -1428,6 +1431,678 @@ class UR_Abilities_Data {
 			'expiry_date'       => (string) $subscription->expiry_date,
 			'next_billing_date' => (string) $subscription->next_billing_date,
 			'billing_amount'    => (string) $subscription->billing_amount,
+		);
+	}
+
+	/**
+	 * List the form templates a new form can start from, as on the Add New form screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return array
+	 */
+	public static function list_form_templates() {
+		$items = array();
+
+		foreach ( self::form_templates() as $template ) {
+			$items[] = array(
+				'slug'      => (string) $template->slug,
+				'title'     => wp_strip_all_tags( (string) ( $template->title ?? $template->slug ) ),
+				'pro'       => ! empty( $template->isPro ), // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Remote template data.
+				'plans'     => array_values( array_map( 'strval', (array) ( $template->plan ?? array() ) ) ),
+				'addons'    => array_values( array_map( 'wp_strip_all_tags', (array) ( $template->addons ?? array() ) ) ),
+				'available' => self::template_available( $template ),
+			);
+		}
+
+		return array(
+			'items'           => $items,
+			'can_create_form' => ur_can_create_registration_form(),
+		);
+	}
+
+	/**
+	 * Create a draft form from a template through the same code as the Add New form screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function create_form( $input ) {
+		if ( ! ur_can_create_registration_form() ) {
+			return new WP_Error( 'ur_abilities_forbidden', __( 'Multiple registration forms cannot be created. Turn on the Multiple Registration module first.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		$slug     = isset( $input['template'] ) ? $input['template'] : 'blank';
+		$template = null;
+
+		foreach ( self::form_templates() as $item ) {
+			if ( $slug === $item->slug ) {
+				$template = $item;
+			}
+		}
+
+		if ( ! $template ) {
+			return new WP_Error( 'ur_abilities_not_found', __( 'Form template not found. List the templates to see the slugs.', 'user-registration' ), array( 'status' => 404 ) );
+		}
+
+		if ( ! self::template_available( $template ) ) {
+			return new WP_Error( 'ur_ability_plan_required', __( 'This template needs a higher plan. Pick a template marked as available.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		$form_id = UR()->form->create( sanitize_text_field( $input['title'] ), $slug );
+
+		if ( ! $form_id || is_wp_error( $form_id ) ) {
+			return new WP_Error( 'ur_abilities_create_failed', __( 'Something went wrong, please try again later', 'user-registration' ), array( 'status' => 500 ) );
+		}
+
+		// The admin opens a new form in the builder; an AI-made form waits as a draft, with the asked title, for the admin to publish.
+		wp_update_post(
+			array(
+				'ID'          => $form_id,
+				'post_title'  => sanitize_text_field( $input['title'] ),
+				'post_status' => 'draft',
+			)
+		);
+
+		// Mark the form as made by AI, so usage statistics can count AI-made forms even after the admin edits them.
+		update_post_meta( $form_id, self::AI_CREATED_META, gmdate( 'c' ) );
+		update_post_meta( $form_id, self::AI_CREATED_META . '_app', UR_Abilities_Activity::app_name() );
+		update_post_meta( $form_id, self::AI_CREATED_META . '_user', get_current_user_id() );
+
+		return self::get_form( array( 'id' => $form_id ) );
+	}
+
+	/**
+	 * Add a field to a form and save it through the same code as the form builder.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function add_form_field( $input ) {
+		$form = self::form_layout( $input['form_id'] );
+
+		if ( is_wp_error( $form ) ) {
+			return $form;
+		}
+
+		if ( ! in_array( $input['type'], self::field_types(), true ) ) {
+			return new WP_Error( 'ur_abilities_invalid_type', __( 'This field type is not available here. Pro fields need Pro, and password fields cannot be added.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		$class = ur_load_form_field_class( $input['type'] );
+
+		if ( ! $class || ! class_exists( $class ) ) {
+			return new WP_Error( 'ur_abilities_invalid_type', __( 'This field type is not available here.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		$field_class = $class::get_instance();
+		$field_name  = (string) $field_class->get_general_setting_data( 'field_name' );
+		$taken       = self::field_names( $form['rows'] );
+
+		if ( in_array( $field_name, $taken, true ) ) {
+			if ( ! preg_match( '/_\d+$/', $field_name ) ) {
+				/* translators: %s: field type. */
+				return new WP_Error( 'ur_abilities_no_change', sprintf( __( 'This form already has a %s field.', 'user-registration' ), $input['type'] ), array( 'status' => 409 ) );
+			}
+
+			$base = preg_replace( '/_\d+$/', '', $field_name );
+			$n    = time();
+
+			while ( in_array( $base . '_' . $n, $taken, true ) ) {
+				++$n;
+			}
+
+			$field_name = $base . '_' . $n;
+		}
+
+		$field = (object) array(
+			'field_key'       => $input['type'],
+			'general_setting' => (object) array(
+				'label'       => (string) $field_class->get_general_setting_data( 'label' ),
+				'description' => '',
+				'placeholder' => '',
+				'required'    => 'false',
+				'hide_label'  => 'false',
+				'field_name'  => $field_name,
+			),
+			'advance_setting' => (object) array( 'custom_class' => '' ),
+			'icon'            => (string) ( $field_class->registered_fields_config['icon'] ?? '' ),
+		);
+
+		if ( in_array( $input['type'], array( 'select', 'radio', 'checkbox' ), true ) ) {
+			$field->general_setting->options = array( __( 'First Choice', 'user-registration' ), __( 'Second Choice', 'user-registration' ), __( 'Third Choice', 'user-registration' ) );
+		}
+
+		$error = self::apply_field_changes( $field, $input );
+
+		if ( is_wp_error( $error ) ) {
+			return $error;
+		}
+
+		$after = isset( $input['after_field'] ) ? self::find_field( $form['rows'], $input['after_field'] ) : null;
+
+		if ( isset( $input['after_field'] ) && ! $after ) {
+			return self::field_not_found();
+		}
+
+		if ( $after ) {
+			array_splice( $form['rows'][ $after[0] ][ $after[1] ], $after[2] + 1, 0, array( $field ) );
+		} else {
+			// Like a field dropped at the end of the form: the last column of the last row.
+			$row  = count( $form['rows'] ) - 1;
+			$grid = count( $form['rows'][ $row ] ) - 1;
+
+			$form['rows'][ $row ][ $grid ][] = $field;
+		}
+
+		return self::save_form_layout( $form );
+	}
+
+	/**
+	 * Change a field's label, required setting, placeholder, description or choices.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function update_form_field( $input ) {
+		$form = self::form_layout( $input['form_id'] );
+
+		if ( is_wp_error( $form ) ) {
+			return $form;
+		}
+
+		$at = self::find_field( $form['rows'], $input['field_name'] );
+
+		if ( ! $at ) {
+			return self::field_not_found();
+		}
+
+		$error = self::apply_field_changes( $form['rows'][ $at[0] ][ $at[1] ][ $at[2] ], $input );
+
+		return is_wp_error( $error ) ? $error : self::save_form_layout( $form );
+	}
+
+	/**
+	 * Describe what removing a field would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_remove_form_field( $input ) {
+		$form = self::form_layout( $input['form_id'] );
+
+		if ( is_wp_error( $form ) ) {
+			return $form;
+		}
+
+		$at = self::find_field( $form['rows'], $input['field_name'] );
+
+		if ( ! $at ) {
+			return self::field_not_found();
+		}
+
+		return sprintf(
+			/* translators: 1: field label, 2: field name, 3: form title. */
+			__( 'Remove the "%1$s" field (%2$s) from the %3$s form, like deleting it in the form builder. New sign-ups will not be asked for it. Answers members already gave stay in their profiles.', 'user-registration' ),
+			$form['rows'][ $at[0] ][ $at[1] ][ $at[2] ]->general_setting->label ?? '',
+			$input['field_name'],
+			$form['post']->post_title
+		);
+	}
+
+	/**
+	 * Remove a field and save the form through the same code as the form builder.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function remove_form_field( $input ) {
+		$form = self::form_layout( $input['form_id'] );
+
+		if ( is_wp_error( $form ) ) {
+			return $form;
+		}
+
+		$at = self::find_field( $form['rows'], $input['field_name'] );
+
+		if ( ! $at ) {
+			return self::field_not_found();
+		}
+
+		array_splice( $form['rows'][ $at[0] ][ $at[1] ], $at[2], 1 );
+
+		return self::save_form_layout( $form );
+	}
+
+	/**
+	 * Move a field after another field, or to the top of the form.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function move_form_field( $input ) {
+		$form = self::form_layout( $input['form_id'] );
+
+		if ( is_wp_error( $form ) ) {
+			return $form;
+		}
+
+		$at = self::find_field( $form['rows'], $input['field_name'] );
+
+		if ( ! $at || ( isset( $input['after_field'] ) && ( $input['after_field'] === $input['field_name'] || ! self::find_field( $form['rows'], $input['after_field'] ) ) ) ) {
+			return self::field_not_found();
+		}
+
+		$field = array_splice( $form['rows'][ $at[0] ][ $at[1] ], $at[2], 1 );
+
+		if ( isset( $input['after_field'] ) ) {
+			$after = self::find_field( $form['rows'], $input['after_field'] );
+			array_splice( $form['rows'][ $after[0] ][ $after[1] ], $after[2] + 1, 0, $field );
+		} else {
+			array_unshift( $form['rows'][0][0], $field[0] );
+		}
+
+		return self::save_form_layout( $form );
+	}
+
+	/**
+	 * Read the form settings AI assistants may change, with the shortcode that places the form.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function get_form_settings( $input ) {
+		$post = self::form_post( $input['id'] );
+
+		if ( is_wp_error( $post ) ) {
+			return $post;
+		}
+
+		$current  = array();
+		$settings = array();
+
+		foreach ( ur_admin_form_settings_fields( $post->ID ) as $field ) {
+			if ( ! empty( $field['id'] ) ) {
+				$current[ $field['id'] ] = $field['default'] ?? '';
+			}
+		}
+
+		foreach ( self::form_setting_ids() as $key => $setting_id ) {
+			$value            = $current[ $setting_id ] ?? '';
+			$settings[ $key ] = in_array( $key, array( 'redirect_page_id', 'redirect_delay', 'success_message_position' ), true ) ? (int) $value : (string) $value;
+		}
+
+		return array(
+			'id'        => (int) $post->ID,
+			'title'     => wp_strip_all_tags( $post->post_title ),
+			'status'    => $post->post_status,
+			'shortcode' => '[user_registration_form id="' . (int) $post->ID . '"]',
+			'settings'  => $settings,
+			'choices'   => array(
+				'login_option' => array_keys( ur_login_option() ),
+				'default_role' => self::allowed_roles(),
+			),
+		);
+	}
+
+	/**
+	 * Describe what changing form settings would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_update_form_settings( $input ) {
+		$values = self::form_setting_values( $input );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		$labels = array();
+
+		foreach ( $input['settings'] as $key => $value ) {
+			$labels[] = $key . ' = ' . ( is_bool( $value ) ? ( $value ? 'true' : 'false' ) : $value );
+		}
+
+		return sprintf(
+			/* translators: 1: form title, 2: list of changes. */
+			__( 'Change these settings of the %1$s form, like saving them in the form builder: %2$s. Other settings stay as they are.', 'user-registration' ),
+			$values['post']->post_title,
+			implode( '; ', $labels )
+		);
+	}
+
+	/**
+	 * Change form settings through the same code as the form builder.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function update_form_settings( $input ) {
+		$values = self::form_setting_values( $input );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		include_once UR_ABSPATH . 'includes/admin/functions-ur-admin.php';
+		ur_update_form_setting_values( $values['post']->ID, $values['values'] );
+
+		return self::get_form_settings( array( 'id' => $values['post']->ID ) );
+	}
+
+	/**
+	 * Templates the form create code can use: the first section of the Add New form screen's list.
+	 *
+	 * @return array
+	 */
+	private static function form_templates() {
+		$sections = UR_Admin_Form_Templates::get_template_data();
+
+		return is_array( $sections ) && isset( $sections[0]->templates ) && is_array( $sections[0]->templates ) ? array_filter(
+			$sections[0]->templates,
+			function ( $template ) {
+				return isset( $template->slug );
+			}
+		) : array();
+	}
+
+	/**
+	 * Whether this site's edition and plan include a template, the way the template screen locks them.
+	 *
+	 * @param object $template Template.
+	 * @return bool
+	 */
+	private static function template_available( $template ) {
+		if ( empty( $template->isPro ) ) { // phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Remote template data.
+			return true;
+		}
+
+		if ( ! UR_PRO_ACTIVE ) {
+			return false;
+		}
+
+		$license = ur_get_license_plan();
+		$site    = ! empty( $license->item_plan ) ? trim( strtolower( $license->item_plan ) ) : '';
+
+		// Same ladder as the template screen: a Personal template works on every paid plan, a Plus one from Plus up.
+		$ladder = array(
+			'personal' => array( 'personal', 'plus', 'professional', 'agency' ),
+			'plus'     => array( 'plus', 'professional', 'agency' ),
+		);
+
+		foreach ( (array) ( $template->plan ?? array() ) as $plan ) {
+			if ( in_array( $site, $ladder[ $plan ] ?? array( $plan ), true ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Field types AI assistants may add: the types this site registers, without password fields.
+	 *
+	 * @return array
+	 */
+	private static function field_types() {
+		return array_values( array_diff( ur_get_registered_form_fields(), array( 'user_pass', 'user_confirm_password', 'password' ) ) );
+	}
+
+	/**
+	 * Find a form and read its fields and layout the way the form builder stores them.
+	 *
+	 * @param int $id Form ID.
+	 * @return array|WP_Error Post, rows, row IDs and row details.
+	 */
+	private static function form_layout( $id ) {
+		$post = self::form_post( $id );
+
+		if ( is_wp_error( $post ) ) {
+			return $post;
+		}
+
+		$rows = json_decode( $post->post_content );
+
+		if ( ! is_array( $rows ) || empty( $rows ) || ! is_array( $rows[0] ) || empty( $rows[0] ) ) {
+			return new WP_Error( 'ur_abilities_invalid_form', __( 'This form has no fields layout to change. Open it in the form builder first.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		return array(
+			'post'     => $post,
+			'rows'     => $rows,
+			'row_ids'  => (string) get_post_meta( $post->ID, 'user_registration_form_row_ids', true ),
+			'row_data' => (string) get_post_meta( $post->ID, 'user_registration_form_row_data', true ),
+		);
+	}
+
+	/**
+	 * Find a registration form the current user may edit.
+	 *
+	 * @param int $id Form ID.
+	 * @return WP_Post|WP_Error
+	 */
+	private static function form_post( $id ) {
+		$post = get_post( $id );
+
+		return $post && 'user_registration' === $post->post_type && 'trash' !== $post->post_status ? $post : self::not_found();
+	}
+
+	/**
+	 * Save changed fields through the form builder's save, keeping the form's status and settings as they are.
+	 *
+	 * @param array $form Form from form_layout().
+	 * @return array|WP_Error
+	 */
+	private static function save_form_layout( $form ) {
+		try {
+			UR_AJAX::save_form_data(
+				array(
+					'form_id'      => $form['post']->ID,
+					'form_name'    => $form['post']->post_title,
+					'form_data'    => $form['rows'],
+					'row_ids'      => $form['row_ids'],
+					'row_data'     => $form['row_data'],
+					'setting_data' => null,
+					'post_status'  => $form['post']->post_status,
+				)
+			);
+		} catch ( Exception $e ) {
+			return new WP_Error( 'ur_abilities_invalid_form', wp_strip_all_tags( $e->getMessage() ), array( 'status' => 400 ) );
+		}
+
+		return self::get_form( array( 'id' => $form['post']->ID ) );
+	}
+
+	/**
+	 * Apply the asked changes to a field's general settings.
+	 *
+	 * @param object $field Field from the form layout.
+	 * @param array  $input Validated input.
+	 * @return true|WP_Error
+	 */
+	private static function apply_field_changes( $field, $input ) {
+		$settings = $field->general_setting;
+
+		if ( isset( $input['required'] ) && in_array( $settings->field_name ?? '', ur_get_required_fields(), true ) ) {
+			return new WP_Error( 'ur_abilities_no_change', __( 'This field is always required.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		if ( isset( $input['options'] ) && ! isset( $settings->options ) ) {
+			return new WP_Error( 'ur_abilities_invalid_input', __( 'Only dropdown, radio and checkbox fields have choices.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		foreach ( array( 'label', 'placeholder', 'description' ) as $key ) {
+			if ( isset( $input[ $key ] ) ) {
+				$settings->$key = sanitize_text_field( $input[ $key ] );
+			}
+		}
+
+		if ( isset( $input['required'] ) ) {
+			$settings->required = $input['required'] ? '1' : 'false';
+		}
+
+		if ( isset( $input['options'] ) ) {
+			$settings->options = array_values( array_filter( array_map( 'sanitize_text_field', $input['options'] ), 'strlen' ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Find a field by its field name.
+	 *
+	 * @param array  $rows       Rows of grids of fields.
+	 * @param string $field_name Field name.
+	 * @return array|null Row, grid and position, or null.
+	 */
+	private static function find_field( $rows, $field_name ) {
+		foreach ( $rows as $r => $grids ) {
+			foreach ( (array) $grids as $g => $fields ) {
+				foreach ( (array) $fields as $i => $field ) {
+					if ( isset( $field->general_setting->field_name ) && $field_name === $field->general_setting->field_name ) {
+						return array( $r, $g, $i );
+					}
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * List every field name used in a form.
+	 *
+	 * @param array $rows Rows of grids of fields.
+	 * @return array
+	 */
+	private static function field_names( $rows ) {
+		$names = array();
+
+		foreach ( $rows as $grids ) {
+			foreach ( (array) $grids as $fields ) {
+				foreach ( (array) $fields as $field ) {
+					if ( isset( $field->general_setting->field_name ) ) {
+						$names[] = $field->general_setting->field_name;
+					}
+				}
+			}
+		}
+
+		return $names;
+	}
+
+	/**
+	 * Return a uniform missing-field error.
+	 *
+	 * @return WP_Error
+	 */
+	private static function field_not_found() {
+		return new WP_Error( 'ur_abilities_not_found', __( 'Field not found in this form. Read the form to see its field names.', 'user-registration' ), array( 'status' => 404 ) );
+	}
+
+	/**
+	 * Form settings AI assistants may change, keyed by the name the ability uses.
+	 *
+	 * @return array
+	 */
+	private static function form_setting_ids() {
+		return array(
+			'login_option'                => 'user_registration_form_setting_login_options',
+			'default_role'                => 'user_registration_form_setting_default_user_role',
+			'redirect_after_registration' => 'user_registration_form_setting_redirect_after_registration',
+			'redirect_page_id'            => 'user_registration_form_setting_redirect_page',
+			'redirect_url'                => 'user_registration_form_setting_redirect_options',
+			'redirect_delay'              => 'user_registration_form_setting_redirect_after',
+			'submit_label'                => 'user_registration_form_setting_form_submit_label',
+			'success_message_position'    => 'user_registration_form_setting_success_message_position',
+		);
+	}
+
+	/**
+	 * Roles new members may get from a form: every known role that cannot manage the site.
+	 *
+	 * @return array
+	 */
+	private static function allowed_roles() {
+		return array_values(
+			array_filter(
+				array_keys( ur_get_default_admin_roles() ),
+				function ( $role ) {
+					return ! ur_registration_role_is_privileged( $role );
+				}
+			)
+		);
+	}
+
+	/**
+	 * Check asked setting changes and turn them into setting IDs and values.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error Form post and values keyed by setting ID.
+	 */
+	private static function form_setting_values( $input ) {
+		$post = self::form_post( $input['form_id'] );
+
+		if ( is_wp_error( $post ) ) {
+			return $post;
+		}
+
+		$settings = (array) $input['settings'];
+
+		if ( empty( $settings ) ) {
+			return new WP_Error( 'ur_abilities_no_change', __( 'Give at least one setting to change.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		$invalid = function ( $message ) {
+			return new WP_Error( 'ur_abilities_invalid_input', $message, array( 'status' => 400 ) );
+		};
+
+		if ( isset( $settings['login_option'] ) && ! array_key_exists( $settings['login_option'], ur_login_option() ) ) {
+			return $invalid( __( 'Unknown login option.', 'user-registration' ) );
+		}
+
+		if ( isset( $settings['default_role'] ) && ! in_array( $settings['default_role'], self::allowed_roles(), true ) ) {
+			return $invalid( __( 'New members cannot get this role. Admin-level roles are never allowed.', 'user-registration' ) );
+		}
+
+		if ( isset( $settings['redirect_page_id'] ) && 'publish' !== get_post_status( $settings['redirect_page_id'] ) ) {
+			return $invalid( __( 'The redirect page must be a published page.', 'user-registration' ) );
+		}
+
+		if ( isset( $settings['redirect_url'] ) && ! wp_http_validate_url( $settings['redirect_url'] ) ) {
+			return $invalid( __( 'The redirect URL must be a full web address.', 'user-registration' ) );
+		}
+
+		$values = array();
+
+		foreach ( self::form_setting_ids() as $key => $setting_id ) {
+			if ( isset( $settings[ $key ] ) ) {
+				$values[ $setting_id ] = 'redirect_url' === $key ? esc_url_raw( $settings[ $key ] ) : sanitize_text_field( (string) $settings[ $key ] );
+			}
+		}
+
+		return array(
+			'post'   => $post,
+			'values' => $values,
 		);
 	}
 

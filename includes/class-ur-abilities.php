@@ -467,20 +467,108 @@ class UR_Abilities {
 			)
 		);
 
-		$deleted = self::object_schema(
+		$deleted              = self::object_schema(
 			array(
 				'id'      => $id,
 				'deleted' => array( 'type' => 'boolean' ),
 				'message' => $string,
 			)
 		);
+		$label                = array(
+			'type'      => 'string',
+			'minLength' => 1,
+			'maxLength' => 200,
+		);
+		$field_name           = array(
+			'type'      => 'string',
+			'pattern'   => '^[a-zA-Z_][a-zA-Z0-9_]*$',
+			'maxLength' => 100,
+		);
+		$field_changes        = array(
+			'label'       => $label,
+			'required'    => array( 'type' => 'boolean' ),
+			'placeholder' => array(
+				'type'      => 'string',
+				'maxLength' => 200,
+			),
+			'description' => array(
+				'type'      => 'string',
+				'maxLength' => 500,
+			),
+			'options'     => array(
+				'type'     => 'array',
+				'minItems' => 1,
+				'maxItems' => 50,
+				'items'    => $label,
+			),
+		);
+		$form_settings        = self::object_schema(
+			array(
+				'login_option'                => $key,
+				'default_role'                => $key,
+				'redirect_after_registration' => array(
+					'type' => 'string',
+					'enum' => array( 'no-redirection', 'internal-page', 'external-url', 'previous-page' ),
+				),
+				'redirect_page_id'            => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+				),
+				'redirect_url'                => array(
+					'type'      => 'string',
+					'maxLength' => 2000,
+				),
+				'redirect_delay'              => array(
+					'type'    => 'integer',
+					'minimum' => 0,
+					'maximum' => 300,
+				),
+				'submit_label'                => array(
+					'type'      => 'string',
+					'maxLength' => 100,
+				),
+				'success_message_position'    => array(
+					'type' => 'integer',
+					'enum' => array( 0, 1, 2 ),
+				),
+			)
+		);
+		$form_settings_result = self::object_schema(
+			array(
+				'id'        => $id,
+				'title'     => $string,
+				'status'    => $string,
+				'shortcode' => $string,
+				// Saved values may be empty or older than the input rules, so the answer only promises their types.
+				'settings'  => self::object_schema(
+					array_map(
+						function ( $schema ) {
+							return array( 'type' => $schema['type'] );
+						},
+						$form_settings['properties']
+					)
+				),
+				'choices'   => self::object_schema(
+					array(
+						'login_option' => array(
+							'type'  => 'array',
+							'items' => $string,
+						),
+						'default_role' => array(
+							'type'  => 'array',
+							'items' => $string,
+						),
+					)
+				),
+			)
+		);
 
 		return array(
 			'forms'       => array(
 				'label'       => __( 'Forms', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see your registration forms and their fields.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your registration forms and their fields. With change access they can also create a draft form from a template, add, change, move and remove fields, and change some form settings.', 'user-registration' ),
 				'abilities'   => array(
-					'list-forms' => array(
+					'list-forms'           => array(
 						'label'       => __( 'List registration forms', 'user-registration' ),
 						'description' => __( 'List editable registration forms. Pagination follows scanned form pages; inaccessible forms are omitted.', 'user-registration' ),
 						'input'       => $pagination,
@@ -488,7 +576,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'forms_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_forms' ),
 					),
-					'get-form'   => array(
+					'get-form'             => array(
 						'label'       => __( 'Get registration form', 'user-registration' ),
 						'description' => __( 'Read form identity and field definitions without raw settings or default values.', 'user-registration' ),
 						'input'       => array( 'id' => $id ),
@@ -496,6 +584,134 @@ class UR_Abilities {
 						'output'      => $detail,
 						'permission'  => array( __CLASS__, 'forms_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'get_form' ),
+					),
+					'list-form-templates'  => array(
+						'label'       => __( 'List form templates', 'user-registration' ),
+						'description' => __( 'List the templates a new registration form can start from, as on the Add New form screen. Templates that need a higher plan are marked as not available. Also says whether another form may be created.', 'user-registration' ),
+						'output'      => self::object_schema(
+							array(
+								'items'           => array(
+									'type'  => 'array',
+									'items' => self::object_schema(
+										array(
+											'slug'      => $string,
+											'title'     => $string,
+											'pro'       => array( 'type' => 'boolean' ),
+											'plans'     => array(
+												'type'  => 'array',
+												'items' => $string,
+											),
+											'addons'    => array(
+												'type'  => 'array',
+												'items' => $string,
+											),
+											'available' => array( 'type' => 'boolean' ),
+										)
+									),
+								),
+								'can_create_form' => array( 'type' => 'boolean' ),
+							)
+						),
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'list_form_templates' ),
+					),
+					'create-form'          => array(
+						'label'       => __( 'Create registration form', 'user-registration' ),
+						'description' => __( 'Create a registration form from a template with a title, like Add New on the forms screen. The form starts as a draft for the admin to check and publish. A second form needs the Multiple Registration module.', 'user-registration' ),
+						'level'       => 'write',
+						'input'       => array(
+							'title'    => $label,
+							'template' => $key + array( 'default' => 'blank' ),
+						),
+						'required'    => array( 'title' ),
+						'output'      => $detail,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'create_form' ),
+					),
+					'add-form-field'       => array(
+						'label'       => __( 'Add form field', 'user-registration' ),
+						'description' => __( 'Add a field to a form and save it like the form builder. It goes after after_field, or at the end of the form. type is one of this site\'s field types, for example text, email, select or checkbox; Pro fields need Pro and password fields cannot be added.', 'user-registration' ),
+						'level'       => 'write',
+						'input'       => array(
+							'form_id'     => $id,
+							'type'        => $key,
+							'after_field' => $field_name,
+						) + $field_changes,
+						'required'    => array( 'form_id', 'type' ),
+						'output'      => $detail,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'add_form_field' ),
+					),
+					'update-form-field'    => array(
+						'label'       => __( 'Update form field', 'user-registration' ),
+						'description' => __( 'Change a field\'s label, required setting, placeholder, description or choices, and save the form like the form builder. Nothing else about the field changes.', 'user-registration' ),
+						'level'       => 'write',
+						'input'       => array(
+							'form_id'    => $id,
+							'field_name' => $field_name,
+						) + $field_changes,
+						'required'    => array( 'form_id', 'field_name' ),
+						'output'      => $detail,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'update_form_field' ),
+					),
+					'move-form-field'      => array(
+						'label'       => __( 'Move form field', 'user-registration' ),
+						'description' => __( 'Move a field to just after after_field, or to the top of the form when after_field is left out, and save the form like the form builder.', 'user-registration' ),
+						'level'       => 'write',
+						'input'       => array(
+							'form_id'     => $id,
+							'field_name'  => $field_name,
+							'after_field' => $field_name,
+						),
+						'required'    => array( 'form_id', 'field_name' ),
+						'output'      => $detail,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'move_form_field' ),
+					),
+					'remove-form-field'    => array(
+						'label'       => __( 'Remove form field', 'user-registration' ),
+						'description' => __( 'Remove a field from a form and save it like the form builder. The email and password fields cannot be removed. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array(
+							'form_id'    => $id,
+							'field_name' => $field_name,
+						),
+						'required'    => array( 'form_id', 'field_name' ),
+						'output'      => $detail,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_remove_form_field' ),
+						'execute'     => array( 'UR_Abilities_Data', 'remove_form_field' ),
+					),
+					'get-form-settings'    => array(
+						'label'       => __( 'Get form settings', 'user-registration' ),
+						'description' => __( 'Read the form settings AI assistants may change, the roles and login options allowed, and the shortcode that places the form on a page.', 'user-registration' ),
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $form_settings_result,
+						'permission'  => array( __CLASS__, 'forms_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'get_form_settings' ),
+					),
+					'update-form-settings' => array(
+						'label'       => __( 'Update form settings', 'user-registration' ),
+						'description' => __( 'Change some settings of a form: login option, role of new members, redirect after sign-up, submit button label and success message position. Other settings stay as they are. Admin-level roles are never allowed. Email settings are not included. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array(
+							'form_id'  => $id,
+							'settings' => array(
+								'type'                 => 'object',
+								'properties'           => $form_settings['properties'],
+								'additionalProperties' => false,
+								'minProperties'        => 1,
+							),
+						),
+						'required'    => array( 'form_id', 'settings' ),
+						'output'      => $form_settings_result,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_update_form_settings' ),
+						'execute'     => array( 'UR_Abilities_Data', 'update_form_settings' ),
 					),
 				),
 			),
@@ -785,6 +1001,20 @@ class UR_Abilities {
 	 */
 	public static function forms_permission( $input ) {
 		return current_user_can( 'manage_user_registration' ) && ( empty( $input['id'] ) || current_user_can( 'edit_post', $input['id'] ) );
+	}
+
+	/**
+	 * Match the capability the form builder asks for to create or save a form.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Input.
+	 * @return bool
+	 */
+	public static function forms_write_permission( $input ) {
+		$input = is_array( $input ) ? $input : array();
+
+		return current_user_can( 'manage_options' ) && self::forms_permission( array( 'id' => $input['form_id'] ?? ( $input['id'] ?? 0 ) ) );
 	}
 
 	/**

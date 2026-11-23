@@ -213,9 +213,11 @@ class UR_Abilities_Activity {
 	/**
 	 * Get the name of the AI app, which is the name the admin gave its application password.
 	 *
+	 * @since xx.xx.xx Public, so AI-made records can note which app made them.
+	 *
 	 * @return string Empty when the call did not come through an application password.
 	 */
-	private static function app_name() {
+	public static function app_name() {
 		if ( ! function_exists( 'rest_get_authenticated_app_password' ) || ! class_exists( 'WP_Application_Passwords' ) ) {
 			return '';
 		}
