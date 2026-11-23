@@ -675,7 +675,35 @@ class PaypalService {
 			return;
 		}
 
+		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything.
+		if ( in_array( $txn_type, array( 'subscr_signup', 'web_accept', 'subscr_payment', 'subscr_cancel' ), true )
+			&& ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) ) {
+			PaymentGatewayLogging::log_transaction_failure(
+				'paypal',
+				esc_html__( 'Payment ignored: recipient emails do not match', 'user-registration' ),
+				array(
+					'subscription_id' => $subscription_id,
+					'member_id'       => $member_id,
+				)
+			);
+			return;
+		}
+
 		if ( 'subscr_cancel' === $txn_type ) { // handle cancel ipn.
+			$paypal_subscr_id = (string) ( $subscription['subscription_id'] ?? '' );
+			// A stored PayPal subscription ID must match, so a cancellation of another (e.g. replaced) PayPal subscription is ignored.
+			if ( '' !== $paypal_subscr_id && ( $data['subscr_id'] ?? '' ) !== $paypal_subscr_id ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'Cancellation ignored: PayPal subscription ID does not match this membership',
+					array(
+						'error_code'      => 'IPN_SUBSCR_ID_MISMATCH',
+						'member_id'       => $member_id,
+						'subscription_id' => $subscription_id,
+					)
+				);
+				return;
+			}
 			PaymentGatewayLogging::log_subscription_cancellation(
 				'paypal',
 				'Subscription cancellation IPN received from PayPal',
@@ -714,20 +742,6 @@ class PaypalService {
 		}
 		$currency_meta  = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $latest_order['ID'], 'local_currency' );
 		$order_currency = ! empty( $currency_meta['meta_value'] ) ? $currency_meta['meta_value'] : get_option( 'user_registration_payment_currency', 'USD' );
-
-		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything.
-		if ( in_array( $txn_type, array( 'subscr_signup', 'web_accept', 'subscr_payment' ), true )
-			&& ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) ) {
-			PaymentGatewayLogging::log_transaction_failure(
-				'paypal',
-				esc_html__( 'Payment ignored: recipient emails do not match', 'user-registration' ),
-				array(
-					'subscription_id' => $subscription_id,
-					'member_id'       => $member_id,
-				)
-			);
-			return;
-		}
 
 		// return if first ipn received, change the status of order and subscription to complete and active respectively.
 		if ( 'subscr_signup' === $txn_type || 'web_accept' === $txn_type ) {
