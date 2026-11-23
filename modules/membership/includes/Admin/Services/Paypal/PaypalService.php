@@ -675,13 +675,13 @@ class PaypalService {
 			return;
 		}
 
-		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything.
-		if ( in_array( $txn_type, array( 'subscr_signup', 'web_accept', 'subscr_payment', 'subscr_cancel' ), true )
-			&& ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) ) {
+		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything, whatever its type.
+		if ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) {
 			PaymentGatewayLogging::log_transaction_failure(
 				'paypal',
-				esc_html__( 'Payment ignored: recipient emails do not match', 'user-registration' ),
+				esc_html__( 'IPN ignored: recipient emails do not match', 'user-registration' ),
 				array(
+					'txn_type'        => $txn_type,
 					'subscription_id' => $subscription_id,
 					'member_id'       => $member_id,
 				)
@@ -691,17 +691,21 @@ class PaypalService {
 
 		if ( 'subscr_cancel' === $txn_type ) { // handle cancel ipn.
 			$paypal_subscr_id = (string) ( $subscription['subscription_id'] ?? '' );
-			// A stored PayPal subscription ID must match, so a cancellation of another (e.g. replaced) PayPal subscription is ignored.
-			if ( '' !== $paypal_subscr_id && ( $data['subscr_id'] ?? '' ) !== $paypal_subscr_id ) {
+			// Only a membership with a stored PayPal ID can be cancelled, and only by that subscription; one-time memberships never have one.
+			if ( '' === $paypal_subscr_id || ( $data['subscr_id'] ?? '' ) !== $paypal_subscr_id ) {
 				PaymentGatewayLogging::log_error(
 					'paypal',
-					'Cancellation ignored: PayPal subscription ID does not match this membership',
+					'Cancellation ignored: no stored PayPal subscription ID or it does not match this membership',
 					array(
 						'error_code'      => 'IPN_SUBSCR_ID_MISMATCH',
 						'member_id'       => $member_id,
 						'subscription_id' => $subscription_id,
 					)
 				);
+				return;
+			}
+			// PayPal retries IPNs and a member may already have cancelled on the site.
+			if ( 'canceled' === ( $subscription['status'] ?? '' ) ) {
 				return;
 			}
 			PaymentGatewayLogging::log_subscription_cancellation(
@@ -715,13 +719,20 @@ class PaypalService {
 					'subscr_id'           => $data['subscr_id'] ?? 'N/A',
 				)
 			);
-			$canceled = array( 'status' => 'canceled' );
-			// With a stored PayPal ID the write only lands while the row still carries it, so an upgrade between the check and the write is not cancelled.
-			$is_updated = '' === $paypal_subscr_id
-				? $this->members_subscription_repository->update( $subscription_id, $canceled )
-				: $this->members_subscription_repository->update_if_subscription_id_matches( $subscription_id, $canceled, $paypal_subscr_id );
+			// The write only lands while the row still carries this PayPal ID, so an upgrade between the check and the write is not cancelled.
+			$is_updated = $this->members_subscription_repository->update_if_subscription_id_matches( $subscription_id, array( 'status' => 'canceled' ), $paypal_subscr_id );
 
-			if ( ! $is_updated ) {
+			if ( false === $is_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'Cancellation not applied: database error',
+					array(
+						'error_code'      => 'IPN_CANCEL_DB_ERROR',
+						'member_id'       => $member_id,
+						'subscription_id' => $subscription_id,
+					)
+				);
+			} elseif ( 0 === $is_updated ) {
 				PaymentGatewayLogging::log_error(
 					'paypal',
 					'Cancellation not applied: the membership moved to another PayPal subscription',
