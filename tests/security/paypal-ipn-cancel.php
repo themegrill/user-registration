@@ -41,6 +41,9 @@ namespace {
 			if ( in_array( $name, array( 'update', 'update_if_subscription_id_matches' ), true ) ) {
 				$GLOBALS['updates'][] = array_merge( array( $name ), $args );
 				return 'update_if_subscription_id_matches' === $name ? $GLOBALS['update_result'] : 1; }
+			// The handler reads the row once at the start; any later read sees what a concurrent request changed.
+			if ( 'get_subscription_data_by_subscription_id' === $name && ! empty( $GLOBALS['reread'] ) && ++$GLOBALS['sub_reads'] > 1 ) {
+				return $GLOBALS['reread']; }
 			return $GLOBALS['repo'][ $name ] ?? array();
 		}
 	}
@@ -49,6 +52,7 @@ namespace {
 		'namespace WPEverest\URMembership\Admin\Services\Paypal; use WPEverest\URMembership\Admin\Services\PaymentGatewayLogging; use WPEverest\URMembership\Admin\Services\EmailService; class IpnHarness { public $members_orders_repository, $members_subscription_repository, $membership_repository, $orders_repository;'
 		. 'public function validate_ipn( $mode ) { return true; }'
 		. security_function( 'modules/membership/includes/Admin/Services/Paypal/PaypalService.php', 'handle_membership_paypal_ipn' )
+		. security_function( 'modules/membership/includes/Admin/Services/Paypal/PaypalService.php', 'is_cancelled_with_paypal_id' )
 		. '}'
 	);
 
@@ -56,6 +60,7 @@ namespace {
 	function deliver_ipn( $fields, $stored_paypal_id = PAYPAL_SUB, $status = 'active', $update_result = 1 ) {
 		$GLOBALS['updates']                       = array();
 		$GLOBALS['log_codes']                     = array();
+		$GLOBALS['sub_reads']                     = 0;
 		$GLOBALS['update_result']                 = $update_result;
 		$GLOBALS['repo']                          = array(
 			'get_member_orders'                        => array(
@@ -113,6 +118,20 @@ namespace {
 	$writes = deliver_ipn( cancel_fields( MERCHANT, PAYPAL_SUB ), PAYPAL_SUB, 'active', 0 );
 	security_assert( 1 === count( $writes ) && 'update_if_subscription_id_matches' === $writes[0][0], 'A cancel never falls back to an unconditional write' );
 	security_assert( in_array( 'IPN_STALE_CANCEL', $GLOBALS['log_codes'], true ), 'A cancel that matched no row is reported as stale' );
+	// A concurrent retry of this same cancel finished first: the write matches no row, but the row is cancelled and still ours.
+	$GLOBALS['reread'] = array(
+		'ID'              => 3,
+		'item_id'         => 7,
+		'status'          => 'canceled',
+		'subscription_id' => PAYPAL_SUB,
+	);
+	deliver_ipn( cancel_fields( MERCHANT, PAYPAL_SUB ), PAYPAL_SUB, 'active', 0 );
+	security_assert( ! array_intersect( array( 'IPN_STALE_CANCEL', 'IPN_CANCEL_DB_ERROR' ), $GLOBALS['log_codes'] ), 'A concurrent duplicate cancel is a quiet retry, not a stale cancel' );
+	// The row is cancelled but now bound to a different PayPal subscription: that is a real stale cancel.
+	$GLOBALS['reread']['subscription_id'] = 'I-NEWER';
+	deliver_ipn( cancel_fields( MERCHANT, PAYPAL_SUB ), PAYPAL_SUB, 'active', 0 );
+	security_assert( in_array( 'IPN_STALE_CANCEL', $GLOBALS['log_codes'], true ), 'A cancelled row bound to another PayPal subscription is still reported as stale' );
+	unset( $GLOBALS['reread'] );
 	deliver_ipn( cancel_fields( MERCHANT, PAYPAL_SUB ), PAYPAL_SUB, 'active', false );
 	security_assert( in_array( 'IPN_CANCEL_DB_ERROR', $GLOBALS['log_codes'], true ) && ! in_array( 'IPN_STALE_CANCEL', $GLOBALS['log_codes'], true ), 'A database error is reported as such, not as a stale cancel' );
 

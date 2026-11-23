@@ -519,6 +519,22 @@ class PaypalService {
 	}
 
 	/**
+	 * Whether a membership is already cancelled and still bound to the given PayPal subscription.
+	 *
+	 * @param int|string $subscription_id Membership subscription row ID.
+	 * @param string     $paypal_subscr_id PayPal subscription ID the IPN named.
+	 *
+	 * @return bool
+	 */
+	private function is_cancelled_with_paypal_id( $subscription_id, $paypal_subscr_id ) {
+		$current = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
+
+		return ! empty( $current )
+			&& 'canceled' === ( $current['status'] ?? '' )
+			&& (string) ( $current['subscription_id'] ?? '' ) === $paypal_subscr_id;
+	}
+
+	/**
 	 * Handle membership paypal ipn
 	 *
 	 * @param $data
@@ -732,6 +748,8 @@ class PaypalService {
 						'subscription_id' => $subscription_id,
 					)
 				);
+			} elseif ( 0 === $is_updated && $this->is_cancelled_with_paypal_id( $subscription_id, $paypal_subscr_id ) ) {
+				return; // A concurrent retry of this same cancel got there first.
 			} elseif ( 0 === $is_updated ) {
 				PaymentGatewayLogging::log_error(
 					'paypal',
