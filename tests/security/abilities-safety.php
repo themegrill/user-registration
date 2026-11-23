@@ -1,10 +1,9 @@
 <?php // phpcs:ignore WordPress.Files.FileName.InvalidClassFileName -- Test double shares this file.
 /**
- * Regression: one switch pauses every AI change while reading stays available, and a risky ability only shows a
- * preview until it is called again with the single-use code that preview handed out. The code works once, only for
- * the exact same request and the same user, and expires.
+ * Regression: a risky ability only shows a preview until it is called again with the single-use code that preview
+ * handed out. The code works once, only for the exact same request and the same user, and expires.
  *
- * Runs the real `UR_Abilities`, `UR_Abilities_Access` and `UR_Abilities_Safety` classes with WordPress test doubles;
+ * Runs the real `UR_Abilities` and `UR_Abilities_Safety` classes with WordPress test doubles;
  * no live site or database is used.
  *
  * @package UserRegistration/Tests
@@ -147,7 +146,6 @@ add_filter(
 		return $areas;
 	}
 );
-UR_Abilities_Safety::init();
 
 function abilities_registered( $options ) {
 	$GLOBALS['registered'] = array();
@@ -160,24 +158,6 @@ $open = array(
 	'user_registration_enable_abilities'      => 'yes',
 	'user_registration_ability_access_people' => 'delete',
 );
-
-// The pause switch hides every change and leaves reading alone.
-$names = array_keys( abilities_registered( $open ) );
-security_assert( in_array( 'user-registration/rename-member', $names, true ) && in_array( 'user-registration/remove-member', $names, true ), 'Changes are available while the pause switch is off' );
-
-$names = array_keys( abilities_registered( $open + array( 'user_registration_pause_ai_changes' => 'yes' ) ) );
-security_assert( ! in_array( 'user-registration/rename-member', $names, true ) && ! in_array( 'user-registration/cancel-member', $names, true ) && ! in_array( 'user-registration/remove-member', $names, true ), 'The pause switch hides every ability that changes or deletes data' );
-security_assert( in_array( 'user-registration/see-member', $names, true ) && in_array( 'user-registration/list-forms', $names, true ), 'The pause switch leaves reading available' );
-security_assert( false === UR_Abilities_Safety::maybe_pause( false, 'x', 'y', 'read' ), 'The pause switch never switches back on an ability another rule hid' );
-
-// The pause switch is added to the access card from a hook.
-$card     = array( 'sections' => array( 'ai_abilities_access' => array( 'settings' => array( array( 'id' => 'user_registration_ability_access_forms' ) ) ) ) );
-$settings = UR_Abilities_Safety::add_settings( $card );
-$first    = $settings['sections']['ai_abilities_access']['settings'][0];
-security_assert( 'user_registration_pause_ai_changes' === $first['id'] && 'toggle' === $first['type'] && 'no' === $first['default'], 'The pause switch is a toggle at the top of the access card, off by default' );
-security_assert( 2 === count( $settings['sections']['ai_abilities_access']['settings'] ), 'The area settings stay after the pause switch' );
-security_assert( array( 'sections' => array() ) === UR_Abilities_Safety::add_settings( array( 'sections' => array() ) ), 'Without the access card the pause switch adds nothing' );
-security_assert( 'odd' === UR_Abilities_Safety::add_settings( 'odd' ), 'Settings of an unexpected shape are returned untouched' );
 
 // A risky ability shows a preview first.
 $all = abilities_registered( $open );

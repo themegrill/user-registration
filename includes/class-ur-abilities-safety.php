@@ -7,73 +7,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-/** Pause switch, and a preview before a risky ability runs. */
+/** A preview before a risky ability runs. */
 class UR_Abilities_Safety {
-	/** Option that holds the pause switch. */
-	const PAUSE_OPTION = 'user_registration_pause_ai_changes';
-
 	/** Prefix of the transient that holds a waiting confirmation. */
 	const TRANSIENT_PREFIX = 'ur_ability_confirm_';
-
-	/** Hook the pause switch and its setting, so neither needs code in the registration. */
-	public static function init() {
-		add_filter( 'user_registration_ability_enabled', array( __CLASS__, 'maybe_pause' ), 10, 4 );
-		add_filter( 'user_registration_settings_advanced_others', array( __CLASS__, 'add_settings' ), 20 );
-	}
-
-	/**
-	 * Whether the admin has paused every AI change.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @return bool
-	 */
-	public static function is_paused() {
-		return ur_option_checked( self::PAUSE_OPTION, false );
-	}
-
-	/**
-	 * Hide abilities that change or delete data while the pause switch is on. Reading stays available.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @param bool   $enabled Whether the ability is available.
-	 * @param string $slug    Area slug.
-	 * @param string $name    Ability name.
-	 * @param string $level   Level of the ability.
-	 * @return bool
-	 */
-	public static function maybe_pause( $enabled, $slug = '', $name = '', $level = 'read' ) {
-		return $enabled && ( 'read' === $level || ! self::is_paused() );
-	}
-
-	/**
-	 * Add the pause switch to the top of the AI abilities access card.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @param array $settings Settings of the Others section.
-	 * @return array
-	 */
-	public static function add_settings( $settings ) {
-		if ( ! is_array( $settings ) || empty( $settings['sections']['ai_abilities_access']['settings'] ) ) {
-			return $settings;
-		}
-
-		array_unshift(
-			$settings['sections']['ai_abilities_access']['settings'],
-			array(
-				'title'   => __( 'Pause AI Changes', 'user-registration' ),
-				'desc'    => __( 'Hide every ability that changes or deletes data from AI assistants until you turn this off. Reading stays available.', 'user-registration' ),
-				'id'      => self::PAUSE_OPTION,
-				'type'    => 'toggle',
-				'css'     => '',
-				'default' => 'no',
-			)
-		);
-
-		return $settings;
-	}
 
 	/**
 	 * Schema of the confirmation code an AI sends back to run a previewed ability.

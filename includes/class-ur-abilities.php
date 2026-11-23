@@ -14,7 +14,6 @@ class UR_Abilities {
 		add_action( 'wp_abilities_api_categories_init', array( __CLASS__, 'register_category' ) );
 		add_action( 'wp_abilities_api_init', array( __CLASS__, 'register_abilities' ) );
 		UR_Abilities_Access::init();
-		UR_Abilities_Safety::init();
 	}
 
 	/** Register the shared category. */
@@ -120,8 +119,7 @@ class UR_Abilities {
 				 * Filters whether an ability is available to AI assistants.
 				 *
 				 * The default follows the access the admin chose for the area. A module can hook in to hide
-				 * abilities for its own reasons, for example a pause switch. A hidden ability is not registered, so
-				 * the AI cannot see or call it.
+				 * abilities for its own reasons. A hidden ability is not registered, so the AI cannot see or call it.
 				 *
 				 * @since xx.xx.xx
 				 *
