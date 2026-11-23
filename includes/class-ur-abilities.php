@@ -155,12 +155,16 @@ class UR_Abilities {
 						'category'            => 'user-registration',
 						'input_schema'        => $input,
 						'output_schema'       => $confirm ? UR_Abilities_Safety::output_schema( $ability['output'] ) : $ability['output'],
-						'permission_callback' => function ( $args = null ) use ( $slug, $area, $ability ) {
-							$locked = self::plan_error( $slug, $area );
+						'permission_callback' => UR_Abilities_Activity::wrap_permission(
+							$name,
+							$level,
+							function ( $args = null ) use ( $slug, $area, $ability ) {
+								$locked = self::plan_error( $slug, $area );
 
-							return is_wp_error( $locked ) ? $locked : call_user_func( $ability['permission'], $args );
-						},
-						'execute_callback'    => $confirm ? UR_Abilities_Safety::wrap( $name, $ability ) : $ability['execute'],
+								return is_wp_error( $locked ) ? $locked : call_user_func( $ability['permission'], $args );
+							}
+						),
+						'execute_callback'    => UR_Abilities_Activity::wrap_execute( $name, $level, $confirm ? UR_Abilities_Safety::wrap( $name, $ability ) : $ability['execute'] ),
 						'meta'                => array(
 							'show_in_rest' => true,
 							'mcp'          => array(

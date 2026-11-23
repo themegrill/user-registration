@@ -22,6 +22,10 @@ class WP_Error {
 		$this->code = $code;
 		$this->data = $data;
 	}
+
+	public function get_error_code() {
+		return $this->code;
+	}
 }
 
 class UR_Abilities_Data {
@@ -107,6 +111,8 @@ function wp_register_ability( $name, $args ) {
 }
 
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities.php';
+require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-activity.php';
+require __DIR__ . '/abilities-activity-stubs.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-access.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-safety.php';
 
