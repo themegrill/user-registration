@@ -653,6 +653,20 @@ class MembershipService {
 	}
 
 	/**
+	 * Whether this site's edition allows a plan type. Recurring (subscription) plans need Pro.
+	 *
+	 * Shared by the plan editor and the AI abilities, so the lock is the same everywhere.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $type Plan type: free, paid or subscription.
+	 * @return bool
+	 */
+	public static function is_plan_type_available( $type ) {
+		return 'subscription' !== $type || UR_PRO_ACTIVE;
+	}
+
+	/**
 	 * Validate Membership Data.
 	 *
 	 * @param array $data Membership data.
@@ -664,7 +678,7 @@ class MembershipService {
 			'status' => true,
 		);
 
-		if ( isset( $data['post_meta_data']['type'] ) && 'subscription' === $data['post_meta_data']['type'] && ! UR_PRO_ACTIVE ) {
+		if ( isset( $data['post_meta_data']['type'] ) && ! self::is_plan_type_available( $data['post_meta_data']['type'] ) ) {
 			$result['status']  = false;
 			$result['message'] = esc_html__( 'Subscription type is a paid feature.', 'user-registration' );
 

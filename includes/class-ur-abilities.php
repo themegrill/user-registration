@@ -53,7 +53,7 @@ class UR_Abilities {
 		/**
 		 * Filters the AI ability areas, so a module or an addon can add its own from its own code.
 		 *
-		 * Each area is an array with a translated `label`, an optional `plan` (list of plan slugs allowed to use it,
+		 * Each area is an array with a translated `label`, an optional `description` shown as the access setting's tooltip, an optional `plan` (list of plan slugs allowed to use it,
 		 * empty for every site) and `abilities`, keyed by ability name. Each ability takes:
 		 * `label`, `description`, `level` (`read`, `write` or `delete`, default `read`), `input` (property schemas),
 		 * `required` (property names), `output` (a schema, see UR_Abilities::object_schema()), `permission` and
@@ -469,8 +469,9 @@ class UR_Abilities {
 
 		return array(
 			'forms'       => array(
-				'label'     => __( 'Forms', 'user-registration' ),
-				'abilities' => array(
+				'label'       => __( 'Forms', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your registration forms and their fields.', 'user-registration' ),
+				'abilities'   => array(
 					'list-forms' => array(
 						'label'       => __( 'List registration forms', 'user-registration' ),
 						'description' => __( 'List editable registration forms. Pagination follows scanned form pages; inaccessible forms are omitted.', 'user-registration' ),
@@ -491,8 +492,9 @@ class UR_Abilities {
 				),
 			),
 			'members'     => array(
-				'label'     => __( 'Members', 'user-registration' ),
-				'abilities' => array(
+				'label'       => __( 'Members', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see registered members, their approval status and sign-up counts. With change access they can also approve, deny and resend the verification email.', 'user-registration' ),
+				'abilities'   => array(
 					'get-registration-stats'    => array(
 						'label'       => __( 'Get registration statistics', 'user-registration' ),
 						'description' => __( 'Count form registrations by UTC day, form and current approval status. Defaults to 30 days; maximum 93 days and 10000 registrations. These are not historical status transitions or conversion analytics.', 'user-registration' ),
@@ -566,8 +568,9 @@ class UR_Abilities {
 				),
 			),
 			'memberships' => array(
-				'label'     => __( 'Memberships and payments', 'user-registration' ),
-				'abilities' => array(
+				'label'       => __( 'Memberships', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your membership plans and who is subscribed to them. With change access they can also assign a plan, extend a subscription or cancel one.', 'user-registration' ),
+				'abilities'   => array(
 					'list-memberships'    => array(
 						'label'       => __( 'List membership plans', 'user-registration' ),
 						'description' => __( 'List membership plans with price, billing period and the number of members with an active subscription.', 'user-registration' ),
@@ -590,6 +593,55 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_subscriptions' ),
 					),
+					'assign-membership'   => array(
+						'label'       => __( 'Assign membership plan', 'user-registration' ),
+						'description' => __( 'Give a member a plan for free, active from today, like Add Subscription on the Subscriptions screen with a manual payment. Recurring plans need Pro and end after one billing period unless expiry_date is given. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array(
+							'member_id'     => $id,
+							'membership_id' => $id,
+							'expiry_date'   => $date,
+						),
+						'required'    => array( 'member_id', 'membership_id' ),
+						'output'      => $subscription,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_assign_membership' ),
+						'execute'     => array( 'UR_Abilities_Data', 'assign_membership' ),
+					),
+					'extend-subscription' => array(
+						'label'       => __( 'Extend subscription', 'user-registration' ),
+						'description' => __( 'Move an active subscription\'s expiry date later, like editing it on the Subscriptions screen. Needs Pro for recurring plans, and not for subscriptions billed by a payment gateway such as Stripe or PayPal. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array(
+							'id'          => $id,
+							'expiry_date' => $date,
+						),
+						'required'    => array( 'id', 'expiry_date' ),
+						'output'      => $subscription,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_extend_subscription' ),
+						'execute'     => array( 'UR_Abilities_Data', 'extend_subscription' ),
+					),
+					'cancel-subscription' => array(
+						'label'       => __( 'Cancel subscription', 'user-registration' ),
+						'description' => __( 'Cancel an active subscription the same way members cancel their own: billing stops at the payment gateway and paid access lasts until the expiry date. Recurring plans need Pro. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $subscription,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_cancel_subscription' ),
+						'execute'     => array( 'UR_Abilities_Data', 'cancel_subscription' ),
+					),
+				),
+			),
+			'payments'    => array(
+				'label'       => __( 'Payments', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see membership payments and revenue totals.', 'user-registration' ),
+				'abilities'   => array(
 					'list-orders'         => array(
 						'label'       => __( 'List membership payments', 'user-registration' ),
 						'description' => __( 'List membership payments, newest first, by status, gateway, plan or payment date range.', 'user-registration' ),
@@ -693,5 +745,16 @@ class UR_Abilities {
 	 */
 	public static function moderate_permission() {
 		return self::members_permission() && current_user_can( 'promote_users' );
+	}
+
+	/**
+	 * Match the capability the Subscriptions screen asks for to add or edit a subscription.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public static function subscriptions_permission() {
+		return self::members_permission() && current_user_can( 'manage_options' );
 	}
 }

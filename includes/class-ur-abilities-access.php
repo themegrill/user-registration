@@ -81,7 +81,7 @@ class UR_Abilities_Access {
 
 			$fields[] = array(
 				'title'    => $area['label'],
-				'desc'     => __( 'What AI assistants can do here. Anything above this level is hidden from them.', 'user-registration' ),
+				'desc'     => ! empty( $area['description'] ) && is_string( $area['description'] ) ? $area['description'] : __( 'What AI assistants can do here. Anything above this level is hidden from them.', 'user-registration' ),
 				'id'       => self::option_id( $slug ),
 				'type'     => 'select',
 				'default'  => 'read',

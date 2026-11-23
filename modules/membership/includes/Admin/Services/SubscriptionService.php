@@ -227,6 +227,8 @@ class SubscriptionService {
 
 				return $mollie_service->cancel_subscription( $order, $subscription );
 			case 'bank':
+			case 'manual':
+				// No gateway holds these subscriptions, so there is nothing to stop remotely.
 				return array( 'status' => true );
 			default:
 				// The fourth argument tells a gateway add-on whether the cancel is immediate, so it only ends access right away then.
@@ -1920,5 +1922,219 @@ class SubscriptionService {
 				}
 			}
 		}
+	}
+
+	/**
+	 * Add a subscription and its order for a member, the way the Add Subscription screen does.
+	 *
+	 * Shared by the admin screen and the AI abilities, so both behave the same.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $subscription_data Fields of the Add Subscription form: member, plan, start_date, expiry_date,
+	 *                                 status, billing_amount, billing_cycle, subscription_id and payment_gateway.
+	 * @return array|\WP_Error The new subscription, the new order or false, and whether the plan is recurring.
+	 */
+	public function create_admin_subscription( $subscription_data ) {
+		if ( empty( $subscription_data['member'] ) || empty( $subscription_data['plan'] ) ) {
+			return new \WP_Error( 'ur_subscription_missing_fields', __( 'Please fill in all required fields.', 'user-registration' ) );
+		}
+
+		$subscription_repository = new SubscriptionRepository();
+
+		$membership_id   = absint( $subscription_data['plan'] );
+		$membership      = get_post( $membership_id );
+		$membership_meta = json_decode( wp_unslash( get_post_meta( $membership_id, 'ur_membership', true ) ), true );
+
+		if ( ! $membership || empty( $membership_meta ) ) {
+			return new \WP_Error( 'ur_subscription_invalid_plan', __( 'Invalid membership plan selected.', 'user-registration' ) );
+		}
+
+		$is_recurring = isset( $membership_meta['type'] ) && 'subscription' === $membership_meta['type'];
+
+		if ( $is_recurring && empty( $subscription_data['expiry_date'] ) ) {
+			return new \WP_Error( 'ur_subscription_missing_expiry', __( 'Expiry date is required for recurring subscription plans.', 'user-registration' ) );
+		}
+
+		$start_date     = ! empty( $subscription_data['start_date'] ) ? sanitize_text_field( $subscription_data['start_date'] ) : current_time( 'Y-m-d' );
+		$status         = isset( $subscription_data['status'] ) ? sanitize_text_field( $subscription_data['status'] ) : 'pending';
+		$billing_amount = isset( $subscription_data['billing_amount'] ) ? floatval( $subscription_data['billing_amount'] ) : ( $membership_meta['amount'] ?? 0 );
+
+		if ( $is_recurring ) {
+			$expiry_date   = ! empty( $subscription_data['expiry_date'] ) ? sanitize_text_field( $subscription_data['expiry_date'] ) : null;
+			$billing_cycle = isset( $subscription_data['billing_cycle'] ) && ! empty( $subscription_data['billing_cycle'] ) ? sanitize_text_field( $subscription_data['billing_cycle'] ) : ( $membership_meta['subscription']['duration'] ?? 'month' );
+		} else {
+			$expiry_date   = null;
+			$billing_cycle = '';
+		}
+
+		$data = array(
+			'user_id'           => absint( $subscription_data['member'] ),
+			'item_id'           => $membership_id,
+			'start_date'        => $start_date,
+			'expiry_date'       => $expiry_date,
+			'next_billing_date' => $expiry_date,
+			'billing_cycle'     => $billing_cycle,
+			'billing_amount'    => $billing_amount,
+			'status'            => $status,
+			'cancel_sub'        => $membership_meta['cancel_subscription'] ?? 'immediately',
+		);
+
+		if ( ! empty( $subscription_data['subscription_id'] ) ) {
+			$data['subscription_id'] = sanitize_text_field( $subscription_data['subscription_id'] );
+		}
+
+		$subscription = $subscription_repository->create( $data );
+
+		if ( false === $subscription ) {
+			return new \WP_Error( 'ur_subscription_create_failed', __( 'Failed to create subscription.', 'user-registration' ) );
+		}
+
+		$orders_repository = new OrdersRepository();
+		$current_user      = wp_get_current_user();
+		$transaction_id    = ! empty( $subscription_data['subscription_id'] ) ? sanitize_text_field( $subscription_data['subscription_id'] ) : 'sub_' . $subscription['ID'] . '_' . time();
+		$payment_gateway   = isset( $subscription_data['payment_gateway'] ) && ! empty( $subscription_data['payment_gateway'] ) ? sanitize_text_field( $subscription_data['payment_gateway'] ) : 'manual';
+
+		$order_type = $is_recurring ? 'subscription' : 'one-time';
+		$notes_text = $is_recurring
+			? sprintf(
+				/* translators: %s: Current user display name */
+				__( 'Recurring subscription created by %s', 'user-registration' ),
+				$current_user->display_name
+			)
+			: sprintf(
+				/* translators: %s: Current user display name */
+				__( 'One-time membership created by %s', 'user-registration' ),
+				$current_user->display_name
+			);
+
+		$order_data = array(
+			'orders_data'      => array(
+				'user_id'         => absint( $subscription_data['member'] ),
+				'item_id'         => $membership_id,
+				'subscription_id' => $subscription['ID'],
+				'created_by'      => $current_user->ID,
+				'transaction_id'  => $transaction_id,
+				'payment_method'  => $payment_gateway,
+				'total_amount'    => $billing_amount,
+				'status'          => 'pending',
+				'order_type'      => $order_type,
+				'trial_status'    => 'off',
+				'notes'           => $notes_text,
+			),
+			'orders_meta_data' => array(
+				array(
+					'meta_key'   => 'is_admin_created', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
+					'meta_value' => true, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
+				),
+			),
+		);
+
+		return array(
+			'subscription' => $subscription,
+			'order'        => $orders_repository->create( $order_data ),
+			'is_recurring' => $is_recurring,
+		);
+	}
+
+	/**
+	 * Change a subscription's dates, status or gateway id, the way the Edit Subscription screen does.
+	 *
+	 * Shared by the admin screen and the AI abilities, so both behave the same.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param int   $subscription_id   Subscription ID.
+	 * @param array $subscription_data Fields of the Edit Subscription form: expiry_date, status, subscription_id,
+	 *                                 trial_start_date and trial_end_date. Fields left out are not changed.
+	 * @return true|\WP_Error
+	 */
+	public function update_admin_subscription( $subscription_id, $subscription_data ) {
+		if ( empty( $subscription_id ) ) {
+			return new \WP_Error( 'ur_subscription_missing_id', __( 'Subscription ID is required.', 'user-registration' ) );
+		}
+
+		$subscription_repository = new SubscriptionRepository();
+		$existing_subscription   = $subscription_repository->retrieve( $subscription_id );
+
+		if ( ! $existing_subscription ) {
+			return new \WP_Error( 'ur_subscription_not_found', __( 'Subscription not found.', 'user-registration' ) );
+		}
+
+		$trial_has_ended = false;
+		if ( ! empty( $existing_subscription['trial_end_date'] ) ) {
+			$trial_end_timestamp = strtotime( $existing_subscription['trial_end_date'] );
+			$current_timestamp   = time();
+			$trial_has_ended     = $current_timestamp >= $trial_end_timestamp;
+		}
+
+		$update_data = array();
+
+		$expiry_date      = isset( $subscription_data['expiry_date'] ) && ! empty( $subscription_data['expiry_date'] ) ? sanitize_text_field( $subscription_data['expiry_date'] ) : $existing_subscription['expiry_date'];
+		$trial_start_date = isset( $subscription_data['trial_start_date'] ) && ! empty( $subscription_data['trial_start_date'] ) ? sanitize_text_field( $subscription_data['trial_start_date'] ) : $existing_subscription['trial_start_date'];
+		$trial_end_date   = isset( $subscription_data['trial_end_date'] ) && ! empty( $subscription_data['trial_end_date'] ) ? sanitize_text_field( $subscription_data['trial_end_date'] ) : $existing_subscription['trial_end_date'];
+
+		if ( ! empty( $trial_start_date ) && ! empty( $trial_end_date ) && strtotime( $trial_start_date ) > strtotime( $trial_end_date ) ) {
+			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Trial start date cannot be after trial end date.', 'user-registration' ) );
+		}
+
+		if ( ! empty( $trial_end_date ) && ! empty( $expiry_date ) && strtotime( $trial_end_date ) > strtotime( $expiry_date ) ) {
+			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Trial end date cannot exceed expiry date.', 'user-registration' ) );
+		}
+
+		if ( ! empty( $trial_start_date ) && ! empty( $expiry_date ) && strtotime( $expiry_date ) < strtotime( $trial_start_date ) ) {
+			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Expiry date cannot be less than trial start date.', 'user-registration' ) );
+		}
+
+		if ( isset( $subscription_data['expiry_date'] ) ) {
+			$update_data['expiry_date'] = ! empty( $subscription_data['expiry_date'] ) ? sanitize_text_field( $subscription_data['expiry_date'] ) : null;
+		}
+
+		if ( isset( $subscription_data['status'] ) ) {
+			$update_data['status'] = sanitize_text_field( $subscription_data['status'] );
+		}
+
+		if ( isset( $subscription_data['subscription_id'] ) ) {
+			$update_data['subscription_id'] = sanitize_text_field( $subscription_data['subscription_id'] );
+		}
+
+		if ( isset( $subscription_data['trial_start_date'] ) && ! $trial_has_ended ) {
+			$update_data['trial_start_date'] = ! empty( $subscription_data['trial_start_date'] ) ? sanitize_text_field( $subscription_data['trial_start_date'] ) : null;
+		}
+
+		if ( isset( $subscription_data['trial_end_date'] ) ) {
+			$update_data['trial_end_date'] = ! empty( $subscription_data['trial_end_date'] ) ? sanitize_text_field( $subscription_data['trial_end_date'] ) : null;
+		}
+
+		$expiry_date_changed = false;
+		if ( isset( $update_data['expiry_date'] ) ) {
+			$new_expiry_date = $update_data['expiry_date'];
+			$old_expiry_date = isset( $existing_subscription['expiry_date'] ) ? $existing_subscription['expiry_date'] : '';
+
+			$new_expiry_normalized = ! empty( $new_expiry_date ) ? gmdate( 'Y-m-d', strtotime( $new_expiry_date ) ) : '';
+			$old_expiry_normalized = ! empty( $old_expiry_date ) ? gmdate( 'Y-m-d', strtotime( $old_expiry_date ) ) : '';
+
+			if ( $new_expiry_normalized !== $old_expiry_normalized ) {
+				$expiry_date_changed = true;
+			}
+		}
+
+		if ( false === $subscription_repository->update( $subscription_id, $update_data ) ) {
+			return new \WP_Error( 'ur_subscription_update_failed', __( 'Failed to update subscription.', 'user-registration' ) );
+		}
+
+		if ( $expiry_date_changed && ! empty( $existing_subscription['user_id'] ) && ! empty( $existing_subscription['item_id'] ) ) {
+			$user_id         = absint( $existing_subscription['user_id'] );
+			$membership_id   = absint( $existing_subscription['item_id'] );
+			$new_expiry_date = isset( $update_data['expiry_date'] ) ? $update_data['expiry_date'] : '';
+
+			if ( ! empty( $new_expiry_date ) ) {
+				update_user_meta( $user_id, 'ur_membership_expiry_date', $new_expiry_date );
+			}
+
+			do_action( 'ur_membership_expiry_date_manually_updated', $user_id, $membership_id, $new_expiry_date );
+		}
+
+		return true;
 	}
 }

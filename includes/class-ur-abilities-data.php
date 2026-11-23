@@ -219,19 +219,7 @@ class UR_Abilities_Data {
 		$page['has_more'] = $page['page'] * $page['per_page'] < $result['total'];
 		cache_users( wp_list_pluck( $result['items'], 'user_id' ) );
 		foreach ( $result['items'] as $subscription ) {
-			$user            = get_userdata( $subscription->user_id );
-			$page['items'][] = array(
-				'id'                => (int) $subscription->ID,
-				'member_id'         => (int) $subscription->user_id,
-				'member_email'      => $user ? $user->user_email : '',
-				'membership_id'     => (int) $subscription->item_id,
-				'membership_name'   => wp_strip_all_tags( get_the_title( $subscription->item_id ) ),
-				'status'            => (string) $subscription->status,
-				'start_date'        => (string) $subscription->start_date,
-				'expiry_date'       => (string) $subscription->expiry_date,
-				'next_billing_date' => (string) $subscription->next_billing_date,
-				'billing_amount'    => (string) $subscription->billing_amount,
-			);
+			$page['items'][] = self::subscription( $subscription );
 		}
 		return $page;
 	}
@@ -555,23 +543,7 @@ class UR_Abilities_Data {
 			return $user;
 		}
 
-		$login_option = ur_get_user_login_option( $user->ID );
-		$manager      = new UR_Admin_User_Manager( $user );
-
-		if ( $approve ) {
-			$manager->approve();
-		} else {
-			$manager->deny();
-		}
-
-		if ( in_array( $login_option, array( 'email_confirmation', 'admin_approval_after_email_confirmation' ), true ) ) {
-			update_user_meta( $user->ID, 'ur_confirm_email', $approve ? '1' : '0' );
-			delete_user_meta( $user->ID, 'ur_confirm_email_token' );
-
-			if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-				update_user_meta( $user->ID, 'ur_admin_approval_after_email_confirmation', $approve ? 'true' : 'denied' );
-			}
-		}
+		( new UR_Admin_User_Manager( $user ) )->set_approval( $approve );
 
 		return self::member( $user );
 	}
@@ -793,6 +765,349 @@ class UR_Abilities_Data {
 	}
 
 	/**
+	 * Describe what assigning a plan would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_assign_membership( $input ) {
+		$request = self::assignment( $input );
+
+		if ( is_wp_error( $request ) ) {
+			return $request;
+		}
+
+		return sprintf(
+			/* translators: 1: plan name, 2: username, 3: email address, 4: end of access. */
+			__( 'Give the %1$s plan to %2$s (%3$s), active from today %4$s. No payment is taken and no payment gateway is contacted. It is added like the Add Subscription screen does, with a manual order.', 'user-registration' ),
+			$request['plan'],
+			$request['user']->user_login,
+			$request['user']->user_email,
+			$request['form']['expiry_date']
+				/* translators: %s: date. */
+				? sprintf( __( 'until %s', 'user-registration' ), $request['form']['expiry_date'] )
+				: __( 'with no end date', 'user-registration' )
+		);
+	}
+
+	/**
+	 * Assign a plan through the same code as the Add Subscription screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function assign_membership( $input ) {
+		$request = self::assignment( $input );
+
+		if ( is_wp_error( $request ) ) {
+			return $request;
+		}
+
+		$result = ( new \WPEverest\URMembership\Admin\Services\SubscriptionService() )->create_admin_subscription( $request['form'] );
+
+		return is_wp_error( $result ) ? $result : self::subscription_by_id( $result['subscription']['ID'] );
+	}
+
+	/**
+	 * Describe what extending a subscription would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_extend_subscription( $input ) {
+		$subscription = self::extendable( $input );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		return sprintf(
+			/* translators: 1: subscription ID, 2: plan name, 3: email address, 4: current expiry date, 5: new expiry date. */
+			__( 'Move the end of subscription #%1$d (%2$s, %3$s) from %4$s to %5$s, like editing the expiry date on the Subscriptions screen. No payment gateway is contacted.', 'user-registration' ),
+			$subscription['id'],
+			$subscription['membership_name'],
+			$subscription['member_email'],
+			gmdate( 'Y-m-d', strtotime( $subscription['expiry_date'] ) ),
+			$input['expiry_date']
+		);
+	}
+
+	/**
+	 * Extend a subscription through the same code as the Edit Subscription screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function extend_subscription( $input ) {
+		$subscription = self::extendable( $input );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		$result = ( new \WPEverest\URMembership\Admin\Services\SubscriptionService() )->update_admin_subscription( $input['id'], array( 'expiry_date' => $input['expiry_date'] ) );
+
+		return is_wp_error( $result ) ? $result : self::subscription_by_id( $input['id'] );
+	}
+
+	/**
+	 * Describe what cancelling a subscription would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_cancel_subscription( $input ) {
+		$subscription = self::cancellable( $input );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		$order   = ( new \WPEverest\URMembership\Admin\Repositories\OrdersRepository() )->get_order_by_subscription( $input['id'] );
+		$gateway = (string) ( $order['payment_method'] ?? '' );
+		$expiry  = $subscription['expiry_date'] ? strtotime( $subscription['expiry_date'] ) : 0;
+
+		// Matches SubscriptionRepository::cancel_subscription_by_id(): one-time, free and gateway-less orders end at once.
+		if ( '' === $gateway || in_array( $order['order_type'] ?? '', array( 'free', 'paid' ), true ) ) {
+			$when = __( 'Access ends now.', 'user-registration' );
+		} elseif ( $expiry > time() ) {
+			/* translators: %s: expiry date. */
+			$when = sprintf( __( 'Billing stops and access lasts until %s.', 'user-registration' ), gmdate( 'Y-m-d', $expiry ) );
+		} else {
+			$when = __( 'Billing stops and access ends now.', 'user-registration' );
+		}
+
+		$contact = in_array( $gateway, array( '', 'bank', 'manual', 'free' ), true )
+			? __( 'No payment gateway is contacted.', 'user-registration' )
+			/* translators: %s: payment gateway, for example stripe. */
+			: sprintf( __( 'The subscription is also cancelled at %s.', 'user-registration' ), $gateway );
+
+		return sprintf(
+			/* translators: 1: subscription ID, 2: plan name, 3: email address, 4: when access ends, 5: whether a gateway is contacted. */
+			__( 'Cancel subscription #%1$d (%2$s, %3$s), the same way members cancel their own. %4$s %5$s The cancellation email is sent if it is turned on.', 'user-registration' ),
+			$subscription['id'],
+			$subscription['membership_name'],
+			$subscription['member_email'],
+			$when,
+			$contact
+		);
+	}
+
+	/**
+	 * Cancel a subscription through the same code members use to cancel their own.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function cancel_subscription( $input ) {
+		$subscription = self::cancellable( $input );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		try {
+			$result = ( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->cancel_subscription_by_id( $input['id'] );
+		} catch ( Exception $e ) {
+			$result = array(
+				'status'  => false,
+				'message' => $e->getMessage(),
+			);
+		}
+
+		if ( empty( $result['status'] ) ) {
+			return new WP_Error( 'ur_abilities_cancel_failed', wp_strip_all_tags( $result['message'] ?? __( 'The subscription could not be cancelled.', 'user-registration' ) ), array( 'status' => 502 ) );
+		}
+
+		return self::subscription_by_id( $input['id'] );
+	}
+
+	/**
+	 * Check an assignment request and build the Add Subscription form fields for it.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error User, plan name and form fields.
+	 */
+	private static function assignment( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$user = get_userdata( $input['member_id'] );
+		$plan = get_post( $input['membership_id'] );
+		$meta = $plan ? json_decode( wp_unslash( get_post_meta( $plan->ID, 'ur_membership', true ) ), true ) : array();
+
+		if ( ! $user || ! $plan || 'ur_membership' !== $plan->post_type || 'publish' !== $plan->post_status || empty( $meta ) ) {
+			return self::not_found();
+		}
+
+		if ( ! \WPEverest\URMembership\Admin\Services\MembershipService::is_plan_type_available( $meta['type'] ?? '' ) ) {
+			return self::pro_only();
+		}
+
+		$existing = ( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->query(
+			array(
+				'user_id'  => $user->ID,
+				'item_id'  => $plan->ID,
+				'per_page' => 100,
+			)
+		);
+
+		foreach ( $existing['items'] as $subscription ) {
+			if ( in_array( $subscription->status, array( 'active', 'trial', 'pending' ), true ) ) {
+				return new WP_Error( 'ur_abilities_no_change', __( 'This member already has this plan. Extend the subscription instead.', 'user-registration' ), array( 'status' => 409 ) );
+			}
+		}
+
+		$expiry = '';
+
+		if ( 'subscription' === ( $meta['type'] ?? '' ) ) {
+			$expiry = ! empty( $input['expiry_date'] ) ? $input['expiry_date'] : \WPEverest\URMembership\Admin\Services\SubscriptionService::get_expiry_date( current_time( 'Y-m-d' ), $meta['subscription']['duration'] ?? '', $meta['subscription']['value'] ?? 1 );
+
+			if ( ! $expiry || $expiry <= current_time( 'Y-m-d' ) ) {
+				return new WP_Error( 'ur_abilities_invalid_date', __( 'Give an expiry date after today for this recurring plan.', 'user-registration' ), array( 'status' => 400 ) );
+			}
+		}
+
+		return array(
+			'user' => $user,
+			'plan' => wp_strip_all_tags( $plan->post_title ),
+			'form' => array(
+				'member'          => $user->ID,
+				'plan'            => $plan->ID,
+				'status'          => 'active',
+				'payment_gateway' => 'manual',
+				'expiry_date'     => $expiry,
+			),
+		);
+	}
+
+	/**
+	 * Find a subscription whose end date may be moved without a payment gateway billing on the old date.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	private static function extendable( $input ) {
+		$subscription = self::changeable_subscription( $input['id'] );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		// Lifetime plans store an empty or all-zero expiry date.
+		if ( strtotime( $subscription['expiry_date'] ) <= 0 ) {
+			return new WP_Error( 'ur_abilities_no_change', __( 'This subscription has no end date, so it cannot be extended.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		$order   = ( new \WPEverest\URMembership\Admin\Repositories\OrdersRepository() )->get_order_by_subscription( $input['id'] );
+		$gateway = (string) ( $order['payment_method'] ?? '' );
+
+		if ( ! in_array( $gateway, array( '', 'bank', 'manual', 'free' ), true ) ) {
+			/* translators: %s: payment gateway, for example stripe. */
+			return new WP_Error( 'ur_abilities_gateway_billed', sprintf( __( 'This subscription is billed by %s, which would still charge on the old date. Change it in the payment gateway instead.', 'user-registration' ), $gateway ), array( 'status' => 409 ) );
+		}
+
+		if ( $input['expiry_date'] <= gmdate( 'Y-m-d', strtotime( $subscription['expiry_date'] ) ) ) {
+			return new WP_Error( 'ur_abilities_invalid_date', __( 'The new expiry date must be later than the current one.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		return $subscription;
+	}
+
+	/**
+	 * Find a subscription that may be cancelled.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	private static function cancellable( $input ) {
+		return self::changeable_subscription( $input['id'] );
+	}
+
+	/**
+	 * Find a live subscription that is not already set to cancel.
+	 *
+	 * @param int $id Subscription ID.
+	 * @return array|WP_Error
+	 */
+	private static function changeable_subscription( $id ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$subscription = self::subscription_by_id( $id );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		$meta = json_decode( wp_unslash( get_post_meta( $subscription['membership_id'], 'ur_membership', true ) ), true );
+
+		if ( ! \WPEverest\URMembership\Admin\Services\MembershipService::is_plan_type_available( $meta['type'] ?? '' ) ) {
+			return self::pro_only();
+		}
+
+		if ( ! in_array( $subscription['status'], array( 'active', 'trial' ), true ) ) {
+			/* translators: %s: subscription status. */
+			return new WP_Error( 'ur_abilities_no_change', sprintf( __( 'This subscription is %s, so it cannot be changed.', 'user-registration' ), $subscription['status'] ), array( 'status' => 409 ) );
+		}
+
+		if ( get_user_meta( $subscription['member_id'], 'urm_pending_cancel_' . $id, true ) ) {
+			return new WP_Error( 'ur_abilities_no_change', __( 'This subscription is already set to cancel.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		return $subscription;
+	}
+
+	/**
+	 * Read one subscription in the shape the subscription abilities return.
+	 *
+	 * @param int $id Subscription ID.
+	 * @return array|WP_Error
+	 */
+	private static function subscription_by_id( $id ) {
+		$row = ( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->retrieve( $id );
+
+		return $row ? self::subscription( (object) $row ) : self::not_found();
+	}
+
+	/**
+	 * Serialize only documented subscription fields.
+	 *
+	 * @param object $subscription Subscription row.
+	 * @return array
+	 */
+	private static function subscription( $subscription ) {
+		$user = get_userdata( $subscription->user_id );
+
+		return array(
+			'id'                => (int) $subscription->ID,
+			'member_id'         => (int) $subscription->user_id,
+			'member_email'      => $user ? $user->user_email : '',
+			'membership_id'     => (int) $subscription->item_id,
+			'membership_name'   => wp_strip_all_tags( get_the_title( $subscription->item_id ) ),
+			'status'            => (string) $subscription->status,
+			'start_date'        => (string) $subscription->start_date,
+			'expiry_date'       => (string) $subscription->expiry_date,
+			'next_billing_date' => (string) $subscription->next_billing_date,
+			'billing_amount'    => (string) $subscription->billing_amount,
+		);
+	}
+
+	/**
 	 * Whether the membership module and its repositories are loaded.
 	 *
 	 * @return bool
@@ -808,6 +1123,29 @@ class UR_Abilities_Data {
 	 */
 	private static function membership_unavailable() {
 		return new WP_Error( 'ur_abilities_membership_disabled', __( 'Membership is not enabled on this site.', 'user-registration' ), array( 'status' => 403 ) );
+	}
+
+	/**
+	 * Return the same lock the plan editor shows for a Pro-only plan type.
+	 *
+	 * @return WP_Error
+	 */
+	private static function pro_only() {
+		return new WP_Error(
+			'ur_ability_plan_required',
+			__( 'Subscription type is a paid feature.', 'user-registration' ),
+			array(
+				'status'      => 403,
+				'upgrade_url' => ur_utm_url(
+					'https://wpuserregistration.com/upgrade/',
+					array(
+						'source'  => 'ai-abilities',
+						'medium'  => 'button',
+						'content' => 'subscription-type',
+					)
+				),
+			)
+		);
 	}
 
 	/**
