@@ -100,7 +100,7 @@ namespace {
 	security_assert( array() === deliver_ipn( cancel_fields( 'attacker@evil.test', 'I-ATTACKER' ) ), 'A cancel IPN addressed to another merchant does not cancel the member' );
 	security_assert( array() === deliver_ipn( cancel_fields( 'attacker@evil.test', PAYPAL_SUB ) ), 'A foreign merchant cannot cancel even with the right PayPal subscription ID' );
 	security_assert( array() === deliver_ipn( cancel_fields( '', PAYPAL_SUB ) ), 'A cancel IPN with no merchant does not cancel the member' );
-	security_assert( array() === deliver_ipn( cancel_fields( MERCHANT, 'I-OTHER' ) ), 'The site\x27s own merchant cannot cancel through a different PayPal subscription' );
+	security_assert( array() === deliver_ipn( cancel_fields( MERCHANT, 'I-OTHER' ) ), 'The site own merchant cannot cancel through a different PayPal subscription' );
 	security_assert( array() === deliver_ipn( cancel_fields( MERCHANT, '' ) ), 'A cancel IPN with no PayPal subscription ID does not cancel the member' );
 	security_assert( array() === deliver_ipn( cancel_fields( MERCHANT, 'I-FORGED' ), '' ), 'A membership with no stored PayPal ID (one-time) cannot be cancelled by an IPN' );
 
