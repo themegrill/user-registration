@@ -62,7 +62,7 @@ class UR_Abilities_Access {
 	}
 
 	/**
-	 * Add one access setting for every area, shown only while AI abilities are switched on.
+	 * Add one access setting for every area, in a card shown only while AI abilities are switched on.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -80,21 +80,15 @@ class UR_Abilities_Access {
 			}
 
 			$fields[] = array(
-				'title'             => $area['label'],
-				'desc'              => __( 'What AI assistants can do here. Anything above this level is hidden from them.', 'user-registration' ),
-				'id'                => self::option_id( $slug ),
-				'type'              => 'select',
-				'default'           => 'read',
-				'class'             => 'ur-enhanced-select',
-				'css'               => '',
-				'options'           => self::options( $area ),
-				'desc_tip'          => true,
-				'display_condition' => array(
-					'field'    => 'user_registration_enable_abilities',
-					'operator' => 'equals',
-					'value'    => 'yes',
-					'case'     => 'insensitive',
-				),
+				'title'    => $area['label'],
+				'desc'     => __( 'What AI assistants can do here. Anything above this level is hidden from them.', 'user-registration' ),
+				'id'       => self::option_id( $slug ),
+				'type'     => 'select',
+				'default'  => 'read',
+				'class'    => 'ur-enhanced-select',
+				'css'      => '',
+				'options'  => self::options( $area ),
+				'desc_tip' => true,
 			);
 		}
 
@@ -103,10 +97,16 @@ class UR_Abilities_Access {
 		}
 
 		$settings['sections']['ai_abilities_access'] = array(
-			'title'    => __( 'AI Abilities Access', 'user-registration' ),
-			'type'     => 'card',
-			'desc'     => '',
-			'settings' => $fields,
+			'title'             => __( 'AI Abilities Access', 'user-registration' ),
+			'type'              => 'card',
+			'desc'              => '',
+			'settings'          => $fields,
+			'display_condition' => array(
+				'field'    => 'user_registration_enable_abilities',
+				'operator' => 'equals',
+				'value'    => 'yes',
+				'case'     => 'insensitive',
+			),
 		);
 
 		return $settings;

@@ -208,7 +208,8 @@ security_assert( array( 'off', 'read' ) === array_keys( $by_id['user_registratio
 security_assert( array( 'off', 'read', 'write' ) === array_keys( $by_id['user_registration_ability_access_settings']['options'] ), 'An area that can change data also offers read and change' );
 security_assert( array( 'off', 'read', 'write', 'delete' ) === array_keys( $by_id['user_registration_ability_access_coupons']['options'] ), 'An area that can delete offers every level' );
 security_assert( 'read' === $by_id['user_registration_ability_access_coupons']['default'] && 'select' === $by_id['user_registration_ability_access_coupons']['type'], 'Each setting is a dropdown that starts at read only' );
-security_assert( 'user_registration_enable_abilities' === $by_id['user_registration_ability_access_coupons']['display_condition']['field'], 'The settings show only while AI abilities are switched on' );
+security_assert( 'user_registration_enable_abilities' === $section['display_condition']['field'] && 'yes' === $section['display_condition']['value'], 'The whole card shows only while AI abilities are switched on, so it is never an empty card' );
+security_assert( ! isset( $by_id['user_registration_ability_access_coupons']['display_condition'] ), 'The fields leave the showing and hiding to the card' );
 security_assert( 'Coupons' === $by_id['user_registration_ability_access_coupons']['title'], 'The setting is named after the area' );
 
 $odd = UR_Abilities_Access::add_settings( 'not-settings' );

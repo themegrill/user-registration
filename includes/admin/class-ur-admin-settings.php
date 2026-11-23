@@ -549,7 +549,14 @@ class UR_Admin_Settings {
 							$card_header_css .= 'max-width: 100%';
 						}
 
-						$settings .= '<div class="user-registration-card ur-mt-4 ur-border-0" ' . esc_attr( $section_id ) . ' style="' . esc_attr( $card_header_css ) . '">';
+						// A card can follow a toggle, so the whole card is hidden, not just the fields inside it.
+						$card_condition = self::get_display_condition_attributes( $section );
+
+						if ( ! empty( $card_condition['initial_style'] ) ) {
+							$card_header_css .= 'display:none;';
+						}
+
+						$settings .= '<div class="user-registration-card ur-mt-4 ur-border-0" ' . esc_attr( $section_id ) . ' style="' . esc_attr( $card_header_css ) . '"' . $card_condition['attrs'] . '>';
 
 						$header_css = '';
 						if ( isset( $section['preview_link'] ) ) {
