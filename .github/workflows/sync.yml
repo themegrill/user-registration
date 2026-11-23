@@ -3,6 +3,8 @@ on:
     push:
         branches:
             - develop
+            # Temporary: sync the AI abilities epic to Pro while it is built (pro#2062). Remove before merging.
+            - 2062-ai-mcp-parity
         workflow_dispatch:
 jobs:
     sync:
