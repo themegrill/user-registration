@@ -2107,7 +2107,7 @@ function urcr_elementor_has_restricted_section( $elements ) {
  * @since x.x.x
  */
 function urcr_is_elementor_section_denied( $post ) {
-	static $decisions = array();
+	static $denials = array();
 
 	$post = get_post( $post );
 
@@ -2115,20 +2115,23 @@ function urcr_is_elementor_section_denied( $post ) {
 		return false;
 	}
 
-	$key = get_current_user_id() . ':' . $post->ID;
+	$data = get_post_meta( $post->ID, '_elementor_data', true );
+	// Most posts never use the setting, so skip decoding their large builder data.
+	$elements = is_string( $data ) && false !== strpos( $data, 'urcr_restrict_section' ) ? json_decode( $data, true ) : $data;
 
-	if ( ! isset( $decisions[ $key ] ) ) {
-		$data = get_post_meta( $post->ID, '_elementor_data', true );
-		// Most posts never use the setting, so skip decoding their large builder data.
-		$elements = is_string( $data ) && false !== strpos( $data, 'urcr_restrict_section' ) ? json_decode( $data, true ) : $data;
-
-		$decisions[ $key ] = is_array( $elements )
-			&& urcr_elementor_has_restricted_section( $elements )
-			&& ! current_user_can( 'edit_post', $post->ID )
-			&& urcr_is_restrict_shortcode_denied( $post );
+	if ( ! is_array( $elements ) || ! urcr_elementor_has_restricted_section( $elements ) ) {
+		return false;
 	}
 
-	return $decisions[ $key ];
+	// Without a per post override the shortcode decides from global settings alone, so one answer serves every such post.
+	$scope = 'on' === get_post_meta( $post->ID, 'urcr_meta_override_global_settings', true ) ? $post->ID : 'global';
+	$key   = get_current_user_id() . ':' . $scope;
+
+	if ( ! isset( $denials[ $key ] ) ) {
+		$denials[ $key ] = urcr_is_restrict_shortcode_denied( $post );
+	}
+
+	return $denials[ $key ];
 }
 
 /**

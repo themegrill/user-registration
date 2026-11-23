@@ -29,9 +29,10 @@ function get_current_user_id() {
 function get_post( $post = null ) {
 	return $post instanceof WP_Post ? $post : ( $GLOBALS['posts'][ (int) $post ] ?? null ); }
 function get_post_meta( $id, $key, $single ) {
-	return $GLOBALS['elementor_data'][ $id ] ?? ''; }
+	return '_elementor_data' === $key ? ( $GLOBALS['elementor_data'][ $id ] ?? '' ) : ( $GLOBALS['override'][ $id ] ?? '' ); }
 /** The shortcode hides its content from this visitor unless they are in the allowed list. */
 function do_shortcode( $content ) {
+	$GLOBALS['shortcode_calls'][] = $GLOBALS['post']->ID;
 	security_assert( $GLOBALS['post'] instanceof WP_Post, 'The shortcode is evaluated against the post' );
 	return $GLOBALS['shortcode_allows'] ? 'granted' : '<div class="urcr-access-card">Membership Required</div>'; }
 
@@ -93,14 +94,24 @@ $GLOBALS['current_user']     = 7;
 $GLOBALS['shortcode_allows'] = true;
 security_assert( 'SECRET' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 1 ), 'An allowed visitor keeps the excerpt' );
 
-// Editors are not denied, matching urcr_is_content_access_granted().
+// Editing rights do not bypass the section; the shortcode decides, exactly as it does when rendering.
 $GLOBALS['current_user']     = 8;
 $GLOBALS['shortcode_allows'] = false;
 $GLOBALS['caps']             = array( 'edit_post' );
-security_assert( 'SECRET' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 ), 'A user who can edit the post keeps the excerpt' );
+security_assert( '' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 ), 'An editor the shortcode denies loses the excerpt, as in the render path' );
+$GLOBALS['caps'] = array();
+
+// Posts without an override share one shortcode answer per user; an override post is asked on its own.
+$GLOBALS['current_user']     = 10;
+$GLOBALS['shortcode_calls']  = array();
+$GLOBALS['override']         = array( 4 => 'on' );
+foreach ( array( 1, 3, 5, 4 ) as $id ) {
+	URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', $id );
+}
+security_assert( array( 1, 4 ) === $GLOBALS['shortcode_calls'], 'The shortcode runs once for the global posts and once for the override post' );
+security_assert( '' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 ), 'The shared answer still blanks every global post' );
 
 // The caller's global post is restored after the shortcode check.
-$GLOBALS['caps']    = array();
 $GLOBALS['current_user'] = 9;
 $GLOBALS['post']    = 'caller-post';
 URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 );
