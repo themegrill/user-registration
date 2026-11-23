@@ -292,7 +292,8 @@ function ur_sanitize_tooltip( $var ) {
  * Sanitize tooltip markup, keeping links and post-safe formatting, for a data-tip attribute.
  *
  * Entities are decoded first and the result is re-encoded with double encoding, so encoded markup
- * can not come back to life when the browser decodes the attribute for Tooltipster.
+ * can not come back to life when the browser decodes the attribute for Tooltipster. A < that can not
+ * start a tag is kept as text, so tips like "Must be < 10" are not eaten by kses.
  *
  * @param string $tip Tooltip text or HTML.
  *
@@ -300,7 +301,10 @@ function ur_sanitize_tooltip( $var ) {
  * @since x.x.x
  */
 function ur_sanitize_tip_html( $tip ) {
-	return htmlspecialchars( wp_kses_post( html_entity_decode( $tip ) ), ENT_QUOTES );
+	$tip = html_entity_decode( (string) $tip, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8' );
+	$tip = preg_replace( '/<(?![a-zA-Z\/!])/', '&lt;', $tip );
+
+	return htmlspecialchars( wp_kses_post( $tip ), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
 }
 
 /**
@@ -550,8 +554,11 @@ function ur_locate_template( $template_name, $template_path = '', $default_path 
 /**
  * Display a UserRegistration help tip.
  *
+ * Scripts and event handlers are always removed. When $allow_html is true only basic formatting tags
+ * without attributes are kept; when false, post-safe HTML such as links is kept.
+ *
  * @param string $tip Help tip text.
- * @param bool   $allow_html Allow sanitized HTML if true or escape.
+ * @param bool   $allow_html True for the strict formatting-only allow-list, false for post-safe HTML.
  * @param string $classname Classname.
  *
  * @return string
@@ -560,7 +567,7 @@ function ur_help_tip( $tip, $allow_html = false, $classname = 'user-registration
 	// Tooltipster renders the decoded data-tip as HTML, so sanitise the markup before it reaches the attribute.
 	$tip = $allow_html ? ur_sanitize_tooltip( $tip ) : ur_sanitize_tip_html( $tip );
 
-	return sprintf( '<span class="%s" data-tip="%s"></span>', $classname, $tip );
+	return sprintf( '<span class="%s" data-tip="%s"></span>', esc_attr( $classname ), $tip );
 }
 
 function ur_render_premium_feature_gate_template( $args = array() ) {

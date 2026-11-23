@@ -47,9 +47,9 @@
 
 			if ( ! empty( $attributes['tooltip'] ) && ur_string_to_bool( $attributes['tooltip'] ) !== false ) :
 
-				echo ur_help_tip( $attributes['tooltip_message'], false, 'ur-portal-tooltip tooltipstered' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitised and escaped inside ur_help_tip().
-				?>
-			<?php endif ?>
+				echo ur_help_tip( $attributes['tooltip_message'] ?? '', false, 'ur-portal-tooltip tooltipstered' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Sanitised and escaped inside ur_help_tip().
+			endif;
+			?>
 		</label>
 		<span class="description">
 			<?php

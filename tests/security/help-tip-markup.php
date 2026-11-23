@@ -6,12 +6,17 @@
  */
 
 // Test doubles and hostile fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.PHP.Eval.Discouraged, WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.WP.GlobalVariablesOverride.Prohibited, WordPress.WP.AlternativeFunctions.file_system_read_fwrite
+// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.PHP.Eval.Discouraged, WordPress.Security.EscapeOutput.OutputNotEscaped, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents, WordPress.WP.GlobalVariablesOverride.Prohibited, WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler, WordPress.WP.AlternativeFunctions.file_system_read_fwrite
 
-$wp = rtrim( $argv[1] ?? '', '/' ) . '/';
+$wp = rtrim( $argv[1] ?? '', '/\\' ) . '/';
 if ( ! is_file( $wp . 'wp-includes/kses.php' ) ) {
 	fwrite( STDERR, "Supply a WordPress core directory; no site/database is loaded.\n" );
 	exit( 2 ); }
+set_error_handler(
+	function ( $severity, $message, $file, $line ) {
+		throw new ErrorException( $message, 0, $severity, $file, $line );
+	}
+);
 define( 'ABSPATH', $wp );
 define( 'WPINC', 'wp-includes' );
 require $wp . 'wp-includes/plugin.php';
@@ -76,6 +81,14 @@ security_assert( 'Need help ?' === decoded_tip( ur_help_tip( 'Need help ?' ) ), 
 security_assert( 'a<br />b' === decoded_tip( ur_help_tip( 'a<br />b', true ) ), 'Allowed formatting survives when HTML is allowed' );
 security_assert( false !== strpos( decoded_tip( ur_help_tip( "create one <a href='?page=x&action=y'>here</a>." ) ), '<a href=' ), 'Links in admin-written tips keep working' );
 
+security_assert( '' === decoded_tip( ur_help_tip( null ) ), 'A null tip is an empty tip without deprecation notices' );
+$utf8_tip = decoded_tip( ur_help_tip( "caf\xE9 tip" ) );
+security_assert( 0 === strpos( $utf8_tip, 'caf' ) && false !== strpos( $utf8_tip, ' tip' ), 'Invalid UTF-8 does not wipe the whole tip' );
+$compare_tip = decoded_tip( ur_help_tip( 'Must be < 10 and > 5' ) );
+security_assert( false !== strpos( $compare_tip, '10 and' ) && false !== strpos( $compare_tip, ' 5' ) && ! is_active_markup( $compare_tip ), 'Comparison text in a tip is kept as text' );
+security_assert( 0 === preg_match( '/<b>/', decoded_tip( ur_help_tip( 'a < b' ) ) ), 'A lone < does not turn into a tag' );
+security_assert( false !== strpos( decoded_tip( ur_help_tip( 't', false, 'a" onmouseover="x' ) ), '' ) && 0 === preg_match( '/class="[^"]*"\s+onmouseover/', ur_help_tip( 't', false, 'a" onmouseover="x' ) ), 'The class name can not break out of its attribute' );
+
 // Run the exact expressions the templates print into data-tip, with the bank notice built as membership.php builds it.
 $template_dir = dirname( __DIR__, 2 );
 foreach ( array( 'templates/myaccount/membership.php' ) as $file ) {
@@ -85,6 +98,8 @@ foreach ( array( 'templates/myaccount/membership.php' ) as $file ) {
 		$notice  = 'Pay by bank</br><button class="view-bank-data">View</button><div class="upgrade-info urm-d-none">' . $payload . '</div>';
 		$printed = eval( 'return ' . $m[1] . ';' );
 		security_assert( ! is_active_markup( decoded_tip( 'data-tip="' . $printed . '"' ) ), 'No active markup in the membership notice for ' . $payload );
+		$kept = decoded_tip( 'data-tip="' . $printed . '"' );
+		security_assert( false !== strpos( $kept, '<button class="view-bank-data">' ) && false !== strpos( $kept, 'upgrade-info' ), 'The bank notice keeps its button and info block for ' . $payload );
 	}
 }
 security_assert( false === strpos( file_get_contents( $template_dir . '/modules/membership/includes/Templates/membership-registration-form.php' ), 'echo $tooltip' ), 'Membership form tooltip is printed through ur_help_tip' );
