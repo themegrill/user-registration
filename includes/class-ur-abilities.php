@@ -13,6 +13,7 @@ class UR_Abilities {
 	public static function init() {
 		add_action( 'wp_abilities_api_categories_init', array( __CLASS__, 'register_category' ) );
 		add_action( 'wp_abilities_api_init', array( __CLASS__, 'register_abilities' ) );
+		UR_Abilities_Access::init();
 	}
 
 	/** Register the shared category. */
@@ -110,7 +111,26 @@ class UR_Abilities {
 
 				$registered[ $name ] = true;
 
-				$level = isset( $ability['level'] ) && in_array( $ability['level'], array( 'write', 'delete' ), true ) ? $ability['level'] : 'read';
+				$level = self::level( $ability );
+
+				/**
+				 * Filters whether an ability is available to AI assistants.
+				 *
+				 * The default follows the access the admin chose for the area. A module can hook in to hide
+				 * abilities for its own reasons, for example a pause switch. A hidden ability is not registered, so
+				 * the AI cannot see or call it.
+				 *
+				 * @since xx.xx.xx
+				 *
+				 * @param bool   $enabled Whether the ability is available.
+				 * @param string $slug    Area slug.
+				 * @param string $name    Ability name, without the `user-registration/` prefix.
+				 * @param string $level   Level of the ability: `read`, `write` or `delete`.
+				 */
+				if ( ! apply_filters( 'user_registration_ability_enabled', UR_Abilities_Access::allows( $slug, $level ), $slug, $name, $level ) ) {
+					continue;
+				}
+
 				$input = self::object_schema( $ability['input'] ?? array() );
 
 				$input['required'] = $ability['required'] ?? array();
@@ -149,6 +169,18 @@ class UR_Abilities {
 				);
 			}
 		}
+	}
+
+	/**
+	 * Get the level of an ability.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $ability Ability definition.
+	 * @return string `read`, `write` or `delete`.
+	 */
+	public static function level( $ability ) {
+		return isset( $ability['level'] ) && in_array( $ability['level'], array( 'write', 'delete' ), true ) ? $ability['level'] : 'read';
 	}
 
 	/**

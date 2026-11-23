@@ -83,6 +83,7 @@ function wp_register_ability( $name, $args ) {
 }
 
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities.php';
+require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-access.php';
 
 function abilities_after_register( $enabled = true, $site_plan = '' ) {
 	$GLOBALS['registered'] = array();
@@ -145,6 +146,8 @@ add_filter(
 		return $areas;
 	}
 );
+// The admin has opened the addon area up to deleting, so every level is registered.
+$GLOBALS['options']['user_registration_ability_access_addon'] = 'delete';
 $all = abilities_after_register();
 
 security_assert( isset( $all['user-registration/addon-read'] ), 'An addon area is registered through the filter' );
