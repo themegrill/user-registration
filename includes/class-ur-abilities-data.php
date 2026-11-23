@@ -1540,8 +1540,12 @@ class UR_Abilities_Data {
 		}
 
 		$field_class = $class::get_instance();
-		$field_name  = (string) $field_class->get_general_setting_data( 'field_name' );
-		$taken       = self::field_names( $form['rows'] );
+
+		// Same naming as the form builder: WordPress user fields are named after the field, the rest get the class default.
+		$field_name = in_array( $input['type'], ur_get_fields_without_prefix(), true )
+			? trim( str_replace( 'user_registration_', '', $field_class->id ) )
+			: (string) $field_class->get_general_setting_data( 'field_name' );
+		$taken      = self::field_names( $form['rows'] );
 
 		if ( in_array( $field_name, $taken, true ) ) {
 			if ( ! preg_match( '/_\d+$/', $field_name ) ) {
