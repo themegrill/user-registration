@@ -128,6 +128,16 @@ $outer                       = URCR_Syndication_Restriction::filter_elementor_ex
 security_assert( array( 5 ) === $GLOBALS['shortcode_calls'], 'The shortcode is not re-entered while it is being checked' );
 security_assert( '' === $inner && 'SECRET' === $outer, 'A re-entrant ask is treated as denied while the outer decision stands' );
 
+// A re-entrant ask for a different scope is denied for that moment only; it must not be cached as the answer.
+$GLOBALS['current_user']   = 14;
+$GLOBALS['override']       = array( 5 => 'on' );
+$GLOBALS['shortcode_hook'] = static function () {
+	URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 1 );
+};
+URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 );
+$GLOBALS['shortcode_hook'] = null;
+security_assert( 'SECRET' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 1 ), 'A re-entrant answer for another scope is not cached' );
+
 // A shortcode that throws must still leave the caller's global post in place and the check usable.
 $GLOBALS['current_user']   = 12;
 $GLOBALS['post']           = 'caller-post';
