@@ -1,0 +1,61 @@
+name: Task
+description: Internal work with no customer report (refactor, tech debt, tests, docs, release chore).
+title: "Task: "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a customer is affected, file a bug, enhancement or feature request instead. Keep one goal per task.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this exists now. What happened or what is coming that makes it worth doing.
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: The end state in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: todo
+    attributes:
+      label: What needs to be done
+      description: A checklist a developer can work through.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Observable checks, so reviewers know it is finished.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: checkboxes
+    id: needs
+    attributes:
+      label: Needs
+      description: Tick only what this task includes.
+      options:
+        - label: Design or UX input
+        - label: Documentation update (say where in Hints)
+        - label: Tests
+        - label: Backward-compatibility check
+  - type: textarea
+    id: hints
+    attributes:
+      label: Hints
+      description: Where to start, a likely approach, known pitfalls.
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Related issues and PRs.
+      value: |
+        - Related issues / PRs:

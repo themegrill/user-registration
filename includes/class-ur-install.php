@@ -59,10 +59,6 @@ class UR_Install {
 			'ur_update_529_legacy_payment_fields_flag',
 			'ur_update_529_db_version',
 		),
-		'5.3.2'   => array(
-			'ur_update_532_enable_abilities',
-			'ur_update_532_db_version',
-		),
 	);
 
 	/**
@@ -165,6 +161,8 @@ class UR_Install {
 			add_option( 'urm_is_legacy_ecommerce_addons_user', $has_legacy_ecommerce_addons ? 1 : 0 );
 		}
 
+		self::maybe_keep_abilities_for_existing_site();
+
 		self::create_files();
 		self::update_ur_version();
 		self::maybe_update_db_version();
@@ -237,6 +235,29 @@ class UR_Install {
 		$updates            = self::get_db_update_callbacks();
 
 		return ! is_null( $current_db_version ) && version_compare( $current_db_version, max( array_keys( $updates ) ), '<' );
+	}
+
+	/**
+	 * Keep AI abilities on for sites that already had them.
+	 *
+	 * Abilities shipped without a setting in 5.3.0 and the setting is off by default. Free and Pro version
+	 * numbers differ, so this runs once per site from a flag rather than from a version check.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @return void
+	 */
+	private static function maybe_keep_abilities_for_existing_site() {
+		if ( null !== get_option( 'urm_is_legacy_abilities_user', null ) ) {
+			return;
+		}
+
+		$is_existing_site = ! self::is_new_install();
+		add_option( 'urm_is_legacy_abilities_user', $is_existing_site ? 1 : 0 );
+
+		if ( $is_existing_site ) {
+			add_option( 'user_registration_enable_abilities', 'yes' );
+		}
 	}
 
 	/**
@@ -362,6 +383,9 @@ class UR_Install {
 	public static function maybe_run_migrations() {
 
 		include_once 'functions-ur-update.php';
+
+		// An update does not run install(), so decide here, before the new version is saved.
+		self::maybe_keep_abilities_for_existing_site();
 
 		// Finish any leftover ≤1.6.2 background callbacks / stuck DB version first.
 		self::sync_legacy_db_updates();

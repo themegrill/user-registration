@@ -1,0 +1,76 @@
+name: Enhancement
+description: Improve something that already exists (faster, clearer, more options, a new hook).
+title: "Enhancement: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the capability exists today and should work better. If it does not exist at all, use "Feature request". Do not include customer names, emails, site URLs or license keys.
+  - type: textarea
+    id: current
+    attributes:
+      label: Current behavior
+      description: How it works today, specific enough to find the screen or code. Say which version you checked.
+    validations:
+      required: true
+  - type: textarea
+    id: open-questions
+    attributes:
+      label: Open questions
+      description: Anything you have not verified. Write "None" only if you confirmed what exists today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed improvement
+      description: What should change. Describe the outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Who benefits and how often it comes up (number of requests, support load, an example without personal data).
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: Fill in what is known; write "not stated" for the rest.
+      value: |
+        - Product and edition (free/pro):
+        - Plugin/theme version:
+        - Feature area / screen / hook:
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Two to four observable checks, one per line.
+      value: "- [ ] "
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways to get the same result, including doing nothing.
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility
+      description: Saved settings, shortcodes, hooks or REST endpoints that must keep working. "None known" is fine if you checked.
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Source (Crisp conversation, forum topic, PR) and related issues.
+      value: |
+        - Source:
+        - Related issues:
+    validations:
+      required: true

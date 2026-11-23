@@ -92,7 +92,8 @@ class UR_Form_Field_Checkbox extends UR_Form_Field {
 		$field_label = $single_form_field->general_setting->field_name;
 		$value       = $form_data->value;
 		$values      = is_array( $value ) ? $value : json_decode( (string) $value, true );
-		$values      = is_array( $values ) ? $values : ( '' === $value || null === $value ? array() : array( array() ) );
+		// Saving a profile with every option unticked sends 0, which means nothing is selected.
+		$values      = is_array( $values ) ? $values : ( '' === $value || null === $value || '0' === (string) $value ? array() : array( array() ) );
 		$options     = isset( $single_form_field->general_setting->options ) ? (array) $single_form_field->general_setting->options : array();
 		if ( empty( $options ) && ! empty( $single_form_field->advance_setting->choices ) ) {
 			$options = explode( ',', $single_form_field->advance_setting->choices );

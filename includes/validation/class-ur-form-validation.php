@@ -896,7 +896,8 @@ class UR_Form_Validation extends UR_Validation {
 
 		if ( ! empty( $response ) ) {
 			if ( ! defined( 'DOING_AJAX' ) || ! DOING_AJAX && ! ur_option_checked( 'user_registration_ajax_form_submission_on_edit_profile', false ) ) {
-				$response = array_values( $response );
+				// A validator may return a single message instead of a list of them.
+				$response = is_array( $response ) ? array_values( $response ) : array( $response );
 				ur_add_notice( $response[0], 'error' );
 			} else {
 				ur_add_notice( $response, 'error' );

@@ -1,0 +1,117 @@
+name: Bug report
+description: Something in a ThemeGrill plugin or theme does not work as it should.
+title: "Bug: "
+labels: ["bug-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill in what you know. Write "not stated" or "Not known" instead of guessing. Do not include customer names, emails, site URLs or license keys. The same sections are used by the `create-themegrill-issue` skill and the Crisp bot (see HANDOFF.md in themegrill/.github).
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+      description: What the user sees, in plain words.
+    validations:
+      required: true
+  - type: textarea
+    id: what-should-happen
+    attributes:
+      label: What should happen
+      description: The expected behavior. Without it a developer cannot tell a bug from a design choice.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where
+      description: Fill in what is known; write "not stated" for the rest.
+      value: |
+        - Product and edition (free/pro):
+        - Plugin/theme version:
+        - WordPress version:
+        - PHP version:
+        - Active theme:
+        - Other plugins involved:
+        - Browser / device (UI bugs):
+        - Anything else about the setup (site timezone, hosting, multisite, language):
+        - Worked before? (regression: last good version, or "not stated"):
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, starting from a stated state. If nobody has run them, start with "Not tested. Based on the report:".
+      value: |
+        1.
+    validations:
+      required: true
+  - type: dropdown
+    id: reproduced
+    attributes:
+      label: Reproduced?
+      options:
+        - Yes, by me (ran the steps)
+        - Yes, by support
+        - No, inferred from the report and code (say which code you read)
+        - No, not reproduced by anyone (the reporter's account only)
+    validations:
+      required: true
+  - type: checkboxes
+    id: isolation
+    attributes:
+      label: Isolation
+      description: Tick a box only when you or the source confirmed it. Leave it unticked if untested; a tick is a claim a developer will rely on.
+      options:
+        - label: Happens with a default WordPress theme
+        - label: Happens with only this plugin active
+        - label: Happens every time (if intermittent, describe when)
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: "Reach: how many customers. Blocking: Yes, No or Not known, plus one reason. Severity: critical (data loss, security, or broken for everyone), high (core feature broken, no workaround), medium (workaround exists or edge case), low (cosmetic)."
+      value: |
+        - **Reach:**
+        - **Blocking?**
+        - **Severity (proposed):**
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: Something support can tell the customer today, or "None known".
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Exact error text and debug.log lines, with customer data redacted. Drag screenshots or recordings in here; crop or blur names, emails, site URLs and license keys.
+  - type: textarea
+    id: cause
+    attributes:
+      label: Suspected cause
+      description: Optional. Only if someone read the code. Give file:line and what is there.
+  - type: textarea
+    id: fix
+    attributes:
+      label: Possible fix
+      description: Optional. A short, concrete suggestion (which file or function to change and how), only when the suspected cause is substantiated.
+  - type: textarea
+    id: unknown
+    attributes:
+      label: Not known yet
+      description: What you could not confirm. This is also the list support can take back to the customer.
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Source (Crisp conversation, forum topic, PR) and related issues.
+      value: |
+        - Source:
+        - Related issues:
+    validations:
+      required: true
