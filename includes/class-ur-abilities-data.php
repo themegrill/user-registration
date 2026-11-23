@@ -2107,6 +2107,225 @@ class UR_Abilities_Data {
 	}
 
 	/**
+	 * List the modules and addons, using the list the Modules and Addons screen shows.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array
+	 */
+	public static function list_modules( $input ) {
+		$page  = self::page( $input );
+		$items = array_values(
+			array_filter(
+				self::modules(),
+				function ( $entry ) use ( $input ) {
+					return ( ! isset( $input['type'] ) || $input['type'] === $entry['type'] ) && ( ! isset( $input['status'] ) || $input['status'] === $entry['status'] );
+				}
+			)
+		);
+
+		$page['has_more'] = count( $items ) > $page['page'] * $page['per_page'];
+		$page['items']    = array_map( array( __CLASS__, 'module_output' ), array_slice( $items, ( $page['page'] - 1 ) * $page['per_page'], $page['per_page'] ) );
+
+		return $page;
+	}
+
+	/**
+	 * Turn on a module, or activate an installed addon, the way the Modules and Addons screen does.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function enable_module( $input ) {
+		$entry = self::module_target( $input['slug'] );
+
+		if ( is_wp_error( $entry ) || 'active' === $entry['status'] ) {
+			return is_wp_error( $entry ) ? $entry : self::module_output( $entry );
+		}
+
+		if ( ! $entry['available'] ) {
+			return UR_Abilities::plan_required_error( $entry['name'], $entry['plans'], $entry['slug'] );
+		}
+
+		$plugin = $entry['slug'] . '/' . $entry['slug'] . '.php';
+
+		if ( 'addon' === $entry['type'] ) {
+			// Installing downloads and runs code, so only an addon that is already on the site is switched on.
+			if ( 'not-installed' === $entry['status'] || ! file_exists( WP_PLUGIN_DIR . '/' . $plugin ) ) {
+				return new WP_Error( 'ur_abilities_addon_not_installed', __( 'This addon is not installed on the site. Install it from the Addons screen first, because AI assistants cannot install plugins.', 'user-registration' ), array( 'status' => 400 ) );
+			}
+
+			$status = UR_Modules::ur_install_addons( $entry['slug'], $entry['name'], $plugin );
+		} else {
+			$status = UR_Modules::ur_enable_feature( $entry['slug'] );
+		}
+
+		if ( empty( $status['success'] ) ) {
+			return new WP_Error( 'ur_abilities_module_failed', ! empty( $status['errorMessage'] ) && is_string( $status['errorMessage'] ) ? $status['errorMessage'] : __( 'It could not be turned on. Try again later.', 'user-registration' ), array( 'status' => 500 ) );
+		}
+
+		$fresh = self::module_find( $entry['slug'] );
+
+		return self::module_output( $fresh ? $fresh : $entry );
+	}
+
+	/**
+	 * Say what turning a module or addon off would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_disable_module( $input ) {
+		$entry = self::module_target( $input['slug'] );
+
+		if ( is_wp_error( $entry ) ) {
+			return $entry;
+		}
+
+		if ( 'active' !== $entry['status'] ) {
+			/* translators: %s: module or addon name. */
+			return sprintf( __( '%s is already off. Nothing would change.', 'user-registration' ), $entry['name'] );
+		}
+
+		return 'addon' === $entry['type']
+			/* translators: %s: addon name. */
+			? sprintf( __( 'Deactivate the %s addon. Its data stays saved, but its features stop working until it is activated again.', 'user-registration' ), $entry['name'] )
+			/* translators: %s: module name. */
+			: sprintf( __( 'Turn off the %s module. Its data stays saved, but its screens and features stop working until it is turned on again.', 'user-registration' ), $entry['name'] );
+	}
+
+	/**
+	 * Turn off a module, or deactivate an installed addon, the way the Modules and Addons screen does.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function disable_module( $input ) {
+		$entry = self::module_target( $input['slug'] );
+
+		if ( is_wp_error( $entry ) || 'active' !== $entry['status'] ) {
+			return is_wp_error( $entry ) ? $entry : self::module_output( $entry );
+		}
+
+		$status = 'addon' === $entry['type']
+			? UR_Modules::ur_deactivate_addon( $entry['slug'] . '/' . $entry['slug'] . '.php' )
+			: UR_Modules::ur_disable_feature( $entry['slug'] );
+
+		if ( empty( $status['success'] ) ) {
+			// The same message the Modules screen gives when forms still depend on the module.
+			$message = 'user-registration-multiple-registration' === $entry['slug']
+				? __( 'You have multiple registration forms, so you can\'t deactivate the module.', 'user-registration' )
+				: __( 'It could not be turned off. Try again later.', 'user-registration' );
+
+			return new WP_Error( 'ur_abilities_module_failed', $message, array( 'status' => 'user-registration-multiple-registration' === $entry['slug'] ? 400 : 500 ) );
+		}
+
+		$fresh = self::module_find( $entry['slug'] );
+
+		return self::module_output( $fresh ? $fresh : $entry );
+	}
+
+	/**
+	 * Get the modules and addons from the Modules and Addons screen, with the plan check for this site.
+	 *
+	 * @return array Entries with slug, name, type, status, required_plan, available and plans.
+	 */
+	private static function modules() {
+		if ( ! class_exists( 'UR_Modules' ) ) {
+			return array();
+		}
+
+		$response = UR_Modules::ur_get_modules();
+		$data     = $response instanceof WP_REST_Response ? $response->get_data() : array();
+		$entries  = array();
+
+		foreach ( (array) ( $data['modules_lists'] ?? array() ) as $item ) {
+			$plans     = array_values( (array) ( $item->plan ?? array() ) );
+			$entries[] = array(
+				'slug'          => (string) $item->slug,
+				'name'          => wp_strip_all_tags( (string) ( $item->title ?? $item->name ?? $item->slug ) ),
+				'type'          => 'addon' === ( $item->type ?? '' ) ? 'addon' : 'module',
+				'status'        => in_array( $item->status ?? '', array( 'active', 'not-installed' ), true ) ? $item->status : 'inactive',
+				'required_plan' => self::lowest_plan( $plans ),
+				'available'     => UR_Abilities::plan_allows( $plans ),
+				'plans'         => $plans,
+			);
+		}
+
+		return $entries;
+	}
+
+	/**
+	 * Find one module or addon by its slug.
+	 *
+	 * @param string $slug Slug.
+	 * @return array|null
+	 */
+	private static function module_find( $slug ) {
+		foreach ( self::modules() as $entry ) {
+			if ( $slug === $entry['slug'] ) {
+				return $entry;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Find the module or addon an AI assistant may change, or say why it may not.
+	 *
+	 * @param string $slug Slug.
+	 * @return array|WP_Error
+	 */
+	private static function module_target( $slug ) {
+		$entry = self::module_find( $slug );
+
+		if ( ! $entry ) {
+			return new WP_Error( 'ur_abilities_not_found', __( 'Module or addon not found. List them to see the slugs.', 'user-registration' ), array( 'status' => 404 ) );
+		}
+
+		// Payment gateways carry keys and money settings, so they stay with the admin.
+		if ( preg_match( '/stripe|paypal|authorize|payments/', $entry['slug'] ) ) {
+			return new WP_Error( 'ur_abilities_module_protected', __( 'Payment gateways are turned on and off on the Modules and Addons screen, not by AI assistants.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		return $entry;
+	}
+
+	/**
+	 * Keep only the fields an answer promises.
+	 *
+	 * @param array $entry Entry from self::modules().
+	 * @return array
+	 */
+	private static function module_output( $entry ) {
+		return array_diff_key( $entry, array( 'plans' => true ) );
+	}
+
+	/**
+	 * Name the lowest plan that includes something.
+	 *
+	 * @param array $plans Plan slugs.
+	 * @return string
+	 */
+	private static function lowest_plan( $plans ) {
+		foreach ( array( 'free', 'personal', 'plus', 'professional', 'themegrill agency' ) as $plan ) {
+			if ( in_array( $plan, $plans, true ) ) {
+				return $plan;
+			}
+		}
+
+		return 'free';
+	}
+
+	/**
 	 * Whether the membership module and its repositories are loaded.
 	 *
 	 * @return bool

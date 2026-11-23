@@ -229,9 +229,23 @@ class UR_Abilities {
 	 * @return true|WP_Error True when the site may use the area.
 	 */
 	private static function plan_error( $slug, $area ) {
-		$plans = isset( $area['plan'] ) ? array_filter( array_map( 'trim', array_map( 'strtolower', (array) $area['plan'] ) ) ) : array();
+		$plans = isset( $area['plan'] ) ? (array) $area['plan'] : array();
 
-		if ( empty( $plans ) ) {
+		return self::plan_allows( $plans ) ? true : self::plan_required_error( $area['label'] ?? $slug, $plans, $slug );
+	}
+
+	/**
+	 * Whether the site's plan is one of the listed plans. An empty list or a list with free in it allows every site.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $plans Plan slugs, for example personal, plus, professional.
+	 * @return bool
+	 */
+	public static function plan_allows( $plans ) {
+		$plans = array_filter( array_map( 'trim', array_map( 'strtolower', (array) $plans ) ) );
+
+		if ( empty( $plans ) || in_array( 'free', $plans, true ) ) {
 			return true;
 		}
 
@@ -239,23 +253,34 @@ class UR_Abilities {
 		$license   = ur_get_license_plan();
 		$site_plan = ! empty( $license->item_plan ) ? trim( strtolower( $license->item_plan ) ) : '';
 
-		if ( in_array( $site_plan, $plans, true ) ) {
-			return true;
-		}
+		// The Agency license is named agency in the license and themegrill agency in the feature lists.
+		return in_array( $site_plan, $plans, true ) || ( 'agency' === $site_plan && in_array( 'themegrill agency', $plans, true ) );
+	}
 
+	/**
+	 * Build the answer for something the site's plan does not include, with the plans that do and the upgrade link.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $label   What is locked, for example Coupons.
+	 * @param array  $plans   Plan slugs that include it.
+	 * @param string $content Marks where the upgrade link was shown from.
+	 * @return WP_Error
+	 */
+	public static function plan_required_error( $label, $plans, $content ) {
 		return new WP_Error(
 			'ur_ability_plan_required',
 			/* translators: %s: area name, for example Coupons. */
-			sprintf( __( '%s is not part of this site\'s plan. Upgrade to use it.', 'user-registration' ), $area['label'] ?? $slug ),
+			sprintf( __( '%s is not part of this site\'s plan. Upgrade to use it.', 'user-registration' ), $label ),
 			array(
 				'status'         => 403,
-				'required_plans' => array_values( $plans ),
+				'required_plans' => array_values( array_filter( array_map( 'trim', array_map( 'strtolower', (array) $plans ) ) ) ),
 				'upgrade_url'    => ur_utm_url(
 					'https://wpuserregistration.com/upgrade/',
 					array(
 						'source'  => 'ai-abilities',
 						'medium'  => 'button',
-						'content' => $slug,
+						'content' => $content,
 					)
 				),
 			)
@@ -473,6 +498,27 @@ class UR_Abilities {
 				'deleted' => array( 'type' => 'boolean' ),
 				'message' => $string,
 			)
+		);
+		$module               = self::object_schema(
+			array(
+				'slug'          => $string,
+				'name'          => $string,
+				'type'          => array(
+					'type' => 'string',
+					'enum' => array( 'module', 'addon' ),
+				),
+				'status'        => array(
+					'type' => 'string',
+					'enum' => array( 'active', 'inactive', 'not-installed' ),
+				),
+				'required_plan' => $string,
+				'available'     => array( 'type' => 'boolean' ),
+			)
+		);
+		$module_slug          = array(
+			'type'      => 'string',
+			'pattern'   => '^[a-z0-9_-]+$',
+			'maxLength' => 100,
 		);
 		$label                = array(
 			'type'      => 'string',
@@ -955,6 +1001,53 @@ class UR_Abilities {
 					),
 				),
 			),
+			'modules'     => array(
+				'label'       => __( 'Modules and addons', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see which modules and addons the site can use and turn them on or off.', 'user-registration' ),
+				'abilities'   => array(
+					'list-modules'   => array(
+						'label'       => __( 'List modules and addons', 'user-registration' ),
+						'description' => __( 'List the modules and addons, as on the Modules and Addons screen: whether each is active, inactive or not installed, the lowest plan that includes it, and whether this site\'s plan allows it. Filter by type or status.', 'user-registration' ),
+						'input'       => $pagination + array(
+							'type'   => array(
+								'type' => 'string',
+								'enum' => array( 'module', 'addon' ),
+							),
+							'status' => array(
+								'type' => 'string',
+								'enum' => array( 'active', 'inactive', 'not-installed' ),
+							),
+						),
+						'output'      => self::page_schema( $module ),
+						'permission'  => array( __CLASS__, 'modules_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'list_modules' ),
+					),
+					'enable-module'  => array(
+						'label'       => __( 'Turn on a module or addon', 'user-registration' ),
+						'description' => __( 'Turn on a module, or activate an addon that is already installed, like the Activate button on the Modules and Addons screen. A module or addon the site\'s plan does not include is refused with the plan it needs. Installing a new addon is not possible.', 'user-registration' ),
+						'level'       => 'write',
+						'idempotent'  => true,
+						'input'       => array( 'slug' => $module_slug ),
+						'required'    => array( 'slug' ),
+						'output'      => $module,
+						'permission'  => array( __CLASS__, 'modules_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'enable_module' ),
+					),
+					'disable-module' => array(
+						'label'       => __( 'Turn off a module or addon', 'user-registration' ),
+						'description' => __( 'Turn off a module, or deactivate an installed addon, like the Deactivate button on the Modules and Addons screen. Data stays saved, but the feature stops working until it is turned on again. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'idempotent'  => true,
+						'confirm'     => true,
+						'input'       => array( 'slug' => $module_slug ),
+						'required'    => array( 'slug' ),
+						'output'      => $module,
+						'permission'  => array( __CLASS__, 'modules_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_disable_module' ),
+						'execute'     => array( 'UR_Abilities_Data', 'disable_module' ),
+					),
+				),
+			),
 		);
 	}
 
@@ -1057,5 +1150,16 @@ class UR_Abilities {
 	 */
 	public static function delete_members_permission() {
 		return self::members_permission() && current_user_can( 'delete_users' );
+	}
+
+	/**
+	 * Match the capability the Modules and Addons screen asks for to turn a module or addon on or off.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public static function modules_permission() {
+		return current_user_can( 'manage_user_registration' ) && current_user_can( 'activate_plugins' );
 	}
 }
