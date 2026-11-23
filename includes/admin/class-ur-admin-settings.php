@@ -344,11 +344,11 @@ class UR_Admin_Settings {
 
 		// Add any posted messages.
 		if ( ! empty( $_GET['ur_error'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			self::add_error( wp_unslash( $_GET['ur_error'] ) ); // phpcs:ignore
+			self::add_error( self::escape_notice_param( $_GET['ur_error'] ) ); // phpcs:ignore
 		}
 
 		if ( ! empty( $_GET['ur_message'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			self::add_message( wp_unslash( $_GET['ur_error'] ) ); // phpcs:ignore
+			self::add_message( self::escape_notice_param( $_GET['ur_message'] ) ); // phpcs:ignore
 		}
 		global $tabs;
 		/**
@@ -500,6 +500,18 @@ class UR_Admin_Settings {
 		} else {
 			self::$errors[] = $sanitized;
 		}
+	}
+
+	/**
+	 * Turn an untrusted URL notice parameter into plain, escaped text.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param string|array $value Raw request value.
+	 * @return string Escaped text, empty when the value is not a string.
+	 */
+	private static function escape_notice_param( $value ) {
+		return is_string( $value ) ? esc_html( sanitize_text_field( wp_unslash( $value ) ) ) : '';
 	}
 
 	/**
