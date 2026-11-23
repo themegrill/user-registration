@@ -1004,6 +1004,40 @@ class MembershipService {
 	}
 
 	/**
+	 * Subscription statuses that stop a plan from being deleted.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return array
+	 */
+	public function get_delete_blocking_statuses() {
+		return apply_filters(
+			'urm_valid_membership_statuses',
+			array(
+				__( 'active', 'user-registration' ),
+				__( 'pending', 'user-registration' ),
+				__( 'trial', 'user-registration' ),
+			)
+		);
+	}
+
+	/**
+	 * Count the members whose subscription stops the plan from being deleted.
+	 *
+	 * Shared by the plan delete and the AI abilities, so they agree.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param int $membership_id Membership ID.
+	 * @return int
+	 */
+	public function count_delete_blocking_members( $membership_id ) {
+		$result = $this->membership_repository->check_deletable_membership( $membership_id, $this->get_delete_blocking_statuses() );
+
+		return (int) ( $result['total'] ?? 0 );
+	}
+
+	/**
 	 * Delete membership if allowed.
 	 *
 	 * @param int $membership_id Membership ID.
@@ -1015,18 +1049,9 @@ class MembershipService {
 			'status' => true,
 		);
 
-		$valid_membership_statuses = apply_filters(
-			'urm_valid_membership_statuses',
-			array(
-				__( 'active', 'user-registration' ),
-				__( 'pending', 'user-registration' ),
-				__( 'trial', 'user-registration' ),
-			)
-		);
+		$valid_membership_statuses = $this->get_delete_blocking_statuses();
 
-		$active_members = $this->membership_repository->check_deletable_membership( $membership_id, $valid_membership_statuses );
-
-		if ( $active_members['total'] > 0 ) {
+		if ( $this->count_delete_blocking_members( $membership_id ) > 0 ) {
 			$html  = '<p>' . __( 'You cannot delete a membership plan if it has active users assigned to it with any of the following statuses:', 'user-registration' ) . '</p>';
 			$html .= '<ul>';
 			foreach ( $valid_membership_statuses as $status ) {

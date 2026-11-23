@@ -1360,20 +1360,7 @@ if ( ! class_exists( 'User_Registration_Users_Menu' ) ) {
 
 							$userids = array_diff( $userids, array( get_current_user_id() ) );
 
-							/**
-							 * Check whether the user to be deleted has additional content in the site.
-							 *
-							 * @since 4.1
-							 */
-							$users_have_content = (bool) apply_filters( 'user_registration_users_have_additional_content', false, $userids );
-
-							if ( $userids && ! $users_have_content ) {
-								if ( $wpdb->get_var( "SELECT ID FROM {$wpdb->posts} WHERE post_author IN( " . implode( ',', $userids ) . ' ) LIMIT 1' ) ) {
-									$users_have_content = true;
-								} elseif ( $wpdb->get_var( "SELECT link_id FROM {$wpdb->links} WHERE link_owner IN( " . implode( ',', $userids ) . ' ) LIMIT 1' ) ) {
-									$users_have_content = true;
-								}
-							}
+							$users_have_content = UR_Admin_User_Manager::users_have_content( $userids );
 
 							if ( $users_have_content ) {
 								$redirect_url = add_query_arg(
@@ -1393,16 +1380,12 @@ if ( ! class_exists( 'User_Registration_Users_Menu' ) ) {
 							$delete_count = 0;
 
 							foreach ( $userids as $id ) {
-								if ( ! current_user_can( 'delete_user', $id ) ) {
-									$user = get_userdata( $id );
+								$deleted = ( new UR_Admin_User_Manager( $id ) )->delete();
 
-									$this->errors[] = new WP_Error( 'edit_users', __( "Sorry, you are not allowed to delete the user $user->user_login.", 'user-registration' ) );
+								if ( is_wp_error( $deleted ) ) {
+									$this->errors[] = $deleted;
 									continue;
 								}
-
-								// remove user profile picture and profile picture related information.
-								do_action( 'ur_remove_profile_pictures_and_metadata', $id );
-								wp_delete_user( $id );
 
 								++$delete_count;
 							}

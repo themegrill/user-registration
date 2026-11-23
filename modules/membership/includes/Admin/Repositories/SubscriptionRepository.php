@@ -397,4 +397,33 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 			'per_page'     => $per_page,
 		);
 	}
+
+	/**
+	 * Delete a subscription the way the Subscriptions screen does, cancelling it at its gateway first.
+	 *
+	 * Shared by the admin screen and the AI abilities, so both behave the same.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param int $id Subscription ID.
+	 * @return bool True when the gateway may still be billing, so the admin must cancel it there.
+	 */
+	public function delete_and_cancel_at_gateway( $id ) {
+		$subscription         = $this->retrieve( $id );
+		$needs_gateway_cancel = is_array( $subscription ) && ! empty( $subscription['subscription_id'] ) && 'canceled' !== ( $subscription['status'] ?? '' );
+
+		// Cancel at the gateway first (force for PayPal/Stripe) so delete does not leave live billing.
+		// send_email=false: admin cleanup should not email members. A failed cancel does not block the
+		// local delete (already-canceled / bank / unconfigured gateway rows must stay removable), but it is
+		// reported so the admin is told to cancel it in the gateway dashboard.
+		try {
+			$result = $this->cancel_subscription_by_id( $id, false, false, true );
+		} catch ( \Exception $e ) {
+			$result = array( 'status' => false );
+		}
+
+		$this->delete( $id );
+
+		return $needs_gateway_cancel && empty( $result['status'] );
+	}
 }

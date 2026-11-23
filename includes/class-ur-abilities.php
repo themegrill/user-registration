@@ -467,6 +467,14 @@ class UR_Abilities {
 			)
 		);
 
+		$deleted = self::object_schema(
+			array(
+				'id'      => $id,
+				'deleted' => array( 'type' => 'boolean' ),
+				'message' => $string,
+			)
+		);
+
 		return array(
 			'forms'       => array(
 				'label'       => __( 'Forms', 'user-registration' ),
@@ -493,7 +501,7 @@ class UR_Abilities {
 			),
 			'members'     => array(
 				'label'       => __( 'Members', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see registered members, their approval status and sign-up counts. With change access they can also approve, deny and resend the verification email.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see registered members, their approval status and sign-up counts. With change access they can also approve, deny and resend the verification email, and with delete access delete a member.', 'user-registration' ),
 				'abilities'   => array(
 					'get-registration-stats'    => array(
 						'label'       => __( 'Get registration statistics', 'user-registration' ),
@@ -565,13 +573,29 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'moderate_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'resend_verification_email' ),
 					),
+					'delete-member'             => array(
+						'label'       => __( 'Delete member', 'user-registration' ),
+						'description' => __( 'Permanently delete one member, like Delete on the Users screen. If they own posts or links, set content_to to the user who gets them, or delete_content to true. You can never delete yourself. Shows a preview first.', 'user-registration' ),
+						'level'       => 'delete',
+						'confirm'     => true,
+						'input'       => array(
+							'id'             => $id,
+							'content_to'     => $id,
+							'delete_content' => array( 'type' => 'boolean' ),
+						),
+						'required'    => array( 'id' ),
+						'output'      => $deleted,
+						'permission'  => array( __CLASS__, 'delete_members_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_delete_member' ),
+						'execute'     => array( 'UR_Abilities_Data', 'delete_member' ),
+					),
 				),
 			),
 			'memberships' => array(
 				'label'       => __( 'Memberships', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see your membership plans and who is subscribed to them. With change access they can also assign a plan, extend a subscription or cancel one.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your membership plans and who is subscribed to them. With change access they can also assign a plan, extend a subscription or cancel one, and with delete access delete subscriptions, plans and plan groups.', 'user-registration' ),
 				'abilities'   => array(
-					'list-memberships'    => array(
+					'list-memberships'        => array(
 						'label'       => __( 'List membership plans', 'user-registration' ),
 						'description' => __( 'List membership plans with price, billing period and the number of members with an active subscription.', 'user-registration' ),
 						'input'       => $pagination,
@@ -579,7 +603,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_memberships' ),
 					),
-					'list-subscriptions'  => array(
+					'list-subscriptions'      => array(
 						'label'       => __( 'List membership subscriptions', 'user-registration' ),
 						'description' => __( 'List subscriptions by status, plan, member or expiry date range, for example to find memberships that expire soon.', 'user-registration' ),
 						'input'       => $pagination + array(
@@ -593,7 +617,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_subscriptions' ),
 					),
-					'assign-membership'   => array(
+					'assign-membership'       => array(
 						'label'       => __( 'Assign membership plan', 'user-registration' ),
 						'description' => __( 'Give a member a plan for free, active from today, like Add Subscription on the Subscriptions screen with a manual payment. Recurring plans need Pro and end after one billing period unless expiry_date is given. Shows a preview first.', 'user-registration' ),
 						'level'       => 'write',
@@ -609,7 +633,7 @@ class UR_Abilities {
 						'preview'     => array( 'UR_Abilities_Data', 'preview_assign_membership' ),
 						'execute'     => array( 'UR_Abilities_Data', 'assign_membership' ),
 					),
-					'extend-subscription' => array(
+					'extend-subscription'     => array(
 						'label'       => __( 'Extend subscription', 'user-registration' ),
 						'description' => __( 'Move an active subscription\'s expiry date later, like editing it on the Subscriptions screen. Needs Pro for recurring plans, and not for subscriptions billed by a payment gateway such as Stripe or PayPal. Shows a preview first.', 'user-registration' ),
 						'level'       => 'write',
@@ -624,7 +648,7 @@ class UR_Abilities {
 						'preview'     => array( 'UR_Abilities_Data', 'preview_extend_subscription' ),
 						'execute'     => array( 'UR_Abilities_Data', 'extend_subscription' ),
 					),
-					'cancel-subscription' => array(
+					'cancel-subscription'     => array(
 						'label'       => __( 'Cancel subscription', 'user-registration' ),
 						'description' => __( 'Cancel an active subscription the same way members cancel their own: billing stops at the payment gateway and paid access lasts until the expiry date. Recurring plans need Pro. Shows a preview first.', 'user-registration' ),
 						'level'       => 'write',
@@ -635,6 +659,42 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
 						'preview'     => array( 'UR_Abilities_Data', 'preview_cancel_subscription' ),
 						'execute'     => array( 'UR_Abilities_Data', 'cancel_subscription' ),
+					),
+					'delete-subscription'     => array(
+						'label'       => __( 'Delete subscription', 'user-registration' ),
+						'description' => __( 'Permanently delete one subscription, like Delete on the Subscriptions screen: it is cancelled at the payment gateway right away first, without emailing the member. Recurring plans need Pro. Shows a preview first.', 'user-registration' ),
+						'level'       => 'delete',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $deleted,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_delete_subscription' ),
+						'execute'     => array( 'UR_Abilities_Data', 'delete_subscription' ),
+					),
+					'delete-membership'       => array(
+						'label'       => __( 'Delete membership plan', 'user-registration' ),
+						'description' => __( 'Permanently delete one plan, like Delete on the Memberships screen. Refused while any member has an active, pending or trial subscription to it. Recurring plans need Pro. Shows a preview first.', 'user-registration' ),
+						'level'       => 'delete',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $deleted,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_delete_membership' ),
+						'execute'     => array( 'UR_Abilities_Data', 'delete_membership' ),
+					),
+					'delete-membership-group' => array(
+						'label'       => __( 'Delete plan group', 'user-registration' ),
+						'description' => __( 'Permanently delete one plan group, like Delete on the Membership Groups screen. Refused while a registration form uses it. Needs Pro with a Plus or higher plan. Shows a preview first.', 'user-registration' ),
+						'level'       => 'delete',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $deleted,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_delete_membership_group' ),
+						'execute'     => array( 'UR_Abilities_Data', 'delete_membership_group' ),
 					),
 				),
 			),
@@ -756,5 +816,16 @@ class UR_Abilities {
 	 */
 	public static function subscriptions_permission() {
 		return self::members_permission() && current_user_can( 'manage_options' );
+	}
+
+	/**
+	 * Match the capability the Users screen asks for to delete members.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public static function delete_members_permission() {
+		return self::members_permission() && current_user_can( 'delete_users' );
 	}
 }

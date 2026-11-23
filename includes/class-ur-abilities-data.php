@@ -940,6 +940,325 @@ class UR_Abilities_Data {
 	}
 
 	/**
+	 * Describe what deleting a member would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_delete_member( $input ) {
+		$request = self::member_deletion( $input );
+
+		if ( is_wp_error( $request ) ) {
+			return $request;
+		}
+
+		if ( ! $request['has_content'] ) {
+			$content = __( 'They own no posts or links.', 'user-registration' );
+		} elseif ( $request['reassign'] ) {
+			/* translators: %s: username. */
+			$content = sprintf( __( 'Their posts and links go to %s.', 'user-registration' ), get_userdata( $request['reassign'] )->user_login );
+		} else {
+			$content = __( 'Their posts and links are deleted too.', 'user-registration' );
+		}
+
+		return sprintf(
+			/* translators: 1: username, 2: email address, 3: what happens to their content. */
+			__( 'Permanently delete %1$s (%2$s), like Delete on the Users screen. %3$s On a multisite network they are only removed from this site. This cannot be undone.', 'user-registration' ),
+			$request['user']->user_login,
+			$request['user']->user_email,
+			$content
+		);
+	}
+
+	/**
+	 * Delete a member through the same code as the Users screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function delete_member( $input ) {
+		$request = self::member_deletion( $input );
+
+		if ( is_wp_error( $request ) ) {
+			return $request;
+		}
+
+		$deleted = ( new UR_Admin_User_Manager( $request['user'] ) )->delete( $request['reassign'] );
+
+		return is_wp_error( $deleted ) ? $deleted : self::deleted( $input['id'], __( 'Member deleted.', 'user-registration' ) );
+	}
+
+	/**
+	 * Describe what deleting a plan would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_delete_membership( $input ) {
+		$plan = self::deletable_plan( $input );
+
+		return is_wp_error( $plan ) ? $plan : sprintf(
+			/* translators: %s: plan name. */
+			__( 'Permanently delete the %s plan, like Delete on the Memberships screen. Past subscriptions and payments stay. This cannot be undone.', 'user-registration' ),
+			wp_strip_all_tags( $plan->post_title )
+		);
+	}
+
+	/**
+	 * Delete a plan through the same code as the Memberships screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function delete_membership( $input ) {
+		$plan = self::deletable_plan( $input );
+
+		if ( is_wp_error( $plan ) ) {
+			return $plan;
+		}
+
+		$result = ( new \WPEverest\URMembership\Admin\Services\MembershipService() )->delete_membership( $plan->ID );
+
+		return empty( $result['status'] )
+			? new WP_Error( 'ur_abilities_delete_failed', wp_strip_all_tags( $result['message'] ?? '' ), array( 'status' => 409 ) )
+			: self::deleted( $plan->ID, __( 'Plan deleted.', 'user-registration' ) );
+	}
+
+	/**
+	 * Describe what deleting a plan group would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_delete_membership_group( $input ) {
+		$group = self::deletable_group( $input );
+
+		return is_wp_error( $group ) ? $group : sprintf(
+			/* translators: %s: group name. */
+			__( 'Permanently delete the %s plan group, like Delete on the Membership Groups screen. Its plans are kept. This cannot be undone.', 'user-registration' ),
+			wp_strip_all_tags( $group->post_title )
+		);
+	}
+
+	/**
+	 * Delete a plan group through the same code as the Membership Groups screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function delete_membership_group( $input ) {
+		$group = self::deletable_group( $input );
+
+		if ( is_wp_error( $group ) ) {
+			return $group;
+		}
+
+		return ( new \WPEverest\URMembership\Admin\Repositories\MembershipGroupRepository() )->delete( $group->ID )
+			? self::deleted( $group->ID, __( 'Plan group deleted.', 'user-registration' ) )
+			: new WP_Error( 'ur_abilities_delete_failed', __( 'Sorry! There was an unexpected error while deleting the membership group.', 'user-registration' ), array( 'status' => 500 ) );
+	}
+
+	/**
+	 * Describe what deleting a subscription would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_delete_subscription( $input ) {
+		$subscription = self::deletable_subscription( $input );
+
+		return is_wp_error( $subscription ) ? $subscription : sprintf(
+			/* translators: 1: subscription ID, 2: plan name, 3: email address. */
+			__( 'Permanently delete subscription #%1$d (%2$s, %3$s), like Delete on the Subscriptions screen. If it is still billing, it is cancelled at the payment gateway right away and access ends now. The member is not emailed. This cannot be undone.', 'user-registration' ),
+			$subscription['id'],
+			$subscription['membership_name'],
+			$subscription['member_email']
+		);
+	}
+
+	/**
+	 * Delete a subscription through the same code as the Subscriptions screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function delete_subscription( $input ) {
+		$subscription = self::deletable_subscription( $input );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		$still_billing = ( new \WPEverest\URMembership\Admin\Repositories\SubscriptionRepository() )->delete_and_cancel_at_gateway( $input['id'] );
+
+		return self::deleted(
+			$input['id'],
+			$still_billing
+				? __( 'Subscription deleted, but it could not be cancelled at its payment gateway. It may still be billing, so cancel it in the gateway dashboard.', 'user-registration' )
+				: __( 'Subscription deleted.', 'user-registration' )
+		);
+	}
+
+	/**
+	 * Check a member delete request: who, whether the current user may, and what happens to their content.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error User, whether they own content, and who gets it.
+	 */
+	private static function member_deletion( $input ) {
+		$query = new WP_User_Query(
+			self::member_query( array() ) + array(
+				'include' => array( $input['id'] ),
+				'number'  => 1,
+			)
+		);
+		$users = $query->get_results();
+
+		if ( ! $users ) {
+			return self::not_found();
+		}
+
+		if ( ! ( new UR_Admin_User_Manager( $users[0] ) )->can_be_deleted() ) {
+			return new WP_Error( 'ur_abilities_forbidden', __( 'You cannot delete this member, for example your own account.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		$has_content = UR_Admin_User_Manager::users_have_content( array( $users[0]->ID ) );
+		$reassign    = $has_content && ! empty( $input['content_to'] ) ? (int) $input['content_to'] : null;
+
+		if ( $has_content && ! $reassign && empty( $input['delete_content'] ) ) {
+			return new WP_Error( 'ur_abilities_content_choice', __( 'This member owns posts or links. Give them to another user with content_to, or set delete_content to true to delete them.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		if ( $reassign && ( $reassign === $users[0]->ID || ! get_userdata( $reassign ) ) ) {
+			return new WP_Error( 'ur_abilities_invalid_user', __( 'content_to must be another existing user.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		return array(
+			'user'        => $users[0],
+			'has_content' => $has_content,
+			'reassign'    => $reassign,
+		);
+	}
+
+	/**
+	 * Find a plan that can be deleted now.
+	 *
+	 * @param array $input Validated input.
+	 * @return WP_Post|WP_Error
+	 */
+	private static function deletable_plan( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$plan = get_post( $input['id'] );
+
+		if ( ! $plan || 'ur_membership' !== $plan->post_type ) {
+			return self::not_found();
+		}
+
+		$meta    = json_decode( wp_unslash( get_post_meta( $plan->ID, 'ur_membership', true ) ), true );
+		$service = new \WPEverest\URMembership\Admin\Services\MembershipService();
+
+		if ( ! $service::is_plan_type_available( $meta['type'] ?? '' ) ) {
+			return self::pro_only();
+		}
+
+		$blocking = $service->count_delete_blocking_members( $plan->ID );
+
+		if ( $blocking ) {
+			/* translators: %d: number of members. */
+			return new WP_Error( 'ur_abilities_in_use', sprintf( _n( '%d member has an active, pending or trial subscription to this plan. Expire, cancel or move them first.', '%d members have an active, pending or trial subscription to this plan. Expire, cancel or move them first.', $blocking, 'user-registration' ), $blocking ), array( 'status' => 409 ) );
+		}
+
+		return $plan;
+	}
+
+	/**
+	 * Find a plan group that can be deleted now.
+	 *
+	 * @param array $input Validated input.
+	 * @return WP_Post|WP_Error
+	 */
+	private static function deletable_group( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		if ( ! \WPEverest\URMembership\Admin\Services\MembershipGroupService::is_available() ) {
+			return new WP_Error( 'ur_ability_plan_required', __( 'Membership groups need Pro with a Plus or higher plan and the Membership Groups module turned on.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		$group = get_post( $input['id'] );
+
+		if ( ! $group || 'ur_membership_groups' !== $group->post_type ) {
+			return self::not_found();
+		}
+
+		$form_id = ( new \WPEverest\URMembership\Admin\Services\MembershipGroupService() )->get_group_form_id( $group->ID );
+
+		if ( '' != $form_id ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseNotEqual -- Same check as the Membership Groups screen.
+			/* translators: %s: form ID. */
+			return new WP_Error( 'ur_abilities_in_use', sprintf( __( 'This group is used in registration form #%s. Remove it from the form first.', 'user-registration' ), $form_id ), array( 'status' => 409 ) );
+		}
+
+		return $group;
+	}
+
+	/**
+	 * Find a subscription that can be deleted.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	private static function deletable_subscription( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$subscription = self::subscription_by_id( $input['id'] );
+
+		if ( is_wp_error( $subscription ) ) {
+			return $subscription;
+		}
+
+		$meta = json_decode( wp_unslash( get_post_meta( $subscription['membership_id'], 'ur_membership', true ) ), true );
+
+		return \WPEverest\URMembership\Admin\Services\MembershipService::is_plan_type_available( $meta['type'] ?? '' ) ? $subscription : self::pro_only();
+	}
+
+	/**
+	 * Answer for a finished delete.
+	 *
+	 * @param int    $id      ID of what was deleted.
+	 * @param string $message Plain sentence about the result.
+	 * @return array
+	 */
+	private static function deleted( $id, $message ) {
+		return array(
+			'id'      => (int) $id,
+			'deleted' => true,
+			'message' => $message,
+		);
+	}
+
+	/**
 	 * Check an assignment request and build the Add Subscription form fields for it.
 	 *
 	 * @param array $input Validated input.
