@@ -684,7 +684,7 @@ class SubscriptionService {
 		}
 
 		$claimed_coupon = '';
-		if ( ! empty( $data['coupon'] ) ) {
+		if ( ! empty( $data['coupon'] ) && ur_check_module_activation( 'coupon' ) ) {
 			$members_data['coupon'] = $data['coupon'];
 			$coupon_service         = new CouponService();
 			$coupon_data            = array(
@@ -698,19 +698,19 @@ class SubscriptionService {
 			if ( $response['status'] ) {
 				// Claim the use before the order exists, so a capped coupon cannot be redeemed past its limit.
 				if ( ! ur_claim_coupon_usage( $data['coupon'] ) ) {
-					$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
-
-					return array(
-						'response' => array(
-							'status'  => false,
-							'message' => __( 'This coupon has reached its usage limit.', 'user-registration' ),
-						),
-					);
+					return $this->reject_used_up_upgrade_coupon( $user->ID, $data['current_membership_id'] );
 				}
 
 				$claimed_coupon                       = $data['coupon'];
 				$response                             = json_decode( $response['data'], true );
 				$upgrade_details['chargeable_amount'] = $response['discounted_amount'];
+			} else {
+				// A coupon used up since the member applied it is rejected, not silently charged at full price.
+				$coupon_details = ur_get_coupon_details( $data['coupon'] );
+
+				if ( ! empty( $coupon_details ) && ! ur_coupon_has_remaining_uses( $coupon_details ) ) {
+					return $this->reject_used_up_upgrade_coupon( $user->ID, $data['current_membership_id'] );
+				}
 			}
 		}
 
@@ -831,6 +831,24 @@ class SubscriptionService {
 				'updated_membership_title' => $selected_membership_details['post_title'],
 			),
 			'response' => $response,
+		);
+	}
+
+	/**
+	 * Abort an upgrade whose coupon has no uses left.
+	 *
+	 * @param int $member_id             Member user ID.
+	 * @param int $current_membership_id Membership being upgraded from.
+	 * @return array Checkout error response.
+	 */
+	private function reject_used_up_upgrade_coupon( $member_id, $current_membership_id ) {
+		$this->release_upgrade_guard( $member_id, $current_membership_id );
+
+		return array(
+			'response' => array(
+				'status'  => false,
+				'message' => __( 'This coupon has reached its usage limit.', 'user-registration' ),
+			),
 		);
 	}
 
