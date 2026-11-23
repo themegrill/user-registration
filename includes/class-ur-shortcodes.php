@@ -374,7 +374,7 @@ class UR_Shortcodes {
 										'file',
 									)
 								);
-								if ( in_array( $data->field_key, $ignore_checkout ) ) {
+								if ( isset( $data->field_key ) && in_array( $data->field_key, $ignore_checkout ) ) {
 									unset( $grid_data[ $key ] );
 								}
 							}
