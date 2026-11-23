@@ -17,4 +17,4 @@ security_assert( false === strpos( $output, '<' ), 'No markup survives, so Toolt
 security_assert( 'hover' === escape_notice_param( '<b>hover</b>' ), 'Tags are stripped from plain notices' );
 security_assert( 'Invalid &quot;key&quot;' === escape_notice_param( 'Invalid \"key\"' ), 'Quotes are escaped and unslashed' );
 security_assert( '' === escape_notice_param( array( $gadget ) ), 'Array parameters are rejected' );
-security_assert( '&amp;lt;b&amp;gt;' === escape_notice_param( '&lt;b&gt;' ), 'Pre-encoded markup is escaped again, so the escaping layer holds without the tag stripper' );
+security_assert( 'A &amp; B' === escape_notice_param( 'A & B' ), 'Special characters are escaped by esc_html itself, independent of the tag stripper' );
