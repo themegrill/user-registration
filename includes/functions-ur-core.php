@@ -289,6 +289,21 @@ function ur_sanitize_tooltip( $var ) {
 }
 
 /**
+ * Sanitize tooltip markup, keeping links and post-safe formatting, for a data-tip attribute.
+ *
+ * Entities are decoded first and the result is re-encoded with double encoding, so encoded markup
+ * can not come back to life when the browser decodes the attribute for Tooltipster.
+ *
+ * @param string $tip Tooltip text or HTML.
+ *
+ * @return string Attribute-safe value; do not pass it through esc_attr().
+ * @since  5.3.2
+ */
+function ur_sanitize_tip_html( $tip ) {
+	return htmlspecialchars( wp_kses_post( html_entity_decode( $tip ) ), ENT_QUOTES );
+}
+
+/**
  * Format dimensions for display.
  *
  * @param array $dimensions Array of dimensions.
@@ -542,11 +557,8 @@ function ur_locate_template( $template_name, $template_path = '', $default_path 
  * @return string
  */
 function ur_help_tip( $tip, $allow_html = false, $classname = 'user-registration-help-tip' ) {
-	if ( $allow_html ) {
-		$tip = ur_sanitize_tooltip( $tip );
-	} else {
-		$tip = esc_attr( $tip );
-	}
+	// Tooltipster renders the decoded data-tip as HTML, so sanitise the markup before it reaches the attribute.
+	$tip = $allow_html ? ur_sanitize_tooltip( $tip ) : ur_sanitize_tip_html( $tip );
 
 	return sprintf( '<span class="%s" data-tip="%s"></span>', $classname, $tip );
 }
