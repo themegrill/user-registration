@@ -386,6 +386,18 @@ class UR_Abilities {
 			),
 		);
 		$detail['required'][]           = 'fields';
+		$detail['properties']['layout'] = array(
+			'type'        => 'array',
+			'description' => 'Rows of columns of field names, as the form builder lays them out.',
+			'items'       => array(
+				'type'  => 'array',
+				'items' => array(
+					'type'  => 'array',
+					'items' => $string,
+				),
+			),
+		);
+		$detail['required'][]           = 'layout';
 		$member_detail                  = $member;
 		$member_detail['properties']['membership_available'] = array( 'type' => 'boolean' );
 		$member_detail['properties']['subscriptions']        = array(
@@ -748,6 +760,34 @@ class UR_Abilities {
 						'output'      => $detail,
 						'permission'  => array( __CLASS__, 'forms_write_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'move_form_field' ),
+					),
+					'set-form-layout'      => array(
+						'label'       => __( 'Set form layout', 'user-registration' ),
+						'description' => __( 'Lay out a form\'s fields in rows of 1 to 3 columns, like the column picker in the form builder, and save it. rows lists each row; each row lists its columns; each column lists field names from top to bottom. Every field of the form must be placed once. Read the form first to see its fields and current layout.', 'user-registration' ),
+						'level'       => 'write',
+						'input'       => array(
+							'form_id' => $id,
+							'rows'    => array(
+								'type'     => 'array',
+								'minItems' => 1,
+								'maxItems' => 100,
+								'items'    => array(
+									'type'     => 'array',
+									'minItems' => 1,
+									'maxItems' => 3,
+									'items'    => array(
+										'type'     => 'array',
+										'minItems' => 1,
+										'maxItems' => 100,
+										'items'    => $field_name,
+									),
+								),
+							),
+						),
+						'required'    => array( 'form_id', 'rows' ),
+						'output'      => $detail,
+						'permission'  => array( __CLASS__, 'forms_write_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'set_form_layout' ),
 					),
 					'remove-form-field'    => array(
 						'label'       => __( 'Remove form field', 'user-registration' ),

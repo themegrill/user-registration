@@ -62,7 +62,99 @@ class UR_Abilities_Data {
 				'required' => isset( $settings->required ) && ur_string_to_bool( $settings->required ),
 			);
 		}
+		// Rows of columns of field names, as the form builder lays them out.
+		$result['layout'] = array();
+		$rows             = json_decode( $post->post_content );
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			$columns = array();
+			foreach ( (array) $row as $column ) {
+				$names = array();
+				foreach ( (array) $column as $field ) {
+					if ( isset( $field->general_setting->field_name ) ) {
+						$names[] = (string) $field->general_setting->field_name;
+					}
+				}
+				$columns[] = $names;
+			}
+			$result['layout'][] = $columns;
+		}
 		return $result;
+	}
+
+	/**
+	 * Lay a form's fields out in rows and columns and save it through the same code as the form builder.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function set_form_layout( $input ) {
+		$form = self::form_layout( $input['form_id'] );
+
+		if ( is_wp_error( $form ) ) {
+			return $form;
+		}
+
+		// Row settings such as repeater rows or row conditions are tied to row numbers, which a new layout changes.
+		$row_data = json_decode( $form['row_data'], true );
+
+		if ( ! empty( $row_data ) ) {
+			return new WP_Error( 'ur_abilities_invalid_form', __( 'This form has rows with their own settings, such as repeater rows or row conditions. Change its layout in the form builder.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		$fields = array();
+
+		foreach ( $form['rows'] as $row ) {
+			foreach ( (array) $row as $column ) {
+				foreach ( (array) $column as $field ) {
+					if ( isset( $field->general_setting->field_name ) ) {
+						$fields[ $field->general_setting->field_name ] = $field;
+					}
+				}
+			}
+		}
+
+		$rows   = array();
+		$placed = array();
+
+		foreach ( $input['rows'] as $row ) {
+			$columns = array();
+
+			foreach ( $row as $column ) {
+				$list = array();
+
+				foreach ( $column as $name ) {
+					if ( ! isset( $fields[ $name ] ) ) {
+						return self::field_not_found();
+					}
+
+					if ( isset( $placed[ $name ] ) ) {
+						/* translators: %s: field name. */
+						return new WP_Error( 'ur_abilities_invalid_input', sprintf( __( 'The %s field is placed more than once. Each field goes in one place.', 'user-registration' ), $name ), array( 'status' => 400 ) );
+					}
+
+					$placed[ $name ] = true;
+					$list[]          = $fields[ $name ];
+				}
+
+				$columns[] = $list;
+			}
+
+			$rows[] = $columns;
+		}
+
+		$missing = array_diff( array_keys( $fields ), array_keys( $placed ) );
+
+		if ( $missing ) {
+			/* translators: %s: list of field names. */
+			return new WP_Error( 'ur_abilities_invalid_input', sprintf( __( 'Place every field of the form. Missing: %s. To drop a field, remove it first.', 'user-registration' ), implode( ', ', $missing ) ), array( 'status' => 400 ) );
+		}
+
+		$form['rows']    = $rows;
+		$form['row_ids'] = wp_json_encode( array_map( 'strval', array_keys( $rows ) ) );
+
+		return self::save_form_layout( $form );
 	}
 
 	/**
