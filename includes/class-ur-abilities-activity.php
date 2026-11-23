@@ -149,8 +149,8 @@ class UR_Abilities_Activity {
 		);
 
 		return sprintf(
-			'AI %1$s %2$s by user %3$d%4$s: %5$s',
-			$row['level'],
+			'AI [%1$s] %2$s by user %3$d%4$s: %5$s',
+			strtoupper( $row['level'] ),
 			$row['ability'],
 			$row['user_id'],
 			'' === $row['app'] ? '' : ' (' . $row['app'] . ')',

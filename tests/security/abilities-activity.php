@@ -63,7 +63,7 @@ $result = $read( array( 'page' => 1 ) );
 list( $level, $line, $source ) = last_line();
 security_assert( 3 === count( $result['items'] ), 'The ability still returns its result untouched' );
 security_assert( 1 === logged_count() && 'info' === $level && 'user-registration-ai' === $source, 'A finished read is one info line under the AI source' );
-security_assert( 1 === preg_match( '/^AI read list-memberships by user 3: success, 3 items, \d+ ms$/', $line ), 'The line names the level, ability, user, result, item count and time' );
+security_assert( 1 === preg_match( '/^AI \[READ\] list-memberships by user 3: success, 3 items, \d+ ms$/', $line ), 'The line names the level as a label, then the ability, user, result, item count and time' );
 security_assert( false === strpos( $line, 'Paid Membership' ) && false === strpos( $line, 'Free' ), 'What the ability returned is never written' );
 
 // Ids are written, names and other values are not.
@@ -109,7 +109,7 @@ $allowed = UR_Abilities_Activity::wrap_permission(
 security_assert( false === $refuse( array( 'id' => 5 ) ) && true === $allowed(), 'The permission result is passed on untouched' );
 list( $level, $line ) = last_line();
 security_assert( $before + 1 === logged_count(), 'An allowed permission check writes nothing, the run itself is recorded' );
-security_assert( 'warning' === $level && 1 === preg_match( '/^AI write update-member by user 3: refused, forbidden, id:5, \d+ ms$/', $line ), 'A refused call is a warning with the reason' );
+security_assert( 'warning' === $level && 1 === preg_match( '/^AI \[WRITE\] update-member by user 3: refused, forbidden, id:5, \d+ ms$/', $line ), 'A refused call is a warning with the reason' );
 
 $locked = UR_Abilities_Activity::wrap_permission(
 	'list-coupons',
@@ -168,7 +168,7 @@ $preview = UR_Abilities_Activity::wrap_execute(
 );
 $preview( array( 'id' => 12 ) );
 list( $level, $line ) = last_line();
-security_assert( 'info' === $level && false !== strpos( $line, 'AI write cancel-membership by user 3: preview, id:12' ), 'A preview is recorded as waiting, and its text is not' );
+security_assert( 'info' === $level && false !== strpos( $line, 'AI [WRITE] cancel-membership by user 3: preview, id:12' ), 'A preview is recorded as waiting, and its text is not' );
 security_assert( false === strpos( $line, 'Ana' ), 'The preview text is never written' );
 
 $crash = UR_Abilities_Activity::wrap_execute(
@@ -192,6 +192,18 @@ security_assert( 'error' === $level && false !== strpos( $line, 'error, exceptio
 $row = end( $GLOBALS['actions']['user_registration_ai_activity_logged'] )[0];
 security_assert( 3 === $row['user_id'] && 'list-orders' === $row['ability'] && 'error' === $row['outcome'], 'The hook receives the entry' );
 security_assert( array( 'user_id', 'app', 'ability', 'level', 'outcome', 'code', 'targets', 'items', 'duration_ms' ) === array_keys( $row ), 'The entry has only the allowed fields' );
+
+// The label tells a read from a change at a glance.
+$remove = UR_Abilities_Activity::wrap_execute(
+	'delete-member',
+	'delete',
+	function () {
+		return array( 'ok' => true );
+	}
+);
+$remove( array( 'id' => 4 ) );
+list( , $line ) = last_line();
+security_assert( 0 === strpos( $line, 'AI [DELETE] delete-member by user 3' ), 'A delete is labelled DELETE, next to READ and WRITE' );
 
 // The AI app is the name of the application password. The doubles are declared only now, so the lines above had none.
 $no_app_before = false === strpos( $line, '(' );
