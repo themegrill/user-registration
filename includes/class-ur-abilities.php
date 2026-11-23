@@ -14,6 +14,7 @@ class UR_Abilities {
 		add_action( 'wp_abilities_api_categories_init', array( __CLASS__, 'register_category' ) );
 		add_action( 'wp_abilities_api_init', array( __CLASS__, 'register_abilities' ) );
 		UR_Abilities_Access::init();
+		UR_Abilities_Safety::init();
 	}
 
 	/** Register the shared category. */
@@ -56,7 +57,9 @@ class UR_Abilities {
 		 * empty for every site) and `abilities`, keyed by ability name. Each ability takes:
 		 * `label`, `description`, `level` (`read`, `write` or `delete`, default `read`), `input` (property schemas),
 		 * `required` (property names), `output` (a schema, see UR_Abilities::object_schema()), `permission` and
-		 * `execute` (callables), and optionally `idempotent`. The ability is registered as `user-registration/{name}`.
+		 * `execute` (callables), and optionally `idempotent`. Set `confirm` to true and give a `preview` callable that
+		 * returns a plain sentence, and the ability first shows that preview and only runs when called again with the
+		 * `confirm_token` it handed out. The ability is registered as `user-registration/{name}`.
 		 *
 		 * An addon adds nothing when it is not active, because its code never runs to add the area.
 		 *
@@ -131,7 +134,14 @@ class UR_Abilities {
 					continue;
 				}
 
-				$input = self::object_schema( $ability['input'] ?? array() );
+				$confirm    = ! empty( $ability['confirm'] );
+				$properties = $ability['input'] ?? array();
+
+				if ( $confirm ) {
+					$properties['confirm_token'] = UR_Abilities_Safety::token_schema();
+				}
+
+				$input = self::object_schema( $properties );
 
 				$input['required'] = $ability['required'] ?? array();
 
@@ -146,13 +156,13 @@ class UR_Abilities {
 						'description'         => $ability['description'],
 						'category'            => 'user-registration',
 						'input_schema'        => $input,
-						'output_schema'       => $ability['output'],
+						'output_schema'       => $confirm ? UR_Abilities_Safety::output_schema( $ability['output'] ) : $ability['output'],
 						'permission_callback' => function ( $args = null ) use ( $slug, $area, $ability ) {
 							$locked = self::plan_error( $slug, $area );
 
 							return is_wp_error( $locked ) ? $locked : call_user_func( $ability['permission'], $args );
 						},
-						'execute_callback'    => $ability['execute'],
+						'execute_callback'    => $confirm ? UR_Abilities_Safety::wrap( $name, $ability ) : $ability['execute'],
 						'meta'                => array(
 							'show_in_rest' => true,
 							'mcp'          => array(
@@ -202,7 +212,8 @@ class UR_Abilities {
 			&& is_array( $ability['input'] ?? array() )
 			&& is_array( $ability['required'] ?? array() )
 			&& is_callable( $ability['permission'] ?? null )
-			&& is_callable( $ability['execute'] ?? null );
+			&& is_callable( $ability['execute'] ?? null )
+			&& ( empty( $ability['confirm'] ) || is_callable( $ability['preview'] ?? null ) );
 	}
 
 	/**
