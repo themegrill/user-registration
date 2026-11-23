@@ -89,16 +89,20 @@ class URCR_Syndication_Restriction {
 	 *
 	 * @since x.x.x
 	 *
-	 * @param string       $excerpt Excerpt.
+	 * @param string           $excerpt Excerpt.
 	 * @param int|WP_Post|null $post    Post the excerpt belongs to.
 	 * @return string
 	 */
 	public static function filter_excerpt( $excerpt, $post = null ) {
 		static $granted = array();
 
+		if ( '' === $excerpt ) {
+			return $excerpt;
+		}
+
 		$post = get_post( $post );
 
-		if ( '' === $excerpt || ! $post instanceof WP_Post ) {
+		if ( ! $post instanceof WP_Post ) {
 			return $excerpt;
 		}
 
