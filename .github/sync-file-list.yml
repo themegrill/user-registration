@@ -1,4 +1,5 @@
-themegrill/user-registration-pro@develop:
+# Temporary: target the Pro AI abilities branch while it is built (pro#2062). Set back to @develop before merging.
+themegrill/user-registration-pro@2062-ai-mcp-parity:
     - source: assets
       exclude: |
         js/divi-vb-modules.js
