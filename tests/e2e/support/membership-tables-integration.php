@@ -105,6 +105,20 @@ list( , $bulk_2 ) = make_membership_rows( $user_b );
 ( new OrdersRepository() )->delete_multiple( $bulk_1 . ',' . $bulk_2 );
 check( 0 === count_rows( TableList::orders_table(), 'ID', $bulk_1 ) + count_rows( TableList::orders_table(), 'ID', $bulk_2 ) + count_rows( TableList::order_meta_table(), 'order_id', $bulk_1 ) + count_rows( TableList::order_meta_table(), 'order_id', $bulk_2 ), 'bulk-deleting orders removes their order meta' );
 
+// A failed meta delete in a bulk order delete keeps every order and its meta, so no order is left without its meta.
+list( , $keep_1 ) = make_membership_rows( $user_b );
+list( , $keep_2 ) = make_membership_rows( $user_b );
+$fail_bulk_meta   = function ( $query ) {
+	return 0 === strpos( $query, 'DELETE FROM ' . TableList::order_meta_table() . ' WHERE order_id IN' ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+};
+$wpdb->suppress_errors( true );
+add_filter( 'query', $fail_bulk_meta );
+$failed_bulk_orders = ( new OrdersRepository() )->delete_multiple( $keep_1 . ',' . $keep_2 );
+remove_filter( 'query', $fail_bulk_meta );
+$wpdb->suppress_errors( false );
+check( false === $failed_bulk_orders && 2 === count_rows( TableList::orders_table(), 'ID', $keep_1 ) + count_rows( TableList::orders_table(), 'ID', $keep_2 ) && 2 === count_rows( TableList::order_meta_table(), 'order_id', $keep_1 ) + count_rows( TableList::order_meta_table(), 'order_id', $keep_2 ), 'a failed meta delete in a bulk order delete keeps every order and its meta' );
+( new OrdersRepository() )->delete_multiple( $keep_1 . ',' . $keep_2 );
+
 // delete_member_order() with $delete_all removes every order of the member with their meta.
 list( , $all_1 ) = make_membership_rows( $user_b );
 list( , $all_2 ) = make_membership_rows( $user_b );
@@ -165,8 +179,8 @@ $user_x                  = wp_insert_user( array( 'user_login' => 'fk_x_' . wp_r
 $user_y                  = wp_insert_user( array( 'user_login' => 'fk_y_' . wp_rand(), 'user_pass' => 'x', 'user_email' => 'fk_y_' . wp_rand() . '@example.com' ) );
 list( $sub_x )           = make_membership_rows( $user_x );
 list( $sub_y )           = make_membership_rows( $user_y );
-$fail_member_lookup      = function ( $query ) use ( $user_y ) {
-	return 0 === strpos( $query, 'SELECT ID FROM ' . TableList::subscriptions_table() . ' WHERE user_id = ' . $user_y ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
+$fail_member_lookup      = function ( $query ) use ( $wpdb, $user_y ) {
+	return 0 === strpos( $query, 'DELETE FROM ' . $wpdb->users . ' WHERE ID IN (' . $user_y . ')' ) ? 'SELECT * FROM urm_table_that_does_not_exist' : $query;
 };
 $wpdb->suppress_errors( true );
 add_filter( 'query', $fail_member_lookup );

@@ -419,13 +419,19 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	 * Delete several orders and their meta, which the schema no longer cascades.
 	 *
 	 * @param string $ids Comma separated order IDs.
-	 * @return bool|int|\mysqli_result|void|null False when any order's meta could not be deleted, in which case no order is deleted.
+	 * @return bool|int|\mysqli_result|void|null False when nothing was asked for or the orders' meta could not be deleted, in which case no order is deleted.
 	 */
 	public function delete_multiple( $ids ) {
-		foreach ( array_filter( array_map( 'absint', explode( ',', $ids ) ) ) as $order_id ) {
-			if ( false === $this->wpdb()->delete( $this->orders_meta_table, array( 'order_id' => $order_id ) ) ) {
-				return false;
-			}
+		$order_ids = array_filter( array_map( 'absint', explode( ',', $ids ) ) );
+
+		if ( empty( $order_ids ) ) {
+			return false;
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $order_ids ), '%d' ) );
+
+		if ( false === $this->wpdb()->query( $this->wpdb()->prepare( "DELETE FROM $this->orders_meta_table WHERE order_id IN ($placeholders)", $order_ids ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- table name is internal and the IDs are prepared placeholders.
+			return false;
 		}
 
 		return parent::delete_multiple( $ids );
