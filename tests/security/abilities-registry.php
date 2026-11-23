@@ -135,6 +135,10 @@ add_filter(
 				'addon-delete' => addon_ability( array( 'level' => 'delete' ) ),
 				'addon-broken' => addon_ability( array( 'execute' => 'no_such_function' ) ),
 				'addon-bare'   => array( 'label' => 'No callbacks' ),
+				'bad-input'    => addon_ability( array( 'input' => 'not-an-array' ) ),
+				'bad-required' => addon_ability( array( 'required' => 'id' ) ),
+				'bad-output'   => addon_ability( array( 'output' => 'text' ) ),
+				'bad-label'    => addon_ability( array( 'label' => array( 'x' ) ) ),
 				'list-forms'   => addon_ability(),
 			),
 		);
@@ -146,6 +150,7 @@ $all = abilities_after_register();
 security_assert( isset( $all['user-registration/addon-read'] ), 'An addon area is registered through the filter' );
 security_assert( 9 + 3 === count( $all ), 'A broken, an incomplete and a duplicate-named ability are skipped' );
 security_assert( ! isset( $all['user-registration/addon-broken'], $all['user-registration/addon-bare'] ), 'An ability without working callbacks is never registered' );
+security_assert( ! isset( $all['user-registration/bad-input'], $all['user-registration/bad-required'], $all['user-registration/bad-output'], $all['user-registration/bad-label'] ), 'A definition with the wrong kind of value is skipped and never stops the other abilities' );
 security_assert( 'Addon ability' !== $all['user-registration/list-forms']['label'], 'A duplicate name cannot replace a built-in ability' );
 
 $read   = $all['user-registration/addon-read']['meta']['annotations'];
@@ -174,6 +179,8 @@ security_assert( 403 === $locked->data['status'] && array( 'plus', 'professional
 security_assert( false !== strpos( $locked->data['upgrade_url'], 'content=coupons' ), 'The error carries the upgrade link for the area' );
 security_assert( is_wp_error( abilities_after_register( true )['user-registration/list-coupons']['permission_callback']() ), 'A site with no license is locked out of a paid area' );
 security_assert( true === abilities_after_register( true, 'professional' )['user-registration/list-coupons']['permission_callback'](), 'A site on a listed plan can use the area' );
+security_assert( true === abilities_after_register( true, ' plus' )['user-registration/list-coupons']['permission_callback'](), 'A plan name with a leading space from the license lookup still matches' );
+security_assert( true === abilities_after_register( true, 'Professional ' )['user-registration/list-coupons']['permission_callback'](), 'Capital letters and trailing spaces in the plan name do not lock a licensed site out' );
 
 // A filter that returns something other than a list of areas cannot break registration.
 add_filter(

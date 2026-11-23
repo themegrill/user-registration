@@ -162,8 +162,13 @@ class UR_Abilities {
 	private static function is_complete( $ability ) {
 		return is_array( $ability )
 			&& ! empty( $ability['label'] )
+			&& is_string( $ability['label'] )
 			&& ! empty( $ability['description'] )
+			&& is_string( $ability['description'] )
 			&& ! empty( $ability['output'] )
+			&& is_array( $ability['output'] )
+			&& is_array( $ability['input'] ?? array() )
+			&& is_array( $ability['required'] ?? array() )
 			&& is_callable( $ability['permission'] ?? null )
 			&& is_callable( $ability['execute'] ?? null );
 	}
@@ -178,14 +183,15 @@ class UR_Abilities {
 	 * @return true|WP_Error True when the site may use the area.
 	 */
 	private static function plan_error( $slug, $area ) {
-		$plans = isset( $area['plan'] ) ? array_filter( (array) $area['plan'] ) : array();
+		$plans = isset( $area['plan'] ) ? array_filter( array_map( 'trim', array_map( 'strtolower', (array) $area['plan'] ) ) ) : array();
 
 		if ( empty( $plans ) ) {
 			return true;
 		}
 
+		// The license lookup leaves a space in front of the plan name, for example " plus".
 		$license   = ur_get_license_plan();
-		$site_plan = ! empty( $license->item_plan ) ? $license->item_plan : '';
+		$site_plan = ! empty( $license->item_plan ) ? trim( strtolower( $license->item_plan ) ) : '';
 
 		if ( in_array( $site_plan, $plans, true ) ) {
 			return true;
