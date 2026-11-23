@@ -545,8 +545,8 @@ function urcr_is_allow_access( $logic_map = array(), $target_post = null ) {
 					break;
 
 				case 'profile_completeness':
-					$completeness_level = get_user_meta( $user->ID, 'user_registration_profile_completeness_completed_profile_percentage', true );
-					$completeness_level = ! empty( $completeness_level ) ? (int) $completeness_level : 100;
+					// A missing value means no completed profile, so anonymous visitors never pass.
+					$completeness_level = (int) get_user_meta( $user->ID, 'user_registration_profile_completeness_completed_profile_percentage', true );
 
 					$threshold = ! empty( $logic_map['value'] ) ? (int) $logic_map['value'] : 0;
 
