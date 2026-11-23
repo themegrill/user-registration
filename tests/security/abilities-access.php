@@ -169,7 +169,14 @@ security_assert( in_array( 'delete-coupon', $delete, true ), 'Read, change and d
 $off = abilities_with_access( array( 'forms' => 'off' ) );
 security_assert( ! in_array( 'list-forms', $off, true ) && ! in_array( 'get-form', $off, true ), 'Off hides even the read abilities of that area' );
 security_assert( in_array( 'list-members', $off, true ) && in_array( 'list-coupons', $off, true ), 'Turning one area off leaves the other areas alone' );
-security_assert( 10 + 3 === count( abilities_with_access() ), 'The ten built-in abilities and the three addon reads are the default set' );
+abilities_with_access();
+$writers = array_filter(
+	$GLOBALS['registered'],
+	function ( $ability ) {
+		return false === $ability['meta']['annotations']['readonly'];
+	}
+);
+security_assert( array() === $writers, 'Every ability the AI sees by default only reads' );
 
 // A hidden name stays reserved, so an addon cannot take over a built-in ability that is switched off.
 add_filter(
@@ -212,9 +219,9 @@ foreach ( $section['settings'] ?? array() as $field ) {
 }
 
 security_assert( isset( $settings['sections']['ai_integration'] ), 'The existing cards of the section are kept' );
-security_assert( isset( $by_id['user_registration_ability_access_forms'], $by_id['user_registration_ability_access_coupons'], $by_id['user_registration_ability_access_settings'] ), 'Every area, including addon areas, gets its own setting' );
+security_assert( isset( $by_id['user_registration_ability_access_payments'], $by_id['user_registration_ability_access_coupons'], $by_id['user_registration_ability_access_settings'] ), 'Every area, including addon areas, gets its own setting' );
 security_assert( ! isset( $by_id['user_registration_ability_access_broken'], $by_id['user_registration_ability_access_nameless'] ), 'An area without a usable definition gets no setting' );
-security_assert( array( 'off', 'read' ) === array_keys( $by_id['user_registration_ability_access_forms']['options'] ), 'An area with only read abilities offers off and read only' );
+security_assert( array( 'off', 'read' ) === array_keys( $by_id['user_registration_ability_access_payments']['options'] ), 'An area with only read abilities offers off and read only' );
 security_assert( array( 'off', 'read', 'write' ) === array_keys( $by_id['user_registration_ability_access_settings']['options'] ), 'An area that can change data also offers read and change' );
 security_assert( array( 'off', 'read', 'write', 'delete' ) === array_keys( $by_id['user_registration_ability_access_coupons']['options'] ), 'An area that can delete offers every level' );
 security_assert( 'read' === $by_id['user_registration_ability_access_coupons']['default'] && 'select' === $by_id['user_registration_ability_access_coupons']['type'], 'Each setting is a dropdown that starts at read only' );

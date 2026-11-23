@@ -113,25 +113,22 @@ function addon_ability( $overrides = array() ) {
 	);
 }
 
-// The built-in abilities keep their names and stay read only.
-$core = array_keys( abilities_after_register() );
-security_assert(
-	array(
-		'user-registration/list-forms',
-		'user-registration/get-form',
-		'user-registration/get-registration-stats',
-		'user-registration/list-members',
-		'user-registration/get-member',
-		'user-registration/list-memberships',
-		'user-registration/list-subscriptions',
-		'user-registration/list-orders',
-		'user-registration/get-order',
-		'user-registration/get-revenue-summary',
-	) === $core,
-	'The existing abilities keep their names and order, and the newest comes last'
+// The abilities that existed first keep their names and their order, and by default every ability only reads.
+$core     = array_keys( abilities_after_register() );
+$original = array(
+	'user-registration/list-forms',
+	'user-registration/get-form',
+	'user-registration/get-registration-stats',
+	'user-registration/list-members',
+	'user-registration/get-member',
+	'user-registration/list-memberships',
+	'user-registration/list-subscriptions',
+	'user-registration/list-orders',
+	'user-registration/get-order',
 );
+security_assert( $original === array_values( array_intersect( $core, $original ) ), 'The existing abilities keep their names and order' );
 foreach ( $GLOBALS['registered'] as $name => $ability ) {
-	security_assert( true === $ability['meta']['annotations']['readonly'] && false === $ability['meta']['annotations']['destructive'], $name . ' stays read only' );
+	security_assert( true === $ability['meta']['annotations']['readonly'] && false === $ability['meta']['annotations']['destructive'], $name . ' only reads while its area is on Read only' );
 }
 security_assert( array() === abilities_after_register( false ), 'Nothing is registered while the admin has abilities switched off' );
 
@@ -162,7 +159,7 @@ $GLOBALS['options']['user_registration_ability_access_addon'] = 'delete';
 $all = abilities_after_register();
 
 security_assert( isset( $all['user-registration/addon-read'] ), 'An addon area is registered through the filter' );
-security_assert( 10 + 3 === count( $all ), 'A broken, an incomplete and a duplicate-named ability are skipped' );
+security_assert( count( $core ) + 3 === count( $all ), 'A broken, an incomplete and a duplicate-named ability are skipped' );
 security_assert( ! isset( $all['user-registration/addon-broken'], $all['user-registration/addon-bare'] ), 'An ability without working callbacks is never registered' );
 security_assert( ! isset( $all['user-registration/bad-input'], $all['user-registration/bad-required'], $all['user-registration/bad-output'], $all['user-registration/bad-label'] ), 'A definition with the wrong kind of value is skipped and never stops the other abilities' );
 security_assert( 'Addon ability' !== $all['user-registration/list-forms']['label'], 'A duplicate name cannot replace a built-in ability' );

@@ -103,7 +103,7 @@ $result = revenue_for(
 	$rows
 );
 
-security_assert( '1591.00' === $result['revenue'] && 28 === $result['orders'], 'Revenue is the completed payments only, with their count' );
+security_assert( '1591.00' === $result['revenue'] && 41 === $result['orders'], 'Revenue is the completed payments only, and the order count includes every status' );
 security_assert( 'USD' === $result['currency'] && '2026-11-01' === $result['date_from'] && '2026-11-23' === $result['date_to'], 'The answer names the currency and the range it covers' );
 
 $by_status = array_column( $result['by_status'], null, 'status' );
@@ -114,7 +114,8 @@ security_assert( '1591.00' === $by_status['completed']['amount'] && 28 === $by_s
 
 security_assert( array( 37, 12, 27 ) === array_column( $result['by_plan'], 'membership_id' ), 'Plans are listed with the biggest revenue first' );
 security_assert( '3 years' === $result['by_plan'][0]['membership_name'] && '1191.00' === $result['by_plan'][0]['revenue'], 'A plan name has its markup removed and its revenue is a two-decimal string' );
-security_assert( 3 === count( $result['by_plan'] ), 'Plans count completed payments only' );
+security_assert( 3 === count( $result['by_plan'] ), 'Each plan is listed once, whatever the statuses of its orders' );
+security_assert( 5 === $result['by_plan'][0]['orders'] && 31 === $result['by_plan'][1]['orders'] && '400.00' === $result['by_plan'][1]['revenue'], 'A plan counts its orders of every status, and only its completed payments as revenue' );
 
 // The dates and the plan filter reach the orders table, and an empty range gives zeros.
 security_assert(
@@ -164,7 +165,10 @@ security_assert( is_wp_error( $off ) && 'ur_abilities_membership_disabled' === $
 $GLOBALS['modules'] = true;
 
 // The answer has exactly the shape the ability promises.
-$ability = UR_Abilities::get_areas()['memberships']['abilities']['get-revenue-summary'];
+$ability = null;
+foreach ( UR_Abilities::get_areas() as $area ) {
+	$ability = $area['abilities']['get-revenue-summary'] ?? $ability;
+}
 $schema  = $ability['output']['properties'];
 security_assert( array_keys( $result ) === $ability['output']['required'], 'The answer has the fields its schema promises, no more and no fewer' );
 foreach ( array(
