@@ -451,8 +451,14 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 		return $order_id;
 	}
 
+	/**
+	 * Insert one order meta row.
+	 *
+	 * @param array $order_meta Row with order_id, meta_key and meta_value.
+	 * @return int|false Rows inserted, or false when the insert failed.
+	 */
 	public function update_order_meta( $order_meta ) {
-		$this->wpdb()->insert(
+		return $this->wpdb()->insert(
 			TableList::order_meta_table(),
 			$order_meta
 		);

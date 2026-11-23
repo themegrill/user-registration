@@ -754,13 +754,32 @@ class SubscriptionService {
 		$order       = $this->orders_repository->create( $orders_data );
 
 		// Free orders complete here and keep the use; the rest settle on their final status.
-		if ( '' !== $claimed_coupon && 'completed' !== $order['status'] ) {
-			$this->orders_repository->update_order_meta(
-				array(
-					'order_id'   => $order['ID'],
-					'meta_key'   => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
-					'meta_value' => $claimed_coupon, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
-				)
+		$needs_claim_marker = '' !== $claimed_coupon && ! empty( $order ) && 'completed' !== $order['status'];
+		$marker_saved       = ! $needs_claim_marker || false !== $this->orders_repository->update_order_meta(
+			array(
+				'order_id'   => $order['ID'],
+				'meta_key'   => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
+				'meta_value' => $claimed_coupon, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
+			)
+		);
+
+		// Without the order, or the marker that lets a failed order give the use back, abort rather than strand the claim.
+		if ( empty( $order ) || ! $marker_saved ) {
+			if ( ! empty( $order['ID'] ) ) {
+				$this->orders_repository->delete( $order['ID'] );
+			}
+
+			if ( '' !== $claimed_coupon ) {
+				ur_release_coupon_usage( $claimed_coupon );
+			}
+
+			$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
+
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => __( 'Could not create the upgrade order. Please try again.', 'user-registration' ),
+				),
 			);
 		}
 
