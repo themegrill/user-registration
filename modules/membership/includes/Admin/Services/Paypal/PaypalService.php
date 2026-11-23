@@ -715,15 +715,23 @@ class PaypalService {
 					'subscr_id'           => $data['subscr_id'] ?? 'N/A',
 				)
 			);
-			// updating the status to cancel it for sure
-			$is_updated = $this->members_subscription_repository->update(
-				$subscription_id,
-				array(
-					'status' => 'canceled',
-				)
-			);
+			$canceled = array( 'status' => 'canceled' );
+			// With a stored PayPal ID the write only lands while the row still carries it, so an upgrade between the check and the write is not cancelled.
+			$is_updated = '' === $paypal_subscr_id
+				? $this->members_subscription_repository->update( $subscription_id, $canceled )
+				: $this->members_subscription_repository->update_if_subscription_id_matches( $subscription_id, $canceled, $paypal_subscr_id );
 
-			if ( $is_updated ) {
+			if ( ! $is_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'Cancellation not applied: the membership moved to another PayPal subscription',
+					array(
+						'error_code'      => 'IPN_STALE_CANCEL',
+						'member_id'       => $member_id,
+						'subscription_id' => $subscription_id,
+					)
+				);
+			} else {
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'Subscription status changed to canceled',

@@ -38,9 +38,11 @@ namespace {
 
 	class DoubleRepo {
 		public function __call( $name, $args ) {
-			if ( 'update' === $name ) {
+			if ( 'update_if_subscription_id_matches' === $name && ! empty( $GLOBALS['row_moved'] ) ) {
+				return 0; }
+			if ( in_array( $name, array( 'update', 'update_if_subscription_id_matches' ), true ) ) {
 				$GLOBALS['updates'][] = $args;
-				return true; }
+				return 1; }
 			return $GLOBALS['repo'][ $name ] ?? array();
 		}
 	}
@@ -101,6 +103,11 @@ namespace {
 	security_assert( ! cancel_ipn( MERCHANT, 'I-OTHER', PAYPAL_SUB ), 'A cancel IPN for a different PayPal subscription does not cancel the member' );
 	security_assert( cancel_ipn( strtoupper( MERCHANT ), PAYPAL_SUB, PAYPAL_SUB ), 'The merchant cancelling the stored PayPal subscription still cancels the member' );
 	security_assert( cancel_ipn( MERCHANT, PAYPAL_SUB, '' ), 'A membership with no stored PayPal ID is still cancelled by the merchant' );
+	// An upgrade rebinds the row to another PayPal subscription after the ID check but before the write.
+	$GLOBALS['row_moved'] = true;
+	security_assert( ! cancel_ipn( MERCHANT, PAYPAL_SUB, PAYPAL_SUB ), 'A cancel is not applied once the row moved to another PayPal subscription' );
+	$GLOBALS['row_moved'] = false;
+
 	foreach ( array( 'subscr_signup', 'subscr_payment', 'web_accept' ) as $type ) {
 		cancel_ipn( 'attacker@evil.test', 'I-ATTACKER', PAYPAL_SUB, $type );
 		security_assert( array() === $GLOBALS['updates'], "A foreign merchant's {$type} IPN still changes nothing" );   }
