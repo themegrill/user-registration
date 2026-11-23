@@ -343,12 +343,14 @@ class UR_Admin_Settings {
 		}
 
 		// Add any posted messages.
-		if ( ! empty( $_GET['ur_error'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			self::add_error( self::escape_notice_param( $_GET['ur_error'] ) ); // phpcs:ignore
+		$notice_error = isset( $_GET['ur_error'] ) ? self::escape_notice_param( $_GET['ur_error'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification, WordPress.Security.ValidatedSanitizedInput
+		if ( '' !== $notice_error ) {
+			self::add_error( $notice_error );
 		}
 
-		if ( ! empty( $_GET['ur_message'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification
-			self::add_message( self::escape_notice_param( $_GET['ur_message'] ) ); // phpcs:ignore
+		$notice_message = isset( $_GET['ur_message'] ) ? self::escape_notice_param( $_GET['ur_message'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification, WordPress.Security.ValidatedSanitizedInput
+		if ( '' !== $notice_message ) {
+			self::add_message( $notice_message );
 		}
 		global $tabs;
 		/**
