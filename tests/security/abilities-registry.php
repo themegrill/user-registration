@@ -1,6 +1,6 @@
 <?php // phpcs:ignore WordPress.Files.FileName.InvalidClassFileName -- Test double shares this file.
 /**
- * Regression: every AI ability goes through one shared registration, so the built-in nine keep their names and
+ * Regression: every AI ability goes through one shared registration, so the built-in abilities keep their names and
  * read-only behaviour, and an addon can add its own from its own code through a filter. A broken or duplicate
  * ability is skipped, level decides the safety hints, and a plan-locked area tells the AI which plan it needs.
  *
@@ -113,7 +113,7 @@ function addon_ability( $overrides = array() ) {
 	);
 }
 
-// The built-in nine keep their names and stay read only.
+// The built-in abilities keep their names and stay read only.
 $core = array_keys( abilities_after_register() );
 security_assert(
 	array(
@@ -126,8 +126,9 @@ security_assert(
 		'user-registration/list-subscriptions',
 		'user-registration/list-orders',
 		'user-registration/get-order',
+		'user-registration/get-revenue-summary',
 	) === $core,
-	'The nine existing abilities keep their names and order'
+	'The existing abilities keep their names and order, and the newest comes last'
 );
 foreach ( $GLOBALS['registered'] as $name => $ability ) {
 	security_assert( true === $ability['meta']['annotations']['readonly'] && false === $ability['meta']['annotations']['destructive'], $name . ' stays read only' );
@@ -161,7 +162,7 @@ $GLOBALS['options']['user_registration_ability_access_addon'] = 'delete';
 $all = abilities_after_register();
 
 security_assert( isset( $all['user-registration/addon-read'] ), 'An addon area is registered through the filter' );
-security_assert( 9 + 3 === count( $all ), 'A broken, an incomplete and a duplicate-named ability are skipped' );
+security_assert( 10 + 3 === count( $all ), 'A broken, an incomplete and a duplicate-named ability are skipped' );
 security_assert( ! isset( $all['user-registration/addon-broken'], $all['user-registration/addon-bare'] ), 'An ability without working callbacks is never registered' );
 security_assert( ! isset( $all['user-registration/bad-input'], $all['user-registration/bad-required'], $all['user-registration/bad-output'], $all['user-registration/bad-label'] ), 'A definition with the wrong kind of value is skipped and never stops the other abilities' );
 security_assert( 'Addon ability' !== $all['user-registration/list-forms']['label'], 'A duplicate name cannot replace a built-in ability' );

@@ -303,6 +303,86 @@ class UR_Abilities_Data {
 	}
 
 	/**
+	 * Add up membership payments for a date range. Revenue is the completed payments only.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function get_revenue_summary( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+		$from  = isset( $input['date_from'] ) ? $input['date_from'] : gmdate( 'Y-m-d', strtotime( '-29 days' ) );
+		$to    = isset( $input['date_to'] ) ? $input['date_to'] : gmdate( 'Y-m-d' );
+		$start = DateTimeImmutable::createFromFormat( '!Y-m-d', $from, new DateTimeZone( 'UTC' ) );
+		$end   = DateTimeImmutable::createFromFormat( '!Y-m-d', $to, new DateTimeZone( 'UTC' ) );
+		if ( ! $start || ! $end || $start->format( 'Y-m-d' ) !== $from || $end->format( 'Y-m-d' ) !== $to || $end < $start || $start->diff( $end )->days > 365 ) {
+			return new WP_Error( 'ur_abilities_date_range', __( 'Use valid dates in ascending order spanning at most 366 days.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+		$args = array(
+			'date_from' => $from,
+			'date_to'   => $to,
+		);
+		if ( isset( $input['membership_id'] ) ) {
+			$args['membership_id'] = $input['membership_id'];
+		}
+		$statuses = array();
+		$plans    = array();
+		$orders   = 0;
+		$revenue  = 0.0;
+		foreach ( ( new \WPEverest\URMembership\Admin\Repositories\OrdersRepository() )->get_summary( $args ) as $row ) {
+			$status = (string) $row['status'];
+			if ( ! isset( $statuses[ $status ] ) ) {
+				$statuses[ $status ] = array(
+					'status' => $status,
+					'orders' => 0,
+					'amount' => 0.0,
+				);
+			}
+			$statuses[ $status ]['orders'] += (int) $row['orders'];
+			$statuses[ $status ]['amount'] += (float) $row['amount'];
+			if ( 'completed' !== $status ) {
+				continue;
+			}
+			$orders  += (int) $row['orders'];
+			$revenue += (float) $row['amount'];
+			$plan_id  = (int) $row['item_id'];
+			$plans[]  = array(
+				'membership_id'   => $plan_id,
+				'membership_name' => wp_strip_all_tags( get_the_title( $plan_id ) ),
+				'orders'          => (int) $row['orders'],
+				'revenue'         => (float) $row['amount'],
+			);
+		}
+		usort(
+			$plans,
+			function ( $a, $b ) {
+				return $b['revenue'] <=> $a['revenue'];
+			}
+		);
+		ksort( $statuses );
+		return array(
+			'date_from' => $from,
+			'date_to'   => $to,
+			'currency'  => get_option( 'user_registration_payment_currency', 'USD' ),
+			'orders'    => $orders,
+			'revenue'   => number_format( $revenue, 2, '.', '' ),
+			'by_status' => array_map(
+				function ( $item ) {
+					return array( 'amount' => number_format( $item['amount'], 2, '.', '' ) ) + $item;
+				},
+				array_values( $statuses )
+			),
+			'by_plan'   => array_map(
+				function ( $item ) {
+					return array( 'revenue' => number_format( $item['revenue'], 2, '.', '' ) ) + $item;
+				},
+				array_slice( $plans, 0, 100 )
+			),
+		);
+	}
+
+	/**
 	 * Read a member's identity and membership subscriptions.
 	 *
 	 * @param array $input Validated input.

@@ -169,7 +169,7 @@ security_assert( in_array( 'delete-coupon', $delete, true ), 'Read, change and d
 $off = abilities_with_access( array( 'forms' => 'off' ) );
 security_assert( ! in_array( 'list-forms', $off, true ) && ! in_array( 'get-form', $off, true ), 'Off hides even the read abilities of that area' );
 security_assert( in_array( 'list-members', $off, true ) && in_array( 'list-coupons', $off, true ), 'Turning one area off leaves the other areas alone' );
-security_assert( 9 + 3 === count( abilities_with_access() ), 'The nine built-in abilities and the three addon reads are the default set' );
+security_assert( 10 + 3 === count( abilities_with_access() ), 'The ten built-in abilities and the three addon reads are the default set' );
 
 // A hidden name stays reserved, so an addon cannot take over a built-in ability that is switched off.
 add_filter(

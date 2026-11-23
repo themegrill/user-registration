@@ -435,6 +435,36 @@ class UR_Abilities {
 				'coupon'              => $string,
 			)
 		);
+		$revenue_summary = self::object_schema(
+			array(
+				'date_from' => $date,
+				'date_to'   => $date,
+				'currency'  => $string,
+				'orders'    => $count,
+				'revenue'   => $string,
+				'by_status' => array(
+					'type'  => 'array',
+					'items' => self::object_schema(
+						array(
+							'status' => $string,
+							'orders' => $count,
+							'amount' => $string,
+						)
+					),
+				),
+				'by_plan'   => array(
+					'type'  => 'array',
+					'items' => self::object_schema(
+						array(
+							'membership_id'   => $count,
+							'membership_name' => $string,
+							'orders'          => $count,
+							'revenue'         => $string,
+						)
+					),
+				),
+			)
+		);
 
 		return array(
 			'forms'       => array(
@@ -503,7 +533,7 @@ class UR_Abilities {
 			'memberships' => array(
 				'label'     => __( 'Memberships and payments', 'user-registration' ),
 				'abilities' => array(
-					'list-memberships'   => array(
+					'list-memberships'    => array(
 						'label'       => __( 'List membership plans', 'user-registration' ),
 						'description' => __( 'List membership plans with price, billing period and the number of members with an active subscription.', 'user-registration' ),
 						'input'       => $pagination,
@@ -511,7 +541,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_memberships' ),
 					),
-					'list-subscriptions' => array(
+					'list-subscriptions'  => array(
 						'label'       => __( 'List membership subscriptions', 'user-registration' ),
 						'description' => __( 'List subscriptions by status, plan, member or expiry date range, for example to find memberships that expire soon.', 'user-registration' ),
 						'input'       => $pagination + array(
@@ -525,7 +555,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_subscriptions' ),
 					),
-					'list-orders'        => array(
+					'list-orders'         => array(
 						'label'       => __( 'List membership payments', 'user-registration' ),
 						'description' => __( 'List membership payments, newest first, by status, gateway, plan or payment date range.', 'user-registration' ),
 						'input'       => $pagination + array(
@@ -539,7 +569,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_orders' ),
 					),
-					'get-order'          => array(
+					'get-order'           => array(
 						'label'       => __( 'Get membership payment', 'user-registration' ),
 						'description' => __( 'Read one membership payment with its subscription status and dates.', 'user-registration' ),
 						'input'       => array( 'id' => $id ),
@@ -547,6 +577,18 @@ class UR_Abilities {
 						'output'      => $order_detail,
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'get_order' ),
+					),
+					'get-revenue-summary' => array(
+						'label'       => __( 'Get revenue summary', 'user-registration' ),
+						'description' => __( 'Add up membership payments for a date range, 30 days by default and at most 366 days. Revenue counts completed payments only. Orders are also counted and added up by status, for example failed or refunded, and by plan.', 'user-registration' ),
+						'input'       => array(
+							'date_from'     => $date,
+							'date_to'       => $date,
+							'membership_id' => $id,
+						),
+						'output'      => $revenue_summary,
+						'permission'  => array( __CLASS__, 'members_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'get_revenue_summary' ),
 					),
 				),
 			),
