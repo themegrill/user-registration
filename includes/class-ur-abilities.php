@@ -667,7 +667,7 @@ class UR_Abilities {
 					),
 					'get-revenue-summary' => array(
 						'label'       => __( 'Get revenue summary', 'user-registration' ),
-						'description' => __( 'Add up membership payments for a date range, 30 days by default and at most 366 days. Revenue counts completed payments only. Orders are also counted and added up by status, for example failed or refunded, and by plan.', 'user-registration' ),
+						'description' => __( 'Add up membership payments for a date range, 30 days by default and at most 366 days. Revenue counts completed payments only, while order counts include every status. Orders are also counted and added up by status, for example failed or refunded, and by plan.', 'user-registration' ),
 						'input'       => array(
 							'date_from'     => $date,
 							'date_to'       => $date,

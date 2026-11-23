@@ -329,19 +329,24 @@ class UR_Abilities_Data {
 			}
 			$statuses[ $status ]['orders'] += (int) $row['orders'];
 			$statuses[ $status ]['amount'] += (float) $row['amount'];
-			if ( 'completed' !== $status ) {
-				continue;
+			$plan_id                        = (int) $row['item_id'];
+			if ( ! isset( $plans[ $plan_id ] ) ) {
+				$plans[ $plan_id ] = array(
+					'membership_id'   => $plan_id,
+					'membership_name' => wp_strip_all_tags( get_the_title( $plan_id ) ),
+					'orders'          => 0,
+					'revenue'         => 0.0,
+				);
 			}
-			$orders  += (int) $row['orders'];
-			$revenue += (float) $row['amount'];
-			$plan_id  = (int) $row['item_id'];
-			$plans[]  = array(
-				'membership_id'   => $plan_id,
-				'membership_name' => wp_strip_all_tags( get_the_title( $plan_id ) ),
-				'orders'          => (int) $row['orders'],
-				'revenue'         => (float) $row['amount'],
-			);
+			// Orders count every status, like by_status; revenue counts completed payments only.
+			$orders                      += (int) $row['orders'];
+			$plans[ $plan_id ]['orders'] += (int) $row['orders'];
+			if ( 'completed' === $status ) {
+				$revenue                      += (float) $row['amount'];
+				$plans[ $plan_id ]['revenue'] += (float) $row['amount'];
+			}
 		}
+		$plans = array_values( $plans );
 		usort(
 			$plans,
 			function ( $a, $b ) {
