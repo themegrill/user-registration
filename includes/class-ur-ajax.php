@@ -809,162 +809,34 @@ class UR_AJAX {
 				)
 			);
 
-			$post_data = json_decode( wp_unslash( $_POST['data']['form_data'] ) ); // phpcs:ignore
-			self::sweep_array( $post_data );
+			$setting_data = isset( $_POST['data']['form_setting_data'] ) ? $_POST['data']['form_setting_data'] : array(); // phpcs:ignore
 
-			$logger->debug(
-				sprintf( '[Form #%d] Form builder data decoded', $form_id ) . "\n" . wp_json_encode( $post_data, JSON_PRETTY_PRINT ),
-				array(
-					'source'   => 'form-save',
-					'form_id'  => $form_id,
-					'function' => __FUNCTION__,
-				)
-			);
-
-			if ( isset( self::$failed_key_value['value'] ) && '' !== self::$failed_key_value['value'] ) {
-				if ( in_array( self::$failed_key_value['value'], self::$field_key_aray, true ) ) {
-					$logger->critical(
-						sprintf( '[Form #%d] Duplicate field name detected', $form_id ) . "\n" . sprintf( 'Field: %s', self::$failed_key_value['value'] ),
-						array(
-							'source'   => 'form-save',
-							'form_id'  => $form_id,
-							'function' => __FUNCTION__,
-						)
-					);
-					throw new Exception( sprintf( "Could not save form. Duplicate field name <span style='color:red'>%s</span>", self::$failed_key_value['value'] ) );
-				}
-			}
-
-			if ( false === self::$is_field_key_pass ) {
-				$logger->critical(
-					sprintf( '[Form #%d] Invalid field name detected', $form_id ) . "\n" . 'Reason: One or more field names are invalid',
+			if ( isset( $_POST['data']['form_restriction_submit_data'] ) && ! empty( $_POST['data']['form_restriction_submit_data'] ) ) {
+				array_push(
+					$setting_data,
 					array(
-						'source'   => 'form-save',
-						'form_id'  => $form_id,
-						'function' => __FUNCTION__,
+						'name'  => 'urfr_qna_restriction_data',
+						'value' => sanitize_text_field( wp_unslash( $_POST['data']['form_restriction_submit_data'] ) ),
 					)
 				);
-				throw new Exception( __( 'Could not save form. Invalid field name. Please check all field name', 'user-registration' ) );
 			}
 
-			$required_fields = array(
-				'user_email',
-				'user_pass',
-			);
-
-			if ( isset( $_POST['data']['form_setting_data'] ) ) {
-				foreach ( wp_unslash( $_POST['data']['form_setting_data'] ) as $setting_data ) { // phpcs:ignore
-					if ( 'user_registration_form_setting_enable_recaptcha_support' === $setting_data['name'] && ur_string_to_bool( $setting_data['value'] ) && ! ur_check_captch_keys( 'register', $_POST['data']['form_id'], true ) ) {
-						$logger->critical(
-							sprintf( '[Form #%d] Captcha configuration validation failed', $form_id ) . "\n" . 'Reason: Captcha is enabled but keys are missing',
-							array(
-								'source'   => 'form-save',
-								'form_id'  => $form_id,
-								'function' => __FUNCTION__,
-							)
-						);
-						throw new Exception(
-							sprintf(
-							/* translators: %s - Integration tab url */
-								'%s <a href="%s" class="ur-captcha-error" rel="noreferrer noopener" target="_blank">here</a> to add the captcha keys and save your changes.',
-								esc_html__( 'Captcha setup is incomplete. Click', 'user-registration' ),
-								esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=registration_login&section=captcha' ) )
-							)
-						); //phpcs:ignore
-					}
-
-					if ( 'user_registration_pro_auto_password_activate' === $setting_data['name'] && ur_string_to_bool( $setting_data['value'] ) ) {
-						unset( $required_fields[ array_search( 'user_pass', $required_fields ) ] );
-					}
-				}
-			}
-
-			$logger->info(
-				sprintf( '[Form #%d] Captcha configuration validated', $form_id ),
+			$saved = self::save_form_data(
 				array(
-					'source'   => 'form-save',
-					'form_id'  => $form_id,
-					'function' => __FUNCTION__,
+					'form_id'      => $form_id,
+					'form_name'    => sanitize_text_field( $_POST['data']['form_name'] ), // phpcs:ignore
+					'form_data'    => json_decode( wp_unslash( $_POST['data']['form_data'] ) ), // phpcs:ignore
+					'row_ids'      => sanitize_text_field( $_POST['data']['form_row_ids'] ), // phpcs:ignore
+					'row_data'     => sanitize_text_field( $_POST['data']['row_data'] ), // phpcs:ignore
+					'setting_data' => $setting_data,
 				)
 			);
 
-			$contains_search = count( array_intersect( $required_fields, self::$field_key_aray ) ) === count( $required_fields );
-
-			if ( false === $contains_search ) {
-				$logger->critical(
-					sprintf( '[Form #%d] Required field validation failed', $form_id ) . "\n" . 'Missing fields: ' . implode( ', ', $required_fields ),
-					array(
-						'source'   => 'form-save',
-						'form_id'  => $form_id,
-						'function' => __FUNCTION__,
-					)
-				);
-				throw new Exception( __( 'Could not save form, ' . join( ', ', $required_fields ) . ' fields are required.! ', 'user-registration' ) ); // phpcs:ignore
-			}
-
-			$logger->info(
-				sprintf( '[Form #%d] Required fields validated', $form_id ),
-				array(
-					'source'   => 'form-save',
-					'form_id'  => $form_id,
-					'function' => __FUNCTION__,
-				)
-			);
-
-			do_action( 'user_registration_admin_backend_validation_before_form_save' );
-
-			$logger->debug(
-				sprintf( '[Form #%d] Action == ***user_registration_admin_backend_validation_before_form_save*** - Triggered.', $form_id ),
-				array(
-					'source'  => 'form-save',
-					'form_id' => $form_id,
-				)
-			);
-
-			$form_name     = sanitize_text_field( $_POST['data']['form_name'] ); // phpcs:ignore
-			$form_row_ids  = sanitize_text_field( $_POST['data']['form_row_ids'] ); // phpcs:ignore
-			$form_id       = sanitize_text_field( $_POST['data']['form_id'] ); // phpcs:ignore
-			$form_row_data = sanitize_text_field( $_POST['data']['row_data'] );
-
-			$post_data = array(
-				'post_type'      => 'user_registration',
-				'post_title'     => sanitize_text_field( $form_name ),
-				'post_content'   => wp_json_encode( $post_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
-				'post_status'    => 'publish',
-				'comment_status' => 'closed',
-				'ping_status'    => 'closed',
-			);
-
-			if ( $form_id > 0 && is_numeric( $form_id ) ) {
-				$post_data['ID'] = $form_id;
-			}
-
-			remove_filter( 'content_save_pre', 'wp_targeted_link_rel' );
-
-			$post_id = wp_insert_post( wp_slash( $post_data ) );
+			$post_id   = $saved['post_id'];
+			$post_data = $saved['post'];
 
 			if ( $post_id > 0 ) {
 				$_POST['data']['form_id'] = $post_id; // phpcs:ignore
-
-				$post_data_setting = isset( $_POST['data']['form_setting_data'] ) ? $_POST['data']['form_setting_data'] : array(); // phpcs:ignore
-
-				if ( isset( $_POST['data']['form_restriction_submit_data'] ) && ! empty( $_POST['data']['form_restriction_submit_data'] ) ) {
-					array_push(
-						$post_data_setting,
-						array(
-							'name'  => 'urfr_qna_restriction_data',
-							'value' => sanitize_text_field( wp_unslash( $_POST['data']['form_restriction_submit_data'] ) ),
-						)
-					);
-				}
-
-				ur_update_form_settings( $post_data_setting, $post_id );
-
-				// Form row_id save.
-				update_post_meta( $form_id, 'user_registration_form_row_ids', $form_row_ids );
-
-				// Form row_data save.
-				update_post_meta( $form_id, 'user_registration_form_row_data', $form_row_data );
 			}
 
 			/**
@@ -1028,6 +900,187 @@ class UR_AJAX {
 				)
 			);
 		}
+	}
+
+	/**
+	 * Check and save a form's fields, layout and, when given, its settings, the way the form builder does.
+	 *
+	 * Shared by the form builder and the AI abilities, so both save forms the same way.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $args {
+	 *     Form to save.
+	 *
+	 *     @type int          $form_id      Form ID.
+	 *     @type string       $form_name    Form title.
+	 *     @type object|array $form_data    Rows of grids of fields, as the form builder sends them.
+	 *     @type string       $row_ids      JSON list of row IDs.
+	 *     @type string       $row_data     JSON list of row details.
+	 *     @type array|null   $setting_data Form settings as name and value pairs, or null to leave them as they are.
+	 *     @type string       $post_status  Status to save the form with. Default publish.
+	 * }
+	 * @return array Saved post ID and the post data that was written.
+	 * @throws Exception When the form does not pass the form builder's checks.
+	 */
+	public static function save_form_data( $args ) {
+		$logger  = ur_get_logger();
+		$form_id = absint( $args['form_id'] ?? 0 );
+
+		$post_data = $args['form_data'];
+
+		// Start clean, so an earlier save in the same request does not leak field names into this one.
+		self::$field_key_aray    = array();
+		self::$is_field_key_pass = true;
+		self::$failed_key_value  = array();
+
+		self::sweep_array( $post_data );
+
+		$logger->debug(
+			sprintf( '[Form #%d] Form builder data decoded', $form_id ) . "\n" . wp_json_encode( $post_data, JSON_PRETTY_PRINT ),
+			array(
+				'source'   => 'form-save',
+				'form_id'  => $form_id,
+				'function' => __FUNCTION__,
+			)
+		);
+
+		if ( isset( self::$failed_key_value['value'] ) && '' !== self::$failed_key_value['value'] ) {
+			if ( in_array( self::$failed_key_value['value'], self::$field_key_aray, true ) ) {
+				$logger->critical(
+					sprintf( '[Form #%d] Duplicate field name detected', $form_id ) . "\n" . sprintf( 'Field: %s', self::$failed_key_value['value'] ),
+					array(
+						'source'   => 'form-save',
+						'form_id'  => $form_id,
+						'function' => __FUNCTION__,
+					)
+				);
+				throw new Exception( sprintf( "Could not save form. Duplicate field name <span style='color:red'>%s</span>", self::$failed_key_value['value'] ) );
+			}
+		}
+
+		if ( false === self::$is_field_key_pass ) {
+			$logger->critical(
+				sprintf( '[Form #%d] Invalid field name detected', $form_id ) . "\n" . 'Reason: One or more field names are invalid',
+				array(
+					'source'   => 'form-save',
+					'form_id'  => $form_id,
+					'function' => __FUNCTION__,
+				)
+			);
+			throw new Exception( __( 'Could not save form. Invalid field name. Please check all field name', 'user-registration' ) );
+		}
+
+		$required_fields = array(
+			'user_email',
+			'user_pass',
+		);
+
+		if ( is_array( $args['setting_data'] ) ) {
+			foreach ( wp_unslash( $args['setting_data'] ) as $setting_data ) {
+				if ( 'user_registration_form_setting_enable_recaptcha_support' === $setting_data['name'] && ur_string_to_bool( $setting_data['value'] ) && ! ur_check_captch_keys( 'register', $form_id, true ) ) {
+					$logger->critical(
+						sprintf( '[Form #%d] Captcha configuration validation failed', $form_id ) . "\n" . 'Reason: Captcha is enabled but keys are missing',
+						array(
+							'source'   => 'form-save',
+							'form_id'  => $form_id,
+							'function' => __FUNCTION__,
+						)
+					);
+					throw new Exception(
+						sprintf(
+						/* translators: %s - Integration tab url */
+							'%s <a href="%s" class="ur-captcha-error" rel="noreferrer noopener" target="_blank">here</a> to add the captcha keys and save your changes.',
+							esc_html__( 'Captcha setup is incomplete. Click', 'user-registration' ),
+							esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=registration_login&section=captcha' ) )
+						)
+					); //phpcs:ignore
+				}
+
+				if ( 'user_registration_pro_auto_password_activate' === $setting_data['name'] && ur_string_to_bool( $setting_data['value'] ) ) {
+					unset( $required_fields[ array_search( 'user_pass', $required_fields ) ] );
+				}
+			}
+		} elseif ( ur_string_to_bool( get_post_meta( $form_id, 'user_registration_pro_auto_password_activate', true ) ) ) {
+			// Settings are left as they are, so use the saved auto password setting.
+			unset( $required_fields[ array_search( 'user_pass', $required_fields, true ) ] );
+		}
+
+		$logger->info(
+			sprintf( '[Form #%d] Captcha configuration validated', $form_id ),
+			array(
+				'source'   => 'form-save',
+				'form_id'  => $form_id,
+				'function' => __FUNCTION__,
+			)
+		);
+
+		$contains_search = count( array_intersect( $required_fields, self::$field_key_aray ) ) === count( $required_fields );
+
+		if ( false === $contains_search ) {
+			$logger->critical(
+				sprintf( '[Form #%d] Required field validation failed', $form_id ) . "\n" . 'Missing fields: ' . implode( ', ', $required_fields ),
+				array(
+					'source'   => 'form-save',
+					'form_id'  => $form_id,
+					'function' => __FUNCTION__,
+				)
+			);
+			throw new Exception( __( 'Could not save form, ' . join( ', ', $required_fields ) . ' fields are required.! ', 'user-registration' ) ); // phpcs:ignore
+		}
+
+		$logger->info(
+			sprintf( '[Form #%d] Required fields validated', $form_id ),
+			array(
+				'source'   => 'form-save',
+				'form_id'  => $form_id,
+				'function' => __FUNCTION__,
+			)
+		);
+
+		do_action( 'user_registration_admin_backend_validation_before_form_save' );
+
+		$logger->debug(
+			sprintf( '[Form #%d] Action == ***user_registration_admin_backend_validation_before_form_save*** - Triggered.', $form_id ),
+			array(
+				'source'  => 'form-save',
+				'form_id' => $form_id,
+			)
+		);
+
+		$post_data = array(
+			'post_type'      => 'user_registration',
+			'post_title'     => sanitize_text_field( $args['form_name'] ),
+			'post_content'   => wp_json_encode( $post_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ),
+			'post_status'    => isset( $args['post_status'] ) ? $args['post_status'] : 'publish',
+			'comment_status' => 'closed',
+			'ping_status'    => 'closed',
+		);
+
+		if ( $form_id > 0 ) {
+			$post_data['ID'] = $form_id;
+		}
+
+		remove_filter( 'content_save_pre', 'wp_targeted_link_rel' );
+
+		$post_id = wp_insert_post( wp_slash( $post_data ) );
+
+		if ( $post_id > 0 ) {
+			if ( is_array( $args['setting_data'] ) ) {
+				ur_update_form_settings( $args['setting_data'], $post_id );
+			}
+
+			// Form row_id save.
+			update_post_meta( $post_id, 'user_registration_form_row_ids', $args['row_ids'] );
+
+			// Form row_data save.
+			update_post_meta( $post_id, 'user_registration_form_row_data', $args['row_data'] );
+		}
+
+		return array(
+			'post_id' => $post_id,
+			'post'    => $post_data,
+		);
 	}
 
 	public static function login_settings_save_action() {
@@ -1793,9 +1846,7 @@ class UR_AJAX {
 
 		check_ajax_referer( 'user_registration_create_form', 'security' );
 
-		$all_forms = ur_get_all_user_registration_form();
-
-		if ( ( ! empty( $all_forms ) && count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) ) ) {
+		if ( ! ur_can_create_registration_form() ) {
 			wp_send_json_error( array( 'message' => __( 'Multiple registration forms cannot be created.', 'user-registration' ) ) );
 			die( -1 );
 		}

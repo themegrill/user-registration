@@ -446,6 +446,34 @@ function ur_admin_form_settings( $form_id = 0 ) {
 }
 
 /**
+ * Change some settings of a form and keep every other setting as it is.
+ *
+ * The save in ur_update_form_settings() expects every setting and blanks the ones left out, so this passes the
+ * current value of each setting it is not asked to change.
+ *
+ * @since xx.xx.xx
+ *
+ * @param int   $form_id Form ID.
+ * @param array $values  New values keyed by setting ID.
+ */
+function ur_update_form_setting_values( $form_id, $values ) {
+	$setting_data = array();
+
+	foreach ( ur_admin_form_settings_fields( $form_id ) as $field ) {
+		if ( empty( $field['id'] ) ) {
+			continue;
+		}
+
+		$setting_data[] = array(
+			'name'  => $field['id'],
+			'value' => array_key_exists( $field['id'], $values ) ? $values[ $field['id'] ] : ( $field['default'] ?? '' ),
+		);
+	}
+
+	ur_update_form_settings( $setting_data, $form_id );
+}
+
+/**
  * Update Settings of the form.
  *
  * @param array $setting_data Settings data in name value array pair.

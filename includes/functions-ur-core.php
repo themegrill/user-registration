@@ -2299,6 +2299,21 @@ function check_username( $username ) {
 }
 
 /**
+ * Whether another registration form may be created, the check the Add New form screen uses.
+ *
+ * Shared by the form screens and the AI abilities, so the Multiple Registration rule is the same everywhere.
+ *
+ * @since xx.xx.xx
+ *
+ * @return bool
+ */
+function ur_can_create_registration_form() {
+	$all_forms = ur_get_all_user_registration_form();
+
+	return ! ( ! empty( $all_forms ) && count( $all_forms ) <= 1 && ! ur_check_module_activation( 'multiple-registration' ) );
+}
+
+/**
  * Get all user registration forms title with respective id.
  *
  * @param int $post_count Post Count.
