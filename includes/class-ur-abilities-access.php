@@ -19,7 +19,7 @@ class UR_Abilities_Access {
 
 	/** Add the settings from the ability areas, so a new area gets its setting without extra code. */
 	public static function init() {
-		add_filter( 'user_registration_settings_advanced_others', array( __CLASS__, 'add_settings' ) );
+		add_filter( 'user_registration_settings_advanced_ai_integration', array( __CLASS__, 'add_settings' ) );
 	}
 
 	/**
@@ -66,7 +66,7 @@ class UR_Abilities_Access {
 	 *
 	 * @since xx.xx.xx
 	 *
-	 * @param array $settings Settings of the Others section.
+	 * @param array $settings Settings of the AI Integration section.
 	 * @return array
 	 */
 	public static function add_settings( $settings ) {

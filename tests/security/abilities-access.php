@@ -202,7 +202,7 @@ security_assert( array( 'members', 'read' ) === $seen['get-member'] && array( 'c
 $settings = UR_Abilities_Access::add_settings(
 	array(
 		'title'    => '',
-		'sections' => array( 'advanced_settings' => array( 'title' => 'Others' ) ),
+		'sections' => array( 'ai_integration' => array( 'title' => 'AI Integration' ) ),
 	)
 );
 $section  = $settings['sections']['ai_abilities_access'] ?? array();
@@ -211,7 +211,7 @@ foreach ( $section['settings'] ?? array() as $field ) {
 	$by_id[ $field['id'] ] = $field;
 }
 
-security_assert( isset( $settings['sections']['advanced_settings'] ), 'The existing settings are kept' );
+security_assert( isset( $settings['sections']['ai_integration'] ), 'The existing cards of the section are kept' );
 security_assert( isset( $by_id['user_registration_ability_access_forms'], $by_id['user_registration_ability_access_coupons'], $by_id['user_registration_ability_access_settings'] ), 'Every area, including addon areas, gets its own setting' );
 security_assert( ! isset( $by_id['user_registration_ability_access_broken'], $by_id['user_registration_ability_access_nameless'] ), 'An area without a usable definition gets no setting' );
 security_assert( array( 'off', 'read' ) === array_keys( $by_id['user_registration_ability_access_forms']['options'] ), 'An area with only read abilities offers off and read only' );
@@ -226,4 +226,4 @@ $odd = UR_Abilities_Access::add_settings( 'not-settings' );
 security_assert( 'not-settings' === $odd, 'Settings of an unexpected shape are returned untouched' );
 
 UR_Abilities_Access::init();
-security_assert( ! empty( $GLOBALS['filters']['user_registration_settings_advanced_others'] ), 'The settings are added through the Others section filter' );
+security_assert( ! empty( $GLOBALS['filters']['user_registration_settings_advanced_ai_integration'] ), 'The settings are added through the AI Integration section filter' );

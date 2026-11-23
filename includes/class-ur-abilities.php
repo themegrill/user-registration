@@ -13,6 +13,7 @@ class UR_Abilities {
 	public static function init() {
 		add_action( 'wp_abilities_api_categories_init', array( __CLASS__, 'register_category' ) );
 		add_action( 'wp_abilities_api_init', array( __CLASS__, 'register_abilities' ) );
+		UR_Abilities_Settings::init();
 		UR_Abilities_Access::init();
 	}
 
