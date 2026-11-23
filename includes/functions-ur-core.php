@@ -297,7 +297,7 @@ function ur_sanitize_tooltip( $var ) {
  * @param string $tip Tooltip text or HTML.
  *
  * @return string Attribute-safe value; do not pass it through esc_attr().
- * @since  5.3.2
+ * @since x.x.x
  */
 function ur_sanitize_tip_html( $tip ) {
 	return htmlspecialchars( wp_kses_post( html_entity_decode( $tip ) ), ENT_QUOTES );
