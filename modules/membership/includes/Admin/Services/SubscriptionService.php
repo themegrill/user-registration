@@ -683,6 +683,7 @@ class SubscriptionService {
 			);
 		}
 
+		$claimed_coupon = '';
 		if ( ! empty( $data['coupon'] ) ) {
 			$members_data['coupon'] = $data['coupon'];
 			$coupon_service         = new CouponService();
@@ -695,6 +696,19 @@ class SubscriptionService {
 			$response = $coupon_service->validate( $coupon_data );
 
 			if ( $response['status'] ) {
+				// Claim the use before the order exists, so a capped coupon cannot be redeemed past its limit.
+				if ( ! ur_claim_coupon_usage( $data['coupon'] ) ) {
+					$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
+
+					return array(
+						'response' => array(
+							'status'  => false,
+							'message' => __( 'This coupon has reached its usage limit.', 'user-registration' ),
+						),
+					);
+				}
+
+				$claimed_coupon                       = $data['coupon'];
 				$response                             = json_decode( $response['data'], true );
 				$upgrade_details['chargeable_amount'] = $response['discounted_amount'];
 			}
@@ -722,6 +736,10 @@ class SubscriptionService {
 			if ( ! $cancel_subscription['status'] ) {
 				$response['status'] = false;
 
+				if ( '' !== $claimed_coupon ) {
+					ur_release_coupon_usage( $claimed_coupon );
+				}
+
 				$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
 
 				return $response;
@@ -734,6 +752,17 @@ class SubscriptionService {
 
 		$orders_data = $order_service->prepare_orders_data( $members_data, $user->ID, $subscription, $upgrade_details ); // prepare data for orders table.
 		$order       = $this->orders_repository->create( $orders_data );
+
+		// Free orders complete here and keep the use; the rest settle on their final status.
+		if ( '' !== $claimed_coupon && 'completed' !== $order['status'] ) {
+			$this->orders_repository->update_order_meta(
+				array(
+					'order_id'   => $order['ID'],
+					'meta_key'   => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
+					'meta_value' => $claimed_coupon, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
+				)
+			);
+		}
 
 		$payment_service       = new PaymentService( $payment_method, $data['selected_membership_id'], $user->data->user_email );
 		$ur_authorize_net_data = isset( $data['ur_authorize_net'] ) ? $data['ur_authorize_net'] : array();
@@ -770,6 +799,7 @@ class SubscriptionService {
 
 		} else {
 			$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
+			$this->orders_repository->settle_coupon_claim( $order['ID'], 'failed' );
 			$this->orders_repository->delete( $order['ID'] );
 		}
 
