@@ -149,13 +149,27 @@ class UR_Abilities_Activity {
 		);
 
 		return sprintf(
-			'AI [%1$s] %2$s by user %3$d%4$s: %5$s',
+			'AI [%1$s] %2$s by %3$s%4$s: %5$s',
 			strtoupper( $row['level'] ),
 			$row['ability'],
-			$row['user_id'],
-			'' === $row['app'] ? '' : ' (' . $row['app'] . ')',
+			self::who( $row['user_id'] ),
+			'' === $row['app'] ? '' : ' via ' . $row['app'],
 			implode( ', ', $details )
 		);
+	}
+
+	/**
+	 * Name the person who asked the AI: their username with their ID, since a username can change later.
+	 *
+	 * This is the admin running the assistant, not a member the action touched, so no member details are written.
+	 *
+	 * @param int $user_id User ID.
+	 * @return string For example `admin (user #1)`, or `user 1` when the user cannot be read.
+	 */
+	private static function who( $user_id ) {
+		$user = $user_id && function_exists( 'get_userdata' ) ? get_userdata( $user_id ) : false;
+
+		return $user ? sprintf( '%s (user #%d)', sanitize_user( $user->user_login, true ), $user_id ) : 'user ' . (int) $user_id;
 	}
 
 	/**

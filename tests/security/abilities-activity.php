@@ -230,7 +230,7 @@ if ( ! function_exists( 'rest_get_authenticated_app_password' ) ) {
 }
 $read( array() );
 list( , $line ) = last_line();
-security_assert( false !== strpos( $line, 'by user 3 (Claude): success' ), 'The AI app is named after its application password' );
+security_assert( false !== strpos( $line, 'by user 3 via Claude: success' ), 'The AI app is named after its application password' );
 security_assert( $no_app_before, 'A call that did not come through an application password names no app' );
 
 // The AI lines follow the global Enable Log switch like every other plugin log, so the logger gets no exception.
