@@ -1534,18 +1534,8 @@ if ( ! class_exists( 'User_Registration_Users_Menu' ) ) {
 							foreach ( $userids as $user_id ) {
 								try {
 									$user_manager = new UR_Admin_User_Manager( $user_id );
-									$form_id      = ur_get_form_id_by_userid( $user_id );
-									$login_option = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_login_options', get_option( 'user_registration_general_setting_login_options', 'default' ) );
 
-									$user_manager->approve();
-
-									if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
-										update_user_meta( $user_id, 'ur_confirm_email', '1' );
-										delete_user_meta( $user_id, 'ur_confirm_email_token' );
-										if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-											update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'true' );
-										}
-									}
+									$user_manager->set_approval( true );
 
 									++$approval_count;
 								} catch ( Exception $e ) {
@@ -1667,22 +1657,12 @@ if ( ! class_exists( 'User_Registration_Users_Menu' ) ) {
 							foreach ( $userids as $user_id ) {
 								try {
 									$user_manager = new UR_Admin_User_Manager( $user_id );
-									$form_id      = ur_get_form_id_by_userid( $user_id );
-									$login_option = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_login_options', get_option( 'user_registration_general_setting_login_options', 'default' ) );
 
 									if ( current_user_can( 'manage_options' ) && $user_id === get_current_user_id() ) {
 										$this->errors[] = new WP_Error( 'edit_users', __( 'Sorry, Admin cannot deny themselves.', 'user-registration' ) );
 										continue;
 									}
-									$user_manager->deny();
-
-									if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
-										update_user_meta( $user_id, 'ur_confirm_email', '0' );
-										delete_user_meta( $user_id, 'ur_confirm_email_token' );
-										if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-											update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'denied' );
-										}
-									}
+									$user_manager->set_approval( false );
 
 									++$denial_count;
 								} catch ( Exception $e ) {

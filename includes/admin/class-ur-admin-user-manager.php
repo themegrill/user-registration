@@ -159,6 +159,33 @@ class UR_Admin_User_Manager {
 	}
 
 	/**
+	 * Approve or deny the user and keep their email confirmation in step.
+	 *
+	 * Shared by every admin screen and the AI abilities, so they all behave the same.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param bool $approve True to approve, false to deny.
+	 * @return bool|int Result of saving the status.
+	 */
+	public function set_approval( $approve ) {
+		$user_id      = absint( $this->user->ID );
+		$login_option = ur_get_user_login_option( $user_id );
+		$result       = $approve ? $this->approve() : $this->deny();
+
+		if ( in_array( $login_option, array( 'email_confirmation', 'admin_approval_after_email_confirmation' ), true ) ) {
+			update_user_meta( $user_id, 'ur_confirm_email', $approve ? '1' : '0' );
+			delete_user_meta( $user_id, 'ur_confirm_email_token' );
+
+			if ( 'admin_approval_after_email_confirmation' === $login_option ) {
+				update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', $approve ? 'true' : 'denied' );
+			}
+		}
+
+		return $result;
+	}
+
+	/**
 	 * Get the status of the user.
 	 * If the status is not present (user registered when plugin was not active)
 	 * then it return an empty string if $exact_value == true, otherwise it return approved flag

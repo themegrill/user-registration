@@ -145,31 +145,9 @@ class UR_Admin_User_List_Manager {
 			$status       = $action;
 			$user_id      = isset( $_GET['user'] ) ? absint( $_GET['user'] ) : 0;
 			$user_manager = new UR_Admin_User_Manager( $user_id );
-			$login_option = ur_get_user_login_option( $user_id );
 
-			if ( 'approve' === $status ) {
-
-				$user_manager->approve();
-				$redirect = add_query_arg( array( 'approved' => 1 ), $redirect );
-				if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
-					update_user_meta( $user_id, 'ur_confirm_email', '1' );
-					delete_user_meta( $user_id, 'ur_confirm_email_token' );
-					if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-						update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'true' );
-					}
-				}
-			} else {
-
-				$user_manager->deny();
-				$redirect = add_query_arg( array( 'denied' => 1 ), $redirect );
-				if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
-					update_user_meta( $user_id, 'ur_confirm_email', '0' );
-					delete_user_meta( $user_id, 'ur_confirm_email_token' );
-					if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-						update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'denied' );
-					}
-				}
-			}
+			$user_manager->set_approval( 'approve' === $status );
+			$redirect = add_query_arg( array( 'approve' === $status ? 'approved' : 'denied' => 1 ), $redirect );
 
 			/**
 			 * Filter to modify redirect url
