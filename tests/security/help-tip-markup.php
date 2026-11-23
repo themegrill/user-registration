@@ -87,7 +87,7 @@ security_assert( 0 === strpos( $utf8_tip, 'caf' ) && false !== strpos( $utf8_tip
 $compare_tip = decoded_tip( ur_help_tip( 'Must be < 10 and > 5' ) );
 security_assert( false !== strpos( $compare_tip, '10 and' ) && false !== strpos( $compare_tip, ' 5' ) && ! is_active_markup( $compare_tip ), 'Comparison text in a tip is kept as text' );
 security_assert( 0 === preg_match( '/<b>/', decoded_tip( ur_help_tip( 'a < b' ) ) ), 'A lone < does not turn into a tag' );
-security_assert( false !== strpos( decoded_tip( ur_help_tip( 't', false, 'a" onmouseover="x' ) ), '' ) && 0 === preg_match( '/class="[^"]*"\s+onmouseover/', ur_help_tip( 't', false, 'a" onmouseover="x' ) ), 'The class name can not break out of its attribute' );
+security_assert( 't' === decoded_tip( ur_help_tip( 't', false, 'a" onmouseover="x' ) ) && 0 === preg_match( '/class="[^"]*"\s+onmouseover/', ur_help_tip( 't', false, 'a" onmouseover="x' ) ), 'The class name can not break out of its attribute' );
 
 // Run the exact expressions the templates print into data-tip, with the bank notice built as membership.php builds it.
 $template_dir = dirname( __DIR__, 2 );
