@@ -20,6 +20,10 @@ class WP_Error {
 	public function get_error_code() {
 		return 'code';
 	}
+
+	public function get_error_data() {
+		return '';
+	}
 }
 
 class UR_Abilities_Data {

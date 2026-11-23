@@ -16,13 +16,19 @@ require __DIR__ . '/bootstrap.php';
 
 class WP_Error {
 	private $code;
+	private $data;
 
-	public function __construct( $code = '' ) {
+	public function __construct( $code = '', $message = '', $data = '' ) {
 		$this->code = $code;
+		$this->data = $data;
 	}
 
 	public function get_error_code() {
 		return $this->code;
+	}
+
+	public function get_error_data() {
+		return $this->data;
 	}
 }
 
@@ -116,17 +122,39 @@ $locked();
 list( $level, $line ) = last_line();
 security_assert( 'warning' === $level && false !== strpos( $line, 'refused, ur_ability_plan_required' ), 'A refusal because of the plan carries its own reason' );
 
-// A failed run, a preview and a crash.
+// A mistake the AI can fix is a warning. A real fault is an error.
 $fail = UR_Abilities_Activity::wrap_execute(
 	'get-order',
 	'read',
 	function () {
-		return new WP_Error( 'ur_not_found' );
+		return new WP_Error( 'ur_not_found', 'No such order.', array( 'status' => 404 ) );
 	}
 );
 $error = $fail( array( 'id' => 8 ) );
 list( $level, $line ) = last_line();
-security_assert( is_wp_error( $error ) && 'error' === $level && false !== strpos( $line, 'error, ur_not_found, id:8' ), 'A failed run is an error line with its reason, and the error is passed on' );
+security_assert( is_wp_error( $error ) && 'warning' === $level && false !== strpos( $line, 'error, ur_not_found, id:8' ), 'An unknown id is a warning line with its reason, and the error is passed on' );
+
+$fault = UR_Abilities_Activity::wrap_execute(
+	'list-orders',
+	'read',
+	function () {
+		return new WP_Error( 'ur_broken', 'Something broke.', array( 'status' => 500 ) );
+	}
+);
+$fault();
+list( $level, $line ) = last_line();
+security_assert( 'error' === $level && false !== strpos( $line, 'error, ur_broken' ), 'A server fault is an error line' );
+
+$nostatus = UR_Abilities_Activity::wrap_execute(
+	'list-orders',
+	'read',
+	function () {
+		return new WP_Error( 'ur_unknown' );
+	}
+);
+$nostatus();
+list( $level ) = last_line();
+security_assert( 'error' === $level, 'An error with no status counts as a fault, as WordPress answers it with a server error' );
 
 $preview = UR_Abilities_Activity::wrap_execute(
 	'cancel-membership',

@@ -37,6 +37,10 @@ class WP_Error {
 	public function get_error_code() {
 		return $this->code;
 	}
+
+	public function get_error_data() {
+		return $this->data;
+	}
 }
 
 class UR_Abilities_Data {

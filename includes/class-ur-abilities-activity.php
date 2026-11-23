@@ -96,7 +96,7 @@ class UR_Abilities_Activity {
 	 *
 	 * @since xx.xx.xx
 	 *
-	 * @param array $entry ability, level, outcome, code, targets, items and duration_ms.
+	 * @param array $entry ability, level, outcome, code, targets, items, duration_ms and the HTTP status of an error.
 	 */
 	public static function record( $entry ) {
 		$row = array(
@@ -112,13 +112,11 @@ class UR_Abilities_Activity {
 		);
 
 		if ( function_exists( 'ur_get_logger' ) ) {
-			$logger = ur_get_logger();
-			$method = array(
-				'refused' => 'warning',
-				'error'   => 'error',
-			);
+			// A mistake the AI can fix, such as an unknown id, is a warning. Only a real fault is an error.
+			$client = isset( $entry['status'] ) && $entry['status'] >= 400 && $entry['status'] < 500;
+			$method = 'refused' === $row['outcome'] || ( 'error' === $row['outcome'] && $client ) ? 'warning' : ( 'error' === $row['outcome'] ? 'error' : 'info' );
 
-			$logger->{ $method[ $row['outcome'] ] ?? 'info' }( self::line( $row ), array( 'source' => self::SOURCE ) );
+			ur_get_logger()->{ $method }( self::line( $row ), array( 'source' => self::SOURCE ) );
 		}
 
 		/**
@@ -164,13 +162,16 @@ class UR_Abilities_Activity {
 	 * Work out the outcome of a finished run.
 	 *
 	 * @param mixed $result What the ability returned.
-	 * @return array outcome, code and items.
+	 * @return array outcome, code, status and items.
 	 */
 	private static function describe( $result ) {
 		if ( is_wp_error( $result ) ) {
+			$data = $result->get_error_data();
+
 			return array(
 				'outcome' => 'error',
 				'code'    => $result->get_error_code(),
+				'status'  => is_array( $data ) && isset( $data['status'] ) ? (int) $data['status'] : 0,
 			);
 		}
 
