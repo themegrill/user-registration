@@ -90,11 +90,26 @@ class URCR_Syndication_Restriction {
 	 * @since x.x.x
 	 *
 	 * @param string       $excerpt Excerpt.
-	 * @param WP_Post|null $post    Post the excerpt belongs to.
+	 * @param int|WP_Post|null $post    Post the excerpt belongs to.
 	 * @return string
 	 */
 	public static function filter_excerpt( $excerpt, $post = null ) {
-		return urcr_is_content_access_granted( get_post( $post ) ) ? $excerpt : '';
+		static $granted = array();
+
+		$post = get_post( $post );
+
+		if ( '' === $excerpt || ! $post instanceof WP_Post ) {
+			return $excerpt;
+		}
+
+		// Themes and blocks ask for the same excerpt more than once per request.
+		$key = get_current_user_id() . ':' . $post->ID;
+
+		if ( ! isset( $granted[ $key ] ) ) {
+			$granted[ $key ] = urcr_is_content_access_granted( $post );
+		}
+
+		return $granted[ $key ] ? $excerpt : '';
 	}
 }
 URCR_Syndication_Restriction::init();
