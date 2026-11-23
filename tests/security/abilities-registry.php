@@ -23,6 +23,13 @@ class WP_Error {
 	public $code;
 
 	/**
+	 * Error message.
+	 *
+	 * @var string
+	 */
+	public $message;
+
+	/**
 	 * Error data.
 	 *
 	 * @var mixed
@@ -30,8 +37,9 @@ class WP_Error {
 	public $data;
 
 	public function __construct( $code = '', $message = '', $data = '' ) {
-		$this->code = $code;
-		$this->data = $data;
+		$this->code    = $code;
+		$this->message = $message;
+		$this->data    = $data;
 	}
 
 	public function get_error_code() {
@@ -188,6 +196,7 @@ $locked = abilities_after_register( true, 'personal' )['user-registration/list-c
 security_assert( is_wp_error( $locked ) && 'ur_ability_plan_required' === $locked->code, 'A site without the plan gets a plan error' );
 security_assert( 403 === $locked->data['status'] && array( 'plus', 'professional' ) === $locked->data['required_plans'], 'The error is a 403 that names the plans' );
 security_assert( false !== strpos( $locked->data['upgrade_url'], 'content=coupons' ), 'The error carries the upgrade link for the area' );
+security_assert( 'plus' === $locked->data['recommended_plan'] && false !== strpos( $locked->message, 'Your plan does not include Coupons. Upgrade to the Plus plan or a higher one' ), 'The error recommends the lowest plan that includes the area' );
 security_assert( is_wp_error( abilities_after_register( true )['user-registration/list-coupons']['permission_callback']() ), 'A site with no license is locked out of a paid area' );
 security_assert( true === abilities_after_register( true, 'professional' )['user-registration/list-coupons']['permission_callback'](), 'A site on a listed plan can use the area' );
 security_assert( true === abilities_after_register( true, ' plus' )['user-registration/list-coupons']['permission_callback'](), 'A plan name with a leading space from the license lookup still matches' );

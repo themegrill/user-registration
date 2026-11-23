@@ -268,23 +268,57 @@ class UR_Abilities {
 	 * @return WP_Error
 	 */
 	public static function plan_required_error( $label, $plans, $content ) {
-		return new WP_Error(
-			'ur_ability_plan_required',
-			/* translators: %s: area name, for example Coupons. */
-			sprintf( __( '%s is not part of this site\'s plan. Upgrade to use it.', 'user-registration' ), $label ),
+		$plans       = array_values( array_filter( array_map( 'trim', array_map( 'strtolower', (array) $plans ) ) ) );
+		$recommended = self::lowest_plan( $plans );
+		$names       = array(
+			'personal'          => __( 'Personal', 'user-registration' ),
+			'plus'              => __( 'Plus', 'user-registration' ),
+			'professional'      => __( 'Professional', 'user-registration' ),
+			'themegrill agency' => __( 'Agency', 'user-registration' ),
+		);
+		$url         = ur_utm_url(
+			'https://wpuserregistration.com/upgrade/',
 			array(
-				'status'         => 403,
-				'required_plans' => array_values( array_filter( array_map( 'trim', array_map( 'strtolower', (array) $plans ) ) ) ),
-				'upgrade_url'    => ur_utm_url(
-					'https://wpuserregistration.com/upgrade/',
-					array(
-						'source'  => 'ai-abilities',
-						'medium'  => 'button',
-						'content' => $content,
-					)
-				),
+				'source'  => 'ai-abilities',
+				'medium'  => 'button',
+				'content' => $content,
 			)
 		);
+
+		return new WP_Error(
+			'ur_ability_plan_required',
+			isset( $names[ $recommended ] )
+				/* translators: 1: what is locked, for example Coupons. 2: plan name, for example Plus. 3: upgrade link. */
+				? sprintf( __( 'Your plan does not include %1$s. Upgrade to the %2$s plan or a higher one to use it: %3$s', 'user-registration' ), $label, $names[ $recommended ], $url )
+				/* translators: 1: what is locked, for example Coupons. 2: upgrade link. */
+				: sprintf( __( 'Your plan does not include %1$s. Upgrade to a higher plan to use it: %2$s', 'user-registration' ), $label, $url ),
+			array(
+				'status'           => 403,
+				'required_plans'   => $plans,
+				'recommended_plan' => $recommended,
+				'upgrade_url'      => $url,
+			)
+		);
+	}
+
+	/**
+	 * Name the lowest plan that includes something.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $plans Plan slugs.
+	 * @return string One of free, personal, plus, professional or themegrill agency.
+	 */
+	public static function lowest_plan( $plans ) {
+		$plans = array_map( 'strtolower', (array) $plans );
+
+		foreach ( array( 'free', 'personal', 'plus', 'professional', 'themegrill agency' ) as $plan ) {
+			if ( in_array( $plan, $plans, true ) ) {
+				return $plan;
+			}
+		}
+
+		return 'free';
 	}
 
 	/**

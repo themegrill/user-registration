@@ -218,6 +218,11 @@ $locked = UR_Abilities_Data::enable_module( array( 'slug' => 'user-registration-
 security_assert( is_wp_error( $locked ) && 'ur_ability_plan_required' === $locked->code && 403 === $locked->data['status'], 'A module the plan does not include is refused with the plan error' );
 security_assert( array( 'plus', 'professional', 'themegrill agency' ) === $locked->data['required_plans'] && false !== strpos( $locked->data['upgrade_url'], 'content=user-registration-calculations' ), 'The error names the plans and carries the upgrade link' );
 security_assert( array() === UR_Modules::$calls, 'A locked module is never turned on' );
+security_assert( 'plus' === $locked->data['recommended_plan'] && false !== strpos( $locked->message, 'Your plan does not include Calculations. Upgrade to the Plus plan or a higher one' ) && false !== strpos( $locked->message, $locked->data['upgrade_url'] ), 'The message says the plan does not allow it, recommends the plan to buy and carries the link' );
+
+// A paid addon that is not installed is refused for the plan first, and nothing is installed.
+$paid = UR_Abilities_Data::enable_module( array( 'slug' => 'user-registration-file-upload' ) );
+security_assert( is_wp_error( $paid ) && 'ur_ability_plan_required' === $paid->code && 'personal' === $paid->data['recommended_plan'] && false !== strpos( $paid->message, 'Upgrade to the Personal plan' ) && array() === UR_Modules::$calls, 'A paid addon on a site without the plan is refused with the plan to buy, and nothing is installed' );
 
 $unknown = UR_Abilities_Data::enable_module( array( 'slug' => 'nope' ) );
 security_assert( is_wp_error( $unknown ) && 'ur_abilities_not_found' === $unknown->code && 404 === $unknown->data['status'], 'An unknown slug is a 404' );
