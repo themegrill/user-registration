@@ -58,7 +58,7 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 	}
 
 	/**
-	 * Delete everything membership-related that belongs to a user; run on `deleted_user` and before a bulk member delete.
+	 * Delete everything membership-related that belongs to a user; run on `deleted_user` and after each user a bulk member delete removes.
 	 *
 	 * @param int $user_id User ID.
 	 * @return bool False when a subscription or order could not be deleted; true when there is nothing to delete, including when the tables do not exist.
