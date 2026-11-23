@@ -31,8 +31,12 @@ function get_post( $post = null ) {
 function get_post_meta( $id, $key, $single ) {
 	return '_elementor_data' === $key ? ( $GLOBALS['elementor_data'][ $id ] ?? '' ) : ( $GLOBALS['override'][ $id ] ?? '' ); }
 /** The shortcode hides its content from this visitor unless they are in the allowed list. */
+function get_current_blog_id() {
+	return 1; }
 function do_shortcode( $content ) {
 	$GLOBALS['shortcode_calls'][] = $GLOBALS['post']->ID;
+	if ( ! empty( $GLOBALS['shortcode_hook'] ) ) {
+		( $GLOBALS['shortcode_hook'] )(); }
 	security_assert( $GLOBALS['post'] instanceof WP_Post, 'The shortcode is evaluated against the post' );
 	return $GLOBALS['shortcode_allows'] ? 'granted' : '<div class="urcr-access-card">Membership Required</div>'; }
 
@@ -110,6 +114,37 @@ foreach ( array( 1, 3, 5, 4 ) as $id ) {
 }
 security_assert( array( 1, 4 ) === $GLOBALS['shortcode_calls'], 'The shortcode runs once for the global posts and once for the override post' );
 security_assert( '' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 ), 'The shared answer still blanks every global post' );
+
+// A denial message that asks for the same excerpt again must not recurse; the inner ask counts as denied.
+$GLOBALS['current_user']    = 11;
+$GLOBALS['shortcode_calls'] = array();
+$GLOBALS['override']        = array( 5 => 'on' );
+$inner                      = null;
+$GLOBALS['shortcode_hook']  = static function () use ( &$inner ) {
+	$inner = URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 );
+};
+$GLOBALS['shortcode_allows'] = true;
+$outer                       = URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 );
+security_assert( array( 5 ) === $GLOBALS['shortcode_calls'], 'The shortcode is not re-entered while it is being checked' );
+security_assert( '' === $inner && 'SECRET' === $outer, 'A re-entrant ask is treated as denied while the outer decision stands' );
+
+// A shortcode that throws must still leave the caller's global post in place and the check usable.
+$GLOBALS['current_user']   = 12;
+$GLOBALS['post']           = 'caller-post';
+$GLOBALS['shortcode_hook'] = static function () {
+	throw new RuntimeException( 'shortcode failure' );
+};
+try {
+	URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 );
+	$thrown = false;
+} catch ( RuntimeException $e ) {
+	$thrown = true;
+}
+security_assert( $thrown && 'caller-post' === $GLOBALS['post'], 'The global post is restored when the shortcode throws' );
+$GLOBALS['shortcode_hook']   = null;
+$GLOBALS['shortcode_allows'] = false;
+$GLOBALS['current_user']     = 13;
+security_assert( '' === URCR_Syndication_Restriction::filter_elementor_excerpt( 'SECRET', 5 ), 'The check works again after a shortcode failure' );
 
 // The caller's global post is restored after the shortcode check.
 $GLOBALS['current_user'] = 9;

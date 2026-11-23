@@ -72,7 +72,7 @@ class URCR_Shortcodes {
 			$current_user_roles        = ( is_user_logged_in() && ! empty( wp_get_current_user()->roles ) ) ? (array) wp_get_current_user()->roles : array( 'guest' );
 
 			// WordPress passes an empty string when the shortcode has no attributes.
-			$atts = (array) $atts;
+			$atts = is_array( $atts ) ? $atts : array();
 
 			foreach ( $atts as $key => $value ) {
 				if ( is_string( $value ) ) {

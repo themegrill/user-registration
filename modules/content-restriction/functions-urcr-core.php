@@ -2125,7 +2125,7 @@ function urcr_is_elementor_section_denied( $post ) {
 
 	// Without a per post override the shortcode decides from global settings alone, so one answer serves every such post.
 	$scope = 'on' === get_post_meta( $post->ID, 'urcr_meta_override_global_settings', true ) ? $post->ID : 'global';
-	$key   = get_current_user_id() . ':' . $scope;
+	$key   = get_current_blog_id() . ':' . get_current_user_id() . ':' . $scope;
 
 	if ( ! isset( $denials[ $key ] ) ) {
 		$denials[ $key ] = urcr_is_restrict_shortcode_denied( $post );
@@ -2143,12 +2143,23 @@ function urcr_is_elementor_section_denied( $post ) {
  * @since x.x.x
  */
 function urcr_is_restrict_shortcode_denied( $post ) {
+	static $checking = false;
+
+	// A denial message that itself asks for this excerpt must not recurse; treat it as denied.
+	if ( $checking ) {
+		return true;
+	}
+
+	$checking        = true;
 	$previous_post   = isset( $GLOBALS['post'] ) ? $GLOBALS['post'] : null;
 	$GLOBALS['post'] = $post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restored below.
 
-	$rendered = do_shortcode( '[urcr_restrict]granted[/urcr_restrict]' );
-
-	$GLOBALS['post'] = $previous_post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restores the caller's post.
+	try {
+		$rendered = do_shortcode( '[urcr_restrict]granted[/urcr_restrict]' );
+	} finally {
+		$GLOBALS['post'] = $previous_post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restores the caller's post.
+		$checking        = false;
+	}
 
 	return 'granted' !== $rendered;
 }
