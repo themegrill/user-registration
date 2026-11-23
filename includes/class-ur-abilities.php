@@ -493,7 +493,7 @@ class UR_Abilities {
 			'members'     => array(
 				'label'     => __( 'Members', 'user-registration' ),
 				'abilities' => array(
-					'get-registration-stats' => array(
+					'get-registration-stats'    => array(
 						'label'       => __( 'Get registration statistics', 'user-registration' ),
 						'description' => __( 'Count form registrations by UTC day, form and current approval status. Defaults to 30 days; maximum 93 days and 10000 registrations. These are not historical status transitions or conversion analytics.', 'user-registration' ),
 						'input'       => array(
@@ -505,7 +505,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'get_registration_stats' ),
 					),
-					'list-members'           => array(
+					'list-members'              => array(
 						'label'       => __( 'List registered members', 'user-registration' ),
 						'description' => __( 'List users registered through a form or the membership module on this site. Filter by approval status or email verification to find members waiting for review; filtering scans at most 10000 members.', 'user-registration' ),
 						'input'       => $pagination + array(
@@ -520,7 +520,7 @@ class UR_Abilities {
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_members' ),
 					),
-					'get-member'             => array(
+					'get-member'                => array(
 						'label'       => __( 'Get registered member', 'user-registration' ),
 						'description' => __( 'Read a registered member and their subscriptions. Membership availability is reported explicitly.', 'user-registration' ),
 						'input'       => array( 'id' => $id ),
@@ -528,6 +528,40 @@ class UR_Abilities {
 						'output'      => $member_detail,
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'get_member' ),
+					),
+					'approve-member'            => array(
+						'label'       => __( 'Approve member', 'user-registration' ),
+						'description' => __( 'Approve a member who is waiting for approval or was denied, like the Approve button on the Users screen. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $member,
+						'permission'  => array( __CLASS__, 'moderate_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_approve_member' ),
+						'execute'     => array( 'UR_Abilities_Data', 'approve_member' ),
+					),
+					'deny-member'               => array(
+						'label'       => __( 'Deny member', 'user-registration' ),
+						'description' => __( 'Deny a member so they cannot log in, like the Deny button on the Users screen. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $member,
+						'permission'  => array( __CLASS__, 'moderate_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_deny_member' ),
+						'execute'     => array( 'UR_Abilities_Data', 'deny_member' ),
+					),
+					'resend-verification-email' => array(
+						'label'       => __( 'Resend verification email', 'user-registration' ),
+						'description' => __( 'Send the email confirmation link again to a member who has not confirmed their email yet.', 'user-registration' ),
+						'level'       => 'write',
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $member,
+						'permission'  => array( __CLASS__, 'moderate_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'resend_verification_email' ),
 					),
 				),
 			),
@@ -648,5 +682,16 @@ class UR_Abilities {
 	 */
 	public static function members_permission() {
 		return current_user_can( 'manage_user_registration' ) && current_user_can( 'list_users' );
+	}
+
+	/**
+	 * Match the capability the Users screen asks for to approve, deny or resend.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public static function moderate_permission() {
+		return self::members_permission() && current_user_can( 'promote_users' );
 	}
 }

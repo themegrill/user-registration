@@ -7,7 +7,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-/** Read-only callbacks. Input validation and authorization belong to WP_Ability. */
+/** Ability callbacks. Input validation and authorization belong to WP_Ability. */
 class UR_Abilities_Data {
 	/**
 	 * List a bounded page of forms.
@@ -417,6 +417,163 @@ class UR_Abilities_Data {
 			}
 		}
 		return $result;
+	}
+
+	/**
+	 * Describe what approving a member would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_approve_member( $input ) {
+		$user = self::moderated_member( $input['id'], 'approved' );
+
+		return is_wp_error( $user ) ? $user : sprintf(
+			/* translators: 1: username, 2: email address. */
+			__( 'Approve %1$s (%2$s). They will be able to log in, and the approval email is sent if it is turned on.', 'user-registration' ),
+			$user->user_login,
+			$user->user_email
+		);
+	}
+
+	/**
+	 * Approve a member the same way the Users screen does.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function approve_member( $input ) {
+		return self::moderate( $input['id'], true );
+	}
+
+	/**
+	 * Describe what denying a member would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_deny_member( $input ) {
+		$user = self::moderated_member( $input['id'], 'denied' );
+
+		return is_wp_error( $user ) ? $user : sprintf(
+			/* translators: 1: username, 2: email address. */
+			__( 'Deny %1$s (%2$s). They will not be able to log in, and the denial email is sent if it is turned on.', 'user-registration' ),
+			$user->user_login,
+			$user->user_email
+		);
+	}
+
+	/**
+	 * Deny a member the same way the Users screen does.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function deny_member( $input ) {
+		return self::moderate( $input['id'], false );
+	}
+
+	/**
+	 * Send the email confirmation link again to a member who has not confirmed yet.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function resend_verification_email( $input ) {
+		$user = self::moderated_member( $input['id'] );
+
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+
+		$manager = new UR_Admin_User_Manager( $user );
+
+		if ( ! $manager->is_email_pending() ) {
+			return new WP_Error( 'ur_abilities_not_email_pending', __( 'This member is not waiting for email confirmation.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		ur_resend_verification_email( $user->ID );
+
+		return self::member( $user );
+	}
+
+	/**
+	 * Find a registered member whose status the current user may change, like the Users screen allows.
+	 *
+	 * @param int    $id     Member ID.
+	 * @param string $target Status the change would set, to stop a change that does nothing.
+	 * @return WP_User|WP_Error
+	 */
+	private static function moderated_member( $id, $target = '' ) {
+		$query = new WP_User_Query(
+			self::member_query( array() ) + array(
+				'include' => array( $id ),
+				'number'  => 1,
+			)
+		);
+		$users = $query->get_results();
+
+		if ( ! $users ) {
+			return self::not_found();
+		}
+
+		$manager = new UR_Admin_User_Manager( $users[0] );
+
+		if ( ! $manager->can_status_be_changed_by( get_current_user_id() ) ) {
+			return new WP_Error( 'ur_abilities_forbidden', __( 'You cannot change the status of this member, for example your own account or another admin.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		if ( '' !== $target && self::status( $users[0] ) === $target ) {
+			/* translators: %s: approved or denied. */
+			return new WP_Error( 'ur_abilities_no_change', sprintf( __( 'This member is already %s.', 'user-registration' ), $target ), array( 'status' => 409 ) );
+		}
+
+		return $users[0];
+	}
+
+	/**
+	 * Approve or deny a member and update the email confirmation the same way the Users screen does.
+	 *
+	 * @param int  $id      Member ID.
+	 * @param bool $approve True to approve, false to deny.
+	 * @return array|WP_Error
+	 */
+	private static function moderate( $id, $approve ) {
+		$user = self::moderated_member( $id, $approve ? 'approved' : 'denied' );
+
+		if ( is_wp_error( $user ) ) {
+			return $user;
+		}
+
+		$login_option = ur_get_user_login_option( $user->ID );
+		$manager      = new UR_Admin_User_Manager( $user );
+
+		if ( $approve ) {
+			$manager->approve();
+		} else {
+			$manager->deny();
+		}
+
+		if ( in_array( $login_option, array( 'email_confirmation', 'admin_approval_after_email_confirmation' ), true ) ) {
+			update_user_meta( $user->ID, 'ur_confirm_email', $approve ? '1' : '0' );
+			delete_user_meta( $user->ID, 'ur_confirm_email_token' );
+
+			if ( 'admin_approval_after_email_confirmation' === $login_option ) {
+				update_user_meta( $user->ID, 'ur_admin_approval_after_email_confirmation', $approve ? 'true' : 'denied' );
+			}
+		}
+
+		return self::member( $user );
 	}
 
 	/**
