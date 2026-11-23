@@ -19,7 +19,7 @@ class UR_Abilities_Settings {
 	}
 
 	/**
-	 * Add AI Integration to the Advanced sections, before Others.
+	 * Add AI Integration at the top of the Advanced sections, which also makes it the one Advanced opens on.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -27,19 +27,7 @@ class UR_Abilities_Settings {
 	 * @return array
 	 */
 	public static function add_section( $sections ) {
-		if ( ! is_array( $sections ) ) {
-			return $sections;
-		}
-
-		$label = __( 'AI Integration', 'user-registration' );
-
-		if ( ! isset( $sections['others'] ) ) {
-			return $sections + array( self::SECTION => $label );
-		}
-
-		$before = array_slice( $sections, 0, array_search( 'others', array_keys( $sections ), true ), true );
-
-		return $before + array( self::SECTION => $label ) + array_diff_key( $sections, $before );
+		return is_array( $sections ) ? array( self::SECTION => __( 'AI Integration', 'user-registration' ) ) + $sections : $sections;
 	}
 
 	/**

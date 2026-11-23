@@ -1,6 +1,6 @@
 <?php // phpcs:ignore WordPress.Files.FileName.InvalidClassFileName -- Test double shares this file.
 /**
- * Regression: AI settings have their own section, Advanced, AI Integration, placed before Others. The master switch
+ * Regression: AI settings have their own section, Advanced, AI Integration, placed first. The master switch
  * lives there, no longer in Others, and the other AI cards join the section through a filter, so each part adds
  * its own card from its own code.
  *
@@ -29,16 +29,17 @@ function apply_filters( $hook, $value ) {
 
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-settings.php';
 
-// The section sits before Others.
+// The section sits at the top, which is also the one Advanced opens on.
 $sections = array(
 	'import-export'   => 'Import/Export',
 	'plugin-deletion' => 'Plugin Deletion',
 	'others'          => 'Others',
 );
 $result   = UR_Abilities_Settings::add_section( $sections );
-security_assert( array( 'import-export', 'plugin-deletion', 'ai-integration', 'others' ) === array_keys( $result ), 'AI Integration is added before Others and the order of the rest is kept' );
+security_assert( array( 'ai-integration', 'import-export', 'plugin-deletion', 'others' ) === array_keys( $result ), 'AI Integration is added at the top and the order of the rest is kept' );
 security_assert( 'AI Integration' === $result['ai-integration'] && 'Others' === $result['others'], 'The sections keep their labels' );
-security_assert( array( 'a', 'ai-integration' ) === array_keys( UR_Abilities_Settings::add_section( array( 'a' => 'A' ) ) ), 'Without Others the section goes last' );
+security_assert( 'ai-integration' === array_key_first( $result ), 'The first section is the one a tab opens on, so Advanced opens on AI Integration' );
+security_assert( 1 === count( array_keys( UR_Abilities_Settings::add_section( $result ), 'AI Integration', true ) ), 'Adding it twice does not list it twice' );
 security_assert( 'odd' === UR_Abilities_Settings::add_section( 'odd' ), 'Sections of an unexpected shape are returned untouched' );
 
 // Only the AI Integration section gets settings.
