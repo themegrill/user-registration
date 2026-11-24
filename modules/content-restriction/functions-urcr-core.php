@@ -179,6 +179,78 @@ function urcr_is_page_excluded( $page_id ) {
 }
 
 /**
+ * Get the published content access rules, newest first, the order of the Content Access Rules list.
+ *
+ * @since xx.xx.xx
+ *
+ * @return array Rule posts.
+ */
+function urcr_get_access_rule_posts() {
+	global $wpdb;
+
+	return $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- Same query the frontend always ran, now with a fixed order.
+		$wpdb->prepare(
+			"SELECT * FROM {$wpdb->posts} WHERE post_type = %s AND post_status = %s ORDER BY post_date DESC, ID DESC",
+			'urcr_access_rule',
+			'publish'
+		)
+	);
+}
+
+/**
+ * Work out which content access rule decides whether the current user sees a post.
+ *
+ * A matching rule that lets the user in always wins. Otherwise the newest matching rule that keeps them out decides
+ * what they see, the same rule that is on top in the Content Access Rules list.
+ *
+ * Shared by the frontend and the AI abilities, so an explanation matches what visitors really get.
+ *
+ * @since xx.xx.xx
+ *
+ * @param array   $access_rule_posts Rule posts from urcr_get_access_rule_posts().
+ * @param WP_Post $post              Post being viewed.
+ * @return array `access_granted`, `granting_rule_id`, `restriction_rule` (the rule data or null) and `restriction_rule_id`.
+ */
+function urcr_find_deciding_rule( $access_rule_posts, $post ) {
+	$result = array(
+		'access_granted'      => false,
+		'granting_rule_id'    => 0,
+		'restriction_rule'    => null,
+		'restriction_rule_id' => 0,
+	);
+
+	foreach ( $access_rule_posts as $access_rule_post ) {
+		$access_rule = json_decode( $access_rule_post->post_content, true );
+
+		// Skip rules without the parts a rule needs.
+		if ( empty( $access_rule['logic_map'] ) || empty( $access_rule['target_contents'] ) || empty( $access_rule['actions'] ) || ! is_array( $access_rule['logic_map'] ) || empty( $access_rule['logic_map']['conditions'] ) ) {
+			continue;
+		}
+
+		if ( ! urcr_is_access_rule_enabled( $access_rule ) || ! urcr_is_action_specified( $access_rule ) || true !== urcr_is_target_post( $access_rule['target_contents'], $post ) ) {
+			continue;
+		}
+
+		$should_allow_access = urcr_is_allow_access( $access_rule['logic_map'], $post );
+		$access_control      = ! empty( $access_rule['actions'][0]['access_control'] ) ? $access_rule['actions'][0]['access_control'] : 'access';
+
+		if ( ( true === $should_allow_access && 'access' === $access_control ) || ( false == $should_allow_access && 'restrict' === $access_control ) ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- Same check as before; the logic can return a falsy non-boolean.
+			$result['access_granted'] = true;
+
+			if ( ! $result['granting_rule_id'] ) {
+				$result['granting_rule_id'] = (int) $access_rule_post->ID;
+			}
+		} elseif ( null === $result['restriction_rule'] && ( ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control ) ) ) { // phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual -- Same check as before.
+			// Rules come newest first, so the first one that keeps the user out decides the action.
+			$result['restriction_rule']    = $access_rule;
+			$result['restriction_rule_id'] = (int) $access_rule_post->ID;
+		}
+	}
+
+	return $result;
+}
+
+/**
  * See if the given access rule is enabled.
  *
  * @param array $access_rule Acess Rule.
@@ -1780,19 +1852,11 @@ function urcr_migrated_global_rule() {
  * @since 5.2.8
  */
 function urcr_get_published_access_rules() {
-	global $wpdb;
-
 	static $access_rules = null;
 
 	if ( null === $access_rules ) {
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Mirrors URCR_Frontend::get_all_access_rules(); the result is cached in $access_rules for the rest of the request.
-		$access_rules = $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->posts} WHERE post_type = %s AND post_status = %s",
-				'urcr_access_rule',
-				'publish'
-			)
-		);
+		// Same rules, in the same newest first order, as URCR_Frontend; cached for the rest of the request.
+		$access_rules = urcr_get_access_rule_posts();
 	}
 
 	return $access_rules;
@@ -1876,6 +1940,8 @@ function urcr_has_whole_site_access_rule() {
  *         @type bool       $granted Whether a rule in this pass explicitly granted access.
  *         @type array|null $rule    The rule that restricts access, when one matched.
  *         @type bool       $matched Whether any rule in this pass targeted the post at all.
+ *         @type int        $rule_id          ID of the newest rule that restricts access, 0 when none.
+ *         @type int        $granting_rule_id ID of the newest rule that grants access, 0 when none.
  *     }
  * }
  * @since 5.2.8
@@ -1883,14 +1949,18 @@ function urcr_has_whole_site_access_rule() {
 function urcr_resolve_access_rules( $target_post ) {
 	$resolved = array(
 		'whole_site' => array(
-			'granted' => false,
-			'rule'    => null,
-			'matched' => false,
+			'granted'          => false,
+			'rule'             => null,
+			'matched'          => false,
+			'rule_id'          => 0,
+			'granting_rule_id' => 0,
 		),
 		'post'       => array(
-			'granted' => false,
-			'rule'    => null,
-			'matched' => false,
+			'granted'          => false,
+			'rule'             => null,
+			'matched'          => false,
+			'rule_id'          => 0,
+			'granting_rule_id' => 0,
 		),
 	);
 
@@ -1922,8 +1992,14 @@ function urcr_resolve_access_rules( $target_post ) {
 
 		if ( ( $should_allow_access && 'access' === $access_control ) || ( ! $should_allow_access && 'restrict' === $access_control ) ) {
 			$resolved[ $pass ]['granted'] = true;
-		} else {
-			$resolved[ $pass ]['rule'] = $access_rule;
+
+			if ( ! $resolved[ $pass ]['granting_rule_id'] ) {
+				$resolved[ $pass ]['granting_rule_id'] = (int) $access_rule_post->ID;
+			}
+		} elseif ( null === $resolved[ $pass ]['rule'] ) {
+			// Rules come newest first, so the newest restricting rule decides, as on the front end.
+			$resolved[ $pass ]['rule']    = $access_rule;
+			$resolved[ $pass ]['rule_id'] = (int) $access_rule_post->ID;
 		}
 	}
 

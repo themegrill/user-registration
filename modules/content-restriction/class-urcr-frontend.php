@@ -67,14 +67,7 @@ class URCR_Frontend {
 	 * @return array List of access rule posts.
 	 */
 	private function get_all_access_rules() {
-		global $wpdb;
-		return $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->posts} WHERE post_type = %s AND post_status = %s",
-				'urcr_access_rule',
-				'publish'
-			)
-		);
+		return urcr_get_access_rule_posts();
 	}
 
 	/**
@@ -1103,42 +1096,10 @@ class URCR_Frontend {
 				continue;
 			}
 
-			$access_granted   = false;
-			$restriction_rule = null;
+			$decision         = urcr_find_deciding_rule( $access_rule_posts, $post );
+			$access_granted   = $decision['access_granted'];
+			$restriction_rule = $decision['restriction_rule'];
 
-			foreach ( $access_rule_posts as $access_rule_post ) {
-				$access_rule = json_decode( $access_rule_post->post_content, true );
-
-				// Verify if required params are available.
-				if ( empty( $access_rule['logic_map'] ) || empty( $access_rule['target_contents'] ) || empty( $access_rule['actions'] ) ) {
-					continue;
-				}
-				// Check if the logic map data is in array format.
-				if ( ! is_array( $access_rule['logic_map'] ) ) {
-					continue;
-				}
-				// Validate against empty variables.
-				if ( empty( $access_rule['logic_map']['conditions'] ) || empty( $access_rule['logic_map']['conditions'] ) ) {
-					continue;
-				}
-
-				if ( urcr_is_access_rule_enabled( $access_rule ) && urcr_is_action_specified( $access_rule ) ) {
-
-					$is_target = urcr_is_target_post( $access_rule['target_contents'], $post );
-
-					if ( true === $is_target ) {
-						$should_allow_access = urcr_is_allow_access( $access_rule['logic_map'], $post );
-
-						$access_control = isset( $access_rule['actions'][0]['access_control'] ) && ! empty( $access_rule['actions'][0]['access_control'] ) ? $access_rule['actions'][0]['access_control'] : 'access';
-
-						if ( ( true === $should_allow_access && 'access' === $access_control ) || ( false == $should_allow_access && 'restrict' === $access_control ) ) {
-							$access_granted = true;
-						} elseif ( ( true === $should_allow_access && 'restrict' === $access_control ) || ( false == $should_allow_access && 'access' === $access_control ) ) {
-							$restriction_rule = $access_rule;
-						}
-					}
-				}
-			}
 			if ( $access_granted ) {
 				continue;
 			}
