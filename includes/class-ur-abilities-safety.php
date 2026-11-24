@@ -69,6 +69,11 @@ class UR_Abilities_Safety {
 
 			unset( $input['confirm_token'] );
 
+			// A callable `confirm` decides per request, so only the risky requests of an ability wait for a confirmation.
+			if ( '' === $token && is_callable( $ability['confirm'] ) && ! call_user_func( $ability['confirm'], $input ) ) {
+				return call_user_func( $ability['execute'], $input );
+			}
+
 			return '' === $token ? self::preview( $name, $ability, $input ) : self::confirm( $name, $ability, $input, $token );
 		};
 	}

@@ -59,7 +59,9 @@ class UR_Abilities {
 		 * `required` (property names), `output` (a schema, see UR_Abilities::object_schema()), `permission` and
 		 * `execute` (callables), and optionally `idempotent`. Set `confirm` to true and give a `preview` callable that
 		 * returns a plain sentence, and the ability first shows that preview and only runs when called again with the
-		 * `confirm_token` it handed out. The ability is registered as `user-registration/{name}`.
+		 * `confirm_token` it handed out. `confirm` can also be a callable that gets the input and returns whether this
+		 * request needs the preview, so only the risky requests of an ability wait for a confirmation. The ability is
+		 * registered as `user-registration/{name}`.
 		 *
 		 * An addon adds nothing when it is not active, because its code never runs to add the area.
 		 *
