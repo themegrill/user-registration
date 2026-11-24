@@ -1,4 +1,4 @@
-<?php
+<?php // phpcs:ignore WordPress.Files.FileName.InvalidClassFileName -- Test doubles share this fixture.
 /**
  * A client-sent urcl_hide_fields list cannot waive a field that has no conditional logic.
  *
@@ -36,13 +36,22 @@ function get_post_meta( $form_id, $key ) {
 	return ( URCL_FORM_ID === $form_id && isset( $GLOBALS['urcl_meta'][ $key ] ) ) ? $GLOBALS['urcl_meta'][ $key ] : '';
 }
 
-/**
- * Form content double: rows of grids of fields, read from the fixture below.
- *
- * @param int $form_id Form ID.
- */
-function ur_get_post_content( $form_id ) {
-	return URCL_FORM_ID === $form_id ? $GLOBALS['urcl_content'] : array();
+/** Form handler double: rows of grids of fields, read from the fixture below. */
+class Urcl_Form_Double {
+	/**
+	 * Return the fixture content for the fixture form only.
+	 *
+	 * @param int   $form_id Form ID.
+	 * @param array $args    Query args.
+	 */
+	public function get_form( $form_id, $args = array() ) {
+		return URCL_FORM_ID === $form_id ? $GLOBALS['urcl_content'] : array();
+	}
+}
+
+/** Plugin instance double exposing the form handler double. */
+function UR() {
+	return (object) array( 'form' => new Urcl_Form_Double() );
 }
 
 /**

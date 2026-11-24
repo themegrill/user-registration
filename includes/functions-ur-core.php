@@ -365,6 +365,10 @@ function ur_get_conditional_row_field_names( $form_id ) {
 
 	$form_id = absint( $form_id );
 
+	if ( 0 === $form_id ) {
+		return array();
+	}
+
 	if ( isset( $cache[ $form_id ] ) ) {
 		return $cache[ $form_id ];
 	}
@@ -380,7 +384,7 @@ function ur_get_conditional_row_field_names( $form_id ) {
 		}
 	}
 
-	$rows = empty( $conditional_row_ids ) ? array() : ur_get_post_content( $form_id );
+	$rows = empty( $conditional_row_ids ) ? array() : UR()->form->get_form( $form_id, array( 'content_only' => true ) );
 
 	foreach ( is_array( $rows ) ? $rows : array() as $index => $grids ) {
 		$row_id = ( is_array( $row_ids ) && isset( $row_ids[ $index ] ) ) ? absint( $row_ids[ $index ] ) : $index;
@@ -389,8 +393,8 @@ function ur_get_conditional_row_field_names( $form_id ) {
 			continue;
 		}
 
-		foreach ( $grids as $grid ) {
-			foreach ( $grid as $row_field ) {
+		foreach ( is_iterable( $grids ) ? $grids : array() as $grid ) {
+			foreach ( is_iterable( $grid ) ? $grid : array() as $row_field ) {
 				if ( isset( $row_field->general_setting->field_name ) ) {
 					$field_names[] = $row_field->general_setting->field_name;
 				}
