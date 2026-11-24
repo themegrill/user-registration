@@ -156,7 +156,7 @@ class URCR_Abilities {
 					'abilities' => array( 'create-content-rule', 'update-content-rule', 'set-content-rule-status', 'duplicate-content-rule' ),
 				),
 				'trash'  => array(
-					'label'     => __( 'Trash rules', 'user-registration' ),
+					'label'     => __( 'Delete rules', 'user-registration' ),
 					'abilities' => array( 'trash-content-rule' ),
 				),
 			),
