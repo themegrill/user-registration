@@ -12175,6 +12175,11 @@ if ( ! function_exists( 'urm_update_user_profile_data' ) ) {
 				}
 			}
 
+			// Self-service password changes must go through the Change Password flow, never profile save.
+			if ( 'user_pass' === $new_key && ( get_current_user_id() === (int) $user_id || ! current_user_can( 'edit_user', (int) $user_id ) ) ) {
+				continue;
+			}
+
 			if ( in_array( $new_key, ur_get_user_table_fields() ) ) {
 				if ( 'display_name' === $new_key ) {
 					$user_data['display_name'] = sanitize_text_field( ( $single_field[ $key ] ) );
