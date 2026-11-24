@@ -241,6 +241,11 @@ class UR_Frontend_Form_Handler {
 				)
 			);
 
+			// Core's login and reset flows hash the slashed password, so slash it here to match.
+			if ( isset( $userdata['user_pass'] ) ) {
+				$userdata['user_pass'] = wp_slash( $userdata['user_pass'] );
+			}
+
 			$user_id = wp_insert_user( $userdata ); // Insert user data in users table.
 
 			if ( is_wp_error( $user_id ) ) {
