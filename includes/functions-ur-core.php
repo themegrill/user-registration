@@ -352,6 +352,30 @@ function ur_string_to_bool( $string ) {
 }
 
 /**
+ * Checks whether the request marks a field as hidden by its own conditional logic.
+ *
+ * The client-sent `urcl_hide_fields` list is only honoured for fields that have conditional logic enabled.
+ *
+ * @since x.x.x
+ *
+ * @param object $field Form field object.
+ *
+ * @return bool
+ */
+function ur_is_field_hidden_by_conditional_logic( $field ) {
+	$has_logic  = isset( $field->advance_setting->enable_conditional_logic ) && ur_string_to_bool( $field->advance_setting->enable_conditional_logic );
+	$field_name = isset( $field->general_setting->field_name ) ? $field->general_setting->field_name : '';
+
+	if ( ! $has_logic || '' === $field_name || ! isset( $_POST['urcl_hide_fields'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		return false;
+	}
+
+	$hidden_fields = (array) json_decode( wp_unslash( $_POST['urcl_hide_fields'] ), true ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+	return in_array( $field_name, $hidden_fields, true );
+}
+
+/**
  * Converts a bool to a 'yes' or 'no'.
  *
  * @param bool $bool String to convert.
@@ -7410,9 +7434,7 @@ if ( ! function_exists( 'user_registration_validate_edit_profile_form_field_data
 
 			$required = isset( $single_form_field->general_setting->required ) ? $single_form_field->general_setting->required : false;
 
-			$urcl_hide_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( stripslashes( $_POST['urcl_hide_fields'] ), true ) : array(); //phpcs:ignore;
-
-			if ( ! in_array( $single_field_name, $urcl_hide_fields, true ) && ur_string_to_bool( $required ) ) {
+			if ( ! ur_is_field_hidden_by_conditional_logic( $single_form_field ) && ur_string_to_bool( $required ) ) {
 				array_unshift( $validations, 'required' );
 			}
 

@@ -494,9 +494,7 @@ class UR_Form_Validation extends UR_Validation {
 				if ( isset( $form_field_data[ $key ]->advance_setting->field_visibility ) && 'edit_form' === $form_field_data[ $key ]->advance_setting->field_visibility ) {
 					return;
 				} else {
-					// phpcs:ignore WordPress.Security.NonceVerification.Missing
-					$urcl_hide_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( stripslashes( $_POST['urcl_hide_fields'] ), true ) : array();
-					if ( ! in_array( $form_field_data[ $key ]->general_setting->field_name, $urcl_hide_fields, true ) ) {
+					if ( ! ur_is_field_hidden_by_conditional_logic( $form_field_data[ $key ] ) ) {
 						$field_label = $form_field_data[ $key ]->general_setting->label;
 						/* translators: %s - Field Label */
 						$response = sprintf( __( '<strong>%s</strong> is a required field.', 'user-registration' ), $field_label );
@@ -609,11 +607,9 @@ class UR_Form_Validation extends UR_Validation {
 		$is_required = false;
 
 		if ( ! empty( $field ) ) {
-			$required         = isset( $field->general_setting->required ) ? $field->general_setting->required : false;
-			$urcl_hide_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( stripslashes( $_POST['urcl_hide_fields'] ), true ) : array(); //phpcs:ignore;
-			$field_name       = isset( $field->general_setting->field_name ) ? $field->general_setting->field_name : '';
+			$required = isset( $field->general_setting->required ) ? $field->general_setting->required : false;
 
-			if ( ! in_array( $field_name, $urcl_hide_fields, true ) && ur_string_to_bool( $required ) ) {
+			if ( ! ur_is_field_hidden_by_conditional_logic( $field ) && ur_string_to_bool( $required ) ) {
 				$is_required = true;
 			}
 		}
