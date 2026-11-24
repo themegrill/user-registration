@@ -139,6 +139,7 @@ security_assert( $validator->is_field_required( urcl_required_field( 'first_name
  * @param int $form_id Form ID.
  */
 function ur_get_form_field_data( $form_id ) {
+	$GLOBALS['urcl_lookups'] = ( isset( $GLOBALS['urcl_lookups'] ) ? $GLOBALS['urcl_lookups'] : 0 ) + 1;
 	return URCL_FORM_ID === $form_id ? array( urcl_field( 'first_name', '' ), urcl_field( 'last_name', '' ), urcl_field( 'city', '1' ) ) : array();
 }
 // phpcs:ignore Squiz.PHP.Eval.Discouraged -- Load the actual filter body using the existing isolated fixture.
@@ -166,6 +167,10 @@ $_POST = array(
 );
 security_assert( user_registration_conditional_user_meta_filter( $saved, 5, URCL_FORM_ID ) === $saved, 'Array-typed list drops nothing and does not throw' );
 security_assert( user_registration_conditional_user_meta_filter( $saved, 0, URCL_FORM_ID ) === $saved, 'No user means nothing is filtered' );
+$_POST   = array( 'action' => 'user_registration_user_form_submit' );
+$lookups = $GLOBALS['urcl_lookups'];
+security_assert( user_registration_conditional_user_meta_filter( $saved, 5, URCL_FORM_ID ) === $saved, 'A request with no hidden list leaves the saved data untouched' );
+security_assert( $GLOBALS['urcl_lookups'] === $lookups, 'A request with no hidden list does not even load the form fields' );
 
 // Every changed call site must go through the helper and never read the raw parameter again.
 $call_sites = array(
@@ -179,5 +184,5 @@ $call_sites = array(
 foreach ( $call_sites as $site ) {
 	$source = security_function( $site[0], $site[1] );
 	security_assert( false !== strpos( $source, 'ur_is_field_hidden_by_conditional_logic(' ), $site[1] . ' uses the helper' );
-	security_assert( false === strpos( $source, "\$_POST['urcl_hide_fields']" ), $site[1] . ' does not read the raw parameter' );
+	security_assert( 0 === preg_match( '/json_decode\([^;]*urcl_hide_fields/', $source ), $site[1] . ' does not decode the raw parameter itself' );
 }

@@ -6876,7 +6876,7 @@ if ( ! function_exists( 'user_registration_conditional_user_meta_filter' ) ) {
 	 * @since 3.0.4
 	 */
 	function user_registration_conditional_user_meta_filter( $valid_form_data, $user_id, $form_id ) {
-		if ( $user_id <= 0 ) {
+		if ( $user_id <= 0 || ! isset( $_POST['urcl_hide_fields'] ) ) { //phpcs:ignore.
 			return $valid_form_data;
 		}
 
