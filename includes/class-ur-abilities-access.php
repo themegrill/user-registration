@@ -199,8 +199,7 @@ class UR_Abilities_Access {
 			. '.ur-ability-access__presets button{font-size:12px;line-height:1.6;color:#000;background:#fff;border:1px solid #e1e4ed;border-radius:999px;padding:1px 10px;cursor:pointer}'
 			. '.ur-ability-access__presets button:hover{border-color:#475bb2}'
 			. '.ur-ability-access__presets button[aria-pressed="true"]{background:#475bb2;border-color:#475bb2;color:#fff}'
-			. '.ur-ability-access__group{margin:12px 0 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}'
-			. '.ur-ability-access__group--read{color:#2f7d52}.ur-ability-access__group--write{color:#9a6a12}.ur-ability-access__group--delete{color:#b3261e}'
+			. '.ur-ability-access__group{margin:12px 0 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#000}'
 			. '.ur-ability-access__asks{margin-left:6px;padding:1px 6px;border-radius:4px;background:#eceffa;color:#2d3559;font-size:11px;font-weight:500;white-space:nowrap}';
 
 		wp_register_style( 'user-registration-ability-access', false, array(), UR_VERSION );
