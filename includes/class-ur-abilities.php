@@ -121,7 +121,7 @@ class UR_Abilities {
 				/**
 				 * Filters whether an ability is available to AI assistants.
 				 *
-				 * The default follows the access the admin chose for the area. A module can hook in to hide
+				 * The default is the ability's own switch, which follows the access chosen for the area until it is saved. A module can hook in to hide
 				 * abilities for its own reasons. A hidden ability is not registered, so the AI cannot see or call it.
 				 *
 				 * @since xx.xx.xx
@@ -131,7 +131,7 @@ class UR_Abilities {
 				 * @param string $name    Ability name, without the `user-registration/` prefix.
 				 * @param string $level   Level of the ability: `read`, `write` or `delete`.
 				 */
-				if ( ! apply_filters( 'user_registration_ability_enabled', UR_Abilities_Access::allows( $slug, $level ), $slug, $name, $level ) ) {
+				if ( ! apply_filters( 'user_registration_ability_enabled', UR_Abilities_Access::is_enabled( $slug, $name, $level ), $slug, $name, $level ) ) {
 					continue;
 				}
 
