@@ -366,7 +366,7 @@ function ur_is_field_hidden_by_conditional_logic( $field ) {
 	$has_logic  = isset( $field->advance_setting->enable_conditional_logic ) && ur_string_to_bool( $field->advance_setting->enable_conditional_logic );
 	$field_name = isset( $field->general_setting->field_name ) ? $field->general_setting->field_name : '';
 
-	if ( ! $has_logic || '' === $field_name || ! isset( $_POST['urcl_hide_fields'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	if ( ! $has_logic || '' === $field_name || ! isset( $_POST['urcl_hide_fields'] ) || ! is_string( $_POST['urcl_hide_fields'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		return false;
 	}
 

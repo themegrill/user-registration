@@ -34,5 +34,8 @@ security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'last_na
 $_POST = array( 'urcl_hide_fields' => 'not-json' );
 security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_name', '1' ) ), 'Malformed list hides nothing' );
 
+$_POST = array( 'urcl_hide_fields' => array( 'first_name' ) );
+security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_name', '1' ) ), 'Array-typed list hides nothing and does not throw' );
+
 $_POST = array();
 security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_name', '1' ) ), 'Missing list hides nothing' );
