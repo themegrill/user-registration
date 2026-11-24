@@ -148,7 +148,18 @@ class URCR_Abilities {
 
 		$areas['content-rules'] = array(
 			'label'       => __( 'Content rules', 'user-registration' ),
-			'description' => __( 'Lets AI assistants see your content access rules and explain why someone can or cannot see a page. With change access they can also create, change, switch on or off and copy rules, and with delete access move a rule to the trash.', 'user-registration' ),
+			'description' => __( 'Lets AI assistants see your content access rules and explain why someone can or cannot see a page. The other switches let them create, change, switch on or off and copy rules, and move a rule to the trash.', 'user-registration' ),
+			'groups'      => array(
+				'view'   => array( 'label' => __( 'See rules and explain access', 'user-registration' ) ),
+				'change' => array(
+					'label'     => __( 'Create and change rules', 'user-registration' ),
+					'abilities' => array( 'create-content-rule', 'update-content-rule', 'set-content-rule-status', 'duplicate-content-rule' ),
+				),
+				'trash'  => array(
+					'label'     => __( 'Trash rules', 'user-registration' ),
+					'abilities' => array( 'trash-content-rule' ),
+				),
+			),
 			'abilities'   => array(
 				'list-content-rules'      => array(
 					'label'       => __( 'List content rules', 'user-registration' ),

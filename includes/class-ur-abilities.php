@@ -53,7 +53,9 @@ class UR_Abilities {
 		/**
 		 * Filters the AI ability areas, so a module or an addon can add its own from its own code.
 		 *
-		 * Each area is an array with a translated `label`, an optional `description` shown as the access setting's tooltip, an optional `plan` (list of plan slugs allowed to use it,
+		 * Each area is an array with a translated `label`, an optional `description` shown as the area's tooltip, an optional `groups` list
+		 * that puts abilities doing the same kind of job under one switch (each a `label` and `abilities`, a list of ability names, keyed by
+		 * group slug; `view` labels the switch for all read abilities, which always share one), an optional `plan` (list of plan slugs allowed to use it,
 		 * empty for every site) and `abilities`, keyed by ability name. Each ability takes:
 		 * `label`, `description`, `level` (`read`, `write` or `delete`, default `read`), `input` (property schemas),
 		 * `required` (property names), `output` (a schema, see UR_Abilities::object_schema()), `permission` and
@@ -121,7 +123,7 @@ class UR_Abilities {
 				/**
 				 * Filters whether an ability is available to AI assistants.
 				 *
-				 * The default is the ability's own switch, which follows the access chosen for the area until it is saved. A module can hook in to hide
+				 * The default is the switch that covers the ability, which follows the access chosen for the area until it is saved. A module can hook in to hide
 				 * abilities for its own reasons. A hidden ability is not registered, so the AI cannot see or call it.
 				 *
 				 * @since xx.xx.xx
@@ -131,7 +133,7 @@ class UR_Abilities {
 				 * @param string $name    Ability name, without the `user-registration/` prefix.
 				 * @param string $level   Level of the ability: `read`, `write` or `delete`.
 				 */
-				if ( ! apply_filters( 'user_registration_ability_enabled', UR_Abilities_Access::is_enabled( $slug, $name, $level ), $slug, $name, $level ) ) {
+				if ( ! apply_filters( 'user_registration_ability_enabled', UR_Abilities_Access::is_enabled( $slug, $name, $level, $area ), $slug, $name, $level ) ) {
 					continue;
 				}
 
@@ -687,7 +689,22 @@ class UR_Abilities {
 		return array(
 			'forms'       => array(
 				'label'       => __( 'Forms', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see your registration forms and their fields. With change access they can also create a draft form from a template, add, change, move and remove fields, and change some form settings.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your registration forms and their fields. The other switches let them create a draft form from a template, add, change, move and remove fields, and change some form settings.', 'user-registration' ),
+				'groups'      => array(
+					'view'        => array( 'label' => __( 'See forms', 'user-registration' ) ),
+					'create'      => array(
+						'label'     => __( 'Create forms', 'user-registration' ),
+						'abilities' => array( 'create-form' ),
+					),
+					'edit-fields' => array(
+						'label'     => __( 'Edit form fields', 'user-registration' ),
+						'abilities' => array( 'add-form-field', 'update-form-field', 'move-form-field', 'set-form-layout', 'remove-form-field' ),
+					),
+					'settings'    => array(
+						'label'     => __( 'Change form settings', 'user-registration' ),
+						'abilities' => array( 'update-form-settings' ),
+					),
+				),
 				'abilities'   => array(
 					'list-forms'           => array(
 						'label'       => __( 'List registration forms', 'user-registration' ),
@@ -866,7 +883,22 @@ class UR_Abilities {
 			),
 			'members'     => array(
 				'label'       => __( 'Members', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see registered members, their approval status and sign-up counts. With change access they can also approve, deny and resend the verification email, and with delete access delete a member.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see registered members, their approval status and sign-up counts. The other switches let them approve, deny and resend the verification email, and delete a member.', 'user-registration' ),
+				'groups'      => array(
+					'view'         => array( 'label' => __( 'See members', 'user-registration' ) ),
+					'approval'     => array(
+						'label'     => __( 'Approve or deny members', 'user-registration' ),
+						'abilities' => array( 'approve-member', 'deny-member' ),
+					),
+					'verification' => array(
+						'label'     => __( 'Resend verification emails', 'user-registration' ),
+						'abilities' => array( 'resend-verification-email' ),
+					),
+					'delete'       => array(
+						'label'     => __( 'Delete members', 'user-registration' ),
+						'abilities' => array( 'delete-member' ),
+					),
+				),
 				'abilities'   => array(
 					'get-registration-stats'    => array(
 						'label'       => __( 'Get registration statistics', 'user-registration' ),
@@ -958,7 +990,18 @@ class UR_Abilities {
 			),
 			'memberships' => array(
 				'label'       => __( 'Memberships', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see your membership plans and who is subscribed to them. With change access they can also assign a plan, extend a subscription or cancel one, and with delete access delete subscriptions, plans and plan groups.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your membership plans and who is subscribed to them. The other switches let them assign a plan, extend a subscription or cancel one, and delete subscriptions, plans and plan groups.', 'user-registration' ),
+				'groups'      => array(
+					'view'   => array( 'label' => __( 'See plans and subscriptions', 'user-registration' ) ),
+					'manage' => array(
+						'label'     => __( 'Manage subscriptions', 'user-registration' ),
+						'abilities' => array( 'assign-membership', 'extend-subscription', 'cancel-subscription' ),
+					),
+					'delete' => array(
+						'label'     => __( 'Delete subscriptions and plans', 'user-registration' ),
+						'abilities' => array( 'delete-subscription', 'delete-membership', 'delete-membership-group' ),
+					),
+				),
 				'abilities'   => array(
 					'list-memberships'        => array(
 						'label'       => __( 'List membership plans', 'user-registration' ),
@@ -1066,6 +1109,9 @@ class UR_Abilities {
 			'payments'    => array(
 				'label'       => __( 'Payments', 'user-registration' ),
 				'description' => __( 'Lets AI assistants see membership payments and revenue totals.', 'user-registration' ),
+				'groups'      => array(
+					'view' => array( 'label' => __( 'See payments and revenue', 'user-registration' ) ),
+				),
 				'abilities'   => array(
 					'list-orders'         => array(
 						'label'       => __( 'List membership payments', 'user-registration' ),
@@ -1106,7 +1152,14 @@ class UR_Abilities {
 			),
 			'settings'    => array(
 				'label'       => __( 'Global settings', 'user-registration' ),
-				'description' => __( 'Lets AI assistants read the plugin\'s settings pages, with secrets only shown as set or not set. With change access they can also change a setting, but never a secret, the license or the tools.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants read the plugin\'s settings pages, with secrets only shown as set or not set. The other switches let them change a setting, but never a secret, the license or the tools.', 'user-registration' ),
+				'groups'      => array(
+					'view'   => array( 'label' => __( 'See settings', 'user-registration' ) ),
+					'change' => array(
+						'label'     => __( 'Change settings', 'user-registration' ),
+						'abilities' => array( 'update-setting' ),
+					),
+				),
 				'abilities'   => array(
 					'list-settings'  => array(
 						'label'       => __( 'List settings', 'user-registration' ),
@@ -1158,6 +1211,13 @@ class UR_Abilities {
 			'modules'     => array(
 				'label'       => __( 'Modules and addons', 'user-registration' ),
 				'description' => __( 'Lets AI assistants see which modules and addons the site can use and turn them on or off.', 'user-registration' ),
+				'groups'      => array(
+					'view'   => array( 'label' => __( 'See modules and addons', 'user-registration' ) ),
+					'switch' => array(
+						'label'     => __( 'Turn modules on or off', 'user-registration' ),
+						'abilities' => array( 'enable-module', 'disable-module' ),
+					),
+				),
 				'abilities'   => array(
 					'list-modules'   => array(
 						'label'       => __( 'List modules and addons', 'user-registration' ),

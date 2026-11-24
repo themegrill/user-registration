@@ -2629,7 +2629,7 @@ class UR_Abilities_Data {
 		// Also a person's choice: deleting all data on uninstall, and consent to share usage data.
 		$people_only = array( 'user_registration_enable_abilities', 'user_registration_general_setting_uninstall_option', 'user_registration_allow_usage_tracking' );
 
-		return in_array( $id, $people_only, true ) || 0 === strpos( $id, UR_Abilities_Access::option_id( '' ) ) || 0 === strpos( $id, UR_Abilities_Access::ABILITY_PREFIX );
+		return in_array( $id, $people_only, true ) || 0 === strpos( $id, UR_Abilities_Access::option_id( '' ) ) || 0 === strpos( $id, UR_Abilities_Access::GROUP_PREFIX );
 	}
 
 	/**
