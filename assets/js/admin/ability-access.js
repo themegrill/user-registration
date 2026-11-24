@@ -103,9 +103,82 @@
 		refresh();
 	}
 
+	// One search above the cards: shows only the abilities whose name, or whose area's name, matches, in open cards.
+	function search( $cards ) {
+		var $box = $( '<div class="ur-ability-access__search"></div>' );
+		var $input = $( '<input type="search" id="ur-ability-access-search">' ).attr( { placeholder: text.search, 'aria-label': text.search } );
+		var $empty = $( '<p class="ur-ability-access__empty"></p>' ).text( text.noMatch ).hide();
+		var $enable = $( '#user_registration_enable_abilities' );
+		var closed = null;
+
+		// Only the visible name counts: descriptions mention other areas' actions and match too much.
+		function words( $el ) {
+			return $el.contents().filter( function () {
+				return 3 === this.nodeType;
+			} ).text().toLowerCase();
+		}
+
+		function run() {
+			var query = $.trim( $input.val() ).toLowerCase();
+			var found = 0;
+
+			if ( query && null === closed ) {
+				closed = $cards.filter( '.ur-ability-access--closed' );
+			}
+
+			$cards.each( function () {
+				var $card = $( this );
+				var $rows = $card.find( 'input[data-ur-ability-level]' ).closest( '.user-registration-global-settings' );
+				var areaMatch = query && -1 !== words( $card.find( '.user-registration-card__title' ) ).indexOf( query );
+				var shown = 0;
+
+				$rows.each( function () {
+					var show = ! query || areaMatch || -1 !== words( $( this ).children( 'label' ) ).indexOf( query );
+
+					$( this ).toggle( show );
+					shown += show ? 1 : 0;
+				} );
+				$card.find( '.ur-ability-access__group' ).each( function () {
+					$( this ).toggle( $( this ).nextUntil( '.ur-ability-access__group', '.user-registration-global-settings' ).filter( function () {
+						return 'none' !== this.style.display;
+					} ).length > 0 );
+				} );
+				$card.toggle( shown > 0 );
+				if ( query ) {
+					$card.removeClass( 'ur-ability-access--closed' );
+				}
+				found += shown;
+			} );
+
+			if ( ! query && null !== closed ) {
+				closed.addClass( 'ur-ability-access--closed' );
+				closed = null;
+			}
+			$cards.each( function () {
+				$( this ).children( '.ur-ability-access__header' ).attr( 'aria-expanded', $( this ).hasClass( 'ur-ability-access--closed' ) ? 'false' : 'true' );
+			} );
+			$empty.toggle( ! found );
+		}
+
+		function visibility() {
+			$box.toggle( $enable.length ? $enable.is( ':checked' ) : true );
+		}
+
+		$box.append( $input, $empty );
+		$cards.first().before( $box );
+		$input.on( 'input search', run );
+		$enable.on( 'change', visibility );
+		visibility();
+	}
+
 	$( function () {
-		$( '.user-registration-card[id^="ur-ability-access-"]' ).each( function () {
+		var $cards = $( '.user-registration-card[id^="ur-ability-access-"]' );
+
+		$cards.each( function () {
 			setup( $( this ) );
 		} );
+		if ( $cards.length ) {
+			search( $cards );
+		}
 	} );
 }( jQuery, urAbilityAccess ) );

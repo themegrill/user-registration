@@ -186,6 +186,8 @@ class UR_Abilities_Access {
 			. '.ur-ability-access__presets button[aria-pressed="true"]{background:#475bb2;border-color:#475bb2;color:#fff}'
 			. '.ur-ability-access__group{margin:16px 0 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}'
 			. '.ur-ability-access__group--read{color:#2f7d52}.ur-ability-access__group--write{color:#9a6a12}.ur-ability-access__group--delete{color:#b3261e}'
+			. '.ur-ability-access__search{margin-top:16px}.ur-ability-access__search input{width:100%;max-width:420px;padding:6px 12px;border:1px solid #e1e4ed;border-radius:6px;font-size:14px}'
+			. '.ur-ability-access__empty{margin:12px 0 0;color:#646a7a}'
 			. '.ur-ability-access__asks{margin-left:6px;padding:1px 6px;border-radius:4px;background:#eceffa;color:#2d3559;font-size:11px;font-weight:500;white-space:nowrap}';
 
 		wp_register_style( 'user-registration-ability-access', false, array(), UR_VERSION );
@@ -202,6 +204,8 @@ class UR_Abilities_Access {
 				/* translators: 1: abilities switched on, 2: abilities in the area. */
 				'count'   => __( '%1$s of %2$s on', 'user-registration' ),
 				'asks'    => __( 'Asks first', 'user-registration' ),
+				'search'  => __( 'Search abilities', 'user-registration' ),
+				'noMatch' => __( 'No abilities match your search.', 'user-registration' ),
 				'askstip' => __( 'Shows you a preview and waits for your confirmation before it runs.', 'user-registration' ),
 				'groups'  => array(
 					'read'   => __( 'Reads', 'user-registration' ),
