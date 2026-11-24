@@ -13,7 +13,6 @@
 		var $body = $card.children( '.user-registration-card__body' );
 		var $count = $( '<span class="ur-ability-access__count"></span>' );
 		var $presets = $( '<div class="ur-ability-access__presets"></div>' );
-		var $all = $( '<input type="checkbox">' ).attr( 'aria-label', text.all );
 
 		if ( ! $switches.length ) {
 			return;
@@ -31,12 +30,24 @@
 			$( this ).closest( '.user-registration-global-settings' ).children( 'label' ).first().append( $( '<span class="ur-ability-access__asks"></span>' ).text( text.asks ).attr( 'title', text.askstip ) );
 		} );
 
+		// The area description goes in a tooltip beside the title instead of a notice.
+		var $desc = $card.children( '.ur-p-tag' );
+		var $tip = $( '<span class="user-registration-help-tip ur-ability-access__tip"></span>' ).attr( 'data-tip', $( '<div></div>' ).text( $.trim( $desc.text() ) ).html() );
+
+		if ( $.trim( $desc.text() ) ) {
+			$header.find( '.user-registration-card__title' ).append( $tip );
+			if ( 'function' === typeof window.ur_init_tooltips ) {
+				window.ur_init_tooltips( $tip );
+			}
+		}
+		$desc.remove();
+
 		[ 'none', 'read', 'all' ].forEach( function ( preset ) {
 			$( '<button type="button"></button>' ).text( text[ preset ] ).attr( 'data-preset', preset ).appendTo( $presets );
 		} );
 
 		$header.addClass( 'ur-ability-access__header' ).attr( { role: 'button', tabindex: 0 } ).find( '.user-registration-card__title' ).append( $count );
-		$header.append( $presets, $( '<div class="ur-toggle-section ur-ability-access__all"></div>' ).append( $( '<span class="user-registration-toggle-form"></span>' ).append( $all, '<span class="slider round"></span>' ) ) );
+		$header.append( $presets );
 
 		function refresh() {
 			var on = $switches.filter( ':checked' ).length;
@@ -45,7 +56,6 @@
 			} );
 
 			$count.text( text.count.replace( '%1$s', on ).replace( '%2$s', $switches.length ) );
-			$all.prop( { checked: on === $switches.length, indeterminate: on > 0 && on < $switches.length } );
 			$presets.children().each( function () {
 				var preset = this.getAttribute( 'data-preset' );
 				var pressed = 'none' === preset ? 0 === on : 'all' === preset ? on === $switches.length : readOnly && on !== $switches.length;
@@ -69,13 +79,6 @@
 		}
 
 		$switches.on( 'change', refresh );
-		$all.on( 'change', function () {
-			var checked = this.checked;
-
-			set( function () {
-				return checked;
-			} );
-		} );
 		$presets.on( 'click', 'button', function () {
 			var preset = this.getAttribute( 'data-preset' );
 
@@ -83,7 +86,7 @@
 				return 'all' === preset || ( 'read' === preset && 'read' === input.getAttribute( 'data-ur-ability-level' ) );
 			} );
 		} );
-		$presets.add( $all.closest( '.ur-ability-access__all' ) ).on( 'click keydown', function ( event ) {
+		$presets.add( $tip ).on( 'click keydown', function ( event ) {
 			event.stopPropagation();
 		} );
 		$header.on( 'click', toggle ).on( 'keydown', function ( event ) {
