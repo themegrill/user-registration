@@ -35,13 +35,13 @@ class UR_Form_Handler {
 		add_action( 'user_registration_before_customer_login_form', array( __CLASS__, 'export_confirmation_request' ) );
 		add_action( 'user_registration_save_profile_details', array( __CLASS__, 'ur_update_user_ip_after_profile_update' ), 10, 2 );
 		add_action( 'user_registration_force_logout_all_devices', array( __CLASS__, 'ur_force_logout_all_devices' ) );
-		add_filter( 'wp_authenticate_user', array( __CLASS__, 'upgrade_legacy_unslashed_password' ), 20, 2 );
+		add_filter( 'wp_authenticate_user', array( __CLASS__, 'upgrade_legacy_unslashed_password' ), 99, 2 );
 	}
 
 	/**
 	 * Re-hash a password that older registrations stored unslashed into the slashed form core compares against.
 	 *
-	 * Runs after the approval check so blocked users are never touched, and only for login form posts,
+	 * Runs last among the authenticate-user checks so blocked users are never touched, and only for login form posts,
 	 * where the submitted password is guaranteed to be slashed.
 	 *
 	 * @param WP_User|WP_Error $user     User being authenticated, or an error from an earlier check.
@@ -63,7 +63,8 @@ class UR_Form_Handler {
 		if ( $plain !== $password && wp_check_password( $plain, $user->user_pass, $user->ID ) ) {
 			wp_set_password( $password, $user->ID );
 
-			$user = get_user_by( 'id', $user->ID );
+			$reloaded = get_user_by( 'id', $user->ID );
+			$user     = $reloaded instanceof WP_User ? $reloaded : $user;
 		}
 
 		return $user;
