@@ -1,6 +1,6 @@
 === User Registration & Membership - Free & Paid Memberships, Subscriptions, Content Restriction, User Profile, Custom User Registration & Login Builder ===
 Contributors: WPEverest
-Tags: membership, subscription, content restriction, user profile, user registration
+Tags: membership, registration form, content restriction, user profile, user registration
 Requires at least: 5.5
 Requires PHP: 7.4
 Tested up to: 7.1
