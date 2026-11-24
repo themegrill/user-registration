@@ -65,6 +65,7 @@ class User_Registration_Content_Restriction {
 		include_once __DIR__ . '/class-urcr-shortcodes.php';
 
 		include_once __DIR__ . '/includes/RestApi/class-urcr-rest-api.php';
+		include_once __DIR__ . '/class-urcr-abilities.php';
 
 		include_once __DIR__ . '/class-urcr-rest-restriction.php';
 		include_once __DIR__ . '/class-urcr-syndication-restriction.php';
