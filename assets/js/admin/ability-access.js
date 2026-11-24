@@ -70,6 +70,10 @@
 				$area.toggle( shown > 0 );
 				found += shown;
 			} );
+			// The first area shown drops its top line, so a search never starts with a double line.
+			$areas.removeClass( 'ur-ability-access__area--first' ).filter( function () {
+				return 'none' !== this.style.display;
+			} ).first().addClass( 'ur-ability-access__area--first' );
 			$empty.toggle( ! found );
 		}
 

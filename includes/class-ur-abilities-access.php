@@ -242,7 +242,7 @@ class UR_Abilities_Access {
 			. '.ur-ability-access__search{position:relative;width:260px;max-width:100%}.ur-ability-access__search input{width:100%;font-size:13px;line-height:1.5;border:1px solid #e1e4ed;border-radius:6px;padding:6px 34px 6px 12px;margin:0}'
 			. '.ur-ability-access__search svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#646a7a;pointer-events:none}'
 			. '.ur-ability-access__empty{margin:4px 0 0;color:#646a7a}'
-			. '.ur-ability-access__area{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:start;gap:8px 24px;padding:16px 0;border-top:1px solid #e1e4ed}.ur-ability-access__area:first-child{border-top:0;padding-top:0}'
+			. '.ur-ability-access__area{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:start;gap:8px 24px;padding:16px 0;border-top:1px solid #e1e4ed}.ur-ability-access__area:first-child,.ur-ability-access__area--first{border-top:0;padding-top:0}'
 			. '.ur-ability-access__title{margin:0;padding-top:6px;display:flex;align-items:center;font-size:14px;font-weight:600;color:#1d2327}'
 			. '.ur-ability-access__tip{margin-left:6px;top:-1px}.ur-ability-access__pro{width:16px;height:16px;margin-left:6px}'
 			. '#ur-ability-access .ur-ability-access__list .user-registration-global-settings{display:flex;align-items:center;gap:16px;margin:0 !important;padding:8px 0}'
