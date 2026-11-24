@@ -494,7 +494,7 @@ class UR_Form_Validation extends UR_Validation {
 				if ( isset( $form_field_data[ $key ]->advance_setting->field_visibility ) && 'edit_form' === $form_field_data[ $key ]->advance_setting->field_visibility ) {
 					return;
 				} else {
-					if ( ! ur_is_field_hidden_by_conditional_logic( $form_field_data[ $key ] ) ) {
+					if ( ! ur_is_field_hidden_by_conditional_logic( $form_field_data[ $key ], $this->form_id ) ) {
 						$field_label = $form_field_data[ $key ]->general_setting->label;
 						/* translators: %s - Field Label */
 						$response = sprintf( __( '<strong>%s</strong> is a required field.', 'user-registration' ), $field_label );
@@ -600,16 +600,17 @@ class UR_Form_Validation extends UR_Validation {
 	 *
 	 * @param [object] $field Field object.
 	 * @param array    $form_data Form Data.
+	 * @param int      $form_id Form ID, defaults to the form being validated.
 	 * @return boolean
 	 */
-	public function is_field_required( $field, $form_data = array() ) {
+	public function is_field_required( $field, $form_data = array(), $form_id = 0 ) {
 
 		$is_required = false;
 
 		if ( ! empty( $field ) ) {
 			$required = isset( $field->general_setting->required ) ? $field->general_setting->required : false;
 
-			if ( ! ur_is_field_hidden_by_conditional_logic( $field ) && ur_string_to_bool( $required ) ) {
+			if ( ! ur_is_field_hidden_by_conditional_logic( $field, $form_id ? $form_id : $this->form_id ) && ur_string_to_bool( $required ) ) {
 				$is_required = true;
 			}
 		}

@@ -74,7 +74,7 @@ class UR_Form_Field_Text extends UR_Form_Field {
 		$label = $single_form_field->general_setting->field_name;
 
 		// Ignore URCL fields validation.
-		if ( ur_is_field_hidden_by_conditional_logic( $single_form_field ) ) {
+		if ( ur_is_field_hidden_by_conditional_logic( $single_form_field, $form_id ) ) {
 			return;
 		}
 		// Validate Limit Length.
