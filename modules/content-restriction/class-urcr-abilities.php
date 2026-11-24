@@ -148,7 +148,7 @@ class URCR_Abilities {
 
 		$areas['content-rules'] = array(
 			'label'       => __( 'Content rules', 'user-registration' ),
-			'description' => __( 'Lets AI assistants see your content access rules and explain why someone can or cannot see a page. The other switches let them create, change, switch on or off and copy rules, and move a rule to the trash.', 'user-registration' ),
+			'description' => __( 'Lets AI assistants see your content access rules and explain why someone can or cannot see a page. The other switches let them create, change, switch on or off and copy rules, and delete a rule.', 'user-registration' ),
 			'groups'      => array(
 				'view'   => array( 'label' => __( 'See rules and explain access', 'user-registration' ) ),
 				'change' => array(
@@ -254,8 +254,8 @@ class URCR_Abilities {
 					'execute'     => array( __CLASS__, 'duplicate_rule' ),
 				),
 				'trash-content-rule'      => array(
-					'label'       => __( 'Trash content rule', 'user-registration' ),
-					'description' => __( 'Move a content access rule to the trash. It is never deleted for good. Membership rules cannot be trashed. Shows a preview first.', 'user-registration' ),
+					'label'       => __( 'Delete content rule', 'user-registration' ),
+					'description' => __( 'Delete a content access rule, like Delete on the Content Access Rules screen. It cannot be restored from that screen, so switch a rule off instead to keep it. Membership rules cannot be deleted. Shows a preview first.', 'user-registration' ),
 					'level'       => 'delete',
 					'confirm'     => true,
 					'input'       => array( 'id' => $id ),
@@ -445,7 +445,7 @@ class URCR_Abilities {
 	}
 
 	/**
-	 * Describe trashing a rule.
+	 * Describe deleting a rule.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -459,7 +459,7 @@ class URCR_Abilities {
 
 		return sprintf(
 			/* translators: %s: rule title. */
-			__( 'Move the rule "%s" to the trash, like Delete on the Content Access Rules screen. Its pages are no longer checked against it. It is not deleted for good; switching it off instead keeps it on the list.', 'user-registration' ),
+			__( 'Delete the rule "%s", like Delete on the Content Access Rules screen. Its pages are no longer checked against it, and it cannot be restored from that screen. Switching it off instead keeps it on the list.', 'user-registration' ),
 			get_the_title( $input['id'] )
 		);
 	}
@@ -554,7 +554,7 @@ class URCR_Abilities {
 	}
 
 	/**
-	 * Trash a rule through the rules API, never deleting it for good.
+	 * Delete a rule through the rules API, the same way the Content Access Rules screen does.
 	 *
 	 * @since xx.xx.xx
 	 *
