@@ -246,7 +246,7 @@ UR_Abilities::register_abilities();
 security_assert( isset( $GLOBALS['registered']['user-registration/delete-coupon'] ) && ! isset( $GLOBALS['registered']['user-registration/update-coupon'] ), 'One ability can be switched on without the others of its level' );
 security_assert( ! isset( $GLOBALS['registered']['user-registration/list-coupons'] ) && isset( $GLOBALS['registered']['user-registration/list-forms'] ), 'One read ability can be switched off without touching the others' );
 
-// The settings are built from the areas: one card with a switch per ability, grouped by area.
+// The settings are built from the areas: a card per area with a switch per ability.
 $GLOBALS['options'] = array( 'user_registration_ability_access_settings' => 'write' );
 $settings           = UR_Abilities_Access::add_settings(
 	array(
@@ -255,40 +255,33 @@ $settings           = UR_Abilities_Access::add_settings(
 	)
 );
 $cards              = $settings['sections'];
-$card               = $cards['ai_abilities_access'] ?? array();
+$coupons            = $cards['ai_abilities_access_coupons'] ?? array();
 $by_id              = array();
-foreach ( $card['settings'] ?? array() as $field ) {
+foreach ( $coupons['settings'] ?? array() as $field ) {
 	$by_id[ $field['id'] ] = $field;
 }
-$coupon_ids = array_keys(
-	array_filter(
-		$by_id,
-		function ( $field ) {
-			return 'coupons' === $field['custom_attributes']['data-ur-ability-area'];
-		}
-	)
-);
 
-security_assert( array( 'ai_integration', 'ai_abilities_access' ) === array_keys( $cards ), 'The existing card is kept, followed by one access card' );
-security_assert( 'ur-ability-access' === $card['id'] && 'card' === $card['type'], 'All switches sit in one card' );
-security_assert( isset( $by_id['user_registration_ability_enabled_get-settings'], $by_id['user_registration_ability_enabled_list-coupons'], $by_id['user_registration_ability_enabled_list-forms'] ), 'Every area, including addon areas, gets its switches' );
-security_assert( ! isset( $by_id['user_registration_ability_enabled_x'] ), 'An area without a usable definition gets no switches' );
-security_assert( array( 'user_registration_ability_enabled_list-coupons', 'user_registration_ability_enabled_update-coupon', 'user_registration_ability_enabled_delete-coupon' ) === $coupon_ids, 'An area has one switch per ability, reads first, then changes, then deletes' );
+security_assert( 'ai_integration' === array_key_first( $cards ), 'The existing cards of the section are kept, first' );
+security_assert( isset( $cards['ai_abilities_access_payments'], $cards['ai_abilities_access_coupons'], $cards['ai_abilities_access_settings'] ), 'Every area, including addon areas, gets its own card' );
+security_assert( ! isset( $cards['ai_abilities_access_broken'], $cards['ai_abilities_access_nameless'] ), 'An area without a usable definition gets no card' );
+security_assert( 'Coupons' === $coupons['title'] && 'ur-ability-access-coupons' === $coupons['id'] && 'card' === $coupons['type'], 'The card is named after the area' );
+security_assert( array( 'user_registration_ability_enabled_list-coupons', 'user_registration_ability_enabled_update-coupon', 'user_registration_ability_enabled_delete-coupon' ) === array_keys( $by_id ), 'The card has one switch per ability, reads first, then changes, then deletes' );
 security_assert(
 	array_reduce(
 		$by_id,
 		function ( $carry, $field ) {
-			return $carry && 'toggle' === $field['type'] && '' !== $field['title'] && isset( $field['custom_attributes']['data-ur-ability-level'], $field['custom_attributes']['data-ur-ability-area'] );
+			return $carry && 'toggle' === $field['type'] && 'Addon ability' === $field['title'] && isset( $field['custom_attributes']['data-ur-ability-level'] );
 		},
 		true
 	),
-	'Each switch is a toggle named after its ability that says its area and level'
+	'Each switch is a toggle named after its ability that says its level'
 );
 security_assert( 'yes' === $by_id['user_registration_ability_enabled_list-coupons']['default'] && 'no' === $by_id['user_registration_ability_enabled_update-coupon']['default'], 'A new site starts with only the read switches on' );
-security_assert( 'yes' === $by_id['user_registration_ability_enabled_update-settings']['default'], 'An area an existing site set to read and change starts with its change switches on' );
-security_assert( 'user_registration_enable_abilities' === $card['display_condition']['field'] && 'yes' === $card['display_condition']['value'], 'The card shows only while AI abilities are switched on' );
+$settings_card = array_column( $cards['ai_abilities_access_settings']['settings'], 'default', 'id' );
+security_assert( 'yes' === $settings_card['user_registration_ability_enabled_update-settings'], 'An area an existing site set to read and change starts with its change switches on' );
+security_assert( 'user_registration_enable_abilities' === $coupons['display_condition']['field'] && 'yes' === $coupons['display_condition']['value'], 'Each card shows only while AI abilities are switched on' );
 security_assert( ! isset( $by_id['user_registration_ability_enabled_list-coupons']['display_condition'] ), 'The switches leave the showing and hiding to the card' );
-security_assert( in_array( 'user-registration-ability-access', $GLOBALS['enqueued'], true ), 'The page gets the script that groups the switches by area' );
+security_assert( in_array( 'user-registration-ability-access', $GLOBALS['enqueued'], true ), 'The page gets the script for the quick choices' );
 
 $odd = UR_Abilities_Access::add_settings( 'not-settings' );
 security_assert( 'not-settings' === $odd, 'Settings of an unexpected shape are returned untouched' );
