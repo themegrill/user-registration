@@ -1,5 +1,5 @@
 /**
- * AI Abilities Access cards: a count, quick choices and an open and close header for each area.
+ * AI Abilities Access card: groups the switches by area into panels, each with a count, quick choices and an open and close header, plus a search.
  *
  * @package UserRegistration
  */
@@ -7,47 +7,56 @@
 ( function ( $, text ) {
 	var LEVELS = [ 'read', 'write', 'delete' ];
 
-	function setup( $card ) {
-		var $switches = $card.find( 'input[data-ur-ability-level]' );
-		var $header = $card.children( '.user-registration-card__header' );
-		var $body = $card.children( '.user-registration-card__body' );
+	function rowOf( input ) {
+		return $( input ).closest( '.user-registration-global-settings' );
+	}
+
+	function setup( slug, $switches ) {
+		var area = text.areas[ slug ] || { label: slug, tip: '', pro: false };
+		var $area = $( '<div class="ur-ability-access__area ur-ability-access--closed"></div>' ).attr( 'data-area', slug );
+		var $header = $( '<div class="ur-ability-access__header" role="button" tabindex="0" aria-expanded="false"></div>' );
+		var $title = $( '<span class="ur-ability-access__title"></span>' ).text( area.label );
 		var $count = $( '<span class="ur-ability-access__count"></span>' );
 		var $presets = $( '<div class="ur-ability-access__presets"></div>' );
+		var $body = $( '<div class="ur-ability-access__body"></div>' );
+		var $tip = $();
 
-		if ( ! $switches.length ) {
-			return;
-		}
+		rowOf( $switches.first() ).before( $area );
+		$switches.each( function () {
+			$body.append( rowOf( this ) );
+		} );
 
 		// Group the switches under Reads, Changes and Deletes, and mark the ones that ask first.
 		LEVELS.forEach( function ( level ) {
 			var $first = $switches.filter( '[data-ur-ability-level="' + level + '"]' ).first();
 
 			if ( $first.length ) {
-				$first.closest( '.user-registration-global-settings' ).before( $( '<div class="ur-ability-access__group"></div>' ).addClass( 'ur-ability-access__group--' + level ).text( text.groups[ level ] ) );
+				rowOf( $first ).before( $( '<div class="ur-ability-access__group"></div>' ).addClass( 'ur-ability-access__group--' + level ).text( text.groups[ level ] ) );
 			}
 		} );
 		$switches.filter( '[data-ur-ability-confirm="yes"]' ).each( function () {
-			$( this ).closest( '.user-registration-global-settings' ).children( 'label' ).first().append( $( '<span class="ur-ability-access__asks"></span>' ).text( text.asks ).attr( 'title', text.askstip ) );
+			rowOf( this ).children( 'label' ).first().append( $( '<span class="ur-ability-access__asks"></span>' ).text( text.asks ).attr( 'title', text.askstip ) );
 		} );
 
-		// The area description goes in a tooltip beside the title instead of a notice.
-		var $desc = $card.children( '.ur-p-tag' );
-		var $tip = $( '<span class="user-registration-help-tip ur-ability-access__tip"></span>' ).attr( 'data-tip', $( '<div></div>' ).text( $.trim( $desc.text() ) ).html() );
-
-		if ( $.trim( $desc.text() ) ) {
-			$header.find( '.user-registration-card__title' ).append( $tip );
-			if ( 'function' === typeof window.ur_init_tooltips ) {
-				window.ur_init_tooltips( $tip );
-			}
+		if ( area.tip ) {
+			$tip = $( '<span class="user-registration-help-tip ur-ability-access__tip"></span>' ).attr( 'data-tip', $( '<div></div>' ).text( area.tip ).html() );
+			$title.append( $tip );
 		}
-		$desc.remove();
+		if ( area.pro ) {
+			$title.append( $( '<img class="ur-ability-access__pro" alt="Pro">' ).attr( 'src', text.proIcon ) );
+		}
+		$title.append( $count );
 
 		[ 'none', 'read', 'all' ].forEach( function ( preset ) {
 			$( '<button type="button"></button>' ).text( text[ preset ] ).attr( 'data-preset', preset ).appendTo( $presets );
 		} );
 
-		$header.addClass( 'ur-ability-access__header' ).attr( { role: 'button', tabindex: 0 } ).find( '.user-registration-card__title' ).append( $count );
-		$header.append( $presets );
+		$header.append( $title, $presets );
+		$area.append( $header, $body );
+
+		if ( $tip.length && 'function' === typeof window.ur_init_tooltips ) {
+			window.ur_init_tooltips( $tip );
+		}
 
 		function refresh() {
 			var on = $switches.filter( ':checked' ).length;
@@ -64,27 +73,23 @@
 			} );
 		}
 
-		function set( isOn ) {
-			$switches.each( function () {
-				if ( this.checked !== isOn( this ) ) {
-					$( this ).prop( 'checked', isOn( this ) ).trigger( 'change' );
-				}
-			} );
-			refresh();
-		}
-
 		function toggle() {
-			$card.toggleClass( 'ur-ability-access--closed' );
-			$header.attr( 'aria-expanded', $card.hasClass( 'ur-ability-access--closed' ) ? 'false' : 'true' );
+			$area.toggleClass( 'ur-ability-access--closed' );
+			$header.attr( 'aria-expanded', $area.hasClass( 'ur-ability-access--closed' ) ? 'false' : 'true' );
 		}
 
 		$switches.on( 'change', refresh );
 		$presets.on( 'click', 'button', function () {
 			var preset = this.getAttribute( 'data-preset' );
 
-			set( function ( input ) {
-				return 'all' === preset || ( 'read' === preset && 'read' === input.getAttribute( 'data-ur-ability-level' ) );
+			$switches.each( function () {
+				var isOn = 'all' === preset || ( 'read' === preset && 'read' === this.getAttribute( 'data-ur-ability-level' ) );
+
+				if ( this.checked !== isOn ) {
+					$( this ).prop( 'checked', isOn ).trigger( 'change' );
+				}
 			} );
+			refresh();
 		} );
 		$presets.add( $tip ).on( 'click keydown', function ( event ) {
 			event.stopPropagation();
@@ -95,20 +100,34 @@
 				toggle();
 			}
 		} );
-
-		// Every area starts closed, so the page stays short.
-		$card.addClass( 'ur-ability-access--closed' );
-		$header.attr( 'aria-expanded', 'false' );
-		$body.addClass( 'ur-ability-access__body' );
 		refresh();
 	}
 
-	// One search above the cards: shows only the abilities whose name, or whose area's name, matches, in open cards.
-	function search( $cards ) {
-		var $box = $( '<div class="ur-ability-access__search"></div>' );
+	$( function () {
+		var $switches = $( '#ur-ability-access input[data-ur-ability-area]' );
+		var slugs = [];
+
+		$switches.each( function () {
+			var slug = this.getAttribute( 'data-ur-ability-area' );
+
+			if ( -1 === slugs.indexOf( slug ) ) {
+				slugs.push( slug );
+			}
+		} );
+		slugs.forEach( function ( slug ) {
+			setup( slug, $switches.filter( '[data-ur-ability-area="' + slug + '"]' ) );
+		} );
+		if ( slugs.length ) {
+			search( $( '#ur-ability-access' ) );
+		}
+	} );
+
+	// A search in the card header: shows only the abilities whose name, or whose area's name, matches, in open areas.
+	function search( $card ) {
+		var $areas = $card.find( '.ur-ability-access__area' );
+		var $box = $( '<label class="ur-ability-access__search"></label>' );
 		var $input = $( '<input type="search" id="ur-ability-access-search">' ).attr( { placeholder: text.search, 'aria-label': text.search } );
 		var $empty = $( '<p class="ur-ability-access__empty"></p>' ).text( text.noMatch ).hide();
-		var $enable = $( '#user_registration_enable_abilities' );
 		var closed = null;
 
 		// Only the visible name counts: descriptions mention other areas' actions and match too much.
@@ -123,13 +142,13 @@
 			var found = 0;
 
 			if ( query && null === closed ) {
-				closed = $cards.filter( '.ur-ability-access--closed' );
+				closed = $areas.filter( '.ur-ability-access--closed' );
 			}
 
-			$cards.each( function () {
-				var $card = $( this );
-				var $rows = $card.find( 'input[data-ur-ability-level]' ).closest( '.user-registration-global-settings' );
-				var areaMatch = query && -1 !== words( $card.find( '.user-registration-card__title' ) ).indexOf( query );
+			$areas.each( function () {
+				var $area = $( this );
+				var $rows = $area.find( '.user-registration-global-settings' );
+				var areaMatch = query && -1 !== words( $area.find( '.ur-ability-access__title' ) ).indexOf( query );
 				var shown = 0;
 
 				$rows.each( function () {
@@ -138,14 +157,14 @@
 					$( this ).toggle( show );
 					shown += show ? 1 : 0;
 				} );
-				$card.find( '.ur-ability-access__group' ).each( function () {
+				$area.find( '.ur-ability-access__group' ).each( function () {
 					$( this ).toggle( $( this ).nextUntil( '.ur-ability-access__group', '.user-registration-global-settings' ).filter( function () {
 						return 'none' !== this.style.display;
 					} ).length > 0 );
 				} );
-				$card.toggle( shown > 0 );
+				$area.toggle( shown > 0 );
 				if ( query ) {
-					$card.removeClass( 'ur-ability-access--closed' );
+					$area.removeClass( 'ur-ability-access--closed' );
 				}
 				found += shown;
 			} );
@@ -154,31 +173,20 @@
 				closed.addClass( 'ur-ability-access--closed' );
 				closed = null;
 			}
-			$cards.each( function () {
+			$areas.each( function () {
 				$( this ).children( '.ur-ability-access__header' ).attr( 'aria-expanded', $( this ).hasClass( 'ur-ability-access--closed' ) ? 'false' : 'true' );
 			} );
 			$empty.toggle( ! found );
 		}
 
-		function visibility() {
-			$box.toggle( $enable.length ? $enable.is( ':checked' ) : true );
-		}
-
-		$box.append( $input, $empty );
-		$cards.first().before( $box );
-		$input.on( 'input search', run );
-		$enable.on( 'change', visibility );
-		visibility();
-	}
-
-	$( function () {
-		var $cards = $( '.user-registration-card[id^="ur-ability-access-"]' );
-
-		$cards.each( function () {
-			setup( $( this ) );
+		$box.append( $input, '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>' );
+		$card.children( '.user-registration-card__header' ).append( $box );
+		$areas.last().after( $empty );
+		$input.on( 'input search', run ).on( 'keydown', function ( event ) {
+			// Enter would submit the settings form.
+			if ( 'Enter' === event.key ) {
+				event.preventDefault();
+			}
 		} );
-		if ( $cards.length ) {
-			search( $cards );
-		}
-	} );
+	}
 }( jQuery, urAbilityAccess ) );

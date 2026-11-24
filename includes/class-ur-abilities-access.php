@@ -93,7 +93,7 @@ class UR_Abilities_Access {
 	}
 
 	/**
-	 * Add one card for every area, with a switch for each of its abilities, shown only while AI abilities are switched on.
+	 * Add one card with a switch for each ability, grouped by area, shown only while AI abilities are switched on.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -105,7 +105,8 @@ class UR_Abilities_Access {
 			return $settings;
 		}
 
-		$cards = array();
+		$fields = array();
+		$areas  = array();
 
 		foreach ( UR_Abilities::get_areas() as $slug => $area ) {
 			$slug = sanitize_key( $slug );
@@ -114,15 +115,15 @@ class UR_Abilities_Access {
 				continue;
 			}
 
-			$fields = array();
+			$area_fields = array();
 
 			foreach ( $area['abilities'] as $name => $ability ) {
 				if ( ! is_array( $ability ) || empty( $ability['label'] ) ) {
 					continue;
 				}
 
-				$level    = UR_Abilities::level( $ability );
-				$fields[] = array(
+				$level         = UR_Abilities::level( $ability );
+				$area_fields[] = array(
 					'title'             => $ability['label'],
 					'desc'              => isset( $ability['description'] ) && is_string( $ability['description'] ) ? $ability['description'] : '',
 					'id'                => self::ability_option_id( $name ),
@@ -131,63 +132,75 @@ class UR_Abilities_Access {
 					'css'               => '',
 					'desc_tip'          => true,
 					'custom_attributes' => array(
+						'data-ur-ability-area'    => $slug,
 						'data-ur-ability-level'   => $level,
 						'data-ur-ability-confirm' => empty( $ability['confirm'] ) ? 'no' : 'yes',
 					),
 				);
 			}
 
-			if ( empty( $fields ) ) {
+			if ( empty( $area_fields ) ) {
 				continue;
 			}
 
 			// Reads first, then changes, then deletes, keeping the area's own order inside each.
-			$order = array_keys( $fields );
-			array_multisort( array_map( fn( $field ) => self::LEVELS[ $field['custom_attributes']['data-ur-ability-level'] ], $fields ), $order, $fields );
+			$order = array_keys( $area_fields );
+			array_multisort( array_map( fn( $field ) => self::LEVELS[ $field['custom_attributes']['data-ur-ability-level'] ], $area_fields ), $order, $area_fields );
 
-			$cards[ 'ai_abilities_access_' . $slug ] = array(
-				'id'                => 'ur-ability-access-' . $slug,
-				'title'             => $area['label'],
-				'type'              => 'card',
-				'desc'              => ! empty( $area['description'] ) && is_string( $area['description'] ) ? $area['description'] : '',
-				'is_premium'        => ! empty( $area['plan'] ),
-				'settings'          => $fields,
-				'display_condition' => array(
-					'field'    => 'user_registration_enable_abilities',
-					'operator' => 'equals',
-					'value'    => 'yes',
-					'case'     => 'insensitive',
-				),
+			$fields         = array_merge( $fields, $area_fields );
+			$areas[ $slug ] = array(
+				'label' => $area['label'],
+				'tip'   => ! empty( $area['description'] ) && is_string( $area['description'] ) ? $area['description'] : '',
+				'pro'   => ! empty( $area['plan'] ),
 			);
 		}
 
-		if ( empty( $cards ) ) {
+		if ( empty( $fields ) ) {
 			return $settings;
 		}
 
-		$settings['sections'] = array_merge( isset( $settings['sections'] ) && is_array( $settings['sections'] ) ? $settings['sections'] : array(), $cards );
-		self::enqueue_script();
+		$settings['sections']['ai_abilities_access'] = array(
+			'id'                => 'ur-ability-access',
+			'title'             => __( 'AI Abilities Access', 'user-registration' ),
+			'type'              => 'card',
+			'desc'              => '',
+			'settings'          => $fields,
+			'display_condition' => array(
+				'field'    => 'user_registration_enable_abilities',
+				'operator' => 'equals',
+				'value'    => 'yes',
+				'case'     => 'insensitive',
+			),
+		);
+		self::enqueue_script( $areas );
 
 		return $settings;
 	}
 
-	/** Add the script and styles that give each card its quick choices, its count and its open and close header. */
-	private static function enqueue_script() {
-		$css = '.ur-ability-access__header{cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap}'
-			. '.ur-ability-access__header .user-registration-card__header-wrapper{flex:1}'
-			. '.ur-ability-access__header .user-registration-card__title::before{content:"";display:inline-block;width:7px;height:7px;margin:0 10px 2px 0;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg);transition:transform .15s}'
-			. '.ur-ability-access--closed .user-registration-card__title::before{transform:rotate(-45deg)}'
-			. '.ur-ability-access--closed > .ur-ability-access__body{display:none}.user-registration-options-container .user-registration-card .ur-ability-access__header{padding-bottom:0;margin-bottom:8px;border-bottom:0 !important}.user-registration-options-container .ur-ability-access--closed > .ur-ability-access__header{margin-bottom:0}'
-			. '[id^="ur-ability-access-"] > .ur-p-tag{display:none}.ur-ability-access__tip{margin-left:6px}'
+	/**
+	 * Add the script and styles that group the switches by area, each with its quick choices, its count and an open and close header.
+	 *
+	 * @param array $areas Label, description and Pro flag of each area, keyed by area slug.
+	 */
+	private static function enqueue_script( $areas ) {
+		$css = '#ur-ability-access > .user-registration-card__header{display:flex;align-items:center;gap:16px;flex-wrap:wrap}#ur-ability-access > .user-registration-card__header .user-registration-card__header-wrapper{flex:1}'
+			. '.ur-ability-access__search{position:relative;width:260px;max-width:100%}.ur-ability-access__search input{width:100%;font-size:13px;line-height:1.5;border:1px solid #e1e4ed;border-radius:6px;padding:6px 34px 6px 12px;margin:0}'
+			. '.ur-ability-access__search svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#646a7a;pointer-events:none}'
+			. '.ur-ability-access__empty{margin:4px 0 0;color:#646a7a}'
+			. '.ur-ability-access__area{background:#f7f8fb;border-radius:8px;padding:0 16px;margin-top:8px}.ur-ability-access__area:first-child{margin-top:0}'
+			. '.ur-ability-access__header{cursor:pointer;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0}'
+			. '.ur-ability-access__title{flex:1;display:flex;align-items:center;font-size:15px;font-weight:600;color:#1d2327}'
+			. '.ur-ability-access__title::before{content:"";display:inline-block;width:7px;height:7px;margin:0 12px 3px 2px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg);transition:transform .15s}'
+			. '.ur-ability-access--closed .ur-ability-access__title::before{transform:rotate(-45deg);margin-bottom:0}'
+			. '.ur-ability-access--closed > .ur-ability-access__body{display:none}.ur-ability-access__body{padding-bottom:12px}'
+			. '.ur-ability-access__tip{margin-left:6px}.ur-ability-access__pro{width:16px;height:16px;margin-left:6px}'
 			. '.ur-ability-access__count{margin-left:8px;font-size:12px;font-weight:400;color:#646a7a}'
 			. '.ur-ability-access__presets{display:flex;gap:4px}'
 			. '.ur-ability-access__presets button{font-size:12px;line-height:1.6;color:#000;background:#fff;border:1px solid #e1e4ed;border-radius:999px;padding:1px 10px;cursor:pointer}'
 			. '.ur-ability-access__presets button:hover{border-color:#475bb2}'
 			. '.ur-ability-access__presets button[aria-pressed="true"]{background:#475bb2;border-color:#475bb2;color:#fff}'
-			. '.ur-ability-access__group{margin:16px 0 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}'
+			. '.ur-ability-access__group{margin:12px 0 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}'
 			. '.ur-ability-access__group--read{color:#2f7d52}.ur-ability-access__group--write{color:#9a6a12}.ur-ability-access__group--delete{color:#b3261e}'
-			. '.ur-ability-access__search{margin-top:16px}.ur-ability-access__search input{width:100%;max-width:420px;padding:6px 12px;border:1px solid #e1e4ed;border-radius:6px;font-size:14px}'
-			. '.ur-ability-access__empty{margin:12px 0 0;color:#646a7a}'
 			. '.ur-ability-access__asks{margin-left:6px;padding:1px 6px;border-radius:4px;background:#eceffa;color:#2d3559;font-size:11px;font-weight:500;white-space:nowrap}';
 
 		wp_register_style( 'user-registration-ability-access', false, array(), UR_VERSION );
@@ -204,9 +217,11 @@ class UR_Abilities_Access {
 				/* translators: 1: abilities switched on, 2: abilities in the area. */
 				'count'   => __( '%1$s of %2$s on', 'user-registration' ),
 				'asks'    => __( 'Asks first', 'user-registration' ),
-				'search'  => __( 'Search abilities', 'user-registration' ),
+				'search'  => __( 'Search abilities...', 'user-registration' ),
 				'noMatch' => __( 'No abilities match your search.', 'user-registration' ),
 				'askstip' => __( 'Shows you a preview and waits for your confirmation before it runs.', 'user-registration' ),
+				'proIcon' => UR()->plugin_url() . '/assets/images/icons/ur-pro-icon.png',
+				'areas'   => $areas,
 				'groups'  => array(
 					'read'   => __( 'Reads', 'user-registration' ),
 					'write'  => __( 'Changes', 'user-registration' ),
