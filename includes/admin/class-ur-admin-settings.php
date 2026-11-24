@@ -441,31 +441,9 @@ class UR_Admin_Settings {
 			 * Action to save options
 			 */
 			do_action( 'user_registration_update_options' );
-		} elseif ( $flag && 'redirect_login_error' === $flag ) {
-
-			self::add_error(
-				esc_html__(
-					'Your settings has not been saved. You enabled "Disable Default WordPress Login Screen" but did not select a login page. Please select a page for "Redirect Default WordPress Login To".',
-					'user-registration'
-				)
-			);
-
-		} elseif ( $flag && 'redirect_login_not_myaccount' === $flag ) {
-
-			self::add_error(
-				esc_html__(
-					'Your settings has not been saved.The selected page for "Redirect Default WordPress Login To" is not a login page. Please select a valid login page.',
-					'user-registration'
-				)
-			);
-
-		} elseif ( $flag && 'invalid_membership_pages' === $flag ) {
-			self::add_error(
-				esc_html__(
-					'Your settings has not been saved. Please select valid pages for the fields.',
-					'user-registration'
-				)
-			);
+		} elseif ( $flag && in_array( $flag, array( 'redirect_login_error', 'redirect_login_not_myaccount', 'invalid_membership_pages' ), true ) ) {
+			// The renewal period error is added by save_fields(), so only these three are shown here.
+			self::add_error( esc_html( self::get_save_error( $flag ) ) );
 		}
 		// Flush rules.
 		wp_schedule_single_event( time(), 'user_registration_flush_rewrite_rules' );
@@ -1970,11 +1948,7 @@ class UR_Admin_Settings {
 										'type' => 'color',
 									)
 								);
-								$state_value  = ur_sanitize_value_by_type( $state_option, $state_raw_value );
-
-								// Apply filters (same as regular color field)
-								$state_value = apply_filters( 'user_registration_admin_settings_sanitize_option', $state_value, $state_option, $state_raw_value );
-								$state_value = apply_filters( "user_registration_admin_settings_sanitize_option_$state_id", $state_value, $state_option, $state_raw_value );
+								$state_value  = self::sanitize_setting_value( $state_option, $state_raw_value, $state_id );
 
 								// Add to color array
 								if ( ! is_null( $state_value ) ) {
@@ -2007,25 +1981,7 @@ class UR_Admin_Settings {
 					}
 				}
 				// Get posted value.
-				$value = ur_sanitize_value_by_type( $option, $raw_value );
-
-				/**
-				 * Filter to Sanitize the value of an option.
-				 *
-				 * @param boolean $value String converted to Boolean
-				 * @param mixed $option Option to save
-				 * @param string $raw_value Option value to save
-				 */
-				$value = apply_filters( 'user_registration_admin_settings_sanitize_option', $value, $option, $raw_value );
-
-				/**
-				 * Filter to Sanitize the value of an option by option name.
-				 *
-				 * @param boolean $value String converted to Boolean
-				 * @param mixed $option Option value to save
-				 * @param string $raw_value Option value to save
-				 */
-				$value = apply_filters( "user_registration_admin_settings_sanitize_option_$option_name", $value, $option, $raw_value );
+				$value = self::sanitize_setting_value( $option, $raw_value, $option_name );
 
 				if ( is_null( $value ) || count( self::$errors ) > 0 ) {
 					continue;
@@ -2046,7 +2002,55 @@ class UR_Admin_Settings {
 			}
 		}// End foreach().
 
-		// Save all options in our array.
+		self::update_setting_options( $update_options );
+
+		return true;
+	}
+
+	/**
+	 * Clean a setting value the way the settings screen does before saving it.
+	 *
+	 * Shared by the settings screen and the AI abilities, so a value is cleaned the same way wherever it is set.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array  $option      Setting definition.
+	 * @param mixed  $raw_value   Value as submitted.
+	 * @param string $option_name Option name the value is saved under.
+	 * @return mixed Clean value, or null when it must not be saved.
+	 */
+	public static function sanitize_setting_value( $option, $raw_value, $option_name ) {
+		$value = ur_sanitize_value_by_type( $option, $raw_value );
+
+		/**
+		 * Filter to Sanitize the value of an option.
+		 *
+		 * @param boolean $value String converted to Boolean
+		 * @param mixed $option Option to save
+		 * @param string $raw_value Option value to save
+		 */
+		$value = apply_filters( 'user_registration_admin_settings_sanitize_option', $value, $option, $raw_value );
+
+		/**
+		 * Filter to Sanitize the value of an option by option name.
+		 *
+		 * @param boolean $value String converted to Boolean
+		 * @param mixed $option Option value to save
+		 * @param string $raw_value Option value to save
+		 */
+		return apply_filters( "user_registration_admin_settings_sanitize_option_$option_name", $value, $option, $raw_value );
+	}
+
+	/**
+	 * Save clean setting values, keeping the settings that mirror each other in step, as the settings screen does.
+	 *
+	 * Shared by the settings screen and the AI abilities.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $update_options Clean values keyed by option name.
+	 */
+	public static function update_setting_options( $update_options ) {
 		foreach ( $update_options as $name => $value ) {
 			// sync membership 'user_registration_member_registration_page_id' with 'user_registration_registration_page_id'.
 			if ( 'user_registration_member_registration_page_id' === $name ) {
@@ -2057,8 +2061,71 @@ class UR_Admin_Settings {
 			}
 			update_option( $name, $value );
 		}
+	}
 
-		return true;
+	/**
+	 * Get the message the settings screen shows when its page checks refuse a save.
+	 *
+	 * Shared by the settings screen and the AI abilities.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param mixed $flag Result of the `user_registration_settings_prevent_default_login` filter.
+	 * @return string The message, or an empty string when the save may go ahead.
+	 */
+	public static function get_save_error( $flag ) {
+		$messages = array(
+			'redirect_login_error'         => __( 'Your settings has not been saved. You enabled "Disable Default WordPress Login Screen" but did not select a login page. Please select a page for "Redirect Default WordPress Login To".', 'user-registration' ),
+			'redirect_login_not_myaccount' => __( 'Your settings has not been saved.The selected page for "Redirect Default WordPress Login To" is not a login page. Please select a valid login page.', 'user-registration' ),
+			'invalid_membership_pages'     => __( 'Your settings has not been saved. Please select valid pages for the fields.', 'user-registration' ),
+			'invalid_renewal_period'       => __( 'Your settings has not been saved. Send Before days cannot be less than or equal to 0.', 'user-registration' ),
+		);
+
+		return is_string( $flag ) && isset( $messages[ $flag ] ) ? $messages[ $flag ] : '';
+	}
+
+	/**
+	 * Get every field of every settings page and section, with where it is shown.
+	 *
+	 * Built from the same page and section walk as the settings search, so it stays in step with the screens.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return array[] Keyed by setting ID, each with `field` (the definition), `tab`, `section` and `location`.
+	 */
+	public static function get_setting_fields() {
+		global $current_section;
+
+		$previous_section = $current_section;
+		$fields           = array();
+
+		try {
+			foreach ( self::get_searchable_pages() as $page ) {
+				$sections = $page->get_sections();
+
+				foreach ( self::get_searchable_sections( $page, $sections ) as $subsection ) {
+					// Section-aware pages read the section from this global, not from an argument.
+					$current_section = $subsection;
+
+					foreach ( self::flatten_array( self::get_section_settings( $page, $subsection ) ) as $field ) {
+						if ( empty( $field['id'] ) || isset( $fields[ $field['id'] ] ) ) {
+							continue;
+						}
+
+						$fields[ $field['id'] ] = array(
+							'field'    => $field,
+							'tab'      => $page->get_id(),
+							'section'  => $subsection,
+							'location' => self::get_search_result_location( $page, $sections, $subsection ),
+						);
+					}
+				}
+			}
+		} finally {
+			$current_section = $previous_section;
+		}
+
+		return $fields;
 	}
 
 	/**
