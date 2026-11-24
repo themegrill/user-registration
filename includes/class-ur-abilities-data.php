@@ -2614,9 +2614,22 @@ class UR_Abilities_Data {
 			'value'    => $secret ? null : ( is_scalar( $current ) || is_array( $current ) ? $current : null ),
 			'is_set'   => '' !== $current && null !== $current && array() !== $current && false !== $current,
 			'secret'   => $secret,
-			'editable' => ! $secret && ! in_array( $entry['tab'], self::LOCKED_SETTING_TABS, true ) && in_array( $type, self::SETTING_TYPES, true ) && false === strpos( $id, '[' ),
+			'editable' => ! $secret && ! self::is_ai_control_setting( $id ) && ! in_array( $entry['tab'], self::LOCKED_SETTING_TABS, true ) && in_array( $type, self::SETTING_TYPES, true ) && false === strpos( $id, '[' ),
 			'choices'  => $choices,
 		);
+	}
+
+	/**
+	 * Whether only a person may change a setting: the AI switches themselves, and choices about data and consent.
+	 *
+	 * @param string $id Setting ID.
+	 * @return bool
+	 */
+	private static function is_ai_control_setting( $id ) {
+		// Also a person's choice: deleting all data on uninstall, and consent to share usage data.
+		$people_only = array( 'user_registration_enable_abilities', 'user_registration_general_setting_uninstall_option', 'user_registration_allow_usage_tracking' );
+
+		return in_array( $id, $people_only, true ) || 0 === strpos( $id, UR_Abilities_Access::option_id( '' ) );
 	}
 
 	/**
