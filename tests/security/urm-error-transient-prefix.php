@@ -6,7 +6,7 @@
  */
 
 // Test doubles and hostile fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, WordPress.Security.NonceVerification.Recommended
+// phpcs:disable Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, Squiz.PHP.Eval.Discouraged, WordPress.Security.NonceVerification.Recommended, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash
 
 require __DIR__ . '/bootstrap.php';
 
@@ -137,3 +137,26 @@ security_assert(
 	) === $GLOBALS['notices'],
 	'Missing valid-prefix transient should still use the not-found filter.'
 );
+
+// 7. Non-overridable pre-template hook strips invalid urm_error before outdated theme overrides run.
+eval( security_function( 'includes/functions-ur-core.php', 'ur_sanitize_login_error_query_param' ) );
+
+$_GET = array( 'urm_error' => 'secret_admin_token' );
+ur_sanitize_login_error_query_param( 'myaccount/form-login.php' );
+security_assert( ! isset( $_GET['urm_error'] ), 'Pre-template guard must unset arbitrary urm_error values.' );
+
+$_GET = array( 'urm_error' => 'ur_login_error_' );
+ur_sanitize_login_error_query_param( 'myaccount/form-login.php' );
+security_assert( ! isset( $_GET['urm_error'] ), 'Pre-template guard must unset bare ur_login_error_ prefix.' );
+
+$_GET = array( 'urm_error' => array( 'secret_admin_token' ) );
+ur_sanitize_login_error_query_param( 'myaccount/form-login.php' );
+security_assert( ! isset( $_GET['urm_error'] ), 'Pre-template guard must unset array urm_error values.' );
+
+$_GET = array( 'urm_error' => 'ur_login_error_67432a1b2c3d4' );
+ur_sanitize_login_error_query_param( 'myaccount/form-login.php' );
+security_assert( 'ur_login_error_67432a1b2c3d4' === ( $_GET['urm_error'] ?? null ), 'Pre-template guard must preserve valid ur_login_error_* keys.' );
+
+$_GET = array( 'urm_error' => 'secret_admin_token' );
+ur_sanitize_login_error_query_param( 'myaccount/dashboard.php' );
+security_assert( 'secret_admin_token' === ( $_GET['urm_error'] ?? null ), 'Pre-template guard must only act on myaccount/form-login.php.' );
