@@ -193,7 +193,7 @@ class UR_Abilities_Access {
 			. '.ur-ability-access__title::before{content:"";display:inline-block;width:7px;height:7px;margin:0 12px 3px 2px;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg);transition:transform .15s}'
 			. '.ur-ability-access--closed .ur-ability-access__title::before{transform:rotate(-45deg);margin-bottom:0}'
 			. '.ur-ability-access--closed > .ur-ability-access__body{display:none}.ur-ability-access__body{padding-bottom:12px}'
-			. '.ur-ability-access__tip{margin-left:6px}.ur-ability-access__pro{width:16px;height:16px;margin-left:6px}'
+			. '.ur-ability-access__tip{margin-left:6px;top:-2px}.ur-ability-access__pro{width:16px;height:16px;margin-left:6px}'
 			. '.ur-ability-access__count{margin-left:8px;font-size:12px;font-weight:400;color:#646a7a}'
 			. '.ur-ability-access__presets{display:flex;gap:4px}'
 			. '.ur-ability-access__presets button{font-size:12px;line-height:1.6;color:#000;background:#fff;border:1px solid #e1e4ed;border-radius:999px;padding:1px 10px;cursor:pointer}'
