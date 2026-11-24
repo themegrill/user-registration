@@ -352,6 +352,33 @@ function ur_string_to_bool( $string ) {
 }
 
 /**
+ * Gets the names a form field can be listed under in `urcl_hide_fields`.
+ *
+ * The template names a field by its advanced name first and its general name second, so either can be what the browser sends.
+ *
+ * @since x.x.x
+ *
+ * @param object $field Form field object.
+ *
+ * @return string[]
+ */
+function ur_get_field_names_for_conditional_logic( $field ) {
+	$names = array(
+		isset( $field->advance_setting->field_name ) ? $field->advance_setting->field_name : '',
+		isset( $field->general_setting->field_name ) ? $field->general_setting->field_name : '',
+	);
+
+	return array_values(
+		array_filter(
+			$names,
+			static function ( $name ) {
+				return is_string( $name ) && '' !== $name;
+			}
+		)
+	);
+}
+
+/**
  * Gets the names of the fields that sit inside a row with conditional logic enabled.
  *
  * @since x.x.x
@@ -395,9 +422,7 @@ function ur_get_conditional_row_field_names( $form_id ) {
 
 		foreach ( is_iterable( $grids ) ? $grids : array() as $grid ) {
 			foreach ( is_iterable( $grid ) ? $grid : array() as $row_field ) {
-				if ( isset( $row_field->general_setting->field_name ) ) {
-					$field_names[] = $row_field->general_setting->field_name;
-				}
+				$field_names = array_merge( $field_names, ur_get_field_names_for_conditional_logic( $row_field ) );
 			}
 		}
 	}
@@ -420,21 +445,22 @@ function ur_get_conditional_row_field_names( $form_id ) {
  * @return bool
  */
 function ur_is_field_hidden_by_conditional_logic( $field, $form_id = 0 ) {
-	$field_name = isset( $field->general_setting->field_name ) ? $field->general_setting->field_name : '';
+	$field_names = ur_get_field_names_for_conditional_logic( $field );
 
-	if ( '' === $field_name || ! isset( $_POST['urcl_hide_fields'] ) || ! is_string( $_POST['urcl_hide_fields'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	if ( empty( $field_names ) || ! isset( $_POST['urcl_hide_fields'] ) || ! is_string( $_POST['urcl_hide_fields'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		return false;
 	}
 
-	$hidden_fields = json_decode( wp_unslash( $_POST['urcl_hide_fields'] ), true ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+	// Without the assoc flag a JSON object decodes to an object, so only a real list passes is_array().
+	$hidden_fields = json_decode( wp_unslash( $_POST['urcl_hide_fields'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 
-	if ( ! is_array( $hidden_fields ) || ! in_array( $field_name, $hidden_fields, true ) ) {
+	if ( ! is_array( $hidden_fields ) || empty( array_intersect( $field_names, array_filter( $hidden_fields, 'is_string' ) ) ) ) {
 		return false;
 	}
 
 	$has_logic = isset( $field->advance_setting->enable_conditional_logic ) && ur_string_to_bool( $field->advance_setting->enable_conditional_logic );
 
-	return $has_logic || in_array( $field_name, ur_get_conditional_row_field_names( $form_id ), true );
+	return $has_logic || array() !== array_intersect( $field_names, ur_get_conditional_row_field_names( $form_id ) );
 }
 
 /**

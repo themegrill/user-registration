@@ -10,6 +10,8 @@ require __DIR__ . '/bootstrap.php';
 // phpcs:ignore Squiz.PHP.Eval.Discouraged -- Load the actual helper bodies using the existing isolated fixture.
 eval( security_function( 'includes/functions-ur-core.php', 'ur_string_to_bool' ) );
 // phpcs:ignore Squiz.PHP.Eval.Discouraged -- Load the actual helper bodies using the existing isolated fixture.
+eval( security_function( 'includes/functions-ur-core.php', 'ur_get_field_names_for_conditional_logic' ) );
+// phpcs:ignore Squiz.PHP.Eval.Discouraged -- Load the actual helper bodies using the existing isolated fixture.
 eval( security_function( 'includes/functions-ur-core.php', 'ur_get_conditional_row_field_names' ) );
 // phpcs:ignore Squiz.PHP.Eval.Discouraged -- Load the actual helper bodies using the existing isolated fixture.
 eval( security_function( 'includes/functions-ur-core.php', 'ur_is_field_hidden_by_conditional_logic' ) );
@@ -82,12 +84,25 @@ function urcl_required_field( $name, $conditional ) {
 const URCL_FORM_ID = 7;
 
 // Row 3 has conditional logic and holds first_name; row 4 has none and holds last_name.
-$GLOBALS['urcl_meta']    = array(
+$GLOBALS['urcl_meta'] = array(
 	'user_registration_form_row_ids'  => '[3,4]',
 	'user_registration_form_row_data' => '[{"row_id":3,"conditional_logic_enabled":"true"},{"row_id":4,"conditional_logic_enabled":"false"}]',
 );
+/**
+ * Build a field that has both an advanced and a general name, as the template allows.
+ *
+ * @param string $general     General field name.
+ * @param string $advanced    Advanced field name.
+ * @param mixed  $conditional Conditional logic setting value.
+ */
+function urcl_named_field( $general, $advanced, $conditional ) {
+	$field                              = urcl_field( $general, $conditional );
+	$field->advance_setting->field_name = $advanced;
+	return $field;
+}
+
 $GLOBALS['urcl_content'] = array(
-	array( array( urcl_field( 'first_name', '' ) ) ),
+	array( array( urcl_field( 'first_name', '' ), urcl_named_field( 'shipping', 'ship_adv', '' ) ) ),
 	array( array( urcl_field( 'last_name', '' ) ) ),
 );
 
@@ -131,6 +146,21 @@ $_POST = array( 'urcl_hide_fields' => '["last_name"]' );
 security_assert( $validator->is_field_required( urcl_required_field( 'last_name', '' ), array(), URCL_FORM_ID ), 'Required field inside a row without conditional logic stays required under a forged list' );
 $_POST = array();
 security_assert( $validator->is_field_required( urcl_required_field( 'first_name', '1' ), array(), URCL_FORM_ID ), 'Required field with conditional logic stays required when not listed' );
+
+// The addon lists a field by its advanced name when it has one, so either name must match.
+$_POST = array( 'urcl_hide_fields' => '["ship_adv"]' );
+security_assert( ur_is_field_hidden_by_conditional_logic( urcl_named_field( 'shipping', 'ship_adv', '1' ) ), 'Listed by its advanced name counts as hidden' );
+security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_named_field( 'shipping', 'ship_adv', '' ) ), 'Listed by its advanced name still needs conditional logic' );
+$_POST = array( 'urcl_hide_fields' => '["shipping"]' );
+security_assert( ur_is_field_hidden_by_conditional_logic( urcl_named_field( 'shipping', 'ship_adv', '1' ) ), 'Listed by its general name still counts as hidden' );
+$_POST = array( 'urcl_hide_fields' => '["ship_adv"]' );
+security_assert( ur_is_field_hidden_by_conditional_logic( urcl_named_field( 'shipping', 'ship_adv', '' ), URCL_FORM_ID ), 'A row field listed by its advanced name is hidden by its conditional row' );
+
+// Only a real list is understood.
+$_POST = array( 'urcl_hide_fields' => '{"x":"first_name"}' );
+security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_name', '1' ) ), 'A JSON object instead of a list hides nothing' );
+$_POST = array( 'urcl_hide_fields' => '[1,null,["first_name"],"last_name"]' );
+security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_name', '1' ) ), 'Non-string entries are ignored without a notice' );
 
 // Run the real saved-data filter: only fields that can really be hidden are dropped.
 /**
