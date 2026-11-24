@@ -40,7 +40,12 @@ security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_n
 $_POST = array();
 security_assert( ! ur_is_field_hidden_by_conditional_logic( urcl_field( 'first_name', '1' ) ), 'Missing list hides nothing' );
 
-/** Pass-through double so the real is_field_required() body can run, not just the helper. */
+/**
+ * Pass-through double so the real is_field_required() body can run, not just the helper.
+ *
+ * @param string $hook  Hook name.
+ * @param mixed  $value Value to filter.
+ */
 function apply_filters( $hook, $value ) {
 	return $value;
 }
@@ -52,7 +57,7 @@ eval( security_function( 'includes/validation/class-ur-form-validation.php', 'is
  * @param string $conditional Conditional logic setting value.
  */
 function urcl_required_field( $conditional ) {
-	$field = urcl_field( 'first_name', $conditional );
+	$field                            = urcl_field( 'first_name', $conditional );
 	$field->general_setting->required = 'yes';
 	return $field;
 }
