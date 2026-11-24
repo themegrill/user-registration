@@ -1327,7 +1327,7 @@ if ( ! function_exists( 'user_registration_form_data' ) ) {
 						$user_profile_fields = ur_get_user_profile_field_only();
 
 						// Only expose user_pass when an admin is viewing, editing, or saving another user; never trust client flags.
-						$request_action             = isset( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+						$request_action             = isset( $_REQUEST['action'] ) && is_string( $_REQUEST['action'] ) ? sanitize_key( wp_unslash( $_REQUEST['action'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 						$allowed_admin_pass_actions = array( 'edit', 'view', 'user_registration_update_profile_details' );
 						if ( 0 < (int) $user_id && get_current_user_id() !== (int) $user_id && current_user_can( 'edit_user', (int) $user_id ) && in_array( $request_action, $allowed_admin_pass_actions, true ) ) {
 							array_push( $user_profile_fields, 'user_pass' );
