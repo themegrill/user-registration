@@ -6911,7 +6911,9 @@ if ( ! function_exists( 'user_registration_conditional_user_meta_filter' ) ) {
 
 		foreach ( ur_get_form_field_data( $form_id ) as $form_field ) {
 			if ( ur_is_field_hidden_by_conditional_logic( $form_field, $form_id ) ) {
-				unset( $valid_form_data[ $key_prefix . $form_field->general_setting->field_name ] );
+				foreach ( ur_get_field_names_for_conditional_logic( $form_field ) as $field_name ) {
+					unset( $valid_form_data[ $key_prefix . $field_name ] );
+				}
 			}
 		}
 
