@@ -547,6 +547,33 @@ class UR_Abilities {
 				'message' => $string,
 			)
 		);
+		$setting_id           = array(
+			'type'      => 'string',
+			'pattern'   => '^[a-zA-Z0-9_-]+$',
+			'maxLength' => 200,
+		);
+		$setting              = self::object_schema(
+			array(
+				'id'       => $string,
+				'title'    => $string,
+				'location' => $string,
+				'tab'      => $string,
+				'type'     => $string,
+				'value'    => array( 'type' => array( 'string', 'number', 'boolean', 'array', 'object', 'null' ) ),
+				'is_set'   => array( 'type' => 'boolean' ),
+				'secret'   => array( 'type' => 'boolean' ),
+				'editable' => array( 'type' => 'boolean' ),
+				'choices'  => array(
+					'type'  => 'array',
+					'items' => self::object_schema(
+						array(
+							'value' => $string,
+							'label' => $string,
+						)
+					),
+				),
+			)
+		);
 		$module               = self::object_schema(
 			array(
 				'slug'          => $string,
@@ -1077,6 +1104,57 @@ class UR_Abilities {
 					),
 				),
 			),
+			'settings'    => array(
+				'label'       => __( 'Global settings', 'user-registration' ),
+				'description' => __( 'Lets AI assistants read the plugin\'s settings pages, with secrets only shown as set or not set. With change access they can also change a setting, but never a secret, the license or the tools.', 'user-registration' ),
+				'abilities'   => array(
+					'list-settings'  => array(
+						'label'       => __( 'List settings', 'user-registration' ),
+						'description' => __( 'List the global settings from the plugin\'s settings pages, with where each is shown, its value and its choices. Secrets such as payment keys only say whether they are set. Filter by tab or by words.', 'user-registration' ),
+						'input'       => array(
+							'tab'    => $key,
+							'search' => array(
+								'type'      => 'string',
+								'maxLength' => 100,
+							),
+						),
+						'output'      => self::object_schema(
+							array(
+								'items' => array(
+									'type'  => 'array',
+									'items' => $setting,
+								),
+							)
+						),
+						'permission'  => array( __CLASS__, 'settings_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'list_settings' ),
+					),
+					'get-setting'    => array(
+						'label'       => __( 'Get setting', 'user-registration' ),
+						'description' => __( 'Read one global setting by its ID.', 'user-registration' ),
+						'input'       => array( 'id' => $setting_id ),
+						'required'    => array( 'id' ),
+						'output'      => $setting,
+						'permission'  => array( __CLASS__, 'settings_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'get_setting' ),
+					),
+					'update-setting' => array(
+						'label'       => __( 'Update setting', 'user-registration' ),
+						'description' => __( 'Change one global setting, with the same checks and cleaning as saving the settings screen. The value must fit the setting: true or false for a switch, one of the choices for a list, a page ID for a page. Secrets, the license and tools cannot be changed. Settings that affect logging in, roles or pages show a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => array( 'UR_Abilities_Data', 'setting_needs_confirmation' ),
+						'input'       => array(
+							'id'    => $setting_id,
+							'value' => array( 'type' => array( 'string', 'number', 'boolean', 'array' ) ),
+						),
+						'required'    => array( 'id', 'value' ),
+						'output'      => $setting,
+						'permission'  => array( __CLASS__, 'settings_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_update_setting' ),
+						'execute'     => array( 'UR_Abilities_Data', 'update_setting' ),
+					),
+				),
+			),
 			'modules'     => array(
 				'label'       => __( 'Modules and addons', 'user-registration' ),
 				'description' => __( 'Lets AI assistants see which modules and addons the site can use and turn them on or off.', 'user-registration' ),
@@ -1170,6 +1248,17 @@ class UR_Abilities {
 	 */
 	public static function forms_permission( $input ) {
 		return current_user_can( 'manage_user_registration' ) && ( empty( $input['id'] ) || current_user_can( 'edit_post', $input['id'] ) );
+	}
+
+	/**
+	 * Match the capability the settings screen asks for.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public static function settings_permission() {
+		return current_user_can( 'manage_options' );
 	}
 
 	/**

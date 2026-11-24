@@ -12,6 +12,23 @@ class UR_Abilities_Data {
 	/** Form meta that marks a form an AI assistant created, holding the UTC time it was made. */
 	const AI_CREATED_META = '_ur_created_by_ai';
 
+	/** Setting field types AI assistants may change. */
+	const SETTING_TYPES = array( 'text', 'textarea', 'email', 'number', 'select', 'radio-group', 'multiselect', 'toggle', 'checkbox', 'single_select_page', 'color', 'tinymce' );
+
+	/** Settings tabs that are never changed by AI: the license, and tools that act on the whole site at once. */
+	const LOCKED_SETTING_TABS = array( 'license', 'import_export', 'tools' );
+
+	/** Settings that can lock people out or open the site up, so a change always shows a preview first. */
+	const RISKY_SETTINGS = array(
+		'user_registration_login_options_prevent_core_login',
+		'user_registration_login_options_login_redirect_url',
+		'user_registration_general_setting_disabled_user_roles',
+		'user_registration_general_setting_login_options_with',
+		'user_registration_content_restriction_whole_site_access',
+		'user_registration_content_restriction_allow_access_to',
+		'user_registration_content_restriction_allow_to_roles',
+	);
+
 	/**
 	 * List a bounded page of forms.
 	 *
@@ -2419,6 +2436,326 @@ class UR_Abilities_Data {
 		}
 
 		return 'free';
+	}
+
+	/**
+	 * List the plugin's global settings, as shown on its settings pages. Secrets only say whether they are set.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array
+	 */
+	public static function list_settings( $input ) {
+		$search = isset( $input['search'] ) ? strtolower( $input['search'] ) : '';
+		$items  = array();
+
+		foreach ( self::setting_fields() as $id => $entry ) {
+			if ( isset( $input['tab'] ) && $input['tab'] !== $entry['tab'] ) {
+				continue;
+			}
+
+			$item = self::setting( $id, $entry );
+
+			if ( null === $item || ( '' !== $search && false === strpos( strtolower( $id . ' ' . $item['title'] . ' ' . $item['location'] ), $search ) ) ) {
+				continue;
+			}
+
+			$items[] = $item;
+		}
+
+		return array( 'items' => $items );
+	}
+
+	/**
+	 * Read one global setting.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function get_setting( $input ) {
+		$fields = self::setting_fields();
+		$item   = isset( $fields[ $input['id'] ] ) ? self::setting( $input['id'], $fields[ $input['id'] ] ) : null;
+
+		return null === $item ? self::setting_not_found() : $item;
+	}
+
+	/**
+	 * Whether changing a setting needs a preview first.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Ability input.
+	 * @return bool
+	 */
+	public static function setting_needs_confirmation( $input ) {
+		$id = (string) ( $input['id'] ?? '' );
+
+		/**
+		 * Filters the settings whose change always shows a preview first.
+		 *
+		 * @since xx.xx.xx
+		 *
+		 * @param array $ids Setting IDs.
+		 */
+		$risky = (array) apply_filters( 'user_registration_ability_risky_settings', self::RISKY_SETTINGS );
+
+		return in_array( $id, $risky, true ) || false !== strpos( $id, 'role' ) || false !== strpos( $id, 'page_id' );
+	}
+
+	/**
+	 * Describe what changing a setting would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_update_setting( $input ) {
+		$change = self::setting_change( $input );
+
+		if ( is_wp_error( $change ) ) {
+			return $change;
+		}
+
+		return sprintf(
+			/* translators: 1: setting title, 2: where it is shown, 3: current value, 4: new value. */
+			__( 'Change "%1$s" (%2$s) from %3$s to %4$s, like saving it on the settings screen.', 'user-registration' ),
+			$change['item']['title'],
+			$change['item']['location'],
+			wp_json_encode( $change['item']['value'] ),
+			wp_json_encode( $input['value'] )
+		);
+	}
+
+	/**
+	 * Change one global setting through the settings screen's own checks, cleaning and save.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function update_setting( $input ) {
+		$change = self::setting_change( $input );
+
+		if ( is_wp_error( $change ) ) {
+			return $change;
+		}
+
+		$value = UR_Admin_Settings::sanitize_setting_value( $change['field'], $input['value'], $input['id'] );
+
+		if ( null === $value ) {
+			return new WP_Error( 'ur_abilities_invalid_input', __( 'This value cannot be saved for this setting.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		UR_Admin_Settings::update_setting_options( array( $input['id'] => $value ) );
+
+		return self::get_setting( array( 'id' => $input['id'] ) );
+	}
+
+	/**
+	 * Every settings field, loaded the way the settings screen loads them.
+	 *
+	 * @return array
+	 */
+	private static function setting_fields() {
+		if ( ! class_exists( 'UR_Admin_Settings' ) ) {
+			include_once UR_ABSPATH . 'includes/admin/functions-ur-admin.php';
+			include_once UR_ABSPATH . 'includes/admin/class-ur-admin-settings.php';
+		}
+
+		// Some settings pages print notices while they build their fields.
+		ob_start();
+
+		try {
+			$fields = UR_Admin_Settings::get_setting_fields();
+		} finally {
+			ob_end_clean();
+		}
+
+		return $fields;
+	}
+
+	/**
+	 * Serialize a setting, or null when it is not a real setting field.
+	 *
+	 * @param string $id    Setting ID.
+	 * @param array  $entry Entry from UR_Admin_Settings::get_setting_fields().
+	 * @return array|null
+	 */
+	private static function setting( $id, $entry ) {
+		$field = $entry['field'];
+		$type  = (string) ( $field['type'] ?? '' );
+
+		if ( in_array( $type, array( 'title', 'sectionend', 'button', 'link', 'nonce', 'html' ), true ) ) {
+			return null;
+		}
+
+		$secret  = self::is_secret_setting( $id, $type );
+		$current = get_option( $id, $field['default'] ?? '' );
+		$choices = array();
+
+		foreach ( (array) ( $field['options'] ?? array() ) as $key => $label ) {
+			$choices[] = array(
+				'value' => (string) $key,
+				'label' => wp_strip_all_tags( is_string( $label ) ? $label : (string) $key ),
+			);
+		}
+
+		return array(
+			'id'       => $id,
+			'title'    => wp_strip_all_tags( (string) ( $field['title'] ?? '' ) ),
+			'location' => wp_strip_all_tags( (string) $entry['location'] ),
+			'tab'      => (string) $entry['tab'],
+			'type'     => $type,
+			'value'    => $secret ? null : ( is_scalar( $current ) || is_array( $current ) ? $current : null ),
+			'is_set'   => '' !== $current && null !== $current && array() !== $current && false !== $current,
+			'secret'   => $secret,
+			'editable' => ! $secret && ! in_array( $entry['tab'], self::LOCKED_SETTING_TABS, true ) && in_array( $type, self::SETTING_TYPES, true ) && false === strpos( $id, '[' ),
+			'choices'  => $choices,
+		);
+	}
+
+	/**
+	 * Whether a setting holds a secret, such as a payment key, captcha secret, password or license key.
+	 *
+	 * @param string $id   Setting ID.
+	 * @param string $type Field type.
+	 * @return bool
+	 */
+	private static function is_secret_setting( $id, $type ) {
+		return 'password' === $type || 1 === preg_match( '/secret|license|token|_key(_|$)/', $id );
+	}
+
+	/**
+	 * Check a setting change the way the settings screen does, and return what is needed to save it.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error The setting, its definition and its current details.
+	 */
+	private static function setting_change( $input ) {
+		$fields = self::setting_fields();
+
+		if ( ! isset( $fields[ $input['id'] ] ) ) {
+			return self::setting_not_found();
+		}
+
+		$entry = $fields[ $input['id'] ];
+		$field = $entry['field'];
+		$item  = self::setting( $input['id'], $entry );
+
+		if ( null === $item || ! $item['editable'] ) {
+			return new WP_Error( 'ur_abilities_forbidden', __( 'AI assistants cannot change this setting. Secrets, the license, tools and some field types are left to the settings screen.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		$error = self::setting_value_error( $field, $input['value'] );
+
+		if ( '' !== $error ) {
+			return new WP_Error( 'ur_abilities_invalid_input', $error, array( 'status' => 400 ) );
+		}
+
+		// The settings screen checks a whole section at once, so check the new value alongside the section's current values.
+		$section = array();
+
+		foreach ( $fields as $id => $other ) {
+			if ( $other['tab'] === $entry['tab'] && $other['section'] === $entry['section'] ) {
+				$section[ $id ] = get_option( $id, $other['field']['default'] ?? '' );
+			}
+		}
+
+		$section[ $input['id'] ] = $input['value'];
+		$page_error              = UR_Admin_Settings::get_save_error( apply_filters( 'user_registration_settings_prevent_default_login', $section ) );
+
+		if ( '' !== $page_error ) {
+			return new WP_Error( 'ur_abilities_invalid_input', $page_error, array( 'status' => 400 ) );
+		}
+
+		return array(
+			'field' => $field,
+			'item'  => $item,
+		);
+	}
+
+	/**
+	 * Check a value against what its setting allows.
+	 *
+	 * @param array $field Setting definition.
+	 * @param mixed $value New value.
+	 * @return string The problem, or an empty string when the value fits.
+	 */
+	private static function setting_value_error( $field, $value ) {
+		$type    = $field['type'];
+		$options = array_map( 'strval', array_keys( (array) ( $field['options'] ?? array() ) ) );
+		$values  = is_array( $value ) ? array_map( 'strval', $value ) : array( (string) $value );
+
+		switch ( $type ) {
+			case 'toggle':
+			case 'checkbox':
+				return is_bool( $value ) ? '' : __( 'Use true or false for this setting.', 'user-registration' );
+			case 'select':
+			case 'radio-group':
+				if ( is_array( $value ) || ! in_array( (string) $value, $options, true ) ) {
+					return __( 'Use one of the choices this setting offers.', 'user-registration' );
+				}
+				break;
+			case 'multiselect':
+				if ( ! is_array( $value ) || array_diff( $values, $options ) ) {
+					return __( 'Use a list of the choices this setting offers.', 'user-registration' );
+				}
+				break;
+			case 'number':
+				$attributes = (array) ( $field['custom_attributes'] ?? array() );
+
+				if ( ! is_numeric( $value ) || ( isset( $attributes['min'] ) && $value < $attributes['min'] ) || ( isset( $attributes['max'] ) && $value > $attributes['max'] ) ) {
+					return __( 'Use a number within the range this setting allows.', 'user-registration' );
+				}
+				break;
+			case 'single_select_page':
+				if ( ! is_numeric( $value ) || ( 0 !== (int) $value && 'publish' !== get_post_status( (int) $value ) ) ) {
+					return __( 'Use the ID of a published page, or 0 for none.', 'user-registration' );
+				}
+				break;
+			case 'email':
+				if ( ! is_string( $value ) || ( '' !== $value && ! is_email( $value ) ) ) {
+					return __( 'Use a valid email address.', 'user-registration' );
+				}
+				break;
+			case 'color':
+				if ( ! is_string( $value ) || ! preg_match( '/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $value ) ) {
+					return __( 'Use a hex color such as #475BB2.', 'user-registration' );
+				}
+				break;
+			default:
+				if ( ! is_string( $value ) || strlen( $value ) > 10000 ) {
+					return __( 'Use text of at most 10000 characters.', 'user-registration' );
+				}
+		}
+
+		// A role setting never takes an admin-level role, the same rule new members get at sign-up.
+		if ( $options && ! array_diff( $options, array_keys( wp_roles()->roles ) ) ) {
+			foreach ( $values as $role ) {
+				// Blocking the dashboard only locks people out when the role runs the site, so only that is refused there.
+				$locked_out = 'user_registration_general_setting_disabled_user_roles' === $field['id'] ? ( get_role( $role ) && get_role( $role )->has_cap( 'manage_options' ) ) : ur_registration_role_is_privileged( $role );
+
+				if ( $locked_out ) {
+					return __( 'Admin-level roles are never allowed here.', 'user-registration' );
+				}
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Return a uniform missing-setting error.
+	 *
+	 * @return WP_Error
+	 */
+	private static function setting_not_found() {
+		return new WP_Error( 'ur_abilities_not_found', __( 'Setting not found. List the settings to see their IDs.', 'user-registration' ), array( 'status' => 404 ) );
 	}
 
 	/**
