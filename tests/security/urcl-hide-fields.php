@@ -132,8 +132,45 @@ security_assert( $validator->is_field_required( urcl_required_field( 'last_name'
 $_POST = array();
 security_assert( $validator->is_field_required( urcl_required_field( 'first_name', '1' ), array(), URCL_FORM_ID ), 'Required field with conditional logic stays required when not listed' );
 
+// Run the real saved-data filter: only fields that can really be hidden are dropped.
+/**
+ * Saved form fields double: first_name sits in the conditional row, last_name in a plain row, city has its own flag.
+ *
+ * @param int $form_id Form ID.
+ */
+function ur_get_form_field_data( $form_id ) {
+	return URCL_FORM_ID === $form_id ? array( urcl_field( 'first_name', '' ), urcl_field( 'last_name', '' ), urcl_field( 'city', '1' ) ) : array();
+}
+// phpcs:ignore Squiz.PHP.Eval.Discouraged -- Load the actual filter body using the existing isolated fixture.
+eval( security_function( 'includes/functions-ur-core.php', 'user_registration_conditional_user_meta_filter' ) );
+$saved = array(
+	'first_name' => 'a',
+	'last_name'  => 'b',
+	'city'       => 'c',
+);
+$_POST = array(
+	'action'           => 'user_registration_user_form_submit',
+	'urcl_hide_fields' => '["first_name","last_name","city"]',
+);
+security_assert( array( 'last_name' => 'b' ) === user_registration_conditional_user_meta_filter( $saved, 5, URCL_FORM_ID ), 'Filter drops only fields that can be hidden (own flag or conditional row)' );
+$_POST['action'] = 'update_profile';
+$profile_saved   = array(
+	'user_registration_first_name' => 'a',
+	'user_registration_last_name'  => 'b',
+	'user_registration_city'       => 'c',
+);
+security_assert( array( 'user_registration_last_name' => 'b' ) === user_registration_conditional_user_meta_filter( $profile_saved, 5, URCL_FORM_ID ), 'Profile filter drops only hideable fields, using the prefixed keys' );
+$_POST = array(
+	'action'           => 'user_registration_user_form_submit',
+	'urcl_hide_fields' => array( 'first_name' ),
+);
+security_assert( user_registration_conditional_user_meta_filter( $saved, 5, URCL_FORM_ID ) === $saved, 'Array-typed list drops nothing and does not throw' );
+security_assert( user_registration_conditional_user_meta_filter( $saved, 0, URCL_FORM_ID ) === $saved, 'No user means nothing is filtered' );
+
 // Every changed call site must go through the helper and never read the raw parameter again.
 $call_sites = array(
+	array( 'includes/functions-ur-core.php', 'user_registration_conditional_user_meta_filter' ),
+	array( 'includes/frontend/class-ur-frontend-form-handler.php', 'ur_update_user_meta' ),
 	array( 'includes/validation/class-ur-form-validation.php', 'is_field_required' ),
 	array( 'includes/validation/class-ur-form-validation.php', 'ur_missing_field_validation' ),
 	array( 'includes/form/class-ur-form-field-text.php', 'validation' ),

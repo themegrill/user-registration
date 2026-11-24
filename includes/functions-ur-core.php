@@ -6880,28 +6880,12 @@ if ( ! function_exists( 'user_registration_conditional_user_meta_filter' ) ) {
 			return $valid_form_data;
 		}
 
-		$field_name   = '';
-		$hidden_field = isset( $_POST['urcl_hide_fields'] ) ? ur_clean( $_POST['urcl_hide_fields'] ) : array(); //phpcs:ignore.
+		$is_registration = isset( $_POST['action'] ) && 'user_registration_user_form_submit' === $_POST['action']; //phpcs:ignore.
+		$key_prefix      = $is_registration ? '' : 'user_registration_';
 
-		if ( empty( $hidden_field ) ) {
-			return $valid_form_data;
-		}
-
-		$hidden_array_field = json_decode( stripslashes( $hidden_field ) );
-
-		if ( isset( $_POST['action'] ) && 'user_registration_user_form_submit' === $_POST['action'] ) { //phpcs:ignore.
-			foreach ( $hidden_array_field as $field ) {
-				$field_name = $field;
-				if ( in_array( $field_name, array_keys( $valid_form_data ) ) ) {
-					unset( $valid_form_data[ $field_name ] );
-				}
-			}
-		} else {
-			foreach ( $hidden_array_field as $field ) {
-				$field_name = 'user_registration_' . $field;
-				if ( in_array( $field_name, array_keys( $valid_form_data ) ) ) {
-					unset( $valid_form_data[ $field_name ] );
-				}
+		foreach ( ur_get_form_field_data( $form_id ) as $form_field ) {
+			if ( ur_is_field_hidden_by_conditional_logic( $form_field, $form_id ) ) {
+				unset( $valid_form_data[ $key_prefix . $form_field->general_setting->field_name ] );
 			}
 		}
 
