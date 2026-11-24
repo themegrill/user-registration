@@ -126,7 +126,7 @@
 	function search( $card ) {
 		var $areas = $card.find( '.ur-ability-access__area' );
 		var $box = $( '<label class="ur-ability-access__search"></label>' );
-		var $input = $( '<input type="search" id="ur-ability-access-search">' ).attr( { placeholder: text.search, 'aria-label': text.search } );
+		var $input = $( '<input type="search" id="ur-ability-access-search">' ).attr( { placeholder: text.example, 'aria-label': text.search } );
 		var $empty = $( '<p class="ur-ability-access__empty"></p>' ).text( text.noMatch ).hide();
 		var closed = null;
 

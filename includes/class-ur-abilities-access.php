@@ -216,7 +216,9 @@ class UR_Abilities_Access {
 				/* translators: 1: abilities switched on, 2: abilities in the area. */
 				'count'   => __( '%1$s of %2$s on', 'user-registration' ),
 				'asks'    => __( 'Asks first', 'user-registration' ),
-				'search'  => __( 'Search abilities...', 'user-registration' ),
+				'search'  => __( 'Search abilities', 'user-registration' ),
+				/* translators: Example shown in the empty ability search box, the name of an ability. */
+				'example' => __( 'e.g. Approve member', 'user-registration' ),
 				'noMatch' => __( 'No abilities match your search.', 'user-registration' ),
 				'askstip' => __( 'Shows you a preview and waits for your confirmation before it runs.', 'user-registration' ),
 				'proIcon' => UR()->plugin_url() . '/assets/images/icons/ur-pro-icon.png',
