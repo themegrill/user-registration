@@ -177,7 +177,7 @@ class UR_Abilities_Access {
 			. '.ur-ability-access__header .user-registration-card__header-wrapper{flex:1}'
 			. '.ur-ability-access__header .user-registration-card__title::before{content:"";display:inline-block;width:7px;height:7px;margin:0 10px 2px 0;border:solid currentColor;border-width:0 2px 2px 0;transform:rotate(45deg);transition:transform .15s}'
 			. '.ur-ability-access--closed .user-registration-card__title::before{transform:rotate(-45deg)}'
-			. '.ur-ability-access--closed > .ur-ability-access__body{display:none}'
+			. '.ur-ability-access--closed > .ur-ability-access__body{display:none}.user-registration-options-container .ur-ability-access--closed > .ur-ability-access__header{padding-bottom:0;margin-bottom:0;border-bottom:0 !important}'
 			. '[id^="ur-ability-access-"] > .ur-p-tag{display:none}.ur-ability-access__tip{margin-left:6px}'
 			. '.ur-ability-access__count{margin-left:8px;font-size:12px;font-weight:400;color:#646a7a}'
 			. '.ur-ability-access__presets{display:flex;gap:4px}'

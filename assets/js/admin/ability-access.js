@@ -7,7 +7,7 @@
 ( function ( $, text ) {
 	var LEVELS = [ 'read', 'write', 'delete' ];
 
-	function setup( $card, index ) {
+	function setup( $card ) {
 		var $switches = $card.find( 'input[data-ur-ability-level]' );
 		var $header = $card.children( '.user-registration-card__header' );
 		var $body = $card.children( '.user-registration-card__body' );
@@ -96,18 +96,16 @@
 			}
 		} );
 
-		// The first two areas start open, the rest closed, so the page stays short.
-		if ( index > 1 ) {
-			$card.addClass( 'ur-ability-access--closed' );
-		}
-		$header.attr( 'aria-expanded', index > 1 ? 'false' : 'true' );
+		// Every area starts closed, so the page stays short.
+		$card.addClass( 'ur-ability-access--closed' );
+		$header.attr( 'aria-expanded', 'false' );
 		$body.addClass( 'ur-ability-access__body' );
 		refresh();
 	}
 
 	$( function () {
-		$( '.user-registration-card[id^="ur-ability-access-"]' ).each( function ( index ) {
-			setup( $( this ), index );
+		$( '.user-registration-card[id^="ur-ability-access-"]' ).each( function () {
+			setup( $( this ) );
 		} );
 	} );
 }( jQuery, urAbilityAccess ) );
