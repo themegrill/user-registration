@@ -5556,6 +5556,13 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				$user_details = get_user_by( 'login', $username );
 			}
 
+			// Key per-account rate limiting on canonical user_login so alternating username and email hits the same bucket.
+			$rate_limit_identifier = ( $user_details instanceof WP_User ) ? $user_details->user_login : $username;
+
+			if ( UR_Login_Rate_Limiter::is_locked( $rate_limit_identifier ) ) {
+				throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
+			}
+
 			if ( 'v2' === $recaptcha_type && ! $invisible_recaptcha ) {
 				$site_key   = get_option( 'user_registration_captcha_setting_recaptcha_site_key' );
 				$secret_key = get_option( 'user_registration_captcha_setting_recaptcha_site_secret' );
@@ -5684,6 +5691,9 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				}
 				$user_by_email = get_user_by( 'email', $username );
 				if ( empty( $user_by_email ) ) {
+					if ( UR_Login_Rate_Limiter::record_failed_attempt( $rate_limit_identifier ) ) {
+						throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
+					}
 					if ( empty( $messages['unknown_email'] ) ) {
 						$messages['unknown_email'] = esc_html__( 'A user could not be found with this email address.', 'user-registration' );
 					}
@@ -5707,6 +5717,9 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 						if ( isset( $user_by_login->user_login ) ) {
 							$login_data['user_login'] = $user_by_login->user_login;
 						} else {
+							if ( UR_Login_Rate_Limiter::record_failed_attempt( $rate_limit_identifier ) ) {
+								throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
+							}
 							if ( empty( $messages['unknown_email'] ) ) {
 								$messages['unknown_email'] = esc_html__( 'A user could not be found with this email address.', 'user-registration' );
 							}
@@ -5731,6 +5744,12 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 			$user = wp_signon( apply_filters( 'user_registration_login_credentials', $login_data ), is_ssl() );
 
 			if ( is_wp_error( $user ) ) {
+				if ( ! in_array( $user->get_error_code(), array( 'empty_username', 'empty_password' ), true ) ) {
+					if ( UR_Login_Rate_Limiter::record_failed_attempt( $rate_limit_identifier ) ) {
+						throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
+					}
+				}
+
 				// Set custom error messages.
 				if ( ! empty( $user->errors['empty_username'] ) && ! empty( $messages['empty_username'] ) ) {
 					$user->errors['empty_username'][0] = sprintf( '<strong>%s:</strong> %s', __( 'ERROR', 'user-registration' ), $messages['empty_username'] );
@@ -5772,6 +5791,7 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				throw new Exception( '<strong>' . esc_html__( 'ERROR: ', 'user-registration' ) . '</strong>' . $messages['user_disabled'] );
 
 			} else {
+				UR_Login_Rate_Limiter::clear_attempts( $rate_limit_identifier );
 
 				if ( in_array( 'administrator', $user->roles, true ) && ur_option_checked( 'user_registration_login_options_prevent_core_login', false ) ) {
 					$redirect = admin_url();
