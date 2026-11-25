@@ -343,19 +343,45 @@ class UR_Abilities_Connect {
 	}
 
 	/**
-	 * Starter prompts that only look, to check the connection works.
+	 * Questions to try once connected, for each kind of action. Reads only look. Writes and deletes change the site,
+	 * so the matching ability has to be switched on in AI Abilities Access first.
 	 *
 	 * @since xx.xx.xx
 	 *
-	 * @return array
+	 * @return array Level (read, write, delete) => label, hint and questions.
 	 */
 	public static function prompts() {
 		return array(
-			__( 'List my registration forms.', 'user-registration' ),
-			__( 'Who is waiting for approval?', 'user-registration' ),
-			__( 'How many people registered in the last 30 days?', 'user-registration' ),
-			__( 'How much did we earn this month?', 'user-registration' ),
-			__( 'Which membership plans do I have?', 'user-registration' ),
+			'read'   => array(
+				'label'     => __( 'Read', 'user-registration' ),
+				'hint'      => __( 'These only look. Nothing on your site changes.', 'user-registration' ),
+				'questions' => array(
+					__( 'Give me a quick summary of my site: how many forms, members and membership plans I have.', 'user-registration' ),
+					__( 'Who registered in the last 7 days, and which form did they use?', 'user-registration' ),
+					__( 'Which members are still waiting for approval?', 'user-registration' ),
+					__( 'How much did my memberships earn this month compared to last month?', 'user-registration' ),
+					__( 'Which membership plans do I have, and how many members are on each?', 'user-registration' ),
+				),
+			),
+			'write'  => array(
+				'label'     => __( 'Write', 'user-registration' ),
+				'hint'      => __( 'These change your site. Switch on the matching ability in AI Abilities Access first.', 'user-registration' ),
+				'questions' => array(
+					__( 'Create a registration form called Newsletter Signup with name and email fields.', 'user-registration' ),
+					__( 'Approve the newest member who is waiting for approval.', 'user-registration' ),
+					__( 'Extend the subscription of my newest member by 30 days.', 'user-registration' ),
+					__( 'Resend the verification email to my latest member who has not verified yet.', 'user-registration' ),
+				),
+			),
+			'delete' => array(
+				'label'     => __( 'Delete', 'user-registration' ),
+				'hint'      => __( 'These remove things for good. Switch on the matching ability first, and read the preview before you confirm.', 'user-registration' ),
+				'questions' => array(
+					__( 'Delete the member with the email test@example.com.', 'user-registration' ),
+					__( 'Delete the membership plan called Test Plan.', 'user-registration' ),
+					__( 'Delete the cancelled subscription of the member test@example.com.', 'user-registration' ),
+				),
+			),
 		);
 	}
 
@@ -460,11 +486,21 @@ class UR_Abilities_Connect {
 			<p class="ur-ai-connect__notice" id="ur-ai-result" role="status" hidden></p>
 
 			<h4><span class="ur-ai-connect__step">3</span><?php esc_html_e( 'Then ask it something', 'user-registration' ); ?></h4>
-			<ul class="ur-ai-connect__prompts">
-				<?php foreach ( self::prompts() as $prompt ) : ?>
-					<li><span><?php echo esc_html( $prompt ); ?></span> <button type="button" class="button button-small ur-ai-copy" data-copy="<?php echo esc_attr( $prompt ); ?>"><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></li>
+			<?php $asks = self::prompts(); ?>
+			<div class="ur-ai-apps ur-ai-asks" role="tablist">
+				<?php foreach ( $asks as $level => $ask ) : ?>
+					<button type="button" role="tab" class="ur-ai-apps__tab ur-ai-asks__tab<?php echo 'read' === $level ? ' is-active' : ''; ?>" data-level="<?php echo esc_attr( $level ); ?>"><?php echo esc_html( $ask['label'] ); ?></button>
 				<?php endforeach; ?>
-			</ul>
+			</div>
+			<div class="ur-ai-ask">
+				<p class="ur-ai-ask__hint" id="ur-ai-ask-hint"><?php echo esc_html( $asks['read']['hint'] ); ?></p>
+				<p class="ur-ai-ask__text" id="ur-ai-ask-text"><?php echo esc_html( $asks['read']['questions'][0] ); ?></p>
+				<div class="ur-ai-ask__actions">
+					<button type="button" class="button button-primary" id="ur-ai-ask-copy"><?php esc_html_e( 'Copy', 'user-registration' ); ?></button>
+					<button type="button" class="ur-ai-link" id="ur-ai-ask-next"><?php esc_html_e( 'Another question', 'user-registration' ); ?></button>
+					<span class="ur-ai-ask__count" id="ur-ai-ask-count"><?php echo esc_html( '1 / ' . count( $asks['read']['questions'] ) ); ?></span>
+				</div>
+			</div>
 			</div>
 		</aside>
 		<?php
@@ -550,7 +586,9 @@ class UR_Abilities_Connect {
 			. '.ur-ai-prompt{position:relative}#ur-ai-prompts[hidden]{display:none}.ur-ai-prompt{margin-bottom:14px}.ur-ai-prompt__label{margin:0 0 2px;font-weight:600;color:#2d3559}.ur-ai-prompt__hint{margin:0 0 8px;color:#646a7a}.ur-ai-prompt pre{margin:0;min-height:80px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
 			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .button{position:absolute;right:10px;bottom:10px;height:30px;line-height:28px;padding:0 14px;margin:0}'
 			. '.ur-ai-manual{margin:12px 0 0;padding:12px 14px;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-manual dt{margin-top:8px;font-weight:600}.ur-ai-manual dt:first-child{margin-top:0}.ur-ai-manual dd{margin:2px 0 0;word-break:break-all}'
-			. '.ur-ai-connect__prompts{margin:0;padding:0;list-style:none}.ur-ai-connect__prompts li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f2f7}.ur-ai-connect__secret{font-weight:600}';
+			. '.ur-ai-asks{margin-bottom:14px}.ur-ai-ask{padding:16px 18px;border:1px solid #e1e4ed;border-radius:6px;background:#f8f9fb}'
+			. '.ur-ai-ask__hint{margin:0 0 10px;color:#646a7a;font-size:12px}.ur-ai-ask__text{margin:0 0 14px;font-size:15px;line-height:1.5;color:#2d3559;min-height:45px}'
+			. '.ur-ai-ask__actions{display:flex;align-items:center;gap:16px}.ur-ai-ask__actions .button{margin:0;height:32px;line-height:30px;padding:0 16px}.ur-ai-ask__count{margin-left:auto;color:#8a90a2;font-size:12px}';
 
 		wp_register_style( 'user-registration-ai-connect', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-connect' );
@@ -563,6 +601,7 @@ class UR_Abilities_Connect {
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( self::NONCE ),
 				'apps'    => self::apps(),
+				'asks'    => self::prompts(),
 				'i18n'    => array(
 					'working'    => __( 'Working...', 'user-registration' ),
 					'copied'     => __( 'Copied', 'user-registration' ),

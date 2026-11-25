@@ -92,7 +92,7 @@
 		}
 
 		current = key;
-		$(".ur-ai-apps__tab").each(function () {
+		$(".ur-ai-apps__tab[data-app]").each(function () {
 			$(this).toggleClass("is-active", $(this).data("app") === key);
 		});
 		$("#ur-ai-panel-title").text(i18n.title.replace("%s", app.label));
@@ -163,7 +163,7 @@
 		}
 	});
 
-	$(document).on("click", ".ur-ai-apps__tab", function () {
+	$(document).on("click", ".ur-ai-apps__tab[data-app]", function () {
 		selectApp($(this).data("app"));
 	});
 
@@ -201,8 +201,40 @@
 		copyText($(this).data("password"), this);
 	});
 
-	$(document).on("click", ".ur-ai-copy", function () {
-		copyText($(this).data("copy"), this);
+	// Step 3: one question at a time, for the kind of action chosen. Another question moves on, and wraps round.
+	var asks = cfg.asks || {};
+	var askLevel = "read";
+	var askIndex = 0;
+
+	function showAsk() {
+		var group = asks[askLevel];
+
+		if (!group) {
+			return;
+		}
+
+		$(".ur-ai-asks__tab").each(function () {
+			$(this).toggleClass("is-active", $(this).data("level") === askLevel);
+		});
+		$("#ur-ai-ask-hint").text(group.hint);
+		$("#ur-ai-ask-text").text(group.questions[askIndex]);
+		$("#ur-ai-ask-count").text(askIndex + 1 + " / " + group.questions.length);
+		$("#ur-ai-ask-next").prop("hidden", group.questions.length < 2);
+	}
+
+	$(document).on("click", ".ur-ai-asks__tab", function () {
+		askLevel = $(this).data("level");
+		askIndex = 0;
+		showAsk();
+	});
+
+	$(document).on("click", "#ur-ai-ask-next", function () {
+		askIndex = (askIndex + 1) % asks[askLevel].questions.length;
+		showAsk();
+	});
+
+	$(document).on("click", "#ur-ai-ask-copy", function () {
+		copyText($("#ur-ai-ask-text").text(), this);
 	});
 
 	// Every row spins while the site is checked, then settles one after another into a tick or a cross.

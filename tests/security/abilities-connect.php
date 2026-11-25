@@ -299,9 +299,14 @@ foreach ( $apps as $app ) {
 }
 security_assert( array() === $missing, 'Every thing to paste points at a snippet that exists' );
 
-// The starter prompts only look.
+// The questions to try come in three kinds, and the read ones only look.
 $prompts = UR_Abilities_Connect::prompts();
-security_assert( count( $prompts ) >= 4 && array() === array_filter( $prompts, function ( $p ) { return preg_match( '/\b(create|delete|approve|deny|turn on|turn off|change|remove)\b/i', $p ); } ), 'The starter prompts only ask to see things, never to change them' );
+security_assert( array( 'read', 'write', 'delete' ) === array_keys( $prompts ), 'There are questions for reading, writing and deleting, in that order' );
+$read = $prompts['read']['questions'];
+security_assert( count( $read ) >= 4 && array() === array_filter( $read, function ( $p ) { return preg_match( '/\b(create|delete|approve|deny|turn on|turn off|change|remove|extend|resend|cancel|assign)\b/i', $p ); } ), 'The read questions only ask to see things, never to change them' );
+security_assert( count( $prompts['write']['questions'] ) >= 3 && array() === array_filter( $prompts['write']['questions'], function ( $p ) { return preg_match( '/\b(delete|remove)\b/i', $p ); } ), 'The write questions change things without deleting them' );
+security_assert( count( $prompts['delete']['questions'] ) >= 2 && array() === array_filter( $prompts['delete']['questions'], function ( $p ) { return ! preg_match( '/\bdelete\b/i', $p ); } ), 'Every delete question asks to delete' );
+security_assert( array() === array_filter( $prompts, function ( $group ) { return '' === $group['label'] || '' === $group['hint']; } ), 'Each kind has a label and a hint' );
 
 // Only a user who manages the site, with a valid nonce, can make or remove a connection.
 function ajax_outcome( $method, $caps, $nonce ) {
