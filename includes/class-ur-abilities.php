@@ -17,6 +17,7 @@ class UR_Abilities {
 		UR_Abilities_Role::init();
 		UR_Abilities_Connect::init();
 		UR_Abilities_Access::init();
+		UR_Abilities_Tabs::init();
 	}
 
 	/** Register the shared category. */
