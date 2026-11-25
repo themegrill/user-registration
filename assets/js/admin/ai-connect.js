@@ -10,8 +10,7 @@
 	var cfg = window.urAiConnect || {};
 	var i18n = cfg.i18n || {};
 	var apps = cfg.apps || {};
-	var current = "claude-code";
-	var generated = null;
+	var current = "claude";
 
 	function post(action, data) {
 		return $.post(cfg.ajaxUrl, $.extend({ action: action, security: cfg.nonce }, data || {}));
@@ -57,19 +56,40 @@
 		area.remove();
 	}
 
+	// One box per thing to paste. Before generating there is a single empty box with the waiting text; after,
+	// each snippet of the app gets its own box and its own Copy button (Claude has two: Code and Desktop).
+	function drawPrompts(app, data) {
+		var holder = $("#ur-ai-prompts").empty();
+
+		if (!data) {
+			holder.append($('<div class="ur-ai-prompt">').append($("<pre>").attr("data-empty", holder.data("empty"))));
+			return;
+		}
+
+		app.snippets.forEach(function (item) {
+			var box = $('<div class="ur-ai-prompt">');
+
+			if (item.label) {
+				box.append($('<p class="ur-ai-prompt__label">').text(item.label));
+			}
+
+			if (item.hint) {
+				box.append($('<p class="ur-ai-prompt__hint">').text(item.hint));
+			}
+
+			box.append($("<pre>").text(data.snippets[item.key]), $('<button type="button" class="button button-primary ur-ai-copy-prompt">').text(i18n.copy));
+			holder.append(box);
+		});
+	}
+
 	// A fresh tab starts from nothing: nothing generated, nothing agreed to. Each app gets its own password,
 	// named after it, so the activity log can tell the apps apart.
-	// Apps of one group (Claude Code and Claude Desktop) share one password, so moving between them keeps what
-	// was generated and only swaps the snippet.
-	function selectApp(key, force) {
+	function selectApp(key) {
 		var app = apps[key];
 
 		if (!app) {
 			return;
 		}
-
-		var group = app.group || key;
-		var shared = !force && generated && generated.group === group;
 
 		current = key;
 		$(".ur-ai-apps__tab").each(function () {
@@ -77,17 +97,10 @@
 		});
 		$("#ur-ai-panel-title").text(i18n.title.replace("%s", app.label));
 		$("#ur-ai-panel-intro").text(app.intro);
-
-		if (shared) {
-			$("#ur-ai-prompt").text(generated.data.snippets[app.snippet]);
-			return;
-		}
-
-		generated = null;
 		$("#ur-ai-consent").prop("checked", false);
 		$("#ur-ai-create").prop("disabled", true);
-		$("#ur-ai-prompt").text("");
-		$("#ur-ai-copy-prompt, #ur-ai-copy-pass, #ur-ai-once").prop("hidden", true);
+		drawPrompts(app, null);
+		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", true);
 		$("#ur-ai-m-user, #ur-ai-m-pass").text("-");
 		notice("");
 	}
@@ -112,9 +125,8 @@
 	}
 
 	function showResult(data) {
-		generated = { group: apps[current].group || current, data: data };
-		$("#ur-ai-prompt").text(data.snippets[apps[current].snippet]);
-		$("#ur-ai-copy-prompt, #ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
+		drawPrompts(apps[current], data);
+		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
 		$("#ur-ai-m-user").text(data.login);
 		$("#ur-ai-m-pass").text(data.password);
 		$("#ur-ai-m-endpoint").text(data.endpoint);
@@ -123,7 +135,7 @@
 
 	// The drawer lives outside the settings form, so nothing in it is ever saved with the settings.
 	$("#ur-ai-overlay, #ur-ai-drawer").appendTo("body");
-	selectApp(current, true);
+	selectApp(current);
 
 	function openDrawer() {
 		$("#ur-ai-overlay").prop("hidden", false);
@@ -165,7 +177,7 @@
 
 		// Two views of one panel: the prompt to paste, or the details to type in by hand.
 		$("#ur-ai-manual").prop("hidden", !manual);
-		$(".ur-ai-prompt").prop("hidden", manual);
+		$("#ur-ai-prompts").prop("hidden", manual);
 		button.data("label", button.data("label") || button.text());
 		button.text(manual ? button.data("alt") : button.data("label"));
 
@@ -181,8 +193,8 @@
 		});
 	});
 
-	$(document).on("click", "#ur-ai-copy-prompt", function () {
-		copyText($("#ur-ai-prompt").text(), this);
+	$(document).on("click", ".ur-ai-copy-prompt", function () {
+		copyText($(this).siblings("pre").text(), this);
 	});
 
 	$(document).on("click", "#ur-ai-copy-pass", function () {
@@ -273,7 +285,7 @@
 		post("ur_ai_connect_revoke").done(function (response) {
 			if (response.success) {
 				applyState(response.data);
-				selectApp(current, true);
+				selectApp(current);
 				notice(i18n.removed);
 			}
 		});
@@ -287,7 +299,7 @@
 		post("ur_ai_connect_remove", { uuid: $(this).data("uuid") }).done(function (response) {
 			if (response.success) {
 				applyState(response.data);
-				selectApp(current, true);
+				selectApp(current);
 				notice(i18n.removed);
 			}
 		});

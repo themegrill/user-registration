@@ -285,11 +285,19 @@ $desktop = json_decode( $snippets['desktop'], true );
 $entry   = $desktop['mcpServers']['shop-example-com'] ?? array();
 security_assert( 'npx' === ( $entry['command'] ?? '' ) && in_array( $result['endpoint'], $entry['args'] ?? array(), true ) && 'Basic ' . $result['code'] === ( $entry['env']['UR_AI_AUTH'] ?? '' ), 'Claude Desktop gets an mcp-remote entry with the login in its environment' );
 
-// The drawer offers five apps, each pointing at a snippet that exists.
+// The drawer offers four apps. Claude is one tab with one password and two things to paste.
 $apps = UR_Abilities_Connect::apps();
-security_assert( array( 'claude-code', 'claude-desktop', 'codex', 'cursor', 'other' ) === array_keys( $apps ), 'The drawer offers Claude Code, Claude Desktop, Codex, Cursor and Other, in that order' );
-security_assert( $apps['claude-code']['group'] === $apps['claude-desktop']['group'] && 'Claude' === $apps['claude-code']['name'] && 'Claude' === $apps['claude-desktop']['name'], 'Claude Code and Claude Desktop share one group and one password name' );
-security_assert( array() === array_filter( $apps, function ( $app ) use ( $snippets ) { return ! isset( $snippets[ $app['snippet'] ] ); } ), 'Every app points at a snippet that exists' );
+security_assert( array( 'claude', 'codex', 'cursor', 'other' ) === array_keys( $apps ), 'The drawer offers Claude, Codex, Cursor and Other, in that order' );
+security_assert( 'Claude' === $apps['claude']['label'] && array( 'claude', 'desktop' ) === array_column( $apps['claude']['snippets'], 'key' ) && array( 'Claude Code', 'Claude Desktop' ) === array_column( $apps['claude']['snippets'], 'label' ), 'Claude holds both the Claude Code command and the Claude Desktop config' );
+$missing = array();
+foreach ( $apps as $app ) {
+	foreach ( $app['snippets'] as $item ) {
+		if ( ! isset( $snippets[ $item['key'] ] ) ) {
+			$missing[] = $item['key'];
+		}
+	}
+}
+security_assert( array() === $missing, 'Every thing to paste points at a snippet that exists' );
 
 // The starter prompts only look.
 $prompts = UR_Abilities_Connect::prompts();
