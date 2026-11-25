@@ -14,6 +14,7 @@ class UR_Abilities {
 		add_action( 'wp_abilities_api_categories_init', array( __CLASS__, 'register_category' ) );
 		add_action( 'wp_abilities_api_init', array( __CLASS__, 'register_abilities' ) );
 		UR_Abilities_Settings::init();
+		UR_Abilities_Role::init();
 		UR_Abilities_Access::init();
 	}
 
@@ -59,7 +60,7 @@ class UR_Abilities {
 		 * empty for every site) and `abilities`, keyed by ability name. Each ability takes:
 		 * `label`, `description`, `level` (`read`, `write` or `delete`, default `read`), `input` (property schemas),
 		 * `required` (property names), `output` (a schema, see UR_Abilities::object_schema()), `permission` and
-		 * `execute` (callables), and optionally `idempotent`. Set `confirm` to true and give a `preview` callable that
+		 * `execute` (callables), and optionally `idempotent` and `caps`, the rights the ability's own code asks for beyond its permission check, lent to the AI user while it runs. Set `confirm` to true and give a `preview` callable that
 		 * returns a plain sentence, and the ability first shows that preview and only runs when called again with the
 		 * `confirm_token` it handed out. `confirm` can also be a callable that gets the input and returns whether this
 		 * request needs the preview, so only the risky requests of an ability wait for a confirmation. The ability is
@@ -163,13 +164,17 @@ class UR_Abilities {
 						'permission_callback' => UR_Abilities_Activity::wrap_permission(
 							$name,
 							$level,
-							function ( $args = null ) use ( $slug, $area, $ability ) {
-								$locked = self::plan_error( $slug, $area );
+							UR_Abilities_Role::wrap_permission(
+								$name,
+								function ( $args = null ) use ( $slug, $area, $ability ) {
+									$locked = self::plan_error( $slug, $area );
 
-								return is_wp_error( $locked ) ? $locked : call_user_func( $ability['permission'], $args );
-							}
+									return is_wp_error( $locked ) ? $locked : call_user_func( $ability['permission'], $args );
+								},
+								(array) ( $ability['caps'] ?? array() )
+							)
 						),
-						'execute_callback'    => UR_Abilities_Activity::wrap_execute( $name, $level, $confirm ? UR_Abilities_Safety::wrap( $name, $ability ) : $ability['execute'] ),
+						'execute_callback'    => UR_Abilities_Activity::wrap_execute( $name, $level, UR_Abilities_Role::wrap_execute( $name, $confirm ? UR_Abilities_Safety::wrap( $name, $ability ) : $ability['execute'] ) ),
 						'meta'                => array(
 							'show_in_rest' => true,
 							'mcp'          => array(
@@ -937,6 +942,7 @@ class UR_Abilities {
 						'execute'     => array( 'UR_Abilities_Data', 'get_member' ),
 					),
 					'approve-member'            => array(
+						'caps'        => array( 'edit_users' ),
 						'label'       => __( 'Approve member', 'user-registration' ),
 						'description' => __( 'Approve a member who is waiting for approval or was denied, like the Approve button on the Users screen. Shows a preview first.', 'user-registration' ),
 						'level'       => 'write',
@@ -949,6 +955,7 @@ class UR_Abilities {
 						'execute'     => array( 'UR_Abilities_Data', 'approve_member' ),
 					),
 					'deny-member'               => array(
+						'caps'        => array( 'edit_users' ),
 						'label'       => __( 'Deny member', 'user-registration' ),
 						'description' => __( 'Deny a member so they cannot log in, like the Deny button on the Users screen. Shows a preview first.', 'user-registration' ),
 						'level'       => 'write',

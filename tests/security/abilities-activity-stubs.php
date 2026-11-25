@@ -37,3 +37,13 @@ if ( ! function_exists( 'ur_get_logger' ) ) {
 		return $GLOBALS['logger'];
 	}
 }
+
+if ( ! function_exists( 'wp_get_current_user' ) ) {
+	function wp_get_current_user() {
+		return new stdClass();
+	}
+}
+
+if ( ! class_exists( 'UR_Abilities_Role' ) ) {
+	require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-role.php';
+}
