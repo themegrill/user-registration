@@ -5750,6 +5750,8 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
 			}
 
+			UR_Login_Rate_Limiter::settle_on_verified_password( $rate_limit_identifier );
+
 			// Perform the login.
 			$user = wp_signon( $credentials, is_ssl() );
 

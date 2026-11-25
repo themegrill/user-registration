@@ -50,6 +50,13 @@ function apply_filters( $tag, $value ) {
 	return $args[0];
 }
 
+function add_filter( $tag, $cb ) {
+	$GLOBALS['mock_filters'][ $tag ][] = $cb;
+	return true;
+}
+
+class WP_User {}
+
 function do_action( $tag ) {
 	$GLOBALS['mock_actions'][ $tag ][] = array_slice( func_get_args(), 1 );
 }
@@ -90,6 +97,24 @@ $GLOBALS['wpdb'] = new SecurityMockWpdb();
 
 require dirname( __DIR__, 2 ) . '/includes/class-ur-login-rate-limiter.php';
 
+// 0. Disabled by default: no state is written and no advisory lock is taken.
+security_assert( false === UR_Login_Rate_Limiter::is_enabled(), 'Rate limiting is disabled by default' );
+for ( $i = 1; $i <= 10; $i++ ) {
+	UR_Login_Rate_Limiter::consume_attempt( 'default_off_user', '203.0.113.5' );
+	UR_Login_Rate_Limiter::finalize_failed_attempt( 'default_off_user', '203.0.113.5' );
+}
+UR_Login_Rate_Limiter::refund_attempt( 'default_off_user', '203.0.113.5' );
+UR_Login_Rate_Limiter::clear_attempts( 'default_off_user', '203.0.113.5' );
+security_assert( true === UR_Login_Rate_Limiter::consume_attempt( 'default_off_user', '203.0.113.5' ) && false === UR_Login_Rate_Limiter::is_locked( 'default_off_user', '203.0.113.5' ), 'Disabled limiter never blocks or locks' );
+security_assert( array() === $GLOBALS['mock_transients'] && array() === $GLOBALS['mock_locks'], 'Disabled limiter writes no transients and takes no locks' );
+
+// Opt in, as a site owner would via the filter.
+$GLOBALS['mock_filters']['user_registration_login_rate_limit_enabled'] = array(
+	static function () {
+		return true;
+	},
+);
+
 // 1. get_client_ip() retains validated REMOTE_ADDR and ignores spoofable proxy headers unless REMOTE_ADDR is a trusted proxy.
 $_SERVER['REMOTE_ADDR']          = '203.0.113.10';
 $_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4';
@@ -104,7 +129,12 @@ $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] = array(
 
 $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 198.51.100.2, 203.0.113.10';
 security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Extract right-most untrusted forwarded IP when REMOTE_ADDR is a trusted proxy' );
-unset( $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] );
+$_SERVER['HTTP_CF_CONNECTING_IP'] = '9.9.9.9';
+$_SERVER['HTTP_X_REAL_IP']        = '8.8.8.8';
+security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Client-set CF-Connecting-IP and X-Real-IP are ignored even behind a trusted proxy' );
+unset( $_SERVER['HTTP_X_FORWARDED_FOR'] );
+security_assert( '203.0.113.10' === UR_Login_Rate_Limiter::get_client_ip(), 'Without X-Forwarded-For the trusted proxy address is used, not single-value headers' );
+unset( $_SERVER['HTTP_CF_CONNECTING_IP'], $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] );
 
 $_SERVER['REMOTE_ADDR'] = 'not-an-ip';
 security_assert( '' === UR_Login_Rate_Limiter::get_client_ip(), 'Return empty string when REMOTE_ADDR is invalid' );
@@ -179,7 +209,41 @@ for ( $i = 1; $i <= 50; $i++ ) {
 	UR_Login_Rate_Limiter::consume_attempt( "spray_user_{$i}", $spray_ip );
 	UR_Login_Rate_Limiter::finalize_failed_attempt( "spray_user_{$i}", $spray_ip );
 }
+security_assert( true === UR_Login_Rate_Limiter::is_locked( 'fresh_target_user', $spray_ip ), 'IP bucket is actually locked, not merely full, after 50 spraying failures' );
+$ip_lock_events = array_filter(
+	$GLOBALS['mock_actions']['user_registration_login_locked_out'],
+	static function ( $args ) use ( $spray_ip ) {
+		return $spray_ip === $args[1];
+	}
+);
+security_assert( 1 === count( $ip_lock_events ), 'Locked-out action fired once for the sprayed IP' );
 security_assert( false === UR_Login_Rate_Limiter::consume_attempt( 'fresh_target_user', $spray_ip ), 'Locked IP blocks fresh usernames after 50 spraying failures' );
+
+// 9b. A verified password settles its slot at the authenticate filter, before add-ons that exit (2FA/SMS) can leave it reserved.
+$otp_ip = '198.51.100.88';
+$all_ok = true;
+for ( $i = 1; $i <= 10; $i++ ) {
+	unset( $GLOBALS['mock_filters']['authenticate'] );
+	$all_ok = $all_ok && UR_Login_Rate_Limiter::consume_attempt( 'otp_user', $otp_ip );
+	UR_Login_Rate_Limiter::settle_on_verified_password( 'otp_user', $otp_ip );
+	apply_filters( 'authenticate', new WP_User() ); // The add-on then redirects and exits, so no later settle runs.
+}
+security_assert( $all_ok && true === UR_Login_Rate_Limiter::consume_attempt( 'otp_user', $otp_ip ), 'Ten exit-after-verification logins never exhaust the account or IP bucket' );
+UR_Login_Rate_Limiter::refund_attempt( 'otp_user', $otp_ip );
+
+$settle_ip = '198.51.100.89';
+for ( $i = 1; $i <= 3; $i++ ) {
+	UR_Login_Rate_Limiter::consume_attempt( "other_{$i}", $settle_ip );
+	UR_Login_Rate_Limiter::finalize_failed_attempt( "other_{$i}", $settle_ip );
+}
+unset( $GLOBALS['mock_filters']['authenticate'] );
+UR_Login_Rate_Limiter::consume_attempt( 'settle_user', $settle_ip );
+UR_Login_Rate_Limiter::settle_on_verified_password( 'settle_user', $settle_ip );
+apply_filters( 'authenticate', new WP_User() );
+UR_Login_Rate_Limiter::clear_attempts( 'settle_user', $settle_ip ); // The normal success path runs too when nothing exits.
+$settle_state = get_transient( UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( $settle_ip ) );
+security_assert( is_array( $settle_state ) && 3 === $settle_state['attempts'], 'Settling twice refunds the IP slot only once' );
+security_assert( false === get_transient( UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( $otp_ip ) ) || 0 === get_transient( UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( $otp_ip ) )['attempts'], 'Exit-after-verification logins leave no stale IP counter' );
 
 // 10. Filtered lockout message is escaped before output.
 $GLOBALS['mock_filters']['user_registration_login_lockout_message'] = array(

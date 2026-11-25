@@ -32,6 +32,13 @@ class UR_Login_Rate_Limiter {
 	const IP_KEY_PREFIX = 'ur_login_rl_ip_';
 
 	/**
+	 * `authenticate` filter priority used to settle a verified login, below add-ons that exit at 49999+.
+	 *
+	 * @var int
+	 */
+	const SETTLE_PRIORITY = 49000;
+
+	/**
 	 * Default maximum failed attempts per (account, IP) pair before lockout.
 	 *
 	 * @var int
@@ -67,12 +74,25 @@ class UR_Login_Rate_Limiter {
 	const DEFAULT_MAX_LOCKOUT_DURATION = 86400;
 
 	/**
+	 * Whether the current request holds an attempt slot that has not been settled yet.
+	 *
+	 * Lets the success hook and the normal success path both call clear_attempts()
+	 * without refunding the per-IP slot twice.
+	 *
+	 * @var bool
+	 */
+	private static $slot_pending = false;
+
+	/**
 	 * Check whether login rate limiting is enabled.
+	 *
+	 * Disabled by default so existing sites see no behaviour change; opt in with
+	 * `add_filter( 'user_registration_login_rate_limit_enabled', '__return_true' )`.
 	 *
 	 * @return bool
 	 */
 	public static function is_enabled() {
-		return (bool) apply_filters( 'user_registration_login_rate_limit_enabled', true );
+		return (bool) apply_filters( 'user_registration_login_rate_limit_enabled', false );
 	}
 
 	/**
@@ -213,6 +233,8 @@ class UR_Login_Rate_Limiter {
 			}
 		}
 
+		self::$slot_pending = true;
+
 		return true;
 	}
 
@@ -237,6 +259,8 @@ class UR_Login_Rate_Limiter {
 		$ip_limit      = max( 1, (int) apply_filters( 'user_registration_login_ip_max_attempts', self::DEFAULT_IP_MAX_ATTEMPTS ) );
 		$locked        = false;
 
+		self::$slot_pending = false;
+
 		if ( '' !== $account_key && self::maybe_lock_bucket( $account_key, $account_limit, $identifier, $resolved_ip ) ) {
 			$locked = true;
 		}
@@ -257,9 +281,11 @@ class UR_Login_Rate_Limiter {
 	 * @return void
 	 */
 	public static function refund_attempt( $identifier, $ip = null ) {
-		if ( ! self::is_enabled() ) {
+		if ( ! self::is_enabled() || ! self::$slot_pending ) {
 			return;
 		}
+
+		self::$slot_pending = false;
 
 		$resolved_ip = null === $ip ? self::get_client_ip() : (string) $ip;
 		$account_key = self::get_account_key( $identifier, $resolved_ip );
@@ -287,6 +313,12 @@ class UR_Login_Rate_Limiter {
 	 * @return void
 	 */
 	public static function clear_attempts( $identifier, $ip = null ) {
+		if ( ! self::is_enabled() || ! self::$slot_pending ) {
+			return;
+		}
+
+		self::$slot_pending = false;
+
 		$resolved_ip = null === $ip ? self::get_client_ip() : (string) $ip;
 		$account_key = self::get_account_key( $identifier, $resolved_ip );
 		$ip_key      = self::get_ip_key( $resolved_ip );
@@ -303,6 +335,36 @@ class UR_Login_Rate_Limiter {
 		if ( '' !== $ip_key ) {
 			self::decrement_bucket( $ip_key );
 		}
+	}
+
+	/**
+	 * Settle the reserved attempt as soon as the password is verified.
+	 *
+	 * Add-ons such as two-factor and SMS verification redirect and exit from inside the
+	 * `authenticate` filter at priority 49999 and above, so wp_signon() never returns for them.
+	 * Settling at priority 49000 returns their slot before that exit.
+	 *
+	 * @param string      $identifier Canonical username or submitted login string.
+	 * @param string|null $ip         Optional client IP override.
+	 *
+	 * @return void
+	 */
+	public static function settle_on_verified_password( $identifier, $ip = null ) {
+		if ( ! self::is_enabled() ) {
+			return;
+		}
+
+		add_filter(
+			'authenticate',
+			static function ( $user ) use ( $identifier, $ip ) {
+				if ( $user instanceof WP_User ) {
+					self::clear_attempts( $identifier, $ip );
+				}
+
+				return $user;
+			},
+			self::SETTLE_PRIORITY
+		);
 	}
 
 	/**
@@ -444,36 +506,27 @@ class UR_Login_Rate_Limiter {
 	}
 
 	/**
-	 * Extract the client IP from forwarded headers when REMOTE_ADDR is a trusted proxy.
+	 * Extract the client IP from X-Forwarded-For when REMOTE_ADDR is a trusted proxy.
+	 *
+	 * Single-value headers such as CF-Connecting-IP or X-Real-IP are intentionally ignored:
+	 * a non-Cloudflare trusted proxy may pass client-supplied values straight through.
 	 *
 	 * @param array $trusted_proxies List of configured trusted proxy IP addresses.
 	 *
 	 * @return string Validated client IP or empty string.
 	 */
 	private static function extract_forwarded_ip( $trusted_proxies ) {
-		if ( ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$cf_ip = sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			if ( rest_is_ip_address( $cf_ip ) ) {
-				return $cf_ip;
-			}
+		if ( empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			return '';
 		}
 
-		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$raw_list = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$parts    = array_reverse( array_map( 'trim', explode( ',', $raw_list ) ) );
+		$raw_list = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$parts    = array_reverse( array_map( 'trim', explode( ',', $raw_list ) ) );
 
-			// Walk right-to-left to pick the first untrusted hop added by the trusted proxy.
-			foreach ( $parts as $candidate ) {
-				if ( rest_is_ip_address( $candidate ) && ! in_array( $candidate, $trusted_proxies, true ) ) {
-					return $candidate;
-				}
-			}
-		}
-
-		if ( ! empty( $_SERVER['HTTP_X_REAL_IP'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$real_ip = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			if ( rest_is_ip_address( $real_ip ) ) {
-				return $real_ip;
+		// Walk right-to-left to pick the first untrusted hop appended by a trusted proxy.
+		foreach ( $parts as $candidate ) {
+			if ( rest_is_ip_address( $candidate ) && ! in_array( $candidate, $trusted_proxies, true ) ) {
+				return $candidate;
 			}
 		}
 
