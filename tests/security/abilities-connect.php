@@ -172,8 +172,13 @@ function wp_get_abilities() {
 function ur_option_checked() {
 	return $GLOBALS['flags']['enabled'];
 }
+// The WordPress 6.9 check looks for the Abilities API.
+function wp_register_ability() {}
 function human_time_diff( $from, $to ) {
 	return ( $to - $from ) . ' seconds';
+}
+function _n( $single, $plural, $number ) {
+	return 1 === $number ? $single : $plural;
 }
 function wp_send_json_error_double() {}
 
@@ -240,6 +245,8 @@ security_assert( ! $checks['user']['ok'] && '' !== $checks['user']['fix'], 'With
 UR_Abilities_Connect::create_connection( 'Claude' );
 $checks = by_id( UR_Abilities_Connect::checks() );
 security_assert( $checks['user']['ok'] && $checks['adapter']['ok'] && $checks['secure']['ok'] && $checks['enabled']['ok'] && $checks['visible']['ok'], 'With everything in place every check passes' );
+$ready = UR_Abilities_Connect::checks_summary( UR_Abilities_Connect::checks() );
+security_assert( true === $ready['ok'] && 'Your site is ready' === $ready['text'], 'When every check passes the summary says the site is ready, so the list can stay folded away' );
 
 $GLOBALS['flags']['plugin'] = false;
 $GLOBALS['flags']['ssl']    = false;
@@ -247,6 +254,10 @@ $GLOBALS['flags']['enabled'] = false;
 $GLOBALS['flags']['abilities'] = array();
 $bad                        = by_id( UR_Abilities_Connect::checks() );
 security_assert( ! $bad['adapter']['ok'] && ! $bad['secure']['ok'] && ! $bad['enabled']['ok'] && ! $bad['visible']['ok'], 'A missing adapter, an insecure address, a switch that is off and no visible ability each fail' );
+$problems = UR_Abilities_Connect::checks_summary( UR_Abilities_Connect::checks() );
+security_assert( false === $problems['ok'] && '4 things need attention' === $problems['text'], 'When checks fail the summary counts them, so the list opens by itself' );
+$one = UR_Abilities_Connect::checks_summary( array( array( 'ok' => true ), array( 'ok' => false ) ) );
+security_assert( false === $one['ok'] && '1 thing needs attention' === $one['text'], 'One failure reads as one thing, not one things' );
 $GLOBALS['flags']['plugin'] = true;
 $GLOBALS['routes']          = array();
 $silent                     = by_id( UR_Abilities_Connect::checks() );

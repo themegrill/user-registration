@@ -20,14 +20,13 @@
 
 		// The content that used to slide in from the side (the checks, connecting an app, the questions to try) becomes
 		// a card of its own, the second tab. It is the same markup, moved, so everything in it keeps working.
+		// No card title: the tab already names it, and the panel inside has its own heading.
 		var pane = $(
 			'<div class="user-registration-card ur-mt-4 ur-border-0 ur-ai-connect-pane">' +
-				'<div class="user-registration-card__header ur-border-0"><div class="user-registration-card__header-wrapper"><h3 class="user-registration-card__title"></h3></div></div>' +
 				'<div class="pt-0 pb-0 user-registration-card__body"></div>' +
 				"</div>"
 		);
 
-		pane.find(".user-registration-card__title").text(cfg.connectLabel);
 		pane.find(".user-registration-card__body").append(body);
 		pane.insertAfter(cards.last());
 

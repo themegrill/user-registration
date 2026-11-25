@@ -455,10 +455,9 @@ class UR_Abilities_Connect {
 				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
 			</header>
 			<div class="ur-ai-drawer__body ur-ai-connect">
-			<h4><span class="ur-ai-connect__step">1</span><?php esc_html_e( 'Is the site ready?', 'user-registration' ); ?><button type="button" class="button button-small ur-ai-connect__recheck" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button></h4>
-			<ul class="ur-ai-connect__checks" id="ur-ai-checks"><?php echo self::checks_html( self::checks() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
-
-			<h4><span class="ur-ai-connect__step">2</span><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
+			<section class="ur-ai-hero">
+				<h3 class="ur-ai-hero__title"><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h3>
+				<p class="ur-ai-hero__lead"><?php esc_html_e( 'Make a separate AI user with no admin rights, then paste one prompt into your AI app. A leaked password cannot reach the rest of your site.', 'user-registration' ); ?></p>
 			<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>			<div class="ur-ai-apps" role="tablist">
 				<?php foreach ( self::apps() as $key => $app ) : ?>
 					<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
@@ -490,8 +489,23 @@ class UR_Abilities_Connect {
 			</div>
 			<p class="ur-ai-connect__remove"><button type="button" class="ur-ai-link" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button></p>
 			<p class="ur-ai-connect__notice" id="ur-ai-result" role="status" hidden></p>
+			</section>
 
-			<h4><span class="ur-ai-connect__step">3</span><?php esc_html_e( 'Then ask it something', 'user-registration' ); ?></h4>
+			<section class="ur-ai-ready" id="ur-ai-ready">
+				<?php
+				$checks  = self::checks();
+				$summary = self::checks_summary( $checks );
+				?>
+				<div class="ur-ai-ready__bar">
+					<span class="ur-ai-ready__status <?php echo $summary['ok'] ? 'is-ok' : 'is-bad'; ?>" id="ur-ai-ready-status"><?php echo esc_html( $summary['text'] ); ?></span>
+					<button type="button" class="ur-ai-link" id="ur-ai-ready-toggle" aria-expanded="<?php echo $summary['ok'] ? 'false' : 'true'; ?>"><?php echo $summary['ok'] ? esc_html__( 'Show checks', 'user-registration' ) : esc_html__( 'Hide checks', 'user-registration' ); ?></button>
+					<button type="button" class="button button-small ur-ai-connect__recheck" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button>
+				</div>
+				<ul class="ur-ai-connect__checks" id="ur-ai-checks"<?php echo $summary['ok'] ? ' hidden' : ''; ?>><?php echo self::checks_html( $checks ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
+			</section>
+
+			<section class="ur-ai-tryasking">
+				<h4 class="ur-ai-tryasking__title"><?php esc_html_e( 'Try asking', 'user-registration' ); ?></h4>
 			<?php $asks = self::prompts(); ?>
 			<div class="ur-ai-apps ur-ai-asks" role="tablist">
 				<?php foreach ( $asks as $level => $ask ) : ?>
@@ -507,6 +521,7 @@ class UR_Abilities_Connect {
 					<span class="ur-ai-ask__count" id="ur-ai-ask-count"><?php echo esc_html( '1 / ' . count( $asks['read']['questions'] ) ); ?></span>
 				</div>
 			</div>
+			</section>
 			</div>
 		</aside>
 		<?php
@@ -528,6 +543,38 @@ class UR_Abilities_Connect {
 
 		/* translators: %s: label of the button. */
 		return sprintf( __( 'I understand that clicking <strong>%s</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ), esc_html( $button ) );
+	}
+
+	/**
+	 * Say in one line how the checks went, so the list itself can stay folded away while everything passes.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $checks Checks from self::checks().
+	 * @return array ok (whether everything passed) and text.
+	 */
+	public static function checks_summary( $checks ) {
+		$failed = count(
+			array_filter(
+				$checks,
+				function ( $check ) {
+					return empty( $check['ok'] );
+				}
+			)
+		);
+
+		if ( 0 === $failed ) {
+			return array(
+				'ok'   => true,
+				'text' => __( 'Your site is ready', 'user-registration' ),
+			);
+		}
+
+		return array(
+			'ok'   => false,
+			/* translators: %d: number of checks that did not pass. */
+			'text' => sprintf( _n( '%d thing needs attention', '%d things need attention', $failed, 'user-registration' ), $failed ),
+		);
 	}
 
 	/**
@@ -572,8 +619,13 @@ class UR_Abilities_Connect {
 			. '.ur-ai-drawer__header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e1e4ed}.ur-ai-drawer__header h2{margin:0;font-size:18px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-drawer__close{border:0;background:none;font-size:28px;line-height:1;color:#646a7a;cursor:pointer;padding:0 4px}.ur-ai-drawer__close:hover{color:#2d3559}'
 			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
+			. '.ur-ai-hero{margin:8px 0 24px;padding:22px 24px 18px;border:1px solid #d9def2;border-radius:8px;background:#f7f9ff}.ur-ai-hero__title{margin:0 0 6px;font-size:18px;font-weight:600;color:#2d3559}.ur-ai-hero__lead{margin:0 0 18px;color:#646a7a;line-height:1.5}'
+			. '.ur-ai-hero .ur-ai-conn,.ur-ai-hero .ur-ai-apps,.ur-ai-hero .ur-ai-prompt pre,.ur-ai-hero .ur-ai-manual{background:#fff}'
+			. '.ur-ai-ready{margin:0 0 24px}.ur-ai-ready__bar{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #e1e4ed}.ur-ai-ready__status{font-weight:600}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}'
+			. '.ur-ai-ready__status.is-loading{color:#646a7a}.ur-ai-ready__status.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}.ur-ai-ready .ur-ai-connect__recheck{margin-left:auto}.ur-ai-ready .ur-ai-connect__checks{padding-top:10px}.ur-ai-ready .ur-ai-connect__checks[hidden]{display:none}'
+			. '.ur-ai-connect .ur-ai-tryasking__title{margin:0 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-connect h4{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
-			. '.ur-ai-connect__step{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#475bb2;color:#fff;font-size:12px;font-weight:600}'
+			. ''
 			. '.ur-ai-connect__label{display:block;margin-bottom:4px;font-weight:500}.ur-ai-drawer .ur-ai-connect input[type=text]{width:100%;margin:0;box-sizing:border-box}'
 			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
@@ -619,6 +671,14 @@ class UR_Abilities_Connect {
 					'title'      => __( 'Connect this site to %s', 'user-registration' ),
 					'confirm'    => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
 					'confirmOne' => __( 'Remove this AI app? It stops working until you make a new password for it.', 'user-registration' ),
+					'ready'      => __( 'Your site is ready', 'user-registration' ),
+					/* translators: %d: number of checks that did not pass. */
+					'attention1' => __( '1 thing needs attention', 'user-registration' ),
+					/* translators: %d: number of checks that did not pass. */
+					'attentionN' => __( '%d things need attention', 'user-registration' ),
+					'checking'   => __( 'Checking...', 'user-registration' ),
+					'showChecks' => __( 'Show checks', 'user-registration' ),
+					'hideChecks' => __( 'Hide checks', 'user-registration' ),
 					'removed'    => __( 'Removed.', 'user-registration' ),
 				),
 			)
