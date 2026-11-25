@@ -486,8 +486,23 @@ function ur_get_template( $template_name, $args = array(), $template_path = '', 
 }
 
 /**
+ * Checks whether a query key refers to a plugin-owned login error transient.
+ *
+ * @since x.x.x
+ *
+ * @param string $error_key Sanitized error transient key.
+ * @return bool
+ */
+function ur_is_valid_login_error_key( $error_key ) {
+	$prefix = 'ur_login_error_';
+	return is_string( $error_key ) && 0 === strpos( $error_key, $prefix ) && strlen( $error_key ) > strlen( $prefix );
+}
+
+/**
  * Drops invalid ?urm_error= query values before the login template renders,
  * protecting sites with outdated theme overrides of myaccount/form-login.php.
+ *
+ * @since x.x.x
  *
  * @param string $template_name Template name being rendered.
  * @return void
@@ -500,7 +515,7 @@ function ur_sanitize_login_error_query_param( $template_name ) {
 	$error_key = is_string( $_GET['urm_error'] ) ? sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 	// Unset non-plugin transient keys before any overridden login template can read or delete them.
-	if ( 0 !== strpos( $error_key, 'ur_login_error_' ) || strlen( $error_key ) <= strlen( 'ur_login_error_' ) ) {
+	if ( ! ur_is_valid_login_error_key( $error_key ) ) {
 		unset( $_GET['urm_error'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 	}
 }

@@ -32,7 +32,7 @@ if ( isset( $_GET['urm_error'] ) ) { // phpcs:ignore WordPress.Security.NonceVer
 	$error_key = is_string( $_GET['urm_error'] ) ? sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 	// Restrict transient lookups to plugin-owned login error keys so arbitrary transients cannot be read or deleted.
-	if ( 0 === strpos( $error_key, 'ur_login_error_' ) && strlen( $error_key ) > strlen( 'ur_login_error_' ) ) {
+	if ( ur_is_valid_login_error_key( $error_key ) ) {
 		$error_message = get_transient( $error_key );
 
 		if ( is_string( $error_message ) && '' !== $error_message ) {

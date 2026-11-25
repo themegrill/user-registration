@@ -10,6 +10,8 @@
 
 require __DIR__ . '/bootstrap.php';
 
+eval( security_function( 'includes/functions-ur-core.php', 'ur_is_valid_login_error_key' ) );
+
 class StopAfterNoticeCheck extends RuntimeException {}
 
 $GLOBALS['transients']        = array();
