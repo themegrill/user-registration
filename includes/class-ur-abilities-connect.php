@@ -25,6 +25,7 @@ class UR_Abilities_Connect {
 		add_action( 'wp_ajax_ur_ai_connect_create', array( __CLASS__, 'ajax_create' ) );
 		add_action( 'wp_ajax_ur_ai_connect_check', array( __CLASS__, 'ajax_check' ) );
 		add_action( 'wp_ajax_ur_ai_connect_revoke', array( __CLASS__, 'ajax_revoke' ) );
+		add_action( 'wp_ajax_ur_ai_connect_remove', array( __CLASS__, 'ajax_remove' ) );
 	}
 
 	/**
@@ -43,6 +44,39 @@ class UR_Abilities_Connect {
 		);
 
 		return $users ? $users[0] : null;
+	}
+
+	/**
+	 * Build the list of apps already connected, so a reload shows what exists instead of asking to start over.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return string Escaped markup, empty while there is no AI user.
+	 */
+	private static function connections_html() {
+		$user = self::ai_user();
+
+		if ( ! $user ) {
+			return '';
+		}
+
+		$items = WP_Application_Passwords::get_user_application_passwords( $user->ID );
+
+		if ( ! $items ) {
+			/* translators: %s: login of the AI user. */
+			return '<p class="ur-ai-conn__empty">' . esc_html( sprintf( __( 'The AI user %s is ready. No AI app is connected yet.', 'user-registration' ), $user->user_login ) ) . '</p>';
+		}
+
+		/* translators: %s: login of the AI user. */
+		$html = '<p class="ur-ai-conn__lead">' . esc_html( sprintf( __( 'AI user %s is ready. Connected apps:', 'user-registration' ), $user->user_login ) ) . '</p><ul class="ur-ai-conn">';
+
+		foreach ( $items as $item ) {
+			/* translators: 1: how long ago the password was made, 2: when it was last used. */
+			$meta  = sprintf( __( 'Added %1$s ago. %2$s', 'user-registration' ), human_time_diff( (int) $item['created'], time() ), empty( $item['last_used'] ) ? __( 'Never used.', 'user-registration' ) : sprintf( /* translators: %s: how long ago. */ __( 'Last used %s ago.', 'user-registration' ), human_time_diff( (int) $item['last_used'], time() ) ) );
+			$html .= '<li><span><strong>' . esc_html( $item['name'] ) . '</strong><em>' . esc_html( $meta ) . '</em></span><button type="button" class="ur-ai-link ur-ai-remove-one" data-uuid="' . esc_attr( $item['uuid'] ) . '">' . esc_html__( 'Remove', 'user-registration' ) . '</button></li>';
+		}
+
+		return $html . '</ul>';
 	}
 
 	/**
@@ -388,6 +422,7 @@ class UR_Abilities_Connect {
 			<p><button type="button" class="button" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button> <span class="ur-ai-connect__last" id="ur-ai-last"><?php echo esc_html( self::last_call_text() ); ?></span></p>
 
 			<h4><span class="ur-ai-connect__step">2</span><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
+			<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>
 			<div class="ur-ai-apps" role="tablist">
 				<?php foreach ( self::apps() as $key => $app ) : ?>
 					<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude-code' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
@@ -398,7 +433,7 @@ class UR_Abilities_Connect {
 				<p id="ur-ai-panel-intro"></p>
 				<label class="ur-ai-consent">
 					<input type="checkbox" id="ur-ai-consent" />
-					<span id="ur-ai-consent-text" data-alt="<?php echo esc_attr( __( 'I understand that clicking <strong>Generate password</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ) ); ?>"><?php echo wp_kses( __( 'I understand that clicking <strong>Generate prompt</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ), array( 'strong' => array() ) ); ?></span>
+					<span id="ur-ai-consent-text" data-alt="<?php echo esc_attr( self::consent_text( __( 'Generate password', 'user-registration' ) ) ); ?>"><?php echo wp_kses( self::consent_text( __( 'Generate prompt', 'user-registration' ) ), array( 'strong' => array() ) ); ?></span>
 				</label>
 				<div class="ur-ai-panel__actions">
 					<button type="button" class="button button-primary" id="ur-ai-create" data-alt="<?php esc_attr_e( 'Generate password', 'user-registration' ); ?>" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
@@ -434,6 +469,22 @@ class UR_Abilities_Connect {
 		<?php
 
 		return $html . ob_get_clean();
+	}
+
+	/**
+	 * The words next to the agreement box. Once the AI user exists, only a new password is made.
+	 *
+	 * @param string $button Label of the button the sentence names.
+	 * @return string
+	 */
+	private static function consent_text( $button ) {
+		if ( self::ai_user() ) {
+			/* translators: %s: label of the button. */
+			return sprintf( __( 'I understand that clicking <strong>%s</strong> will create a new application password for the existing AI user.', 'user-registration' ), esc_html( $button ) );
+		}
+
+		/* translators: %s: label of the button. */
+		return sprintf( __( 'I understand that clicking <strong>%s</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ), esc_html( $button ) );
 	}
 
 	/**
@@ -482,6 +533,8 @@ class UR_Abilities_Connect {
 			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
+			. '.ur-ai-conn{margin:0 0 16px;padding:0;list-style:none;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-conn li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f7}.ur-ai-conn li:last-child{border-bottom:0}'
+			. '.ur-ai-conn em{display:block;font-style:normal;font-size:12px;color:#646a7a}.ur-ai-conn__lead,.ur-ai-conn__empty{margin:0 0 8px;color:#2d3559}.ur-ai-conn__empty{margin-bottom:16px;color:#646a7a}'
 			. '.ur-ai-apps{display:flex;gap:4px;flex-wrap:wrap;padding:4px;border:1px solid #e1e4ed;border-radius:999px;width:fit-content;max-width:100%}'
 			. '.ur-ai-apps__tab{border:0;background:none;padding:6px 14px;border-radius:999px;color:#646a7a;font-size:13px;cursor:pointer}.ur-ai-apps__tab:hover{color:#2d3559}.ur-ai-apps__tab.is-active{background:#eef1fb;color:#475bb2;font-weight:600}'
 			. '.ur-ai-panel{margin-top:18px}.ur-ai-panel h5{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-panel p{margin:0 0 12px}'
@@ -505,14 +558,15 @@ class UR_Abilities_Connect {
 				'nonce'   => wp_create_nonce( self::NONCE ),
 				'apps'    => self::apps(),
 				'i18n'    => array(
-					'working' => __( 'Working...', 'user-registration' ),
-					'copied'  => __( 'Copied', 'user-registration' ),
-					'copy'    => __( 'Copy', 'user-registration' ),
-					'failed'  => __( 'Something went wrong. Try again.', 'user-registration' ),
+					'working'    => __( 'Working...', 'user-registration' ),
+					'copied'     => __( 'Copied', 'user-registration' ),
+					'copy'       => __( 'Copy', 'user-registration' ),
+					'failed'     => __( 'Something went wrong. Try again.', 'user-registration' ),
 					/* translators: %s: name of the AI app. */
-					'title'   => __( 'Connect this site to %s', 'user-registration' ),
-					'confirm' => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
-					'removed' => __( 'Removed.', 'user-registration' ),
+					'title'      => __( 'Connect this site to %s', 'user-registration' ),
+					'confirm'    => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
+					'confirmOne' => __( 'Remove this AI app? It stops working until you make a new password for it.', 'user-registration' ),
+					'removed'    => __( 'Removed.', 'user-registration' ),
 				),
 			)
 		);
@@ -542,7 +596,16 @@ class UR_Abilities_Connect {
 			wp_send_json_error( array( 'message' => $result->get_error_message() ), 400 );
 		}
 
-		wp_send_json_success( $result + array( 'checks' => self::checks_html( self::checks() ) ) );
+		wp_send_json_success(
+			$result + array(
+				'checks'      => self::checks_html( self::checks() ),
+				'connections' => self::connections_html(),
+				'consent'     => array(
+					'prompt'   => self::consent_text( __( 'Generate prompt', 'user-registration' ) ),
+					'password' => self::consent_text( __( 'Generate password', 'user-registration' ) ),
+				),
+			)
+		);
 	}
 
 	/** Run the checks again. */
@@ -563,8 +626,28 @@ class UR_Abilities_Connect {
 
 		wp_send_json_success(
 			array(
-				'removed' => self::revoke_connections(),
-				'checks'  => self::checks_html( self::checks() ),
+				'removed'     => self::revoke_connections(),
+				'checks'      => self::checks_html( self::checks() ),
+				'connections' => self::connections_html(),
+			)
+		);
+	}
+
+	/** Remove the password of one AI app, and only of the AI user. */
+	public static function ajax_remove() {
+		self::guard();
+
+		$uuid = isset( $_POST['uuid'] ) ? sanitize_text_field( wp_unslash( $_POST['uuid'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- Checked in self::guard().
+		$user = self::ai_user();
+
+		if ( ! $user || '' === $uuid || ! WP_Application_Passwords::delete_application_password( $user->ID, $uuid ) ) {
+			wp_send_json_error( array( 'message' => __( 'That connection was not found.', 'user-registration' ) ), 404 );
+		}
+
+		wp_send_json_success(
+			array(
+				'checks'      => self::checks_html( self::checks() ),
+				'connections' => self::connections_html(),
 			)
 		);
 	}

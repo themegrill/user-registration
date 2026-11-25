@@ -79,6 +79,25 @@
 		notice("");
 	}
 
+	// Redraw what the server says exists: the checks, the connected apps and, once the AI user exists, the
+	// agreement that no longer talks about making a user.
+	function applyState(data) {
+		if (data.checks) {
+			$("#ur-ai-checks").html(data.checks);
+		}
+
+		if (undefined !== data.connections) {
+			$("#ur-ai-connections").html(data.connections);
+		}
+
+		if (data.consent) {
+			var text = $("#ur-ai-consent-text");
+			var manual = $("#ur-ai-manual").prop("hidden") === false;
+
+			text.data("base", data.consent.prompt).data("alt", data.consent.password).html(manual ? data.consent.password : data.consent.prompt);
+		}
+	}
+
 	function showResult(data) {
 		$("#ur-ai-prompt").text(data.snippets[apps[current].snippet]);
 		$("#ur-ai-copy-prompt, #ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
@@ -186,7 +205,7 @@
 			.done(function (response) {
 				if (response.success) {
 					showResult(response.data);
-					$("#ur-ai-checks").html(response.data.checks);
+					applyState(response.data);
 				} else {
 					notice(message(response));
 				}
@@ -208,7 +227,21 @@
 
 		post("ur_ai_connect_revoke").done(function (response) {
 			if (response.success) {
-				$("#ur-ai-checks").html(response.data.checks);
+				applyState(response.data);
+				selectApp(current);
+				notice(i18n.removed);
+			}
+		});
+	});
+
+	$(document).on("click", ".ur-ai-remove-one", function () {
+		if (!window.confirm(i18n.confirmOne)) {
+			return;
+		}
+
+		post("ur_ai_connect_remove", { uuid: $(this).data("uuid") }).done(function (response) {
+			if (response.success) {
+				applyState(response.data);
 				selectApp(current);
 				notice(i18n.removed);
 			}
