@@ -12,6 +12,9 @@ class UR_Abilities_Connect {
 	/** Name of the nonce the Connect card sends with every request. */
 	const NONCE = 'ur_ai_connect';
 
+	/** Option that keeps each AI password, locked, so its prompt can be shown again. */
+	const SAVED_OPTION = 'user_registration_ai_saved';
+
 	/** Option that keeps the last AI call, so the page can show when an AI app last connected. */
 	const LAST_CALL_OPTION = 'user_registration_ai_last_call';
 
@@ -26,6 +29,7 @@ class UR_Abilities_Connect {
 		add_action( 'wp_ajax_ur_ai_connect_check', array( __CLASS__, 'ajax_check' ) );
 		add_action( 'wp_ajax_ur_ai_connect_revoke', array( __CLASS__, 'ajax_revoke' ) );
 		add_action( 'wp_ajax_ur_ai_connect_remove', array( __CLASS__, 'ajax_remove' ) );
+		add_action( 'wp_ajax_ur_ai_connect_saved', array( __CLASS__, 'ajax_saved' ) );
 	}
 
 	/**
@@ -111,16 +115,153 @@ class UR_Abilities_Connect {
 			return $created;
 		}
 
-		$code     = base64_encode( $user->user_login . ':' . $created[0] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds the Basic login header, not hidden code.
+		self::save_connection( $app_name, isset( $created[1]['uuid'] ) ? $created[1]['uuid'] : '', $created[0] );
+
+		return self::payload( $user->user_login, $created[0] );
+	}
+
+	/**
+	 * Build what an AI app needs from the AI user's login and its application password.
+	 *
+	 * @param string $login    Login of the AI user.
+	 * @param string $password The application password, as WordPress made it.
+	 * @return array login, password (in groups), code (the login for the connection), endpoint and snippets.
+	 */
+	private static function payload( $login, $password ) {
+		$code     = base64_encode( $login . ':' . $password ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds the Basic login header, not hidden code.
 		$endpoint = rest_url( self::ROUTE );
 
 		return array(
-			'login'    => $user->user_login,
-			'password' => WP_Application_Passwords::chunk_password( $created[0] ),
+			'login'    => $login,
+			'password' => WP_Application_Passwords::chunk_password( $password ),
 			'code'     => $code,
 			'endpoint' => $endpoint,
 			'snippets' => self::snippets( $endpoint, $code ),
 		);
+	}
+
+	/**
+	 * Lock a password with the site's own secret keys. This is not a vault: anyone who can read both the database and
+	 * the site's keys can open it. It only keeps the password out of plain sight in the database and in backups.
+	 *
+	 * @param string $plain The password.
+	 * @return string The locked text, or empty when this server cannot lock it.
+	 */
+	private static function seal( $plain ) {
+		if ( ! function_exists( 'openssl_encrypt' ) ) {
+			return '';
+		}
+
+		$iv     = random_bytes( 16 );
+		$locked = openssl_encrypt( $plain, 'aes-256-cbc', hash( 'sha256', wp_salt( 'auth' ), true ), OPENSSL_RAW_DATA, $iv );
+
+		return false === $locked ? '' : base64_encode( $iv . $locked ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Packs binary data for storage.
+	}
+
+	/**
+	 * Open a password locked by seal().
+	 *
+	 * @param string $locked The locked text.
+	 * @return string The password, or empty when it cannot be opened.
+	 */
+	private static function unseal( $locked ) {
+		$raw = base64_decode( (string) $locked, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Unpacks binary data from storage.
+
+		if ( ! $raw || strlen( $raw ) < 17 || ! function_exists( 'openssl_decrypt' ) ) {
+			return '';
+		}
+
+		$plain = openssl_decrypt( substr( $raw, 16 ), 'aes-256-cbc', hash( 'sha256', wp_salt( 'auth' ), true ), OPENSSL_RAW_DATA, substr( $raw, 0, 16 ) );
+
+		return false === $plain ? '' : $plain;
+	}
+
+	/**
+	 * Keep a new AI password so the prompt can be shown again on every load. Keyed by the application password's id.
+	 *
+	 * @param string $app_name Name of the AI app.
+	 * @param string $uuid     Id of the application password.
+	 * @param string $password The password.
+	 */
+	private static function save_connection( $app_name, $uuid, $password ) {
+		$locked = '' === $uuid ? '' : self::seal( $password );
+
+		if ( '' === $locked ) {
+			return;
+		}
+
+		$all          = get_option( self::SAVED_OPTION, array() );
+		$all          = is_array( $all ) ? $all : array();
+		$all[ $uuid ] = array(
+			'name'    => $app_name,
+			'secret'  => $locked,
+			'created' => time(),
+		);
+
+		update_option( self::SAVED_OPTION, $all, false );
+	}
+
+	/**
+	 * Forget saved passwords, so they are not kept after the app is removed.
+	 *
+	 * @param array|null $uuids Ids to forget, or null for all of them.
+	 */
+	private static function forget_connections( $uuids = null ) {
+		$all = get_option( self::SAVED_OPTION, array() );
+
+		if ( ! is_array( $all ) || ! $all ) {
+			return;
+		}
+
+		update_option( self::SAVED_OPTION, null === $uuids ? array() : array_diff_key( $all, array_flip( (array) $uuids ) ), false );
+	}
+
+	/**
+	 * The prompt of each AI app that already has a password, newest first wins. A saved password whose application
+	 * password no longer exists (removed from the user's profile, say) is dropped here.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return array App key => the same data a new connection returns, plus when it was made.
+	 */
+	public static function saved_connections() {
+		$user = self::ai_user();
+		$all  = get_option( self::SAVED_OPTION, array() );
+
+		if ( ! $user || ! is_array( $all ) || ! $all ) {
+			return array();
+		}
+
+		$live  = array_column( WP_Application_Passwords::get_user_application_passwords( $user->ID ), 'uuid' );
+		$stale = array_diff( array_keys( $all ), $live );
+
+		if ( $stale ) {
+			self::forget_connections( $stale );
+			$all = array_diff_key( $all, array_flip( $stale ) );
+		}
+
+		uasort(
+			$all,
+			function ( $a, $b ) {
+				return (int) $b['created'] - (int) $a['created'];
+			}
+		);
+
+		$found = array();
+
+		foreach ( self::apps() as $key => $app ) {
+			foreach ( $all as $item ) {
+				$password = self::unseal( $item['secret'] );
+
+				if ( $item['name'] === $app['label'] && '' !== $password ) {
+					/* translators: %s: how long ago the password was made. */
+					$found[ $key ] = self::payload( $user->user_login, $password ) + array( 'created' => sprintf( __( 'Made %s ago.', 'user-registration' ), human_time_diff( (int) $item['created'], time() ) ) );
+					break;
+				}
+			}
+		}
+
+		return $found;
 	}
 
 	/**
@@ -168,6 +309,9 @@ class UR_Abilities_Connect {
 				$count += WP_Application_Passwords::delete_application_password( $user->ID, $item['uuid'] ) ? 1 : 0;
 			}
 		}
+
+		// Nothing is kept for an app that was cut off.
+		self::forget_connections();
 
 		return $count;
 	}
@@ -470,7 +614,7 @@ class UR_Abilities_Connect {
 					<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle" data-alt="<?php esc_attr_e( 'Back to the prompt', 'user-registration' ); ?>"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
 				</div>
 				<div id="ur-ai-prompts" data-empty="<?php esc_attr_e( 'Your setup prompt will appear here after you generate it.', 'user-registration' ); ?>"></div>
-				<p class="description" id="ur-ai-once" hidden><?php esc_html_e( 'The password is shown once. Copy it now. The app name shows in the activity log.', 'user-registration' ); ?></p>
+				<p class="description" id="ur-ai-once" hidden><?php esc_html_e( 'This password stays saved on this site, locked, so you can copy it again any time. Remove the app from the list above to cut it off.', 'user-registration' ); ?><span id="ur-ai-once-when"></span></p>
 				<dl class="ur-ai-manual" id="ur-ai-manual" hidden>
 					<dt><?php esc_html_e( 'Server address', 'user-registration' ); ?></dt>
 					<dd><code id="ur-ai-m-endpoint"><?php echo esc_html( rest_url( self::ROUTE ) ); ?></code></dd>
@@ -612,6 +756,7 @@ class UR_Abilities_Connect {
 					'confirm'    => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
 					'confirmOne' => __( 'Remove this AI app? It stops working until you make a new password for it.', 'user-registration' ),
 					'removed'    => __( 'Removed.', 'user-registration' ),
+					'madeNow'    => __( 'Made just now.', 'user-registration' ),
 				),
 			)
 		);
@@ -689,11 +834,21 @@ class UR_Abilities_Connect {
 			wp_send_json_error( array( 'message' => __( 'That connection was not found.', 'user-registration' ) ), 404 );
 		}
 
+		self::forget_connections( array( $uuid ) );
+
 		wp_send_json_success(
 			array(
 				'checks'      => self::checks_html( self::checks() ),
 				'connections' => self::connections_html(),
+				'saved'       => self::saved_connections(),
 			)
 		);
+	}
+
+	/** Answer with the prompt of every AI app that already has a password. Asked for only when the drawer opens. */
+	public static function ajax_saved() {
+		self::guard();
+
+		wp_send_json_success( array( 'saved' => self::saved_connections() ) );
 	}
 }
