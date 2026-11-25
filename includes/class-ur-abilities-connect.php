@@ -402,7 +402,7 @@ class UR_Abilities_Connect {
 				</label>
 				<div class="ur-ai-panel__actions">
 					<button type="button" class="button button-primary" id="ur-ai-create" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
-					<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
+					<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle" data-alt="<?php esc_attr_e( 'Back to the prompt', 'user-registration' ); ?>"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
 				</div>
 				<div class="ur-ai-prompt">
 					<pre id="ur-ai-prompt" data-empty="<?php esc_attr_e( 'Your setup prompt will appear here after you generate it.', 'user-registration' ); ?>"></pre>
@@ -488,7 +488,7 @@ class UR_Abilities_Connect {
 			. '.ur-ai-consent{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;line-height:1.5}.ur-ai-consent input{margin:3px 0 0;flex:none}'
 			. '.ur-ai-panel__actions{display:flex;align-items:center;gap:18px;margin-bottom:14px}.ur-ai-panel__actions .button{height:34px;line-height:32px;padding:0 16px;margin:0}'
 			. '.ur-ai-link{border:0;background:none;padding:0;color:#475bb2;text-decoration:underline;cursor:pointer;font-size:13px}.ur-ai-connect__remove{margin:18px 0 0}.ur-ai-connect__notice{margin:8px 0 0;color:#646a7a}'
-			. '.ur-ai-prompt{position:relative}.ur-ai-prompt pre{margin:0;min-height:120px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
+			. '.ur-ai-prompt{position:relative}.ur-ai-prompt[hidden]{display:none}.ur-ai-prompt pre{margin:0;min-height:120px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
 			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .button{position:absolute;right:10px;bottom:10px;height:30px;line-height:28px;padding:0 14px;margin:0}'
 			. '.ur-ai-manual{margin:12px 0 0;padding:12px 14px;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-manual dt{margin-top:8px;font-weight:600}.ur-ai-manual dt:first-child{margin-top:0}.ur-ai-manual dd{margin:2px 0 0;word-break:break-all}'
 			. '.ur-ai-connect__prompts{margin:0;padding:0;list-style:none}.ur-ai-connect__prompts li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f2f7}.ur-ai-connect__secret{font-weight:600}';

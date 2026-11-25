@@ -127,9 +127,14 @@
 	});
 
 	$(document).on("click", "#ur-ai-manual-toggle", function () {
-		$("#ur-ai-manual").prop("hidden", function (index, hidden) {
-			return !hidden;
-		});
+		var button = $(this);
+		var manual = $("#ur-ai-manual").prop("hidden");
+
+		// Two views of one panel: the prompt to paste, or the details to type in by hand.
+		$("#ur-ai-manual").prop("hidden", !manual);
+		$(".ur-ai-prompt").prop("hidden", manual);
+		button.data("label", button.data("label") || button.text());
+		button.text(manual ? button.data("alt") : button.data("label"));
 	});
 
 	$(document).on("click", "#ur-ai-copy-prompt", function () {
