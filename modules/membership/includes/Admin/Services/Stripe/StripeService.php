@@ -3241,6 +3241,8 @@ class StripeService {
 						'invoice_id' => $invoice_id,
 					)
 				);
+				// Fail closed so a transient lookup failure on an old charge cannot cancel the active subscription.
+				return false;
 			}
 		}
 
@@ -4016,11 +4018,15 @@ class StripeService {
 
 				if ( 0 === strpos( $stripe_sub_id, 'sub_sched_' ) ) {
 					$schedule = \Stripe\SubscriptionSchedule::retrieve( $stripe_sub_id );
-					return in_array( $schedule->status, array( 'not_started', 'active' ), true );
+					if ( in_array( $schedule->status, array( 'not_started', 'active' ), true ) ) {
+						return true;
+					}
+				} else {
+					$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_sub_id );
+					if ( in_array( $stripe_subscription->status, array( 'active', 'trialing' ), true ) ) {
+						return true;
+					}
 				}
-
-				$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_sub_id );
-				return in_array( $stripe_subscription->status, array( 'active', 'trialing' ), true );
 			}
 			if ( ! empty( $order['transaction_id'] ) && 0 === strpos( (string) $order['transaction_id'], 'pi_' ) ) {
 				$intent = \Stripe\PaymentIntent::retrieve( $order['transaction_id'] );

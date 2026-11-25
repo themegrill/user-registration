@@ -603,5 +603,98 @@ namespace {
 	security_assert( 'canceled' === $GLOBALS['subscriptions_db'][536]['status'], 'Refunding current plan charge cancels local subscription' );
 	security_assert( 1 === count( $GLOBALS['canceled_subs'] ) && 'sub_new' === $GLOBALS['canceled_subs'][0]['subscription'], 'Refunding current plan charge cancels current Stripe subscription' );
 
+	// 9. Invoice lookup failure during refund check must fail closed and leave active subscription untouched.
+	reset_fixtures();
+	$GLOBALS['orders_by_tx']['pi_err'] = array(
+		'ID'              => 241,
+		'user_id'         => $member_id,
+		'item_id'         => 20,
+		'subscription_id' => 536,
+		'status'          => 'completed',
+		'transaction_id'  => 'pi_err',
+	);
+	$GLOBALS['subscriptions_db'][536]  = array(
+		'ID'              => 536,
+		'item_id'         => 20,
+		'subscription_id' => 'sub_new',
+		'status'          => 'active',
+	);
+	$runner->handle_refunded_charge(
+		array(
+			'id'   => 'evt_ref_err',
+			'data' => array(
+				'object' => array(
+					'payment_intent' => 'pi_err',
+					'invoice'        => 'in_missing_throws',
+					'refunded'       => true,
+				),
+			),
+		)
+	);
+	security_assert( 'refunded' === $GLOBALS['orders_by_tx']['pi_err']['status'], 'Invoice lookup error still marks order refunded' );
+	security_assert( 'active' === $GLOBALS['subscriptions_db'][536]['status'], 'Invoice lookup error fails closed and keeps subscription active' );
+	security_assert( empty( $GLOBALS['canceled_subs'] ), 'Invoice lookup error does not cancel Stripe subscription' );
+
+	// 10. Incomplete subscription with already-succeeded PaymentIntent still verifies as paid via PI fallback.
+	reset_fixtures();
+	$_POST = array(
+		'member_id'             => $member_id,
+		'current_membership_id' => 10,
+	);
+	update_user_meta(
+		$member_id,
+		'urm_membership_process',
+		array(
+			'upgrade' => array(
+				10 => array(
+					'to' => 20,
+				),
+			),
+		)
+	);
+	update_user_meta(
+		$member_id,
+		'urm_previous_subscription_data',
+		json_encode(
+			array(
+				'ID'              => 536,
+				'item_id'         => 10,
+				'subscription_id' => 'sub_old',
+				'status'          => 'active',
+			)
+		)
+	);
+	$GLOBALS['latest_order']                       = array(
+		'ID'              => 242,
+		'subscription_id' => 536,
+		'payment_method'  => 'stripe',
+		'order_type'      => 'subscription',
+		'status'          => 'pending',
+		'transaction_id'  => 'pi_3ds_paid',
+	);
+	$GLOBALS['subscriptions_db'][536]              = array(
+		'ID'              => 536,
+		'item_id'         => 20,
+		'subscription_id' => 'sub_3ds_race',
+		'status'          => 'pending',
+	);
+	\Stripe\Subscription::$records['sub_3ds_race'] = (object) array(
+		'id'     => 'sub_3ds_race',
+		'status' => 'incomplete',
+	);
+	\Stripe\PaymentIntent::$records['pi_3ds_paid'] = (object) array(
+		'id'     => 'pi_3ds_paid',
+		'status' => 'succeeded',
+	);
+	$res_pi_fallback                               = $runner->update_order(
+		array(
+			'payment_status' => 'failed',
+			'payment_result' => array(
+				'error' => array(),
+			),
+		)
+	);
+	security_assert( true === $res_pi_fallback['status'], 'Incomplete subscription with succeeded PaymentIntent falls back to PI and confirms upgrade' );
+
 	echo "ALL_ASSERTIONS_PASSED\n";
 }
