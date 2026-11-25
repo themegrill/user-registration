@@ -147,7 +147,8 @@ class MembersService {
 		$response['user_data'] = array(
 			'user_login'    => ! empty( $data['username'] ) ? sanitize_text_field( $data['username'] ) : '',
 			'user_email'    => ! empty( $data['email'] ) ? sanitize_email( $data['email'] ) : '',
-			'user_pass'     => ! empty( $data['password'] ) ? $data['password'] : '',
+			// Core's login and reset flows hash the slashed password, so slash it here to match.
+			'user_pass'     => ! empty( $data['password'] ) ? wp_slash( $data['password'] ) : '',
 			'user_nicename' => ( ! empty( $data['firstname'] ) && ! empty( $data['lastname'] ) ) ? sanitize_text_field( $data['firstname'] ) . ' ' . sanitize_text_field( $data['lastname'] ) : '',
 			'display_name'  => ! empty( $data['username'] ) ? sanitize_text_field( $data['username'] ) : '',
 			'first_name'    => ! empty( $data['firstname'] ) ? sanitize_text_field( $data['firstname'] ) : '',
@@ -350,7 +351,8 @@ class MembersService {
 			}
 		} else {
 
-			if ( ! wp_check_password( $password, $user->user_pass, $user_id ) ) {
+			// Registration stores the slashed password hash, while callers pass the JSON-decoded plain password.
+			if ( ! wp_check_password( wp_slash( $password ), $user->user_pass, $user_id ) ) {
 				return false;
 			}
 		}
