@@ -11,7 +11,6 @@
 	var i18n = cfg.i18n || {};
 	var apps = cfg.apps || {};
 	var current = "claude";
-	var saved = {};
 
 	function post(action, data) {
 		return $.post(cfg.ajaxUrl, $.extend({ action: action, security: cfg.nonce }, data || {}));
@@ -104,20 +103,11 @@
 		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", true);
 		$("#ur-ai-m-user, #ur-ai-m-pass").text("-");
 		notice("");
-
-		// An app that already has a password shows its prompt again, without asking for another one.
-		if (saved[key]) {
-			showResult(saved[key]);
-		}
 	}
 
 	// Redraw what the server says exists: the checks, the connected apps and, once the AI user exists, the
 	// agreement that no longer talks about making a user.
 	function applyState(data) {
-		if (data.saved) {
-			saved = data.saved;
-		}
-
 		if (data.checks) {
 			$("#ur-ai-checks").html(data.checks);
 		}
@@ -137,7 +127,6 @@
 	function showResult(data) {
 		drawPrompts(apps[current], data);
 		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
-		$("#ur-ai-once-when").text(data.created ? " " + data.created : "");
 		$("#ur-ai-m-user").text(data.login);
 		$("#ur-ai-m-pass").text(data.password);
 		$("#ur-ai-m-endpoint").text(data.endpoint);
@@ -148,18 +137,7 @@
 	$("#ur-ai-overlay, #ur-ai-drawer").appendTo("body");
 	selectApp(current);
 
-	// The saved prompts are asked for only now, when the drawer is opened, and never put in the page itself.
-	function loadSaved() {
-		post("ur_ai_connect_saved").done(function (response) {
-			if (response.success) {
-				saved = response.data.saved || {};
-				selectApp(current);
-			}
-		});
-	}
-
 	function openDrawer() {
-		loadSaved();
 		$("#ur-ai-overlay").prop("hidden", false);
 		$("#ur-ai-drawer").prop("hidden", false);
 		// Let the browser paint the closed state first, so the slide plays.
@@ -315,8 +293,7 @@
 		post("ur_ai_connect_create", { app: apps[current].name || apps[current].label })
 			.done(function (response) {
 				if (response.success) {
-					saved[current] = $.extend({ created: i18n.madeNow }, response.data);
-					showResult(saved[current]);
+					showResult(response.data);
 					applyState(response.data);
 				} else {
 					notice(message(response));
@@ -339,7 +316,6 @@
 
 		post("ur_ai_connect_revoke").done(function (response) {
 			if (response.success) {
-				saved = {};
 				applyState(response.data);
 				selectApp(current);
 				notice(i18n.removed);

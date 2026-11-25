@@ -172,9 +172,6 @@ function wp_get_abilities() {
 function ur_option_checked() {
 	return $GLOBALS['flags']['enabled'];
 }
-function wp_salt( $scheme = 'auth' ) {
-	return 'test-salt-' . $scheme;
-}
 function human_time_diff( $from, $to ) {
 	return ( $to - $from ) . ' seconds';
 }
@@ -205,40 +202,11 @@ security_assert( 'abcd efgh ijkl mnop qrst uvwx' === $result['password'], 'The p
 security_assert( base64_encode( 'ur-ai-assistant:abcdefghijklmnopqrstuvwx' ) === $result['code'], 'The login code is the user name and the password without spaces' );
 security_assert( 'https://shop.example.com/wp-json/mcp/mcp-adapter-default-server' === $result['endpoint'], 'The connection address is the MCP Adapter route of the site' );
 security_assert( 'Claude' === WP_Application_Passwords::$store[ $result['login'] === 'ur-ai-assistant' ? 100 : 0 ][0]['name'], 'The password is named after the AI app, so the log can say which app called' );
-security_assert( ! isset( $options['user_registration_ai_password'] ), 'No plain password option exists' );
-
-// The password is kept so the prompt can be shown again, but locked, never as plain text. The doubles do not keep
-// options between calls, so what was written is carried over by hand, as the database would.
-function persist_saved() {
-	$GLOBALS['options'][ UR_Abilities_Connect::SAVED_OPTION ] = $GLOBALS['writes'][ UR_Abilities_Connect::SAVED_OPTION ] ?? array();
-}
-persist_saved();
-$stored = $GLOBALS['options'][ UR_Abilities_Connect::SAVED_OPTION ];
-$dump   = wp_json_encode( $stored );
-security_assert( 1 === count( $stored ) && 'uuid-1' === key( $stored ) && 'Claude' === $stored['uuid-1']['name'], 'One saved entry, keyed by the application password and named after the app' );
-security_assert( false === strpos( $dump, 'abcdefgh' ) && false === strpos( $dump, $result['code'] ) && false === strpos( $dump, 'ur-ai-assistant' ), 'The password and the login code are not in the saved text' );
-$saved = UR_Abilities_Connect::saved_connections();
-security_assert( isset( $saved['claude'] ) && $result['password'] === $saved['claude']['password'] && $result['code'] === $saved['claude']['code'] && 0 === strpos( $saved['claude']['snippets']['claude'], 'claude mcp add' ), 'The Claude prompt comes back on a later load, built from the saved password' );
-security_assert( false !== strpos( $saved['claude']['created'], 'Made' ) && ! isset( $saved['codex'], $saved['cursor'], $saved['other'] ), 'It says when it was made, and apps without a password show nothing' );
-$tampered = $GLOBALS['options'][ UR_Abilities_Connect::SAVED_OPTION ];
-$tampered['uuid-1']['secret'] = 'not-a-real-secret';
-$GLOBALS['options'][ UR_Abilities_Connect::SAVED_OPTION ] = $tampered;
-security_assert( array() === UR_Abilities_Connect::saved_connections(), 'A saved entry that cannot be opened shows nothing, and does not fail' );
-persist_saved();
+security_assert( ! isset( $options['user_registration_ai_password'] ) && false === strpos( wp_json_encode( $GLOBALS['options'] ), 'abcdefgh' ), 'The password is not stored anywhere' );
 
 // The second time reuses the same user.
 $second = UR_Abilities_Connect::create_connection( 'Cursor' );
 security_assert( 1 === count( $created ) && 'ur-ai-assistant' === $second['login'] && 2 === count( WP_Application_Passwords::$store[100] ), 'A second app gets its own password on the same user, no second user' );
-$GLOBALS['options'][ UR_Abilities_Connect::SAVED_OPTION ] = $GLOBALS['writes'][ UR_Abilities_Connect::SAVED_OPTION ];
-$saved                                                    = UR_Abilities_Connect::saved_connections();
-security_assert( isset( $saved['cursor'] ) && $second['code'] === $saved['cursor']['code'], 'Each app keeps its own prompt' );
-
-// A password removed from the user's profile page is dropped the next time the saved ones are read.
-WP_Application_Passwords::delete_application_password( 100, 'uuid-2' );
-$after_profile = UR_Abilities_Connect::saved_connections();
-security_assert( ! isset( $after_profile['cursor'] ) && ! isset( $GLOBALS['writes'][ UR_Abilities_Connect::SAVED_OPTION ]['uuid-2'] ), 'A password removed elsewhere is no longer shown and is forgotten' );
-$GLOBALS['options'][ UR_Abilities_Connect::SAVED_OPTION ] = $GLOBALS['writes'][ UR_Abilities_Connect::SAVED_OPTION ];
-WP_Application_Passwords::create_new_application_password( 100, array( 'name' => 'Cursor' ) );
 
 // Each app gets what it needs.
 $snippets = $result['snippets'];
@@ -264,7 +232,6 @@ security_assert( 100 === strlen( $names[2] ) && 'AI assistant' === $names[3], 'T
 // Removing every password cuts every app off at once, and keeps the user.
 $removed = UR_Abilities_Connect::revoke_connections();
 security_assert( 4 === $removed && array() === WP_Application_Passwords::get_user_application_passwords( 100 ) && 1 === count( $users ), 'Remove all deletes every AI password and keeps the user' );
-security_assert( array() === $GLOBALS['writes'][ UR_Abilities_Connect::SAVED_OPTION ], 'Remove all also forgets every saved password' );
 
 // The check says what is ready and what is not.
 $checks = by_id( UR_Abilities_Connect::checks() );
@@ -360,9 +327,3 @@ $bad_nonce = ajax_outcome( 'ajax_create', array( 'manage_options', 'create_users
 security_assert( false === $GLOBALS['passwords_changed'] && 'nonce' === $bad_nonce->data, 'A request with a wrong nonce is refused' );
 $revoke_denied = ajax_outcome( 'ajax_revoke', array(), 'valid' );
 security_assert( false === $GLOBALS['passwords_changed'] && 403 === $revoke_denied->status, 'Removing the passwords needs the same rights' );
-$saved_denied = ajax_outcome( 'ajax_saved', array(), 'valid' );
-security_assert( 403 === $saved_denied->status && ! isset( $saved_denied->data['saved'] ), 'Reading the saved prompts needs the right to manage the site' );
-$saved_forged = ajax_outcome( 'ajax_saved', array( 'manage_options' ), 'forged' );
-security_assert( 403 === $saved_forged->status && 'nonce' === $saved_forged->data, 'Reading the saved prompts with a wrong nonce is refused' );
-$saved_ok = ajax_outcome( 'ajax_saved', array( 'manage_options' ), 'valid' );
-security_assert( true === $saved_ok->success && isset( $saved_ok->data['saved'] ), 'An admin with a valid nonce gets the saved prompts' );
