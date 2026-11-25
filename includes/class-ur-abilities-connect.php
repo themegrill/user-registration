@@ -61,14 +61,15 @@ class UR_Abilities_Connect {
 		}
 
 		$items = WP_Application_Passwords::get_user_application_passwords( $user->ID );
+		$title = '<h4 class="ur-ai-conn__title">' . esc_html__( 'Active connections', 'user-registration' ) . '</h4>';
 
 		if ( ! $items ) {
 			/* translators: %s: login of the AI user. */
-			return '<p class="ur-ai-conn__empty">' . esc_html( sprintf( __( 'The AI user %s is ready. No AI app is connected yet.', 'user-registration' ), $user->user_login ) ) . '</p>';
+			return $title . '<p class="ur-ai-conn__empty">' . esc_html( sprintf( __( 'No AI app is connected yet. The AI user %s is ready.', 'user-registration' ), $user->user_login ) ) . '</p>';
 		}
 
 		/* translators: %s: login of the AI user. */
-		$html = '<p class="ur-ai-conn__lead">' . esc_html( sprintf( __( 'AI user %s is ready. Connected apps:', 'user-registration' ), $user->user_login ) ) . '</p><ul class="ur-ai-conn">';
+		$html = $title . '<p class="ur-ai-conn__lead">' . esc_html( sprintf( __( 'These apps reach your site as the AI user %s.', 'user-registration' ), $user->user_login ) ) . '</p><ul class="ur-ai-conn">';
 
 		foreach ( $items as $item ) {
 			/* translators: 1: how long ago the password was made, 2: when it was last used. */
@@ -455,40 +456,42 @@ class UR_Abilities_Connect {
 				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
 			</header>
 			<div class="ur-ai-drawer__body ur-ai-connect">
-			<section class="ur-ai-hero">
-				<h3 class="ur-ai-hero__title"><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h3>
-				<p class="ur-ai-hero__lead"><?php esc_html_e( 'Make a separate AI user with no admin rights, then paste one prompt into your AI app. A leaked password cannot reach the rest of your site.', 'user-registration' ); ?></p>
-			<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>			<div class="ur-ai-apps" role="tablist">
-				<?php foreach ( self::apps() as $key => $app ) : ?>
-					<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
-				<?php endforeach; ?>
-			</div>
-			<div class="ur-ai-panel">
-				<h5 id="ur-ai-panel-title"></h5>
-				<p id="ur-ai-panel-intro"></p>
-				<label class="ur-ai-consent">
-					<input type="checkbox" id="ur-ai-consent" />
-					<span id="ur-ai-consent-text" data-alt="<?php echo esc_attr( self::consent_text( __( 'Generate password', 'user-registration' ) ) ); ?>"><?php echo wp_kses( self::consent_text( __( 'Generate prompt', 'user-registration' ) ), array( 'strong' => array() ) ); ?></span>
-				</label>
-				<div class="ur-ai-panel__actions">
-					<button type="button" class="button button-primary" id="ur-ai-create" data-alt="<?php esc_attr_e( 'Generate password', 'user-registration' ); ?>" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
-					<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle" data-alt="<?php esc_attr_e( 'Back to the prompt', 'user-registration' ); ?>"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
+			<section class="ur-ai-connect-main">
+				<div class="ur-ai-apps ur-ai-apps--center" role="tablist">
+					<?php foreach ( self::apps() as $key => $app ) : ?>
+						<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
+					<?php endforeach; ?>
 				</div>
-				<div id="ur-ai-prompts" data-empty="<?php esc_attr_e( 'Your setup prompt will appear here after you generate it.', 'user-registration' ); ?>"></div>
-				<p class="description" id="ur-ai-once" hidden><?php esc_html_e( 'The password is shown once. Copy it now. The app name shows in the activity log.', 'user-registration' ); ?></p>
-				<dl class="ur-ai-manual" id="ur-ai-manual" hidden>
-					<dt><?php esc_html_e( 'Server address', 'user-registration' ); ?></dt>
-					<dd><code id="ur-ai-m-endpoint"><?php echo esc_html( rest_url( self::ROUTE ) ); ?></code></dd>
-					<dt><?php esc_html_e( 'User', 'user-registration' ); ?></dt>
-					<dd><code id="ur-ai-m-user">-</code></dd>
-					<dt><?php esc_html_e( 'Application password', 'user-registration' ); ?></dt>
-					<dd><code id="ur-ai-m-pass">-</code> <button type="button" class="button button-small" id="ur-ai-copy-pass" hidden><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></dd>
-					<dt><?php esc_html_e( 'How it signs in', 'user-registration' ); ?></dt>
-					<dd><?php esc_html_e( 'HTTP header Authorization: Basic, with the user and the application password.', 'user-registration' ); ?></dd>
-				</dl>
-			</div>
-			<p class="ur-ai-connect__remove"><button type="button" class="ur-ai-link" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button></p>
-			<p class="ur-ai-connect__notice" id="ur-ai-result" role="status" hidden></p>
+				<div class="ur-ai-panel">
+					<h5 id="ur-ai-panel-title"></h5>
+					<p id="ur-ai-panel-intro"></p>
+					<label class="ur-ai-consent">
+						<input type="checkbox" id="ur-ai-consent" />
+						<span id="ur-ai-consent-text" data-alt="<?php echo esc_attr( self::consent_text( __( 'Generate password', 'user-registration' ) ) ); ?>"><?php echo wp_kses( self::consent_text( __( 'Generate prompt', 'user-registration' ) ), array( 'strong' => array() ) ); ?></span>
+					</label>
+					<div class="ur-ai-panel__actions">
+						<button type="button" class="button button-primary" id="ur-ai-create" data-alt="<?php esc_attr_e( 'Generate password', 'user-registration' ); ?>" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
+						<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle" data-alt="<?php esc_attr_e( 'Back to the prompt', 'user-registration' ); ?>"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
+					</div>
+					<div id="ur-ai-prompts" data-empty="<?php esc_attr_e( 'Your setup prompt will appear here after you generate it.', 'user-registration' ); ?>"></div>
+					<p class="description" id="ur-ai-once" hidden><?php esc_html_e( 'The password is shown once. Copy it now. The app name shows in the activity log.', 'user-registration' ); ?></p>
+					<dl class="ur-ai-manual" id="ur-ai-manual" hidden>
+						<dt><?php esc_html_e( 'Server address', 'user-registration' ); ?></dt>
+						<dd><code id="ur-ai-m-endpoint"><?php echo esc_html( rest_url( self::ROUTE ) ); ?></code></dd>
+						<dt><?php esc_html_e( 'User', 'user-registration' ); ?></dt>
+						<dd><code id="ur-ai-m-user">-</code></dd>
+						<dt><?php esc_html_e( 'Application password', 'user-registration' ); ?></dt>
+						<dd><code id="ur-ai-m-pass">-</code> <button type="button" class="button button-small" id="ur-ai-copy-pass" hidden><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></dd>
+						<dt><?php esc_html_e( 'How it signs in', 'user-registration' ); ?></dt>
+						<dd><?php esc_html_e( 'HTTP header Authorization: Basic, with the user and the application password.', 'user-registration' ); ?></dd>
+					</dl>
+				</div>
+			</section>
+
+			<section class="ur-ai-active">
+				<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>
+				<p class="ur-ai-connect__remove"><button type="button" class="ur-ai-link" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button></p>
+				<p class="ur-ai-connect__notice" id="ur-ai-result" role="status" hidden></p>
 			</section>
 
 			<section class="ur-ai-ready" id="ur-ai-ready">
@@ -619,9 +622,9 @@ class UR_Abilities_Connect {
 			. '.ur-ai-drawer__header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e1e4ed}.ur-ai-drawer__header h2{margin:0;font-size:18px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-drawer__close{border:0;background:none;font-size:28px;line-height:1;color:#646a7a;cursor:pointer;padding:0 4px}.ur-ai-drawer__close:hover{color:#2d3559}'
 			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
-			. '.ur-ai-hero{margin:8px 0 24px;padding:22px 24px 18px;border:1px solid #d9def2;border-radius:8px;background:#f7f9ff}.ur-ai-hero__title{margin:0 0 6px;font-size:18px;font-weight:600;color:#2d3559}.ur-ai-hero__lead{margin:0 0 18px;color:#646a7a;line-height:1.5}'
-			. '.ur-ai-hero .ur-ai-conn,.ur-ai-hero .ur-ai-apps,.ur-ai-hero .ur-ai-prompt pre,.ur-ai-hero .ur-ai-manual{background:#fff}'
-			. '.ur-ai-ready{margin:0 0 24px}.ur-ai-ready__bar{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #e1e4ed}.ur-ai-ready__status{font-weight:600}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}'
+			. ''
+			. ''
+			. '.ur-ai-connect-main{margin:8px 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-ready{margin:0 0 24px}.ur-ai-ready__bar{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #e1e4ed}.ur-ai-ready__status{font-weight:600}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}'
 			. '.ur-ai-ready__status.is-loading{color:#646a7a}.ur-ai-ready__status.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}.ur-ai-ready .ur-ai-connect__recheck{margin-left:auto}.ur-ai-ready .ur-ai-connect__checks{padding-top:10px}.ur-ai-ready .ur-ai-connect__checks[hidden]{display:none}'
 			. '.ur-ai-connect .ur-ai-tryasking__title{margin:0 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-connect h4{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
