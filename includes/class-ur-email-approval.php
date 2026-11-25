@@ -221,6 +221,13 @@ class UR_Email_Approval {
 
 		if ( ( 'admin_approval' == $login_option || 'admin_approval_after_email_confirmation' == $login_option ) ) {
 			$token = $this->get_token( $user_id );
+
+			if ( '' === $token ) {
+				ur_get_logger()->error( sprintf( 'Email approval token could not be generated for user %d.', $user_id ), array( 'source' => 'user-registration' ) );
+				delete_user_meta( $user_id, 'ur_confirm_approval_token' );
+				return;
+			}
+
 			update_user_meta( $user_id, 'ur_confirm_approval_token', $token );
 		} else {
 			return;
@@ -240,6 +247,13 @@ class UR_Email_Approval {
 
 		if ( ( 'admin_approval' == $login_option || 'admin_approval_after_email_confirmation' == $login_option ) ) {
 			$token = $this->get_token( $user_id );
+
+			if ( '' === $token ) {
+				ur_get_logger()->error( sprintf( 'Email denial token could not be generated for user %d.', $user_id ), array( 'source' => 'user-registration' ) );
+				delete_user_meta( $user_id, 'ur_confirm_denial_token' );
+				return;
+			}
+
 			update_user_meta( $user_id, 'ur_confirm_denial_token', $token );
 		} else {
 			return;
