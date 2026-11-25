@@ -930,6 +930,14 @@ class StripeService {
 		// abandonment) is a normal gateway outcome, not a verification anomaly:
 		// surface the gateway's own message and leave the order pending for retry.
 		if ( 'failed' === $payment_status ) {
+			// For upgrades, verify against Stripe before trusting a client-side failure so a paid new subscription is still finalized.
+			if ( $is_upgrading ) {
+				$verified_upgrade = $this->verify_and_complete_paid_upgrade_order( $member_id );
+				if ( ! empty( $verified_upgrade['status'] ) ) {
+					return $verified_upgrade;
+				}
+			}
+
 			$client_error_message = sanitize_text_field( wp_unslash( $data['payment_result']['error']['message'] ?? '' ) );
 			$client_error_code    = sanitize_text_field( wp_unslash( $data['payment_result']['error']['code'] ?? '' ) );
 
@@ -1479,8 +1487,17 @@ class StripeService {
 
 		$membership_process = urm_get_membership_process( $member_id );
 		$is_renewing        = $this->is_renewing_membership( $membership_process, $member_order['item_id'] );
-		// The local row is overwritten with the new subscription's ID below, so keep the one a renewal replaces.
-		$replaced_subscription_id = $is_renewing ? ( $member_subscription['subscription_id'] ?? '' ) : '';
+		$next_subscription  = $is_upgrading ? json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true ) : array();
+		$is_delayed_upgrade = $is_upgrading && ! empty( $next_subscription['delayed_until'] );
+		$previous_sub_data  = $is_upgrading ? json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true ) : array();
+		// The local row is overwritten with the new subscription's ID below, so keep the one a renewal or immediate upgrade replaces.
+		if ( $is_renewing ) {
+			$replaced_subscription_id = $member_subscription['subscription_id'] ?? '';
+		} elseif ( $is_upgrading && ! $is_delayed_upgrade ) {
+			$replaced_subscription_id = ! empty( $previous_sub_data['subscription_id'] ) ? $previous_sub_data['subscription_id'] : ( $member_subscription['subscription_id'] ?? '' );
+		} else {
+			$replaced_subscription_id = '';
+		}
 
 		$response = array(
 			'status' => false,
@@ -1793,6 +1810,12 @@ class StripeService {
 						)
 					);
 
+					if ( $is_upgrading && ! $is_delayed_upgrade ) {
+						$this->cancel_previous_upgrade_subscription( $member_id, is_array( $previous_sub_data ) ? $previous_sub_data : array(), $schedule->id );
+					} elseif ( $is_renewing ) {
+						$this->stop_replaced_subscription( $replaced_subscription_id, $schedule->id, $member_id, 'active' );
+					}
+
 					$this->sendEmail( $member_order['ID'], $member_subscription, $membership_metas, $member_id, $response );
 
 					// Subscription-shaped payload the checkout JS expects (active + null payment_intent => no SCA).
@@ -2103,7 +2126,11 @@ class StripeService {
 					)
 				);
 
-				$this->stop_replaced_subscription( $replaced_subscription_id, $subscription->id, $member_id, $new_stripe_status );
+				if ( $is_upgrading && ! $is_delayed_upgrade && in_array( $new_stripe_status, array( 'active', 'trialing' ), true ) ) {
+					$this->cancel_previous_upgrade_subscription( $member_id, is_array( $previous_sub_data ) ? $previous_sub_data : array(), $subscription->id );
+				} else {
+					$this->stop_replaced_subscription( $replaced_subscription_id, $subscription->id, $member_id, $new_stripe_status );
+				}
 
 				PaymentGatewayLogging::log_debug(
 					'stripe',
@@ -2666,10 +2693,16 @@ class StripeService {
 
 		$member_id         = $current_subscription['user_id'];
 
-		// A renewal that needed 3D Secure left the old subscription running; stop it now that the new one is paid.
+		// A renewal or 3D Secure upgrade left the old subscription running; stop it now that the new one is paid.
 		$replaced_subscription = get_user_meta( absint( $member_id ), 'urm_stripe_replaced_subscription', true );
 		if ( is_array( $replaced_subscription ) && ( $replaced_subscription['new'] ?? '' ) === $subscription_id ) {
 			$this->stop_replaced_subscription( $replaced_subscription['old'] ?? '', $subscription_id, $member_id, 'active' );
+		}
+
+		$previous_upgrade_subscription = json_decode( get_user_meta( absint( $member_id ), 'urm_previous_subscription_data', true ), true );
+		$next_upgrade_subscription     = json_decode( get_user_meta( absint( $member_id ), 'urm_next_subscription_data', true ), true );
+		if ( is_array( $previous_upgrade_subscription ) && ! empty( $previous_upgrade_subscription ) && empty( $next_upgrade_subscription['delayed_until'] ) && ( $previous_upgrade_subscription['subscription_id'] ?? '' ) !== $subscription_id ) {
+			$this->cancel_previous_upgrade_subscription( absint( $member_id ), $previous_upgrade_subscription, $subscription_id );
 		}
 		$membership_id = $current_subscription['item_id'];
 		$invoice_id    = $event['data']['object']['id'];
@@ -3128,7 +3161,15 @@ class StripeService {
 			? ! empty( $charge['refunded'] )
 			: ! empty( $charge->refunded );
 
-		$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
+		$subscription_canceled = $this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded, $charge );
+
+		if ( $subscription_canceled ) {
+			$status_note = '; membership subscription canceled';
+		} elseif ( $is_fully_refunded ) {
+			$status_note = '; subscription unchanged (order does not belong to current subscription)';
+		} else {
+			$status_note = '; partial refund — subscription unchanged';
+		}
 
 		PaymentGatewayLogging::log_webhook_processed(
 			'stripe',
@@ -3136,15 +3177,74 @@ class StripeService {
 				'Order %d marked as refunded (PaymentIntent %s)%s.',
 				$order['ID'],
 				$payment_intent_id,
-				$is_fully_refunded ? '; membership subscription canceled' : '; partial refund — subscription unchanged'
+				$status_note
 			),
 			array(
-				'order_id'          => $order['ID'],
-				'payment_intent_id' => $payment_intent_id,
-				'is_fully_refunded' => $is_fully_refunded,
-				'subscription_id'   => $order['subscription_id'] ?? null,
+				'order_id'              => $order['ID'],
+				'payment_intent_id'     => $payment_intent_id,
+				'is_fully_refunded'     => $is_fully_refunded,
+				'subscription_canceled' => $subscription_canceled,
+				'subscription_id'       => $order['subscription_id'] ?? null,
 			)
 		);
+	}
+
+	/**
+	 * Check whether a refunded order belongs to the subscription's current plan and Stripe subscription.
+	 *
+	 * Upgrades reuse the same local subscription row, so an earlier order's PaymentIntent can point to a
+	 * row that now holds a newer plan or Stripe subscription; refunding that old charge must not cancel it.
+	 *
+	 * @param array             $order        Order row from OrdersRepository.
+	 * @param array             $subscription Subscription row from MembersSubscriptionRepository.
+	 * @param array|object|null $charge       Optional Stripe charge object/array from the refund event.
+	 * @return bool
+	 */
+	private function order_belongs_to_current_subscription( $order, $subscription, $charge = null ) {
+		if ( ! empty( $order['item_id'] ) && ! empty( $subscription['item_id'] ) && (int) $order['item_id'] !== (int) $subscription['item_id'] ) {
+			return false;
+		}
+
+		$current_stripe_sub_id = $subscription['subscription_id'] ?? '';
+		if ( empty( $current_stripe_sub_id ) ) {
+			return true;
+		}
+
+		$order_tx_id = $order['transaction_id'] ?? '';
+		if ( ! empty( $order_tx_id ) && 0 === strpos( $order_tx_id, 'sub_' ) && $order_tx_id !== $current_stripe_sub_id ) {
+			return false;
+		}
+
+		$invoice_id = null;
+		if ( is_array( $charge ) ) {
+			$invoice_id = $this->extract_stripe_id( $charge['invoice'] ?? null );
+		} elseif ( is_object( $charge ) && ! empty( $charge->invoice ) ) {
+			$invoice_id = $this->extract_stripe_id( $charge->invoice );
+		}
+
+		if ( ! empty( $invoice_id ) ) {
+			try {
+				$invoice           = \Stripe\Invoice::retrieve( $invoice_id );
+				$invoice_data      = is_object( $invoice ) && method_exists( $invoice, 'toArray' ) ? $invoice->toArray() : (array) $invoice;
+				$charge_stripe_sub = $this->extract_stripe_id( $invoice_data['subscription'] ?? $invoice_data['parent']['subscription_details']['subscription'] ?? null );
+
+				if ( ! empty( $charge_stripe_sub ) && $charge_stripe_sub !== $current_stripe_sub_id ) {
+					return false;
+				}
+			} catch ( \Throwable $e ) {
+				PaymentGatewayLogging::log_error(
+					'stripe',
+					'Failed to verify invoice subscription during refund check: ' . $e->getMessage(),
+					array(
+						'error_code' => 'STRIPE_REFUND_INVOICE_LOOKUP_ERROR',
+						'order_id'   => $order['ID'] ?? 0,
+						'invoice_id' => $invoice_id,
+					)
+				);
+			}
+		}
+
+		return true;
 	}
 
 	/**
@@ -3155,35 +3255,53 @@ class StripeService {
 	 * cancel_at_period_end through cancel_subscription(): the money is already returned, so no further
 	 * billing is the only thing left to stop.
 	 *
-	 * @param array $order             Order row from OrdersRepository.
-	 * @param bool  $is_fully_refunded Whether Stripe reports the charge as fully refunded.
-	 * @return void
+	 * @param array             $order             Order row from OrdersRepository.
+	 * @param bool              $is_fully_refunded Whether Stripe reports the charge as fully refunded.
+	 * @param array|object|null $charge            Optional Stripe charge payload from the refund event.
+	 * @return bool True when the linked subscription was canceled; false when only the order was updated.
 	 */
-	private function apply_refund_to_order_and_subscription( $order, $is_fully_refunded = true ) {
+	private function apply_refund_to_order_and_subscription( $order, $is_fully_refunded = true, $charge = null ) {
 		if ( empty( $order['ID'] ) ) {
-			return;
+			return false;
 		}
 
 		$this->orders_repository->update( $order['ID'], array( 'status' => 'refunded' ) );
 
 		if ( ! $is_fully_refunded ) {
-			return;
+			return false;
 		}
 
-		// Clear pending login before the subscription lookups so one-time or orphaned orders are covered too.
+		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
+		$subscription    = $subscription_id ? $this->members_subscription_repository->retrieve( $subscription_id ) : array();
+
+		// Refunding a replaced plan's charge must not revoke the member's current active subscription.
+		if ( ! empty( $subscription ) && ! $this->order_belongs_to_current_subscription( $order, $subscription, $charge ) ) {
+			PaymentGatewayLogging::log_general(
+				'stripe',
+				'Skipping subscription cancellation for refunded order from a previous plan or Stripe subscription' . "\n" . wp_json_encode(
+					array(
+						'event_type'            => 'refund_skipped_replaced_subscription',
+						'order_id'              => $order['ID'],
+						'order_item_id'         => $order['item_id'] ?? 0,
+						'subscription_id'       => $subscription_id,
+						'subscription_item_id'  => $subscription['item_id'] ?? 0,
+						'current_stripe_sub_id' => $subscription['subscription_id'] ?? '',
+					),
+					JSON_PRETTY_PRINT
+				),
+				'notice'
+			);
+			return false;
+		}
+
+		// Clear pending login before the subscription guard so one-time or orphaned orders are covered too.
 		$member_id = ! empty( $order['user_id'] ) ? absint( $order['user_id'] ) : 0;
 		if ( $member_id ) {
 			delete_transient( 'urm_pending_login_' . $member_id );
 		}
 
-		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
-		if ( ! $subscription_id ) {
-			return;
-		}
-
-		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
-		if ( empty( $subscription ) ) {
-			return;
+		if ( ! $subscription_id || empty( $subscription ) ) {
+			return false;
 		}
 
 		// Local cancel first — content restriction only grants active/trial.
@@ -3216,17 +3334,21 @@ class StripeService {
 				);
 			}
 		}
+
+		return true;
 	}
 
 	/**
 	 * Whether a refunded order has nothing left to revoke.
 	 *
-	 * True when the order has no subscription row to cancel, or that subscription is already canceled.
+	 * True when the order has no subscription row to cancel, that subscription is already canceled,
+	 * or the subscription row now belongs to a newer plan or Stripe subscription.
 	 *
-	 * @param array $order Order row from OrdersRepository.
+	 * @param array             $order  Order row from OrdersRepository.
+	 * @param array|object|null $charge Optional Stripe charge payload from the refund event.
 	 * @return bool
 	 */
-	private function is_refund_subscription_canceled( $order ) {
+	private function is_refund_subscription_canceled( $order, $charge = null ) {
 		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
 		if ( ! $subscription_id ) {
 			return true;
@@ -3234,7 +3356,9 @@ class StripeService {
 
 		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
 
-		return empty( $subscription ) || 'canceled' === ( $subscription['status'] ?? '' );
+		return empty( $subscription )
+			|| 'canceled' === ( $subscription['status'] ?? '' )
+			|| ! $this->order_belongs_to_current_subscription( $order, $subscription, $charge );
 	}
 
 	/**
@@ -3654,6 +3778,180 @@ class StripeService {
 	}
 
 	/**
+	 * Verify with Stripe whether an upgrade's charge actually succeeded when the client reported failure.
+	 *
+	 * Completes the local order and subscription when Stripe confirms the new subscription or
+	 * PaymentIntent succeeded, allowing confirm_payment() to finish the upgrade flow.
+	 *
+	 * @param int $member_id Member user ID.
+	 * @return array Status and message array.
+	 */
+	private function verify_and_complete_paid_upgrade_order( int $member_id ): array {
+		$stripe_settings = self::get_stripe_settings();
+		if ( empty( $stripe_settings['secret_key'] ) ) {
+			return array( 'status' => false );
+		}
+
+		\Stripe\Stripe::setApiKey( $stripe_settings['secret_key'] );
+
+		$member_order = $this->members_orders_repository->get_member_orders( $member_id );
+		if ( empty( $member_order ) || 'stripe' !== ( $member_order['payment_method'] ?? '' ) ) {
+			return array( 'status' => false );
+		}
+
+		$subscription          = ! empty( $member_order['subscription_id'] ) ? $this->members_subscription_repository->retrieve( $member_order['subscription_id'] ) : array();
+		$previous_subscription = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
+		$previous_subscription = is_array( $previous_subscription ) ? $previous_subscription : array();
+
+		if ( ! $this->stripe_charge_succeeded( $member_order, $subscription, $previous_subscription ) ) {
+			return array( 'status' => false );
+		}
+
+		$this->ensure_paid_upgrade_records_active( $member_id, $member_order, $subscription );
+
+		PaymentGatewayLogging::log_general(
+			'stripe',
+			'Client reported failed confirmation for a paid upgrade; completing from Stripe state' . "\n" . wp_json_encode(
+				array(
+					'event_type'      => 'upgrade_confirmed_from_stripe',
+					'member_id'       => $member_id,
+					'order_id'        => $member_order['ID'] ?? 0,
+					'subscription_id' => $subscription['subscription_id'] ?? '',
+				),
+				JSON_PRETTY_PRINT
+			),
+			'notice'
+		);
+
+		return array(
+			'status'  => true,
+			'message' => __( 'Membership upgraded successfully.', 'user-registration' ),
+		);
+	}
+
+	/**
+	 * Ensure a paid upgrade's local order and subscription rows are marked completed and active.
+	 *
+	 * @param int   $member_id    Member user ID.
+	 * @param array $order        Latest order row.
+	 * @param array $subscription Local subscription row.
+	 * @return void
+	 */
+	private function ensure_paid_upgrade_records_active( int $member_id, array $order, array $subscription ): void {
+		if ( ! empty( $order['ID'] ) && 'completed' !== ( $order['status'] ?? '' ) ) {
+			$this->members_orders_repository->update(
+				$order['ID'],
+				array(
+					'status' => 'completed',
+				)
+			);
+		}
+
+		if ( ! empty( $subscription['ID'] ) && ! in_array( $subscription['status'] ?? '', array( 'active', 'trial' ), true ) ) {
+			$this->members_subscription_repository->update(
+				$subscription['ID'],
+				array(
+					'status'     => 'active',
+					'start_date' => gmdate( 'Y-m-d 00:00:00' ),
+				)
+			);
+		}
+
+		delete_transient( 'urm_pending_login_' . $member_id );
+	}
+
+	/**
+	 * Cancel the previous subscription replaced by an immediate upgrade and clear previous-plan markers.
+	 *
+	 * Leaves urm_membership_process['upgrade'] intact when called before confirm_payment() so the
+	 * confirmation callback still recognizes the upgrade; callers completing the upgrade clear it separately.
+	 *
+	 * @param int    $member_id                  Member user ID.
+	 * @param array  $previous_subscription      Snapshot from urm_previous_subscription_data.
+	 * @param string $new_stripe_subscription_id Newly created Stripe subscription or schedule ID.
+	 * @return bool True when the previous subscription was canceled or none needed cancellation.
+	 */
+	private function cancel_previous_upgrade_subscription( int $member_id, array $previous_subscription = array(), string $new_stripe_subscription_id = '' ): bool {
+		if ( empty( $previous_subscription ) ) {
+			$decoded               = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
+			$previous_subscription = is_array( $decoded ) ? $decoded : array();
+		}
+
+		if ( empty( $previous_subscription ) ) {
+			delete_user_meta( $member_id, 'urm_stripe_replaced_subscription' );
+			return true;
+		}
+
+		$next_subscription = json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true );
+		if ( ! empty( $next_subscription['delayed_until'] ) ) {
+			return false;
+		}
+
+		$old_remote_id  = $previous_subscription['subscription_id'] ?? '';
+		$previous_order = json_decode( get_user_meta( $member_id, 'urm_previous_order_data', true ), true );
+		$previous_order = is_array( $previous_order ) ? $previous_order : array();
+
+		// Never cancel the newly created Stripe subscription if IDs match.
+		$needs_remote_cancel = ! empty( $old_remote_id ) && $old_remote_id !== $new_stripe_subscription_id;
+		$canceled            = true;
+
+		if ( $needs_remote_cancel ) {
+			if ( ! empty( $previous_order['payment_method'] ) ) {
+				$subscription_service = new SubscriptionService();
+				$cancel_result        = $subscription_service->cancel_subscription( $previous_order, $previous_subscription, true );
+				$canceled             = ! empty( $cancel_result['status'] );
+			} elseif ( 0 === strpos( (string) $old_remote_id, 'sub_' ) ) {
+				$cancel_result = $this->cancel_subscription( array(), $previous_subscription, true );
+				$canceled      = ! empty( $cancel_result['status'] );
+			}
+		}
+
+		if ( $canceled ) {
+			delete_user_meta( $member_id, 'urm_next_subscription_data' );
+			delete_user_meta( $member_id, 'urm_previous_subscription_data' );
+			delete_user_meta( $member_id, 'urm_previous_order_data' );
+			delete_user_meta( $member_id, 'urm_stripe_replaced_subscription' );
+		} else {
+			PaymentGatewayLogging::log_error(
+				'stripe',
+				'Failed to cancel previous subscription during Stripe upgrade',
+				array(
+					'error_code'          => 'UPGRADE_OLD_SUBSCRIPTION_CANCEL_FAILED',
+					'member_id'           => $member_id,
+					'old_subscription_id' => $old_remote_id,
+					'new_subscription_id' => $new_stripe_subscription_id,
+				)
+			);
+		}
+
+		return $canceled;
+	}
+
+	/**
+	 * Complete a paid upgrade when revert_subscription() discovers Stripe already charged the member.
+	 *
+	 * @param int   $member_id             Member user ID.
+	 * @param array $order                 Latest order row.
+	 * @param array $subscription          Current local subscription row.
+	 * @param array $previous_subscription Snapshot from urm_previous_subscription_data.
+	 * @return void
+	 */
+	private function complete_paid_upgrade( int $member_id, array $order, array $subscription, array $previous_subscription = array() ): void {
+		$this->ensure_paid_upgrade_records_active( $member_id, $order, $subscription );
+		$this->cancel_previous_upgrade_subscription( $member_id, $previous_subscription, $subscription['subscription_id'] ?? '' );
+
+		$membership_process    = urm_get_membership_process( $member_id );
+		$current_membership_id = isset( $_POST['current_membership_id'] ) ? absint( wp_unslash( $_POST['current_membership_id'] ) ) : absint( $previous_subscription['item_id'] ?? 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		if ( $current_membership_id && ! empty( $membership_process['upgrade'] ) && isset( $membership_process['upgrade'][ $current_membership_id ] ) ) {
+			unset( $membership_process['upgrade'][ $current_membership_id ] );
+			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
+		}
+
+		update_user_meta( $member_id, 'urm_is_user_upgraded', 1 );
+	}
+
+	/**
 	 * Revert subscription.
 	 *
 	 * @param int $member_id Member ID.
@@ -3662,12 +3960,18 @@ class StripeService {
 	 */
 	public function revert_subscription( int $member_id ): void {
 		$last_subscription = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
-		$subscription_id   = $last_subscription['ID'];
+		if ( ! is_array( $last_subscription ) || empty( $last_subscription['ID'] ) ) {
+			return;
+		}
+
+		$previous_subscription = $last_subscription;
+		$subscription_id       = $last_subscription['ID'];
 		unset( $last_subscription['ID'] );
 		$last_order   = $this->members_orders_repository->get_member_orders( $member_id );
 		$subscription = $this->members_subscription_repository->retrieve( $subscription_id );
 
-		if ( 'stripe' === ( $last_order['payment_method'] ?? '' ) && $this->stripe_charge_succeeded( $last_order, $subscription ) ) {
+		if ( 'stripe' === ( $last_order['payment_method'] ?? '' ) && $this->stripe_charge_succeeded( $last_order, $subscription, $previous_subscription ) ) {
+			$this->complete_paid_upgrade( $member_id, is_array( $last_order ) ? $last_order : array(), is_array( $subscription ) ? $subscription : array(), $previous_subscription );
 			return;
 		}
 
@@ -3676,21 +3980,49 @@ class StripeService {
 		$refund_response = $this->refund( $last_order, $subscription ); // phpcs:ignore VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable
 
 		delete_user_meta( $member_id, 'urm_previous_subscription_data' );
-		$membership_process = urm_get_membership_process( $member_id );
+		delete_user_meta( $member_id, 'urm_stripe_replaced_subscription' );
+		$membership_process    = urm_get_membership_process( $member_id );
+		$current_membership_id = isset( $_POST['current_membership_id'] ) ? absint( wp_unslash( $_POST['current_membership_id'] ) ) : absint( $previous_subscription['item_id'] ?? 0 ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 
-		if ( ! empty( $membership_process ) && isset( $membership_process['upgrade'][ $_POST['current_membership_id'] ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			unset( $membership_process['upgrade'][ $_POST['current_membership_id'] ] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		if ( $current_membership_id && ! empty( $membership_process ) && isset( $membership_process['upgrade'][ $current_membership_id ] ) ) {
+			unset( $membership_process['upgrade'][ $current_membership_id ] );
 			update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 		}
 	}
 
-	private function stripe_charge_succeeded( $order, $subscription ) {
+	/**
+	 * Verify with Stripe whether the upgrade order's new subscription or PaymentIntent succeeded.
+	 *
+	 * @param array $order                 Latest order row.
+	 * @param array $subscription          Current local subscription row.
+	 * @param array $previous_subscription Optional snapshot from urm_previous_subscription_data to avoid matching the old subscription.
+	 * @return bool
+	 */
+	private function stripe_charge_succeeded( $order, $subscription, $previous_subscription = array() ) {
 		try {
+			$stripe_settings = self::get_stripe_settings();
+			if ( ! empty( $stripe_settings['secret_key'] ) ) {
+				\Stripe\Stripe::setApiKey( $stripe_settings['secret_key'] );
+			}
+
 			if ( 'subscription' === ( $order['order_type'] ?? '' ) && ! empty( $subscription['subscription_id'] ) ) {
-				$stripe_subscription = \Stripe\Subscription::retrieve( $subscription['subscription_id'] );
+				$stripe_sub_id      = (string) $subscription['subscription_id'];
+				$prev_stripe_sub_id = (string) ( $previous_subscription['subscription_id'] ?? '' );
+
+				// If the local row still holds the old Stripe subscription ID, no new subscription was created yet.
+				if ( '' !== $prev_stripe_sub_id && $stripe_sub_id === $prev_stripe_sub_id ) {
+					return false;
+				}
+
+				if ( 0 === strpos( $stripe_sub_id, 'sub_sched_' ) ) {
+					$schedule = \Stripe\SubscriptionSchedule::retrieve( $stripe_sub_id );
+					return in_array( $schedule->status, array( 'not_started', 'active' ), true );
+				}
+
+				$stripe_subscription = \Stripe\Subscription::retrieve( $stripe_sub_id );
 				return in_array( $stripe_subscription->status, array( 'active', 'trialing' ), true );
 			}
-			if ( ! empty( $order['transaction_id'] ) ) {
+			if ( ! empty( $order['transaction_id'] ) && 0 === strpos( (string) $order['transaction_id'], 'pi_' ) ) {
 				$intent = \Stripe\PaymentIntent::retrieve( $order['transaction_id'] );
 				return 'succeeded' === $intent->status;
 			}
@@ -5001,7 +5333,7 @@ class StripeService {
 			$is_fully_refunded = ! empty( $charge->refunded );
 
 			// A partial refund may already have marked the order refunded, so the final full refund must still revoke access, but a fully handled order is a no-op on later runs.
-			$is_already_handled = 'refunded' === $order['status'] && ( ! $is_fully_refunded || $this->is_refund_subscription_canceled( $order ) );
+			$is_already_handled = 'refunded' === $order['status'] && ( ! $is_fully_refunded || $this->is_refund_subscription_canceled( $order, $charge ) );
 			if ( $is_already_handled ) {
 				$logger->info(
 					sprintf( '[Backfill][Stripe][Refunds] Order %d already refunded — skipping.', $order['ID'] ),
@@ -5010,14 +5342,23 @@ class StripeService {
 				continue;
 			}
 
-			$this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded );
+			$subscription_canceled = $this->apply_refund_to_order_and_subscription( $order, $is_fully_refunded, $charge );
 			++$total_updated;
+
+			if ( $subscription_canceled ) {
+				$backfill_note = '; membership subscription canceled';
+			} elseif ( $is_fully_refunded ) {
+				$backfill_note = '; subscription unchanged (order does not belong to current subscription)';
+			} else {
+				$backfill_note = '; partial refund — subscription unchanged';
+			}
+
 			$logger->info(
 				sprintf(
 					'[Backfill][Stripe][Refunds] Marked order %d as refunded (PaymentIntent %s)%s',
 					$order['ID'],
 					$payment_intent_id,
-					$is_fully_refunded ? '; membership subscription canceled' : '; partial refund — subscription unchanged'
+					$backfill_note
 				),
 				array( 'source' => 'urm-missed-payment-backfill' )
 			);

@@ -963,6 +963,7 @@ class AJAX {
 					delete_user_meta( $member_id, 'urm_next_subscription_data' );
 					delete_user_meta( $member_id, 'urm_previous_subscription_data' );
 					delete_user_meta( $member_id, 'urm_previous_order_data' );
+					delete_user_meta( $member_id, 'urm_stripe_replaced_subscription' );
 				}
 			}
 
