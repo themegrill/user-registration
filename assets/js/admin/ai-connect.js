@@ -1,13 +1,16 @@
 /**
- * The Connect an AI Assistant card on Settings, Advanced, AI Integration.
+ * The Connect an AI Assistant drawer on Settings, Advanced, AI Integration.
  *
- * Runs the readiness check, makes the AI user and its password in one click, and shows what each AI app needs.
+ * Runs the readiness check, makes the AI user and its password in one click once the admin agrees, and shows
+ * what the chosen AI app needs.
  */
 (function ($) {
 	"use strict";
 
 	var cfg = window.urAiConnect || {};
 	var i18n = cfg.i18n || {};
+	var apps = cfg.apps || {};
+	var current = "claude-code";
 
 	function post(action, data) {
 		return $.post(cfg.ajaxUrl, $.extend({ action: action, security: cfg.nonce }, data || {}));
@@ -17,12 +20,16 @@
 		return response && response.data && response.data.message ? response.data.message : i18n.failed;
 	}
 
+	function notice(text) {
+		$("#ur-ai-result").text(text).prop("hidden", !text);
+	}
+
 	function copyText(text, button) {
 		var done = function () {
-			var label = $(button).text();
-			$(button).text(i18n.copied);
+			var label = $(button).data("label") || $(button).text();
+			$(button).data("label", label).text(i18n.copied);
 			setTimeout(function () {
-				$(button).text(label === i18n.copied ? i18n.copy : label);
+				$(button).text(label);
 			}, 1500);
 		};
 
@@ -49,55 +56,41 @@
 		area.remove();
 	}
 
-	function showResult(data) {
-		var box = $("#ur-ai-result").empty().prop("hidden", false);
-		var order = ["claude", "cursor", "codex", "prompt"];
-		var tabs = $('<div class="ur-ai-connect__tabs" role="tablist">');
-		var pre = $("<pre>");
-		var current = "claude";
+	// A fresh tab starts from nothing: nothing generated, nothing agreed to. Each app gets its own password,
+	// named after it, so the activity log can tell the apps apart.
+	function selectApp(key) {
+		var app = apps[key];
 
-		function select(key) {
-			current = key;
-			pre.text(data.snippets[key]);
-			tabs.find("button").each(function () {
-				$(this).toggleClass("is-active", $(this).data("key") === key);
-			});
+		if (!app) {
+			return;
 		}
 
-		box.append($("<p>").append($("<strong>").text(i18n.user + ": "), document.createTextNode(data.login)));
-		box.append(
-			$("<p>").append(
-				$("<strong>").text(i18n.password + ": "),
-				$('<span class="ur-ai-connect__secret">').text(data.password),
-				" ",
-				$('<button type="button" class="button button-small">').text(i18n.copy).on("click", function () {
-					copyText(data.password.replace(/\s+/g, ""), this);
-				})
-			)
-		);
-		box.append($("<p>").append($("<strong>").text(i18n.readyText)));
-
-		order.forEach(function (key) {
-			$('<button type="button" class="button">')
-				.text(i18n.tabs[key])
-				.data("key", key)
-				.on("click", function () {
-					select(key);
-				})
-				.appendTo(tabs);
+		current = key;
+		$(".ur-ai-apps__tab").each(function () {
+			$(this).toggleClass("is-active", $(this).data("app") === key);
 		});
+		$("#ur-ai-panel-title").text(i18n.title.replace("%s", app.label));
+		$("#ur-ai-panel-intro").text(app.intro);
+		$("#ur-ai-consent").prop("checked", false);
+		$("#ur-ai-create").prop("disabled", true);
+		$("#ur-ai-prompt").text("");
+		$("#ur-ai-copy-prompt, #ur-ai-copy-pass, #ur-ai-once").prop("hidden", true);
+		$("#ur-ai-m-user, #ur-ai-m-pass").text("-");
+		notice("");
+	}
 
-		box.append(tabs, pre);
-		box.append(
-			$('<button type="button" class="button button-primary">').text(i18n.copy).on("click", function () {
-				copyText(data.snippets[current], this);
-			})
-		);
-		select("claude");
+	function showResult(data) {
+		$("#ur-ai-prompt").text(data.snippets[apps[current].snippet]);
+		$("#ur-ai-copy-prompt, #ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
+		$("#ur-ai-m-user").text(data.login);
+		$("#ur-ai-m-pass").text(data.password);
+		$("#ur-ai-m-endpoint").text(data.endpoint);
+		$("#ur-ai-copy-pass").data("password", data.password.replace(/\s+/g, ""));
 	}
 
 	// The drawer lives outside the settings form, so nothing in it is ever saved with the settings.
 	$("#ur-ai-overlay, #ur-ai-drawer").appendTo("body");
+	selectApp(current);
 
 	function openDrawer() {
 		$("#ur-ai-overlay").prop("hidden", false);
@@ -125,6 +118,28 @@
 		}
 	});
 
+	$(document).on("click", ".ur-ai-apps__tab", function () {
+		selectApp($(this).data("app"));
+	});
+
+	$(document).on("change", "#ur-ai-consent", function () {
+		$("#ur-ai-create").prop("disabled", !this.checked);
+	});
+
+	$(document).on("click", "#ur-ai-manual-toggle", function () {
+		$("#ur-ai-manual").prop("hidden", function (index, hidden) {
+			return !hidden;
+		});
+	});
+
+	$(document).on("click", "#ur-ai-copy-prompt", function () {
+		copyText($("#ur-ai-prompt").text(), this);
+	});
+
+	$(document).on("click", "#ur-ai-copy-pass", function () {
+		copyText($(this).data("password"), this);
+	});
+
 	$(document).on("click", ".ur-ai-copy", function () {
 		copyText($(this).data("copy"), this);
 	});
@@ -149,21 +164,24 @@
 		var label = button.text();
 
 		button.text(i18n.working);
+		notice("");
 
-		post("ur_ai_connect_create", { app: $("#ur-ai-app").val() })
+		post("ur_ai_connect_create", { app: apps[current].label })
 			.done(function (response) {
 				if (response.success) {
 					showResult(response.data);
 					$("#ur-ai-checks").html(response.data.checks);
 				} else {
-					$("#ur-ai-result").prop("hidden", false).empty().append($("<p>").text(message(response)));
+					notice(message(response));
 				}
 			})
 			.fail(function (xhr) {
-				$("#ur-ai-result").prop("hidden", false).empty().append($("<p>").text(message(xhr.responseJSON)));
+				notice(message(xhr.responseJSON));
 			})
 			.always(function () {
-				button.prop("disabled", false).text(label);
+				// The consent covers one password. Ask again for the next one.
+				button.text(label).prop("disabled", true);
+				$("#ur-ai-consent").prop("checked", false);
 			});
 	});
 
@@ -175,7 +193,8 @@
 		post("ur_ai_connect_revoke").done(function (response) {
 			if (response.success) {
 				$("#ur-ai-checks").html(response.data.checks);
-				$("#ur-ai-result").prop("hidden", false).empty().append($("<p>").text(i18n.removed));
+				selectApp(current);
+				notice(i18n.removed);
 			}
 		});
 	});

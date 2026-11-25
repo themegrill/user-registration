@@ -274,6 +274,16 @@ security_assert( array( 'ai_integration', 'ai_connect', 'ai_abilities_access' ) 
 security_assert( 'ur_ai_connect' === $settings['sections']['ai_connect']['settings'][0]['type'] && ! isset( $settings['sections']['ai_connect']['settings'][0]['id'] ), 'It has no id, so saving the page never touches it' );
 security_assert( 'odd' === UR_Abilities_Connect::add_settings( 'odd' ) && array( 'sections' => array() ) === UR_Abilities_Connect::add_settings( array( 'sections' => array() ) ), 'Settings of an unexpected shape are returned untouched' );
 
+// Claude Desktop reaches a remote server through mcp-remote, and the login stays out of the command line.
+$desktop = json_decode( $snippets['desktop'], true );
+$entry   = $desktop['mcpServers']['shop-example-com'] ?? array();
+security_assert( 'npx' === ( $entry['command'] ?? '' ) && in_array( $result['endpoint'], $entry['args'] ?? array(), true ) && 'Basic ' . $result['code'] === ( $entry['env']['UR_AI_AUTH'] ?? '' ), 'Claude Desktop gets an mcp-remote entry with the login in its environment' );
+
+// The drawer offers five apps, each pointing at a snippet that exists.
+$apps = UR_Abilities_Connect::apps();
+security_assert( array( 'claude-code', 'claude-desktop', 'codex', 'cursor', 'other' ) === array_keys( $apps ), 'The drawer offers Claude Code, Claude Desktop, Codex, Cursor and Other, in that order' );
+security_assert( array() === array_filter( $apps, function ( $app ) use ( $snippets ) { return ! isset( $snippets[ $app['snippet'] ] ); } ), 'Every app points at a snippet that exists' );
+
 // The starter prompts only look.
 $prompts = UR_Abilities_Connect::prompts();
 security_assert( count( $prompts ) >= 4 && array() === array_filter( $prompts, function ( $p ) { return preg_match( '/\b(create|delete|approve|deny|turn on|turn off|change|remove)\b/i', $p ); } ), 'The starter prompts only ask to see things, never to change them' );

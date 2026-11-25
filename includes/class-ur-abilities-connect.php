@@ -152,8 +152,20 @@ class UR_Abilities_Connect {
 		$name = '' === $name ? 'my-site' : $name;
 
 		return array(
-			'claude' => 'claude mcp add --transport http --scope user ' . $name . ' ' . $endpoint . ' --header "Authorization: Basic ' . $code . '"',
-			'cursor' => wp_json_encode(
+			'desktop' => wp_json_encode(
+				array(
+					'mcpServers' => array(
+						$name => array(
+							'command' => 'npx',
+							'args'    => array( '-y', 'mcp-remote', $endpoint, '--header', 'Authorization:${UR_AI_AUTH}' ),
+							'env'     => array( 'UR_AI_AUTH' => 'Basic ' . $code ),
+						),
+					),
+				),
+				JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+			),
+			'claude'  => 'claude mcp add --transport http --scope user ' . $name . ' ' . $endpoint . ' --header "Authorization: Basic ' . $code . '"',
+			'cursor'  => wp_json_encode(
 				array(
 					'mcpServers' => array(
 						$name => array(
@@ -164,8 +176,45 @@ class UR_Abilities_Connect {
 				),
 				JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 			),
-			'codex'  => "[mcp_servers.{$name}]\nurl = \"{$endpoint}\"\nhttp_headers = { Authorization = \"Basic {$code}\" }",
-			'prompt' => 'Add an MCP server to your own configuration. Name: ' . $name . '. Type: HTTP. URL: ' . $endpoint . '. Header: Authorization: Basic ' . $code . '. Then list my registration forms to check it works.',
+			'codex'   => "[mcp_servers.{$name}]\nurl = \"{$endpoint}\"\nhttp_headers = { Authorization = \"Basic {$code}\" }",
+			'prompt'  => 'Add an MCP server to your own configuration. Name: ' . $name . '. Type: HTTP. URL: ' . $endpoint . '. Header: Authorization: Basic ' . $code . '. Then list my registration forms to check it works.',
+		);
+	}
+
+	/**
+	 * The AI apps the drawer offers, in tab order.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return array Key => label, snippet (key in snippets()) and intro.
+	 */
+	public static function apps() {
+		return array(
+			'claude-code'    => array(
+				'label'   => 'Claude Code',
+				'snippet' => 'claude',
+				'intro'   => __( 'Paste this command into your terminal. It saves the connection for every folder.', 'user-registration' ),
+			),
+			'claude-desktop' => array(
+				'label'   => 'Claude Desktop',
+				'snippet' => 'desktop',
+				'intro'   => __( 'Add this to claude_desktop_config.json (Settings, Developer, Edit Config), then restart Claude Desktop. It needs Node.js installed.', 'user-registration' ),
+			),
+			'codex'          => array(
+				'label'   => 'Codex',
+				'snippet' => 'codex',
+				'intro'   => __( 'Add this to ~/.codex/config.toml, then restart Codex.', 'user-registration' ),
+			),
+			'cursor'         => array(
+				'label'   => 'Cursor',
+				'snippet' => 'cursor',
+				'intro'   => __( 'Add this to ~/.cursor/mcp.json, or to Settings, MCP, then reload Cursor.', 'user-registration' ),
+			),
+			'other'          => array(
+				'label'   => __( 'Other', 'user-registration' ),
+				'snippet' => 'prompt',
+				'intro'   => __( 'Paste this into any AI app that can add an MCP server. It asks the app to set itself up.', 'user-registration' ),
+			),
 		);
 	}
 
@@ -339,14 +388,40 @@ class UR_Abilities_Connect {
 			<p><button type="button" class="button" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button> <span class="ur-ai-connect__last" id="ur-ai-last"><?php echo esc_html( self::last_call_text() ); ?></span></p>
 
 			<h4><span class="ur-ai-connect__step">2</span><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
-			<label for="ur-ai-app" class="ur-ai-connect__label"><?php esc_html_e( 'Name of the AI app', 'user-registration' ); ?></label>
-			<input type="text" id="ur-ai-app" value="Claude" maxlength="100" />
-			<p class="description"><?php esc_html_e( 'The name shows in the activity log, so you can tell apps apart. The password is shown once. Copy it now.', 'user-registration' ); ?></p>
-			<p>
-				<button type="button" class="button button-primary" id="ur-ai-create"><?php esc_html_e( 'Create AI user and password', 'user-registration' ); ?></button>
-				<button type="button" class="button" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button>
-			</p>
-			<div class="ur-ai-connect__result" id="ur-ai-result" hidden></div>
+			<div class="ur-ai-apps" role="tablist">
+				<?php foreach ( self::apps() as $key => $app ) : ?>
+					<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude-code' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
+				<?php endforeach; ?>
+			</div>
+			<div class="ur-ai-panel">
+				<h5 id="ur-ai-panel-title"></h5>
+				<p id="ur-ai-panel-intro"></p>
+				<label class="ur-ai-consent">
+					<input type="checkbox" id="ur-ai-consent" />
+					<span><?php echo wp_kses( __( 'I understand that clicking <strong>Generate prompt</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ), array( 'strong' => array() ) ); ?></span>
+				</label>
+				<div class="ur-ai-panel__actions">
+					<button type="button" class="button button-primary" id="ur-ai-create" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
+					<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
+				</div>
+				<div class="ur-ai-prompt">
+					<pre id="ur-ai-prompt" data-empty="<?php esc_attr_e( 'Your setup prompt will appear here after you generate it.', 'user-registration' ); ?>"></pre>
+					<button type="button" class="button button-primary" id="ur-ai-copy-prompt" hidden><?php esc_html_e( 'Copy', 'user-registration' ); ?></button>
+				</div>
+				<p class="description" id="ur-ai-once" hidden><?php esc_html_e( 'The password is shown once. Copy it now. The app name shows in the activity log.', 'user-registration' ); ?></p>
+				<dl class="ur-ai-manual" id="ur-ai-manual" hidden>
+					<dt><?php esc_html_e( 'Server address', 'user-registration' ); ?></dt>
+					<dd><code id="ur-ai-m-endpoint"><?php echo esc_html( rest_url( self::ROUTE ) ); ?></code></dd>
+					<dt><?php esc_html_e( 'User', 'user-registration' ); ?></dt>
+					<dd><code id="ur-ai-m-user">-</code></dd>
+					<dt><?php esc_html_e( 'Application password', 'user-registration' ); ?></dt>
+					<dd><code id="ur-ai-m-pass">-</code> <button type="button" class="button button-small" id="ur-ai-copy-pass" hidden><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></dd>
+					<dt><?php esc_html_e( 'How it signs in', 'user-registration' ); ?></dt>
+					<dd><?php esc_html_e( 'HTTP header Authorization: Basic, with the user and the application password.', 'user-registration' ); ?></dd>
+				</dl>
+			</div>
+			<p class="ur-ai-connect__remove"><button type="button" class="ur-ai-link" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button></p>
+			<p class="ur-ai-connect__notice" id="ur-ai-result" role="status" hidden></p>
 
 			<h4><span class="ur-ai-connect__step">3</span><?php esc_html_e( 'Then ask it something', 'user-registration' ); ?></h4>
 			<ul class="ur-ai-connect__prompts">
@@ -396,7 +471,7 @@ class UR_Abilities_Connect {
 	/** Add the script and styles of the card. */
 	private static function enqueue() {
 		$css = '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
-			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:448px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
+			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:600px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
 			. '.ur-ai-drawer.is-open{transform:none}.ur-ai-drawer[hidden],.ur-ai-drawer-overlay[hidden]{display:none}'
 			. '.ur-ai-drawer__header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e1e4ed}.ur-ai-drawer__header h2{margin:0;font-size:18px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-drawer__close{border:0;background:none;font-size:28px;line-height:1;color:#646a7a;cursor:pointer;padding:0 4px}.ur-ai-drawer__close:hover{color:#2d3559}'
@@ -407,9 +482,15 @@ class UR_Abilities_Connect {
 			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
-			. '.ur-ai-connect__result{margin-top:12px;padding:14px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb}'
-			. '.ur-ai-connect__result pre{margin:6px 0 10px;padding:10px;background:#fff;border:1px solid #e1e4ed;border-radius:4px;white-space:pre-wrap;word-break:break-all;font-size:12px}'
-			. '.ur-ai-connect__tabs{display:flex;gap:6px;margin:10px 0 4px;flex-wrap:wrap}.ur-ai-connect__tabs .button.is-active{border-color:#475bb2;color:#475bb2}'
+			. '.ur-ai-apps{display:flex;gap:4px;flex-wrap:wrap;padding:4px;border:1px solid #e1e4ed;border-radius:999px;width:fit-content;max-width:100%}'
+			. '.ur-ai-apps__tab{border:0;background:none;padding:6px 14px;border-radius:999px;color:#646a7a;font-size:13px;cursor:pointer}.ur-ai-apps__tab:hover{color:#2d3559}.ur-ai-apps__tab.is-active{background:#eef1fb;color:#475bb2;font-weight:600}'
+			. '.ur-ai-panel{margin-top:18px}.ur-ai-panel h5{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-panel p{margin:0 0 12px}'
+			. '.ur-ai-consent{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;line-height:1.5}.ur-ai-consent input{margin:3px 0 0;flex:none}'
+			. '.ur-ai-panel__actions{display:flex;align-items:center;gap:18px;margin-bottom:14px}.ur-ai-panel__actions .button{height:34px;line-height:32px;padding:0 16px;margin:0}'
+			. '.ur-ai-link{border:0;background:none;padding:0;color:#475bb2;text-decoration:underline;cursor:pointer;font-size:13px}.ur-ai-connect__remove{margin:18px 0 0}.ur-ai-connect__notice{margin:8px 0 0;color:#646a7a}'
+			. '.ur-ai-prompt{position:relative}.ur-ai-prompt pre{margin:0;min-height:120px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
+			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .button{position:absolute;right:10px;bottom:10px;height:30px;line-height:28px;padding:0 14px;margin:0}'
+			. '.ur-ai-manual{margin:12px 0 0;padding:12px 14px;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-manual dt{margin-top:8px;font-weight:600}.ur-ai-manual dt:first-child{margin-top:0}.ur-ai-manual dd{margin:2px 0 0;word-break:break-all}'
 			. '.ur-ai-connect__prompts{margin:0;padding:0;list-style:none}.ur-ai-connect__prompts li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f2f7}.ur-ai-connect__secret{font-weight:600}';
 
 		wp_register_style( 'user-registration-ai-connect', false, array(), UR_VERSION );
@@ -422,22 +503,16 @@ class UR_Abilities_Connect {
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( self::NONCE ),
+				'apps'    => self::apps(),
 				'i18n'    => array(
-					'working'   => __( 'Working...', 'user-registration' ),
-					'copied'    => __( 'Copied', 'user-registration' ),
-					'copy'      => __( 'Copy', 'user-registration' ),
-					'failed'    => __( 'Something went wrong. Try again.', 'user-registration' ),
-					'password'  => __( 'Password (shown once)', 'user-registration' ),
-					'user'      => __( 'User', 'user-registration' ),
-					'readyText' => __( 'Ready to paste', 'user-registration' ),
-					'confirm'   => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
-					'removed'   => __( 'Removed.', 'user-registration' ),
-					'tabs'      => array(
-						'claude' => 'Claude',
-						'cursor' => 'Cursor',
-						'codex'  => 'Codex',
-						'prompt' => __( 'Ready prompt', 'user-registration' ),
-					),
+					'working' => __( 'Working...', 'user-registration' ),
+					'copied'  => __( 'Copied', 'user-registration' ),
+					'copy'    => __( 'Copy', 'user-registration' ),
+					'failed'  => __( 'Something went wrong. Try again.', 'user-registration' ),
+					/* translators: %s: name of the AI app. */
+					'title'   => __( 'Connect this site to %s', 'user-registration' ),
+					'confirm' => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
+					'removed' => __( 'Removed.', 'user-registration' ),
 				),
 			)
 		);
