@@ -5918,7 +5918,7 @@ if ( ! function_exists( 'ur_is_registration_rate_limited' ) ) {
 			return true;
 		}
 
-		// ponytail: get/set is not atomic, so concurrent requests can overshoot by the burst size; use a locked counter if that matters.
+		// Non-atomic read then write: concurrent requests can overshoot the limit by the burst size.
 		set_transient( $key, $attempts + 1, $window );
 
 		return false;
@@ -5992,11 +5992,14 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 				)
 			);
 
-			wp_send_json_error(
-				array(
-					'message' => __( 'Too many registration attempts. Please try again later.', 'user-registration' ),
-				)
-			);
+			$rate_limit_message = __( 'Too many registration attempts. Please try again later.', 'user-registration' );
+
+			if ( empty( $_POST['ur_fallback_submit'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+				wp_send_json_error( array( 'message' => $rate_limit_message ) );
+			}
+
+			set_transient( 'ur_form_errors_' . $form_id . '_' . wp_create_nonce( 'ur_form_errors' ), array( $rate_limit_message ), 60 );
+			return;
 		}
 
 		$logger->info(

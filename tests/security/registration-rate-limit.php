@@ -22,6 +22,8 @@ function set_transient( $key, $value, $expiration ) {
 	return true; }
 function ur_get_ip_address() {
 	return $GLOBALS['ip']; }
+function wp_create_nonce( $action ) {
+	return 'nonce'; }
 function is_user_logged_in() {
 	return ! empty( $GLOBALS['logged_in'] ); }
 class Recording_Logger {
@@ -112,3 +114,17 @@ try {
 	$continued = false !== strpos( $e->getMessage(), 'Processing continued' );
 }
 security_assert( $continued, 'Logged-in submitters bypass the limiter' );
+
+// A fallback (non-AJAX) submission gets the message stored for the form to render, not a JSON response.
+$GLOBALS['logged_in']        = false;
+$GLOBALS['caps']             = array();
+$GLOBALS['transients']       = array( $key => 10 );
+$_POST['ur_fallback_submit'] = '1';
+$fallback_response           = null;
+try {
+	ur_process_registration();
+} catch ( SecurityResponse $e ) {
+	$fallback_response = $e;
+}
+security_assert( null === $fallback_response, 'Fallback submissions do not terminate with a JSON response' );
+security_assert( array( 'Too many registration attempts. Please try again later.' ) === $GLOBALS['transients']['ur_form_errors_5_nonce'], 'Fallback submissions store the message for the form to show' );
