@@ -91,7 +91,7 @@ security_assert( false !== strpos( $js_source, 'ur-ai-connect-pane' ) && false !
 $connect_js = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-connect.js' );
 security_assert( false !== strpos( $connect_js, 'if (cfg.inline)' ) && false !== strpos( $connect_js, 'ur-ai-show-connect' ), 'With the tabs on the Connect button asks for the tab; with them off it still opens the drawer' );
 $connect_php = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-connect.php' );
-security_assert( false !== strpos( $connect_php, "'inline'  => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled()" ), 'The Connect script only goes inline while the tabs are enabled, so turning the tabs off brings the drawer back' );
+security_assert( 1 === preg_match( "/'inline'\s+=> class_exists\( 'UR_Abilities_Tabs' \) && UR_Abilities_Tabs::enabled\(\)/", $connect_php ), 'The Connect script only goes inline while the tabs are enabled, so turning the tabs off brings the drawer back' );
 security_assert( false !== strpos( $connect_php, "\$inline = class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled();" ) && false !== strpos( $connect_php, '<?php if ( ! $inline ) : ?>' ), 'The Connect row and its button are drawn only while the tabs are off' );
 security_assert( false !== strpos( $js_source, 'var groups = [cards, pane.add(activePane)];' ) && false === strpos( $js_source, 'ur-ability-access' ), 'The first tab holds every card the page already had, the access card included, and the script never singles it out' );
 
