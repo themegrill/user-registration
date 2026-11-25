@@ -233,27 +233,23 @@
 	});
 
 	// A quiet suggestion at the bottom: one question at a time, from all of them, starting with one that only looks.
-	// The shuffle button picks another at random, never the same one twice in a row. Questions that change the site
-	// say what to switch on first.
+	// The shuffle button picks another at random, never the same one twice in a row.
 	var asks = [];
 
 	Object.keys(cfg.asks || {}).forEach(function (level) {
 		(cfg.asks[level].questions || []).forEach(function (text) {
-			asks.push({ text: text, hint: "read" === level ? "" : cfg.asks[level].hint });
+			asks.push(text);
 		});
 	});
 
 	var askIndex = 0;
 
 	function showAsk() {
-		var ask = asks[askIndex];
-
-		if (!ask) {
+		if (!asks[askIndex]) {
 			return;
 		}
 
-		$("#ur-ai-ask-text").text(ask.text);
-		$("#ur-ai-ask-hint").text(ask.hint).prop("hidden", !ask.hint);
+		$("#ur-ai-ask-text").text(asks[askIndex]);
 		$("#ur-ai-ask-next").prop("hidden", asks.length < 2);
 	}
 

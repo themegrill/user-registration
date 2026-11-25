@@ -261,6 +261,8 @@ security_assert( false === strpos( $source, 'ur-ai-hero' ) && false === strpos( 
 security_assert( false === strpos( $source, 'ur-ai-asks__tab' ) && false === strpos( $source, 'ur-ai-ask__count' ) && false === strpos( $source, 'ur-ai-tryasking__title' ) && false !== strpos( $source, 'id="ur-ai-ask-text"' ) && false !== strpos( $source, 'id="ur-ai-ask-next"' ), 'Try asking is one quiet line with Copy and Another question: no Read, Write and Delete tabs, no counter and no heading of its own' );
 security_assert( false === strpos( $source, 'Another question' ) && false !== strpos( $source, 'class="ur-ai-iconbtn" id="ur-ai-ask-next"' ) && false !== strpos( $source, 'Show a different question' ) && false !== strpos( $source, 'aria-label=' ), 'The next question is a small shuffle button with a label for screen readers, not a text link' );
 $ask_js = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-connect.js' );
+security_assert( false === strpos( $source, 'ur-ai-ask-hint' ) && false === strpos( $source, 'ur-ai-try__hint' ) && false === strpos( $ask_js, 'ask.hint' ) && false === strpos( $source, 'Switch on the matching ability' ), 'There is no hint line under the question' );
+security_assert( false === strpos( $source, 'text-decoration:underline' ) && false !== strpos( $source, 'color:#475bb2;text-decoration:none;cursor:pointer' ), 'The links in this tab, such as Prefer manual configuration and Remove all AI passwords, have no underline' );
 security_assert( false !== strpos( $ask_js, 'Math.random()' ) && false !== strpos( $ask_js, 'next === askIndex' ), 'The shuffle picks at random and never shows the same question twice in a row' );
 security_assert( false !== strpos( $ask_js, 'Object.keys(cfg.asks' ) && false === strpos( $ask_js, 'askLevel' ) && false === strpos( $ask_js, 'ur-ai-asks__tab' ), 'The questions are one list built from all three kinds, with no tab to pick a kind' );
 security_assert( false !== strpos( $source, 'Active connections' ) && false === strpos( $source, 'Connected apps:' ), 'The list of connected apps is called Active connections' );
@@ -334,7 +336,7 @@ $read = $prompts['read']['questions'];
 security_assert( count( $read ) >= 4 && array() === array_filter( $read, function ( $p ) { return preg_match( '/\b(create|delete|approve|deny|turn on|turn off|change|remove|extend|resend|cancel|assign)\b/i', $p ); } ), 'The read questions only ask to see things, never to change them' );
 security_assert( count( $prompts['write']['questions'] ) >= 3 && array() === array_filter( $prompts['write']['questions'], function ( $p ) { return preg_match( '/\b(delete|remove)\b/i', $p ); } ), 'The write questions change things without deleting them' );
 security_assert( count( $prompts['delete']['questions'] ) >= 2 && array() === array_filter( $prompts['delete']['questions'], function ( $p ) { return ! preg_match( '/\bdelete\b/i', $p ); } ), 'Every delete question asks to delete' );
-security_assert( array() === array_filter( $prompts, function ( $group ) { return '' === $group['label'] || '' === $group['hint']; } ), 'Each kind has a label and a hint' );
+security_assert( array() === array_filter( $prompts, function ( $group ) { return '' === $group['label'] || isset( $group['hint'] ); } ), 'Each kind has a label and no hint text of its own' );
 
 // Only a user who manages the site, with a valid nonce, can make or remove a connection.
 function ajax_outcome( $method, $caps, $nonce ) {
