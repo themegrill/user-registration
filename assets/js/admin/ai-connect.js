@@ -193,17 +193,48 @@
 		copyText($(this).data("copy"), this);
 	});
 
+	// Every row spins while the site is checked, then settles one after another into a tick or a cross.
+	// The spinner shows for a moment even when the answer is instant, so the check is seen to happen.
 	$(document).on("click", "#ur-ai-check", function () {
 		var button = $(this).prop("disabled", true);
+		var list = $("#ur-ai-checks");
+		var started = Date.now();
+
+		list.children().removeClass("is-ok is-bad").addClass("is-loading");
+
+		function settle(data) {
+			var rows = $("<ul>").html(data.checks).children();
+
+			rows.each(function (index) {
+				var row = this;
+
+				setTimeout(function () {
+					list.children().eq(index).replaceWith(row);
+				}, index * 220);
+			});
+
+			setTimeout(function () {
+				// Rows may have been added or removed since the last check, so end on exactly what the server sent.
+				list.html(data.checks);
+				$("#ur-ai-last-card").text(data.last);
+				button.prop("disabled", false);
+			}, rows.length * 220 + 50);
+		}
 
 		post("ur_ai_connect_check")
 			.done(function (response) {
-				if (response.success) {
-					$("#ur-ai-checks").html(response.data.checks);
-					$("#ur-ai-last, #ur-ai-last-card").text(response.data.last);
+				if (!response.success) {
+					list.children().removeClass("is-loading");
+					button.prop("disabled", false);
+					return;
 				}
+
+				setTimeout(function () {
+					settle(response.data);
+				}, Math.max(0, 600 - (Date.now() - started)));
 			})
-			.always(function () {
+			.fail(function () {
+				list.children().removeClass("is-loading");
 				button.prop("disabled", false);
 			});
 	});

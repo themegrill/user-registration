@@ -425,9 +425,7 @@ class UR_Abilities_Connect {
 			<ul class="ur-ai-connect__checks" id="ur-ai-checks"><?php echo self::checks_html( self::checks() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
 
 			<h4><span class="ur-ai-connect__step">2</span><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
-			<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>
-			<p class="ur-ai-connect__lastline" id="ur-ai-last"><?php echo esc_html( self::last_call_text() ); ?></p>
-			<div class="ur-ai-apps" role="tablist">
+			<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>			<div class="ur-ai-apps" role="tablist">
 				<?php foreach ( self::apps() as $key => $app ) : ?>
 					<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude-code' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
 				<?php endforeach; ?>
@@ -538,7 +536,9 @@ class UR_Abilities_Connect {
 			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
-			. '.ur-ai-connect h4 .ur-ai-connect__recheck{margin:0 0 0 auto;font-weight:400}.ur-ai-connect__lastline{margin:0 0 14px;color:#646a7a;font-size:12px}'
+			. '.ur-ai-connect h4 .ur-ai-connect__recheck{margin:0 0 0 auto;font-weight:400}'
+			. '@keyframes urAiSpin{to{transform:rotate(360deg)}}.ur-ai-connect__checks .is-loading .ur-ai-connect__mark{position:relative;color:transparent;width:12px;height:12px;flex:none}'
+			. '.ur-ai-connect__checks .is-loading .ur-ai-connect__mark::after{content:"";position:absolute;inset:0;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}.ur-ai-connect__checks .is-loading em{display:none}'
 			. '.ur-ai-conn{margin:0 0 8px;padding:0;list-style:none;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-conn li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f7}.ur-ai-conn li:last-child{border-bottom:0}'
 			. '.ur-ai-conn em{display:block;font-style:normal;font-size:12px;color:#646a7a}.ur-ai-conn__lead,.ur-ai-conn__empty{margin:0 0 8px;color:#2d3559}.ur-ai-conn__empty{margin-bottom:8px;color:#646a7a}'
 			. '.ur-ai-apps{display:flex;gap:4px;flex-wrap:wrap;padding:4px;border:1px solid #e1e4ed;border-radius:999px;width:fit-content;max-width:100%}'
