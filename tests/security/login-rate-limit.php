@@ -90,62 +90,102 @@ $GLOBALS['wpdb'] = new SecurityMockWpdb();
 
 require dirname( __DIR__, 2 ) . '/includes/class-ur-login-rate-limiter.php';
 
-// 1. get_client_ip() retains the validated REMOTE_ADDR string even when rest_is_ip_address() returns bool true, and ignores spoofable proxy headers.
+// 1. get_client_ip() retains validated REMOTE_ADDR and ignores spoofable proxy headers unless REMOTE_ADDR is a trusted proxy.
 $_SERVER['REMOTE_ADDR']          = '203.0.113.10';
 $_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4';
 $_SERVER['HTTP_X_REAL_IP']       = '5.6.7.8';
 security_assert( '203.0.113.10' === UR_Login_Rate_Limiter::get_client_ip(), 'Retain validated REMOTE_ADDR and ignore spoofable proxy headers' );
 
+$GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] = array(
+	function () {
+		return array( '203.0.113.10' );
+	},
+);
+
+$_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 198.51.100.2, 203.0.113.10';
+security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Extract right-most untrusted forwarded IP when REMOTE_ADDR is a trusted proxy' );
+unset( $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] );
+
 $_SERVER['REMOTE_ADDR'] = 'not-an-ip';
 security_assert( '' === UR_Login_Rate_Limiter::get_client_ip(), 'Return empty string when REMOTE_ADDR is invalid' );
 
-// 2. Per-account lockout triggers on the 5th failed attempt and persists across IP rotation and case changes.
+// 2. Atomic consume_attempt() blocks a 6th concurrent burst request even before finalize_failed_attempt() runs.
 $user = 'alice_login';
-$ip   = '198.51.100.42';
-for ( $i = 1; $i <= 4; $i++ ) {
-	security_assert( false === UR_Login_Rate_Limiter::record_failed_attempt( $user, $ip ), "Attempt {$i} should not lock" );
+$ip_a = '198.51.100.42';
+$ip_b = '198.51.100.99';
+for ( $i = 1; $i <= 5; $i++ ) {
+	security_assert( true === UR_Login_Rate_Limiter::consume_attempt( $user, $ip_a ), "Concurrent slot {$i} reserved" );
 }
-security_assert( true === UR_Login_Rate_Limiter::record_failed_attempt( $user, $ip ), 'Attempt 5 triggers account lockout' );
-security_assert( true === UR_Login_Rate_Limiter::is_locked( 'ALICE_LOGIN', '198.51.100.99' ), 'Account lockout persists across IP rotation and case change' );
+security_assert( false === UR_Login_Rate_Limiter::consume_attempt( $user, $ip_a ), 'Concurrent 6th attempt blocked before wp_signon finishes' );
 
-// 3. Bucket updates acquire and release the DB lock cleanly.
-security_assert( in_array( 'acquire', $GLOBALS['mock_locks'], true ) && in_array( 'release', $GLOBALS['mock_locks'], true ), 'Bucket increment acquires and releases advisory lock' );
+// 3. Bucket updates acquire and release the DB advisory lock.
+security_assert( in_array( 'acquire', $GLOBALS['mock_locks'], true ) && in_array( 'release', $GLOBALS['mock_locks'], true ), 'Bucket update acquires and releases advisory lock' );
 
-// 4. Active lockout is not extended by repeated attempts while locked.
-$remaining_initial = UR_Login_Rate_Limiter::get_remaining_lockout_seconds( $user, $ip );
-UR_Login_Rate_Limiter::record_failed_attempt( $user, $ip );
-security_assert( UR_Login_Rate_Limiter::get_remaining_lockout_seconds( $user, $ip ) <= $remaining_initial, 'Repeated attempts while locked do not extend active lockout' );
+// 4. Finalizing the 5th failure activates escalating lockout for (user, IP A) without locking out legitimate user on IP B.
+security_assert( true === UR_Login_Rate_Limiter::finalize_failed_attempt( $user, $ip_a ), '5th failure activates lockout' );
+security_assert( true === UR_Login_Rate_Limiter::is_locked( 'ALICE_LOGIN', $ip_a ), 'Lockout matches case-insensitively on same IP' );
+security_assert( false === UR_Login_Rate_Limiter::is_locked( $user, $ip_b ), 'Attacker on IP A cannot DoS-lock legitimate user on IP B' );
 
-// 5. Second lockout cycle escalates duration from 15 mins to 30 mins.
-$account_key           = UR_Login_Rate_Limiter::ACCOUNT_KEY_PREFIX . md5( strtolower( $user ) );
+// 5. Active lockout is not extended by repeated attempts while locked.
+$remaining_initial = UR_Login_Rate_Limiter::get_remaining_lockout_seconds( $user, $ip_a );
+security_assert( false === UR_Login_Rate_Limiter::consume_attempt( $user, $ip_a ), 'Locked pair is rejected by consume_attempt()' );
+security_assert( UR_Login_Rate_Limiter::get_remaining_lockout_seconds( $user, $ip_a ) <= $remaining_initial, 'Repeated attempts while locked do not extend active lockout' );
+
+// 6. Second lockout cycle escalates duration from 15 mins to 30 mins.
+$account_key           = UR_Login_Rate_Limiter::ACCOUNT_KEY_PREFIX . md5( strtolower( $user ) . '|' . strtolower( $ip_a ) );
 $state                 = get_transient( $account_key );
 $state['locked_until'] = time() - 1;
 set_transient( $account_key, $state, 900 );
 for ( $i = 1; $i <= 5; $i++ ) {
-	UR_Login_Rate_Limiter::record_failed_attempt( $user, '198.51.100.43' );
+	UR_Login_Rate_Limiter::consume_attempt( $user, $ip_a );
+	UR_Login_Rate_Limiter::finalize_failed_attempt( $user, $ip_a );
 }
-$remaining_second = UR_Login_Rate_Limiter::get_remaining_lockout_seconds( $user, '198.51.100.43' );
+$remaining_second = UR_Login_Rate_Limiter::get_remaining_lockout_seconds( $user, $ip_a );
 security_assert( $remaining_second >= 1795 && $remaining_second <= 1800, 'Second lockout escalates to 30 minutes' );
 
-// 6. clear_attempts() resets the account bucket without resetting the per-IP bucket.
-UR_Login_Rate_Limiter::clear_attempts( $user );
-security_assert( false === UR_Login_Rate_Limiter::is_locked( $user, '198.51.100.43' ), 'clear_attempts() unlocks the account' );
-$ip_state = get_transient( UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( '198.51.100.43' ) );
-security_assert( is_array( $ip_state ) && 5 === $ip_state['attempts'], 'clear_attempts() preserves per-IP counter' );
-
-// 7. Per-IP password spraying across 20 distinct usernames locks the IP.
-$spray_ip = '198.51.100.77';
-for ( $i = 1; $i <= 19; $i++ ) {
-	UR_Login_Rate_Limiter::record_failed_attempt( "spray_user_{$i}", $spray_ip );
+// 7. Legitimate login on 5th attempt succeeds and clear_attempts() resets pair bucket while only refunding its own IP slot.
+$good_user = 'bob_login';
+$good_ip   = '198.51.100.55';
+for ( $i = 1; $i <= 4; $i++ ) {
+	UR_Login_Rate_Limiter::consume_attempt( $good_user, $good_ip );
+	UR_Login_Rate_Limiter::finalize_failed_attempt( $good_user, $good_ip );
 }
-security_assert( true === UR_Login_Rate_Limiter::record_failed_attempt( 'spray_user_20', $spray_ip ), '20th failed attempt from one IP triggers IP lockout' );
-security_assert( true === UR_Login_Rate_Limiter::is_locked( 'fresh_target_user', $spray_ip ), 'Locked IP blocks fresh usernames' );
+security_assert( true === UR_Login_Rate_Limiter::consume_attempt( $good_user, $good_ip ), '5th attempt is allowed so correct password can succeed' );
+UR_Login_Rate_Limiter::clear_attempts( $good_user, $good_ip );
+security_assert( false === UR_Login_Rate_Limiter::is_locked( $good_user, $good_ip ), 'clear_attempts() clears pair bucket on success' );
+$ip_state = get_transient( UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( $good_ip ) );
+security_assert( is_array( $ip_state ) && 4 === $ip_state['attempts'], 'clear_attempts() refunds only the successful attempt and preserves prior IP failures' );
 
-// 8. ur_process_login() integrates UR_Login_Rate_Limiter for lockout check, failure recording, and success clearing.
-$core_src = file_get_contents( dirname( __DIR__, 2 ) . '/includes/functions-ur-core.php' );
+// 8. Non-credential account status errors are excluded and refunded cleanly.
 security_assert(
-	false !== strpos( $core_src, 'UR_Login_Rate_Limiter::is_locked(' )
-	&& false !== strpos( $core_src, 'UR_Login_Rate_Limiter::record_failed_attempt(' )
-	&& false !== strpos( $core_src, 'UR_Login_Rate_Limiter::clear_attempts(' ),
-	'ur_process_login() checks lockout, records failures, and clears attempts on success'
+	UR_Login_Rate_Limiter::is_excluded_error_code( 'pending_approval' )
+	&& UR_Login_Rate_Limiter::is_excluded_error_code( 'denied_access' )
+	&& UR_Login_Rate_Limiter::is_excluded_error_code( 'user_email_not_verified' )
+	&& UR_Login_Rate_Limiter::is_excluded_error_code( 'empty_password' )
+	&& ! UR_Login_Rate_Limiter::is_excluded_error_code( 'incorrect_password' ),
+	'Account status errors are excluded while incorrect_password is counted'
 );
+$pending_user = 'pending_user';
+$pending_ip   = '198.51.100.66';
+for ( $i = 1; $i <= 6; $i++ ) {
+	security_assert( true === UR_Login_Rate_Limiter::consume_attempt( $pending_user, $pending_ip ), "Pending user retry {$i} allowed" );
+	UR_Login_Rate_Limiter::refund_attempt( $pending_user, $pending_ip );
+}
+security_assert( false === UR_Login_Rate_Limiter::is_locked( $pending_user, $pending_ip ), 'Refunded status errors never trigger lockout' );
+
+// 9. Per-IP password spraying across 50 distinct usernames locks the IP.
+$spray_ip = '198.51.100.77';
+for ( $i = 1; $i <= 50; $i++ ) {
+	UR_Login_Rate_Limiter::consume_attempt( "spray_user_{$i}", $spray_ip );
+	UR_Login_Rate_Limiter::finalize_failed_attempt( "spray_user_{$i}", $spray_ip );
+}
+security_assert( false === UR_Login_Rate_Limiter::consume_attempt( 'fresh_target_user', $spray_ip ), 'Locked IP blocks fresh usernames after 50 spraying failures' );
+
+// 10. Filtered lockout message is escaped before output.
+$GLOBALS['mock_filters']['user_registration_login_lockout_message'] = array(
+	function () {
+		return '<script>alert(1)</script>';
+	},
+);
+security_assert( '&lt;script&gt;alert(1)&lt;/script&gt;' === UR_Login_Rate_Limiter::get_lockout_message( $user, $ip_a ), 'Lockout message output is HTML-escaped' );
+unset( $GLOBALS['mock_filters']['user_registration_login_lockout_message'] );

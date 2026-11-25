@@ -2,11 +2,12 @@
 /**
  * Login rate limiter for plugin login endpoints.
  *
- * Tracks failed login attempts per account identifier and per client IP using
- * WordPress transients with escalating lockout durations.
+ * Tracks failed login attempts per (account, IP) pair and per client IP using
+ * WordPress transients with atomic consume-before-authenticate semantics and
+ * escalating lockout durations.
  *
  * @package UserRegistration/Classes
- * @since   5.3.3
+ * @since   x.x.x
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -17,11 +18,11 @@ defined( 'ABSPATH' ) || exit;
 class UR_Login_Rate_Limiter {
 
 	/**
-	 * Transient prefix for per-account rate-limit buckets.
+	 * Transient prefix for per-(account, IP) rate-limit buckets.
 	 *
 	 * @var string
 	 */
-	const ACCOUNT_KEY_PREFIX = 'ur_login_rl_u_';
+	const ACCOUNT_KEY_PREFIX = 'ur_login_rl_ua_';
 
 	/**
 	 * Transient prefix for per-IP rate-limit buckets.
@@ -31,7 +32,7 @@ class UR_Login_Rate_Limiter {
 	const IP_KEY_PREFIX = 'ur_login_rl_ip_';
 
 	/**
-	 * Default maximum failed attempts per account before lockout.
+	 * Default maximum failed attempts per (account, IP) pair before lockout.
 	 *
 	 * @var int
 	 */
@@ -42,7 +43,7 @@ class UR_Login_Rate_Limiter {
 	 *
 	 * @var int
 	 */
-	const DEFAULT_IP_MAX_ATTEMPTS = 20;
+	const DEFAULT_IP_MAX_ATTEMPTS = 50;
 
 	/**
 	 * Default attempt counting window in seconds (15 minutes).
@@ -77,9 +78,11 @@ class UR_Login_Rate_Limiter {
 	/**
 	 * Resolve the client IP address for rate limiting.
 	 *
-	 * Uses REMOTE_ADDR directly rather than ur_get_ip_address() so attackers
-	 * cannot bypass the IP bucket by rotating spoofable X-Forwarded-For or
-	 * X-Real-IP headers. Sites behind a trusted proxy can override via filter.
+	 * Uses REMOTE_ADDR directly by default so attackers cannot bypass rate
+	 * limiting by rotating spoofable X-Forwarded-For or X-Real-IP headers.
+	 * Sites behind a CDN or reverse proxy can register trusted proxy IPs via
+	 * the `user_registration_login_trusted_proxies` filter, or supply a custom
+	 * IP via `user_registration_login_rate_limit_ip`.
 	 *
 	 * @return string
 	 */
@@ -91,11 +94,45 @@ class UR_Login_Rate_Limiter {
 			$ip     = rest_is_ip_address( $raw_ip ) ? $raw_ip : '';
 		}
 
+		$trusted_proxies = (array) apply_filters( 'user_registration_login_trusted_proxies', array() );
+
+		if ( '' !== $ip && in_array( $ip, $trusted_proxies, true ) ) {
+			$forwarded = self::extract_forwarded_ip( $trusted_proxies );
+			if ( '' !== $forwarded ) {
+				$ip = $forwarded;
+			}
+		}
+
 		return (string) apply_filters( 'user_registration_login_rate_limit_ip', $ip );
 	}
 
 	/**
-	 * Check if either the account identifier or the client IP is currently locked out.
+	 * Check whether a WP_Error code from wp_signon() represents a non-credential
+	 * validation or account-status error that should not count as a failed password attempt.
+	 *
+	 * @param string $error_code WP_Error code.
+	 *
+	 * @return bool
+	 */
+	public static function is_excluded_error_code( $error_code ) {
+		$excluded = array(
+			'empty_username',
+			'empty_password',
+			'pending_approval',
+			'denied_access',
+			'user_email_not_verified',
+			'user_payment_pending',
+			'user_not_approved',
+			'disable_user',
+		);
+
+		$excluded = (array) apply_filters( 'user_registration_login_rate_limit_excluded_errors', $excluded );
+
+		return in_array( (string) $error_code, $excluded, true );
+	}
+
+	/**
+	 * Check if either the (account, IP) pair or the client IP is currently locked out.
 	 *
 	 * @param string      $identifier Canonical username or submitted login string.
 	 * @param string|null $ip         Optional client IP override.
@@ -111,7 +148,7 @@ class UR_Login_Rate_Limiter {
 	}
 
 	/**
-	 * Get the remaining lockout duration in seconds across account and IP buckets.
+	 * Get the remaining lockout duration in seconds across (account, IP) and IP buckets.
 	 *
 	 * @param string      $identifier Canonical username or submitted login string.
 	 * @param string|null $ip         Optional client IP override.
@@ -137,52 +174,122 @@ class UR_Login_Rate_Limiter {
 	}
 
 	/**
-	 * Record a failed login attempt for the account identifier and client IP.
+	 * Atomically check lockout/capacity and reserve an attempt slot before authentication.
+	 *
+	 * Checking and incrementing in one locked critical section closes the
+	 * concurrent-burst TOCTOU window where parallel requests could otherwise
+	 * all pass is_locked() before wp_signon() finishes.
 	 *
 	 * @param string      $identifier Canonical username or submitted login string.
 	 * @param string|null $ip         Optional client IP override.
 	 *
-	 * @return bool True if this attempt triggered a lockout, false otherwise.
+	 * @return bool True if the attempt is allowed to proceed, false if locked/over capacity.
 	 */
-	public static function record_failed_attempt( $identifier, $ip = null ) {
+	public static function consume_attempt( $identifier, $ip = null ) {
+		if ( ! self::is_enabled() ) {
+			return true;
+		}
+
+		$resolved_ip    = null === $ip ? self::get_client_ip() : (string) $ip;
+		$account_key    = self::get_account_key( $identifier, $resolved_ip );
+		$ip_key         = self::get_ip_key( $resolved_ip );
+		$account_limit  = max( 1, (int) apply_filters( 'user_registration_login_max_attempts', self::DEFAULT_MAX_ATTEMPTS ) );
+		$ip_limit       = max( 1, (int) apply_filters( 'user_registration_login_ip_max_attempts', self::DEFAULT_IP_MAX_ATTEMPTS ) );
+		$account_burned = false;
+
+		if ( '' !== $account_key ) {
+			if ( ! self::try_consume_bucket( $account_key, $account_limit ) ) {
+				return false;
+			}
+			$account_burned = true;
+		}
+
+		if ( '' !== $ip_key ) {
+			if ( ! self::try_consume_bucket( $ip_key, $ip_limit ) ) {
+				if ( $account_burned ) {
+					self::decrement_bucket( $account_key );
+				}
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Finalize a failed attempt that was reserved by consume_attempt(), activating
+	 * escalating lockout once a bucket reaches its threshold.
+	 *
+	 * @param string      $identifier Canonical username or submitted login string.
+	 * @param string|null $ip         Optional client IP override.
+	 *
+	 * @return bool True if this failure triggered a lockout, false otherwise.
+	 */
+	public static function finalize_failed_attempt( $identifier, $ip = null ) {
 		if ( ! self::is_enabled() ) {
 			return false;
 		}
 
-		$resolved_ip = null === $ip ? self::get_client_ip() : (string) $ip;
-		$locked      = false;
+		$resolved_ip   = null === $ip ? self::get_client_ip() : (string) $ip;
+		$account_key   = self::get_account_key( $identifier, $resolved_ip );
+		$ip_key        = self::get_ip_key( $resolved_ip );
+		$account_limit = max( 1, (int) apply_filters( 'user_registration_login_max_attempts', self::DEFAULT_MAX_ATTEMPTS ) );
+		$ip_limit      = max( 1, (int) apply_filters( 'user_registration_login_ip_max_attempts', self::DEFAULT_IP_MAX_ATTEMPTS ) );
+		$locked        = false;
 
-		$account_key = self::get_account_key( $identifier );
-		if ( '' !== $account_key ) {
-			$account_limit = max( 1, (int) apply_filters( 'user_registration_login_max_attempts', self::DEFAULT_MAX_ATTEMPTS ) );
-			if ( self::increment_bucket( $account_key, $account_limit, $identifier, $resolved_ip ) ) {
-				$locked = true;
-			}
+		if ( '' !== $account_key && self::maybe_lock_bucket( $account_key, $account_limit, $identifier, $resolved_ip ) ) {
+			$locked = true;
 		}
 
-		$ip_key = self::get_ip_key( $resolved_ip );
-		if ( '' !== $ip_key ) {
-			$ip_limit = max( 1, (int) apply_filters( 'user_registration_login_ip_max_attempts', self::DEFAULT_IP_MAX_ATTEMPTS ) );
-			if ( self::increment_bucket( $ip_key, $ip_limit, $identifier, $resolved_ip ) ) {
-				$locked = true;
-			}
+		if ( '' !== $ip_key && self::maybe_lock_bucket( $ip_key, $ip_limit, $identifier, $resolved_ip ) ) {
+			$locked = true;
 		}
 
 		return $locked;
 	}
 
 	/**
-	 * Clear failed attempt state for an account after a successful login.
+	 * Refund a reserved attempt when authentication returns an excluded non-credential error.
 	 *
-	 * Only the per-account bucket is cleared so a single valid account cannot
-	 * reset an IP bucket used for password spraying against other accounts.
-	 *
-	 * @param string $identifier Canonical username or submitted login string.
+	 * @param string      $identifier Canonical username or submitted login string.
+	 * @param string|null $ip         Optional client IP override.
 	 *
 	 * @return void
 	 */
-	public static function clear_attempts( $identifier ) {
-		$account_key = self::get_account_key( $identifier );
+	public static function refund_attempt( $identifier, $ip = null ) {
+		if ( ! self::is_enabled() ) {
+			return;
+		}
+
+		$resolved_ip = null === $ip ? self::get_client_ip() : (string) $ip;
+		$account_key = self::get_account_key( $identifier, $resolved_ip );
+		$ip_key      = self::get_ip_key( $resolved_ip );
+
+		if ( '' !== $account_key ) {
+			self::decrement_bucket( $account_key );
+		}
+
+		if ( '' !== $ip_key ) {
+			self::decrement_bucket( $ip_key );
+		}
+	}
+
+	/**
+	 * Clear failed attempt state for an (account, IP) pair after a successful login,
+	 * and refund the single IP attempt reserved for this successful request.
+	 *
+	 * The rest of the per-IP bucket is preserved so a single valid account cannot
+	 * wipe an IP bucket used for password spraying against other accounts.
+	 *
+	 * @param string      $identifier Canonical username or submitted login string.
+	 * @param string|null $ip         Optional client IP override.
+	 *
+	 * @return void
+	 */
+	public static function clear_attempts( $identifier, $ip = null ) {
+		$resolved_ip = null === $ip ? self::get_client_ip() : (string) $ip;
+		$account_key = self::get_account_key( $identifier, $resolved_ip );
+		$ip_key      = self::get_ip_key( $resolved_ip );
 
 		if ( '' !== $account_key ) {
 			$lock_type = self::acquire_lock( $account_key );
@@ -192,10 +299,14 @@ class UR_Login_Rate_Limiter {
 				self::release_lock( $account_key, $lock_type );
 			}
 		}
+
+		if ( '' !== $ip_key ) {
+			self::decrement_bucket( $ip_key );
+		}
 	}
 
 	/**
-	 * Build a user-facing lockout message with the remaining wait time.
+	 * Build an escaped user-facing lockout message with the remaining wait time.
 	 *
 	 * @param string      $identifier Canonical username or submitted login string.
 	 * @param string|null $ip         Optional client IP override.
@@ -203,34 +314,66 @@ class UR_Login_Rate_Limiter {
 	 * @return string
 	 */
 	public static function get_lockout_message( $identifier, $ip = null ) {
-		$remaining = max( 1, self::get_remaining_lockout_seconds( $identifier, $ip ) );
-		$wait_time = human_time_diff( time(), time() + $remaining );
+		$remaining = self::get_remaining_lockout_seconds( $identifier, $ip );
 
-		$message = sprintf(
-			/* translators: %s: human-readable time duration until login can be retried. */
-			esc_html__( 'Too many failed login attempts. Please try again in %s.', 'user-registration' ),
-			esc_html( $wait_time )
-		);
+		if ( $remaining > 0 ) {
+			$wait_time = human_time_diff( time(), time() + $remaining );
+			$message   = sprintf(
+				/* translators: %s: human-readable time duration until login can be retried. */
+				__( 'Too many failed login attempts. Please try again in %s.', 'user-registration' ),
+				$wait_time
+			);
+		} else {
+			$message = __( 'Too many login attempts in progress. Please try again shortly.', 'user-registration' );
+		}
 
-		return (string) apply_filters( 'user_registration_login_lockout_message', $message, $remaining, $identifier );
+		return esc_html( (string) apply_filters( 'user_registration_login_lockout_message', $message, $remaining, $identifier ) );
 	}
 
 	/**
-	 * Increment a single rate-limit bucket and activate escalating lockout when threshold is reached.
+	 * Atomically reserve one attempt slot in a bucket if it is neither locked nor at capacity.
+	 *
+	 * @param string $key       Transient key.
+	 * @param int    $max_limit Maximum attempts allowed in the current cycle.
+	 *
+	 * @return bool True if reserved, false if locked or already at capacity.
+	 */
+	private static function try_consume_bucket( $key, $max_limit ) {
+		$now            = time();
+		$attempt_window = max( 60, (int) apply_filters( 'user_registration_login_attempt_window', self::DEFAULT_ATTEMPT_WINDOW ) );
+		$lock_type      = self::acquire_lock( $key );
+
+		try {
+			$state = self::get_bucket_state( $key );
+
+			if ( $state['locked_until'] > $now || $state['attempts'] >= $max_limit ) {
+				return false;
+			}
+
+			$state['attempts']++;
+			set_transient( $key, $state, $attempt_window );
+
+			return true;
+		} finally {
+			self::release_lock( $key, $lock_type );
+		}
+	}
+
+	/**
+	 * Transition a bucket into escalating lockout if its attempts have reached the limit.
 	 *
 	 * @param string $key        Transient key.
 	 * @param int    $max_limit  Maximum failed attempts before lockout.
 	 * @param string $identifier Canonical username or submitted login string.
 	 * @param string $ip         Client IP address.
 	 *
-	 * @return bool True if the bucket entered lockout on this increment.
+	 * @return bool True if the bucket is now locked.
 	 */
-	private static function increment_bucket( $key, $max_limit, $identifier, $ip ) {
-		$now            = time();
-		$attempt_window = max( 60, (int) apply_filters( 'user_registration_login_attempt_window', self::DEFAULT_ATTEMPT_WINDOW ) );
-		$base_lockout   = max( 60, (int) apply_filters( 'user_registration_login_lockout_duration', self::DEFAULT_LOCKOUT_DURATION ) );
-		$max_lockout    = max( $base_lockout, (int) apply_filters( 'user_registration_login_max_lockout_duration', self::DEFAULT_MAX_LOCKOUT_DURATION ) );
-
+	private static function maybe_lock_bucket( $key, $max_limit, $identifier, $ip ) {
+		$now             = time();
+		$attempt_window  = max( 60, (int) apply_filters( 'user_registration_login_attempt_window', self::DEFAULT_ATTEMPT_WINDOW ) );
+		$base_lockout    = max( 60, (int) apply_filters( 'user_registration_login_lockout_duration', self::DEFAULT_LOCKOUT_DURATION ) );
+		$max_lockout     = max( $base_lockout, (int) apply_filters( 'user_registration_login_max_lockout_duration', self::DEFAULT_MAX_LOCKOUT_DURATION ) );
 		$lock_type       = self::acquire_lock( $key );
 		$triggered_lock  = false;
 		$locked_duration = 0;
@@ -244,8 +387,6 @@ class UR_Login_Rate_Limiter {
 				return true;
 			}
 
-			$state['attempts']++;
-
 			if ( $state['attempts'] >= $max_limit ) {
 				$state['lockouts']++;
 				$exponent              = min( 20, max( 0, $state['lockouts'] - 1 ) );
@@ -256,8 +397,6 @@ class UR_Login_Rate_Limiter {
 				$triggered_lock        = true;
 
 				set_transient( $key, $state, $locked_duration + $attempt_window );
-			} else {
-				set_transient( $key, $state, $attempt_window );
 			}
 		} finally {
 			self::release_lock( $key, $lock_type );
@@ -276,6 +415,69 @@ class UR_Login_Rate_Limiter {
 		}
 
 		return $triggered_lock;
+	}
+
+	/**
+	 * Atomically decrement the attempt counter in a bucket by 1.
+	 *
+	 * @param string $key Transient key.
+	 *
+	 * @return void
+	 */
+	private static function decrement_bucket( $key ) {
+		$attempt_window = max( 60, (int) apply_filters( 'user_registration_login_attempt_window', self::DEFAULT_ATTEMPT_WINDOW ) );
+		$lock_type      = self::acquire_lock( $key );
+
+		try {
+			$state = self::get_bucket_state( $key );
+			if ( $state['attempts'] > 0 ) {
+				$state['attempts']--;
+				if ( 0 === $state['attempts'] && 0 === $state['lockouts'] && 0 === $state['locked_until'] ) {
+					delete_transient( $key );
+				} else {
+					set_transient( $key, $state, $attempt_window );
+				}
+			}
+		} finally {
+			self::release_lock( $key, $lock_type );
+		}
+	}
+
+	/**
+	 * Extract the client IP from forwarded headers when REMOTE_ADDR is a trusted proxy.
+	 *
+	 * @param array $trusted_proxies List of configured trusted proxy IP addresses.
+	 *
+	 * @return string Validated client IP or empty string.
+	 */
+	private static function extract_forwarded_ip( $trusted_proxies ) {
+		if ( ! empty( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$cf_ip = sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			if ( rest_is_ip_address( $cf_ip ) ) {
+				return $cf_ip;
+			}
+		}
+
+		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$raw_list = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$parts    = array_reverse( array_map( 'trim', explode( ',', $raw_list ) ) );
+
+			// Walk right-to-left to pick the first untrusted hop added by the trusted proxy.
+			foreach ( $parts as $candidate ) {
+				if ( rest_is_ip_address( $candidate ) && ! in_array( $candidate, $trusted_proxies, true ) ) {
+					return $candidate;
+				}
+			}
+		}
+
+		if ( ! empty( $_SERVER['HTTP_X_REAL_IP'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$real_ip = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			if ( rest_is_ip_address( $real_ip ) ) {
+				return $real_ip;
+			}
+		}
+
+		return '';
 	}
 
 	/**
@@ -363,7 +565,7 @@ class UR_Login_Rate_Limiter {
 	}
 
 	/**
-	 * Collect all applicable transient keys for an account identifier and IP.
+	 * Collect all applicable transient keys for an (account, IP) pair and IP.
 	 *
 	 * @param string      $identifier Canonical username or submitted login string.
 	 * @param string|null $ip         Optional client IP override.
@@ -372,8 +574,8 @@ class UR_Login_Rate_Limiter {
 	 */
 	private static function get_bucket_keys( $identifier, $ip = null ) {
 		$keys        = array();
-		$account_key = self::get_account_key( $identifier );
 		$resolved_ip = null === $ip ? self::get_client_ip() : (string) $ip;
+		$account_key = self::get_account_key( $identifier, $resolved_ip );
 		$ip_key      = self::get_ip_key( $resolved_ip );
 
 		if ( '' !== $account_key ) {
@@ -388,20 +590,26 @@ class UR_Login_Rate_Limiter {
 	}
 
 	/**
-	 * Build the normalized transient key for an account identifier.
+	 * Build the normalized transient key for an (account, IP) pair.
+	 *
+	 * Scoping the account bucket to the client IP prevents a remote attacker
+	 * from locking out legitimate users or administrators on other IPs.
 	 *
 	 * @param string $identifier Canonical username or submitted login string.
+	 * @param string $ip         Client IP address.
 	 *
 	 * @return string Empty string when identifier is empty.
 	 */
-	private static function get_account_key( $identifier ) {
-		$normalized = strtolower( trim( (string) $identifier ) );
+	private static function get_account_key( $identifier, $ip = '' ) {
+		$normalized_id = strtolower( trim( (string) $identifier ) );
 
-		if ( '' === $normalized ) {
+		if ( '' === $normalized_id ) {
 			return '';
 		}
 
-		return self::ACCOUNT_KEY_PREFIX . md5( $normalized );
+		$normalized_ip = strtolower( trim( (string) $ip ) );
+
+		return self::ACCOUNT_KEY_PREFIX . md5( $normalized_id . '|' . $normalized_ip );
 	}
 
 	/**

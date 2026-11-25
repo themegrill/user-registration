@@ -5691,7 +5691,7 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				}
 				$user_by_email = get_user_by( 'email', $username );
 				if ( empty( $user_by_email ) ) {
-					if ( UR_Login_Rate_Limiter::record_failed_attempt( $rate_limit_identifier ) ) {
+					if ( ! UR_Login_Rate_Limiter::consume_attempt( $rate_limit_identifier ) || UR_Login_Rate_Limiter::finalize_failed_attempt( $rate_limit_identifier ) ) {
 						throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
 					}
 					if ( empty( $messages['unknown_email'] ) ) {
@@ -5717,7 +5717,7 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 						if ( isset( $user_by_login->user_login ) ) {
 							$login_data['user_login'] = $user_by_login->user_login;
 						} else {
-							if ( UR_Login_Rate_Limiter::record_failed_attempt( $rate_limit_identifier ) ) {
+							if ( ! UR_Login_Rate_Limiter::consume_attempt( $rate_limit_identifier ) || UR_Login_Rate_Limiter::finalize_failed_attempt( $rate_limit_identifier ) ) {
 								throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
 							}
 							if ( empty( $messages['unknown_email'] ) ) {
@@ -5740,14 +5740,24 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				}
 			}
 
+			// Resolve filtered credentials before consuming an attempt so the rate-limit key matches the account actually authenticated.
+			$credentials = apply_filters( 'user_registration_login_credentials', $login_data );
+			if ( ! empty( $credentials['user_login'] ) ) {
+				$rate_limit_identifier = $credentials['user_login'];
+			}
+
+			if ( ! UR_Login_Rate_Limiter::consume_attempt( $rate_limit_identifier ) ) {
+				throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
+			}
+
 			// Perform the login.
-			$user = wp_signon( apply_filters( 'user_registration_login_credentials', $login_data ), is_ssl() );
+			$user = wp_signon( $credentials, is_ssl() );
 
 			if ( is_wp_error( $user ) ) {
-				if ( ! in_array( $user->get_error_code(), array( 'empty_username', 'empty_password' ), true ) ) {
-					if ( UR_Login_Rate_Limiter::record_failed_attempt( $rate_limit_identifier ) ) {
-						throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
-					}
+				if ( UR_Login_Rate_Limiter::is_excluded_error_code( $user->get_error_code() ) ) {
+					UR_Login_Rate_Limiter::refund_attempt( $rate_limit_identifier );
+				} elseif ( UR_Login_Rate_Limiter::finalize_failed_attempt( $rate_limit_identifier ) ) {
+					throw new Exception( '<strong>' . esc_html__( 'ERROR:', 'user-registration' ) . '</strong> ' . UR_Login_Rate_Limiter::get_lockout_message( $rate_limit_identifier ) );
 				}
 
 				// Set custom error messages.
@@ -5787,6 +5797,7 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				$message = str_replace( '<strong>' . esc_html( $login_data['user_login'] ) . '</strong>', '<strong>' . esc_html( $username ) . '</strong>', $message );
 				throw new Exception( $message );
 			} elseif ( isset( $user->ID ) && $is_disabled = get_user_meta( $user->ID, 'ur_disable_users', true ) ) {
+				UR_Login_Rate_Limiter::refund_attempt( $rate_limit_identifier );
 				wp_logout();
 				throw new Exception( '<strong>' . esc_html__( 'ERROR: ', 'user-registration' ) . '</strong>' . $messages['user_disabled'] );
 
