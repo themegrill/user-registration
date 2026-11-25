@@ -226,11 +226,15 @@ class UR_Abilities_Connect {
 		return array(
 			'claude-code'    => array(
 				'label'   => 'Claude Code',
+				'group'   => 'claude',
+				'name'    => 'Claude',
 				'snippet' => 'claude',
 				'intro'   => __( 'Paste this command into your terminal. It saves the connection for every folder.', 'user-registration' ),
 			),
 			'claude-desktop' => array(
 				'label'   => 'Claude Desktop',
+				'group'   => 'claude',
+				'name'    => 'Claude',
 				'snippet' => 'desktop',
 				'intro'   => __( 'Add this to claude_desktop_config.json (Settings, Developer, Edit Config), then restart Claude Desktop. It needs Node.js installed.', 'user-registration' ),
 			),

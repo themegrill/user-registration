@@ -11,6 +11,7 @@
 	var i18n = cfg.i18n || {};
 	var apps = cfg.apps || {};
 	var current = "claude-code";
+	var generated = null;
 
 	function post(action, data) {
 		return $.post(cfg.ajaxUrl, $.extend({ action: action, security: cfg.nonce }, data || {}));
@@ -58,12 +59,17 @@
 
 	// A fresh tab starts from nothing: nothing generated, nothing agreed to. Each app gets its own password,
 	// named after it, so the activity log can tell the apps apart.
-	function selectApp(key) {
+	// Apps of one group (Claude Code and Claude Desktop) share one password, so moving between them keeps what
+	// was generated and only swaps the snippet.
+	function selectApp(key, force) {
 		var app = apps[key];
 
 		if (!app) {
 			return;
 		}
+
+		var group = app.group || key;
+		var shared = !force && generated && generated.group === group;
 
 		current = key;
 		$(".ur-ai-apps__tab").each(function () {
@@ -71,6 +77,13 @@
 		});
 		$("#ur-ai-panel-title").text(i18n.title.replace("%s", app.label));
 		$("#ur-ai-panel-intro").text(app.intro);
+
+		if (shared) {
+			$("#ur-ai-prompt").text(generated.data.snippets[app.snippet]);
+			return;
+		}
+
+		generated = null;
 		$("#ur-ai-consent").prop("checked", false);
 		$("#ur-ai-create").prop("disabled", true);
 		$("#ur-ai-prompt").text("");
@@ -99,6 +112,7 @@
 	}
 
 	function showResult(data) {
+		generated = { group: apps[current].group || current, data: data };
 		$("#ur-ai-prompt").text(data.snippets[apps[current].snippet]);
 		$("#ur-ai-copy-prompt, #ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
 		$("#ur-ai-m-user").text(data.login);
@@ -109,7 +123,7 @@
 
 	// The drawer lives outside the settings form, so nothing in it is ever saved with the settings.
 	$("#ur-ai-overlay, #ur-ai-drawer").appendTo("body");
-	selectApp(current);
+	selectApp(current, true);
 
 	function openDrawer() {
 		$("#ur-ai-overlay").prop("hidden", false);
@@ -201,7 +215,7 @@
 		button.text(i18n.working);
 		notice("");
 
-		post("ur_ai_connect_create", { app: apps[current].label })
+		post("ur_ai_connect_create", { app: apps[current].name || apps[current].label })
 			.done(function (response) {
 				if (response.success) {
 					showResult(response.data);
@@ -228,7 +242,7 @@
 		post("ur_ai_connect_revoke").done(function (response) {
 			if (response.success) {
 				applyState(response.data);
-				selectApp(current);
+				selectApp(current, true);
 				notice(i18n.removed);
 			}
 		});
@@ -242,7 +256,7 @@
 		post("ur_ai_connect_remove", { uuid: $(this).data("uuid") }).done(function (response) {
 			if (response.success) {
 				applyState(response.data);
-				selectApp(current);
+				selectApp(current, true);
 				notice(i18n.removed);
 			}
 		});

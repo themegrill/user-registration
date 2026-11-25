@@ -282,6 +282,7 @@ security_assert( 'npx' === ( $entry['command'] ?? '' ) && in_array( $result['end
 // The drawer offers five apps, each pointing at a snippet that exists.
 $apps = UR_Abilities_Connect::apps();
 security_assert( array( 'claude-code', 'claude-desktop', 'codex', 'cursor', 'other' ) === array_keys( $apps ), 'The drawer offers Claude Code, Claude Desktop, Codex, Cursor and Other, in that order' );
+security_assert( $apps['claude-code']['group'] === $apps['claude-desktop']['group'] && 'Claude' === $apps['claude-code']['name'] && 'Claude' === $apps['claude-desktop']['name'], 'Claude Code and Claude Desktop share one group and one password name' );
 security_assert( array() === array_filter( $apps, function ( $app ) use ( $snippets ) { return ! isset( $snippets[ $app['snippet'] ] ); } ), 'Every app points at a snippet that exists' );
 
 // The starter prompts only look.
