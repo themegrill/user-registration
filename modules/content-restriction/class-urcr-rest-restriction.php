@@ -27,6 +27,7 @@ class URCR_REST_Restriction {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_response_filters' ) );
 		add_filter( 'rest_request_after_callbacks', array( __CLASS__, 'restrict_woocommerce_response' ), PHP_INT_MAX, 3 );
 		add_filter( 'rest_comment_query', array( __CLASS__, 'exclude_restricted_post_comments' ), PHP_INT_MAX );
+		add_filter( 'rest_post_search_query', array( __CLASS__, 'exclude_restricted_posts' ), PHP_INT_MAX, 2 );
 		add_filter( 'rest_request_after_callbacks', array( __CLASS__, 'restrict_single_comment' ), PHP_INT_MAX, 3 );
 		foreach ( array( 'product', 'product_variation' ) as $post_type ) {
 			// Legacy WC controllers pass WP_Post; newer controllers pass WC_Product.
@@ -265,12 +266,12 @@ class URCR_REST_Restriction {
 	}
 
 	/**
-	 * Leave inaccessible posts out of REST collection queries.
+	 * Leave inaccessible posts out of REST collection and search queries.
 	 * Done in the query so X-WP-Total and X-WP-TotalPages cannot be used to probe restricted content.
 	 *
 	 * @since x.x.x
 	 *
-	 * @param array           $args    WP_Query arguments built by the REST posts controller.
+	 * @param array           $args    WP_Query arguments built by the REST posts or search controller.
 	 * @param WP_REST_Request $request Request object.
 	 * @return array
 	 */

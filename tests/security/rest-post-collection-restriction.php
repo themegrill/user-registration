@@ -17,7 +17,8 @@ class WP_Query {
 		$this->posts               = $GLOBALS['matching_posts']; }
 }
 function add_action( $hook, $callback ) {}
-function add_filter( $hook, $callback, $priority = 10, $args = 1 ) {}
+function add_filter( $hook, $callback, $priority = 10, $args = 1 ) {
+	$GLOBALS['hooks'][ $hook ][] = $callback; }
 function get_current_user_id() {
 	return $GLOBALS['current_user']; }
 function ur_string_to_bool( $value ) {
@@ -64,3 +65,7 @@ $GLOBALS['options']['user_registration_content_restriction_enable'] = false;
 $GLOBALS['candidate_args']      = null;
 $args                           = URCR_REST_Restriction::exclude_restricted_posts( array( 's' => 'secret' ), null );
 security_assert( null === $GLOBALS['candidate_args'] && ! isset( $args['post__not_in'] ), 'Nothing is scanned or excluded while content restriction is disabled' );
+
+// The core search endpoint builds its own query, so it needs the same exclusion.
+$search_hook = array( 'URCR_REST_Restriction', 'exclude_restricted_posts' );
+security_assert( in_array( $search_hook, $GLOBALS['hooks']['rest_post_search_query'], true ), 'The REST search endpoint uses the same exclusion' );
