@@ -509,22 +509,10 @@ class UR_Abilities_Connect {
 			</section>
 
 			<section class="ur-ai-tryasking">
-				<h4 class="ur-ai-tryasking__title"><?php esc_html_e( 'Try asking', 'user-registration' ); ?></h4>
-			<?php $asks = self::prompts(); ?>
-			<div class="ur-ai-apps ur-ai-asks" role="tablist">
-				<?php foreach ( $asks as $level => $ask ) : ?>
-					<button type="button" role="tab" class="ur-ai-apps__tab ur-ai-asks__tab<?php echo 'read' === $level ? ' is-active' : ''; ?>" data-level="<?php echo esc_attr( $level ); ?>"><?php echo esc_html( $ask['label'] ); ?></button>
-				<?php endforeach; ?>
-			</div>
-			<div class="ur-ai-ask">
-				<p class="ur-ai-ask__hint" id="ur-ai-ask-hint"><?php echo esc_html( $asks['read']['hint'] ); ?></p>
-				<p class="ur-ai-ask__text" id="ur-ai-ask-text"><?php echo esc_html( $asks['read']['questions'][0] ); ?></p>
-				<div class="ur-ai-ask__actions">
-					<button type="button" class="button button-primary" id="ur-ai-ask-copy"><?php esc_html_e( 'Copy', 'user-registration' ); ?></button>
-					<button type="button" class="ur-ai-link" id="ur-ai-ask-next"><?php esc_html_e( 'Another question', 'user-registration' ); ?></button>
-					<span class="ur-ai-ask__count" id="ur-ai-ask-count"><?php echo esc_html( '1 / ' . count( $asks['read']['questions'] ) ); ?></span>
-				</div>
-			</div>
+				<?php $asks = self::prompts(); ?>
+				<p class="ur-ai-try"><span class="ur-ai-try__label"><?php esc_html_e( 'Try asking', 'user-registration' ); ?></span> <span class="ur-ai-try__text" id="ur-ai-ask-text"><?php echo esc_html( $asks['read']['questions'][0] ); ?></span></p>
+				<p class="ur-ai-try__hint" id="ur-ai-ask-hint" hidden></p>
+				<p class="ur-ai-try__actions"><button type="button" class="ur-ai-link" id="ur-ai-ask-copy"><?php esc_html_e( 'Copy', 'user-registration' ); ?></button><button type="button" class="ur-ai-link" id="ur-ai-ask-next"><?php esc_html_e( 'Another question', 'user-registration' ); ?></button></p>
 			</section>
 			</div>
 		</aside>
@@ -625,10 +613,10 @@ class UR_Abilities_Connect {
 			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
 			. ''
 			. ''
-			. '.ur-ai-connect-main{margin:0 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}'
+			. '.ur-ai-connect-main{margin:0 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-tryasking{margin:0;padding:14px 0 0;border-top:1px solid #f0f2f7;color:#646a7a;font-size:13px;line-height:1.5}.ur-ai-tryasking p{margin:0}.ur-ai-try__label{margin-right:6px;font-weight:600;color:#8a90a2}.ur-ai-try__text::before{content:"\201C"}.ur-ai-try__text::after{content:"\201D"}.ur-ai-try__hint{margin-top:2px !important;font-size:12px;color:#8a90a2}.ur-ai-try__actions{margin-top:6px !important}.ur-ai-try__actions .ur-ai-link{margin-right:14px;font-size:12px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-topbar{position:relative;display:flex;align-items:center;justify-content:center;margin:0 0 22px}.ur-ai-topbar .ur-ai-apps--center{margin:0}.ur-ai-ready{position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:5}.ur-ai-ready__status{display:inline-flex;align-items:center;margin:0;padding:6px 14px;border:1px solid #e1e4ed;border-radius:999px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;line-height:1.4}.ur-ai-ready__status:hover{border-color:#c5cbe0}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828;border-color:#f1c4c4;background:#fff8f8}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}.ur-ai-ready__status.is-loading{color:#646a7a}.ur-ai-ready__status.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}'
 			. '.ur-ai-ready__pop{position:absolute;top:calc(100% + 8px);right:0;width:340px;max-width:80vw;padding:14px 16px;border:1px solid #e1e4ed;border-radius:8px;background:#fff;box-shadow:0 8px 28px rgba(45,53,89,.16)}.ur-ai-ready__pop[hidden]{display:none}.ur-ai-ready__pophead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 8px;padding:0 0 10px;border-bottom:1px solid #f0f2f7;color:#2d3559}.ur-ai-ready__pop .ur-ai-connect__checks li{padding:4px 0;font-size:13px}@media (max-width:760px){.ur-ai-topbar{flex-direction:column;gap:12px}.ur-ai-ready{position:static;transform:none}.ur-ai-ready__pop{left:50%;right:auto;transform:translateX(-50%)}}'
-			. '.ur-ai-connect .ur-ai-tryasking__title{margin:0 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
+			. ''
 			. '.ur-ai-connect h4{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
 			. ''
 			. '.ur-ai-connect__label{display:block;margin-bottom:4px;font-weight:500}.ur-ai-drawer .ur-ai-connect input[type=text]{width:100%;margin:0;box-sizing:border-box}'
@@ -649,9 +637,9 @@ class UR_Abilities_Connect {
 			. '.ur-ai-prompt{position:relative}#ur-ai-prompts[hidden]{display:none}.ur-ai-prompt{margin-bottom:14px}.ur-ai-prompt__label{margin:0 0 2px;font-weight:600;color:#2d3559}.ur-ai-prompt__hint{margin:0 0 8px;color:#646a7a}.ur-ai-prompt pre{margin:0;min-height:80px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
 			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .button{position:absolute;right:10px;bottom:10px;height:30px;line-height:28px;padding:0 14px;margin:0}'
 			. '.ur-ai-manual{margin:12px 0 0;padding:12px 14px;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-manual dt{margin-top:8px;font-weight:600}.ur-ai-manual dt:first-child{margin-top:0}.ur-ai-manual dd{margin:2px 0 0;word-break:break-all}'
-			. '.ur-ai-asks{margin-bottom:14px}.ur-ai-ask{padding:16px 18px;border:1px solid #e1e4ed;border-radius:6px;background:#f8f9fb}'
-			. '.ur-ai-ask__hint{margin:0 0 10px;color:#646a7a;font-size:12px}.ur-ai-ask__text{margin:0 0 14px;font-size:15px;line-height:1.5;color:#2d3559;min-height:45px}'
-			. '.ur-ai-ask__actions{display:flex;align-items:center;gap:16px}.ur-ai-ask__actions .button{margin:0;height:32px;line-height:30px;padding:0 16px}.ur-ai-ask__count{margin-left:auto;color:#8a90a2;font-size:12px}';
+			. ''
+			. ''
+			. '';
 
 		wp_register_style( 'user-registration-ai-connect', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-connect' );

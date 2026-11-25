@@ -258,6 +258,9 @@ $bar     = substr( $source, $top, $bar_end - $top );
 security_assert( false !== strpos( $bar, 'ur-ai-apps ur-ai-apps--center' ) && false !== strpos( $bar, 'id="ur-ai-ready-status"' ) && false !== strpos( $bar, 'id="ur-ai-ready-pop"' ) && false !== strpos( $bar, 'id="ur-ai-checks"' ) && false !== strpos( $bar, 'id="ur-ai-check"' ), 'The top bar holds the app switcher in the middle and, on the right, the status with its checks and Check again in a popover' );
 security_assert( false !== strpos( $source, '.ur-ai-ready{position:absolute;top:50%;right:0' ) && false !== strpos( $source, '.ur-ai-ready__pop[hidden]{display:none}' ), 'The status sits at the top right and the popover stays closed until it is opened' );
 security_assert( false === strpos( $source, 'ur-ai-hero' ) && false === strpos( $source, 'ur-ai-connect__step' ) && false === strpos( $source, 'ur-ai-ready-toggle' ), 'There is no panel inside the card, no step numbers and no Show checks link' );
+security_assert( false === strpos( $source, 'ur-ai-asks__tab' ) && false === strpos( $source, 'ur-ai-ask__count' ) && false === strpos( $source, 'ur-ai-tryasking__title' ) && false !== strpos( $source, 'id="ur-ai-ask-text"' ) && false !== strpos( $source, 'id="ur-ai-ask-next"' ), 'Try asking is one quiet line with Copy and Another question: no Read, Write and Delete tabs, no counter and no heading of its own' );
+$ask_js = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-connect.js' );
+security_assert( false !== strpos( $ask_js, 'Object.keys(cfg.asks' ) && false === strpos( $ask_js, 'askLevel' ) && false === strpos( $ask_js, 'ur-ai-asks__tab' ), 'The questions are one list built from all three kinds, with no tab to pick a kind' );
 security_assert( false !== strpos( $source, 'Active connections' ) && false === strpos( $source, 'Connected apps:' ), 'The list of connected apps is called Active connections' );
 
 $GLOBALS['flags']['plugin'] = false;

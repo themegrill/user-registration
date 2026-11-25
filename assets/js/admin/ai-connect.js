@@ -232,35 +232,32 @@
 		copyText($(this).data("password"), this);
 	});
 
-	// Step 3: one question at a time, for the kind of action chosen. Another question moves on, and wraps round.
-	var asks = cfg.asks || {};
-	var askLevel = "read";
+	// A quiet suggestion at the bottom: one question at a time, from all of them, starting with one that only looks.
+	// Another question moves on and wraps round. Questions that change the site say what to switch on first.
+	var asks = [];
+
+	Object.keys(cfg.asks || {}).forEach(function (level) {
+		(cfg.asks[level].questions || []).forEach(function (text) {
+			asks.push({ text: text, hint: "read" === level ? "" : cfg.asks[level].hint });
+		});
+	});
+
 	var askIndex = 0;
 
 	function showAsk() {
-		var group = asks[askLevel];
+		var ask = asks[askIndex];
 
-		if (!group) {
+		if (!ask) {
 			return;
 		}
 
-		$(".ur-ai-asks__tab").each(function () {
-			$(this).toggleClass("is-active", $(this).data("level") === askLevel);
-		});
-		$("#ur-ai-ask-hint").text(group.hint);
-		$("#ur-ai-ask-text").text(group.questions[askIndex]);
-		$("#ur-ai-ask-count").text(askIndex + 1 + " / " + group.questions.length);
-		$("#ur-ai-ask-next").prop("hidden", group.questions.length < 2);
+		$("#ur-ai-ask-text").text(ask.text);
+		$("#ur-ai-ask-hint").text(ask.hint).prop("hidden", !ask.hint);
+		$("#ur-ai-ask-next").prop("hidden", asks.length < 2);
 	}
 
-	$(document).on("click", ".ur-ai-asks__tab", function () {
-		askLevel = $(this).data("level");
-		askIndex = 0;
-		showAsk();
-	});
-
 	$(document).on("click", "#ur-ai-ask-next", function () {
-		askIndex = (askIndex + 1) % asks[askLevel].questions.length;
+		askIndex = (askIndex + 1) % asks.length;
 		showAsk();
 	});
 
