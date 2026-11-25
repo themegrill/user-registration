@@ -421,12 +421,12 @@ class UR_Abilities_Connect {
 				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
 			</header>
 			<div class="ur-ai-drawer__body ur-ai-connect">
-			<h4><span class="ur-ai-connect__step">1</span><?php esc_html_e( 'Is the site ready?', 'user-registration' ); ?></h4>
+			<h4><span class="ur-ai-connect__step">1</span><?php esc_html_e( 'Is the site ready?', 'user-registration' ); ?><button type="button" class="button button-small ur-ai-connect__recheck" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button></h4>
 			<ul class="ur-ai-connect__checks" id="ur-ai-checks"><?php echo self::checks_html( self::checks() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
-			<p><button type="button" class="button" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button> <span class="ur-ai-connect__last" id="ur-ai-last"><?php echo esc_html( self::last_call_text() ); ?></span></p>
 
 			<h4><span class="ur-ai-connect__step">2</span><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
 			<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>
+			<p class="ur-ai-connect__lastline" id="ur-ai-last"><?php echo esc_html( self::last_call_text() ); ?></p>
 			<div class="ur-ai-apps" role="tablist">
 				<?php foreach ( self::apps() as $key => $app ) : ?>
 					<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude-code' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
@@ -538,8 +538,9 @@ class UR_Abilities_Connect {
 			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
-			. '.ur-ai-conn{margin:0 0 16px;padding:0;list-style:none;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-conn li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f7}.ur-ai-conn li:last-child{border-bottom:0}'
-			. '.ur-ai-conn em{display:block;font-style:normal;font-size:12px;color:#646a7a}.ur-ai-conn__lead,.ur-ai-conn__empty{margin:0 0 8px;color:#2d3559}.ur-ai-conn__empty{margin-bottom:16px;color:#646a7a}'
+			. '.ur-ai-connect h4 .ur-ai-connect__recheck{margin:0 0 0 auto;font-weight:400}.ur-ai-connect__lastline{margin:0 0 14px;color:#646a7a;font-size:12px}'
+			. '.ur-ai-conn{margin:0 0 8px;padding:0;list-style:none;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-conn li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f7}.ur-ai-conn li:last-child{border-bottom:0}'
+			. '.ur-ai-conn em{display:block;font-style:normal;font-size:12px;color:#646a7a}.ur-ai-conn__lead,.ur-ai-conn__empty{margin:0 0 8px;color:#2d3559}.ur-ai-conn__empty{margin-bottom:8px;color:#646a7a}'
 			. '.ur-ai-apps{display:flex;gap:4px;flex-wrap:wrap;padding:4px;border:1px solid #e1e4ed;border-radius:999px;width:fit-content;max-width:100%}'
 			. '.ur-ai-apps__tab{border:0;background:none;padding:6px 14px;border-radius:999px;color:#646a7a;font-size:13px;cursor:pointer}.ur-ai-apps__tab:hover{color:#2d3559}.ur-ai-apps__tab.is-active{background:#eef1fb;color:#475bb2;font-weight:600}'
 			. '.ur-ai-panel{margin-top:18px}.ur-ai-panel h5{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-panel p{margin:0 0 12px}'
