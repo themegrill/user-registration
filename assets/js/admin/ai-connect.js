@@ -233,7 +233,8 @@
 	});
 
 	// A quiet suggestion at the bottom: one question at a time, from all of them, starting with one that only looks.
-	// Another question moves on and wraps round. Questions that change the site say what to switch on first.
+	// The shuffle button picks another at random, never the same one twice in a row. Questions that change the site
+	// say what to switch on first.
 	var asks = [];
 
 	Object.keys(cfg.asks || {}).forEach(function (level) {
@@ -257,7 +258,13 @@
 	}
 
 	$(document).on("click", "#ur-ai-ask-next", function () {
-		askIndex = (askIndex + 1) % asks.length;
+		var next = askIndex;
+
+		while (asks.length > 1 && next === askIndex) {
+			next = Math.floor(Math.random() * asks.length);
+		}
+
+		askIndex = next;
 		showAsk();
 	});
 
