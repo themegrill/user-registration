@@ -499,6 +499,49 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * Delete an order, first giving back any coupon use it still holds.
+	 *
+	 * An order that still has its claim marker never finished, so deleting it must not strand the use.
+	 *
+	 * @param int $id Order ID.
+	 * @return bool|int|\mysqli_result|null
+	 * @since x.x.x
+	 */
+	public function delete( $id ) {
+		$this->settle_coupon_claim( $id, 'failed' );
+
+		return parent::delete( $id );
+	}
+
+	/**
+	 * Tie a coupon use claimed at checkout to the order it paid for.
+	 *
+	 * A completed order (free or fully discounted) keeps the use; any other order stores the claim
+	 * marker so settle_coupon_claim() can return the use when it fails. Returns false, with the use
+	 * already given back, when there is no order or the marker could not be saved.
+	 *
+	 * @param string      $coupon_code Claimed coupon code.
+	 * @param array|false $order       The created order row, or false when creation failed.
+	 * @return bool True when the claim is accounted for by the order.
+	 * @since x.x.x
+	 */
+	public function keep_coupon_claim( $coupon_code, $order ) {
+		$kept = ! empty( $order ) && ( 'completed' === $order['status'] || false !== $this->update_order_meta(
+			array(
+				'order_id'   => $order['ID'],
+				'meta_key'   => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
+				'meta_value' => $coupon_code, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
+			)
+		) );
+
+		if ( ! $kept ) {
+			ur_release_coupon_usage( $coupon_code );
+		}
+
+		return $kept;
+	}
+
+	/**
 	 * Give back the coupon uses claimed by a member's unfinished orders before they are deleted.
 	 *
 	 * @param int  $member_id   Member user ID.

@@ -40,6 +40,33 @@ class CouponService {
 	}
 
 	/**
+	 * Reserve one coupon use for a checkout, before its order exists.
+	 *
+	 * Only a coupon the order will apply consumes a use. A coupon used up since the member applied it
+	 * is refused rather than silently charged at full price.
+	 *
+	 * @param array $data Same keys as validate(): coupon, membership_id and optional upgrade_amount.
+	 * @return string|false The claimed code, '' when no coupon applies, false when the coupon is used up.
+	 * @since x.x.x
+	 */
+	public function claim_for_checkout( $data ) {
+		if ( empty( $data['coupon'] ) || ! ur_check_module_activation( 'coupon' ) ) {
+			return '';
+		}
+
+		$coupon     = sanitize_text_field( $data['coupon'] );
+		$validation = $this->validate( $data );
+
+		if ( $validation['status'] ) {
+			return ur_claim_coupon_usage( $coupon ) ? $coupon : false;
+		}
+
+		$coupon_details = ur_get_coupon_details( $coupon );
+
+		return ! empty( $coupon_details ) && ! ur_coupon_has_remaining_uses( $coupon_details ) ? false : '';
+	}
+
+	/**
 	 * Validate coupon data
 	 *
 	 * @param $data

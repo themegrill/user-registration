@@ -747,25 +747,16 @@ if ( ! class_exists( 'Admin' ) ) :
 			}
 
 			// Claim the coupon use before the order exists, so concurrent signups cannot pass its cap.
-			$claimed_coupon = '';
-			if ( ! empty( $data['coupon'] ) && ur_check_module_activation( 'coupon' ) && function_exists( 'ur_claim_coupon_usage' ) ) {
-				$coupon_check = ( new CouponService() )->validate(
-					array(
-						'coupon'        => sanitize_text_field( $data['coupon'] ),
-						'membership_id' => absint( $data['membership'] ),
-					)
-				);
+			$claimed_coupon = ( new CouponService() )->claim_for_checkout(
+				array(
+					'coupon'        => $data['coupon'] ?? '',
+					'membership_id' => absint( $data['membership'] ),
+				)
+			);
 
-				// Only a coupon the order will apply consumes a use; prepare_members_data() drops the rest, but a used-up one is rejected rather than silently charged in full.
-				$coupon_details = $coupon_check['status'] ? array() : ur_get_coupon_details( sanitize_text_field( $data['coupon'] ) );
-				$coupon_used_up = ! empty( $coupon_details ) && function_exists( 'ur_coupon_has_remaining_uses' ) && ! ur_coupon_has_remaining_uses( $coupon_details );
-				if ( $coupon_used_up || ( $coupon_check['status'] && ! ur_claim_coupon_usage( $data['coupon'] ) ) ) {
-					wp_delete_user( absint( $member_id ) );
-					wp_send_json_error( array( 'message' => esc_html__( 'This coupon has reached its usage limit.', 'user-registration' ) ) );
-				}
-				if ( $coupon_check['status'] ) {
-					$claimed_coupon = sanitize_text_field( $data['coupon'] );
-				}
+			if ( false === $claimed_coupon ) {
+				wp_delete_user( absint( $member_id ) );
+				wp_send_json_error( array( 'message' => esc_html__( 'This coupon has reached its usage limit.', 'user-registration' ) ) );
 			}
 
 			// Create order + subscription
@@ -779,18 +770,7 @@ if ( ! class_exists( 'Admin' ) ) :
 				$orders_repository = new OrdersRepository();
 				$new_order         = empty( $response['status'] ) ? false : $orders_repository->retrieve( $response['order_id'] );
 
-				if ( ! $new_order ) {
-					ur_release_coupon_usage( $claimed_coupon );
-				} elseif ( 'completed' !== $new_order['status'] ) {
-					// Free and 100% coupon orders complete here and keep the use; the rest settle on their final status.
-					$orders_repository->update_order_meta(
-						array(
-							'order_id'   => $new_order['ID'],
-							'meta_key'   => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
-							'meta_value' => $claimed_coupon, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
-						)
-					);
-				}
+				$orders_repository->keep_coupon_claim( $claimed_coupon, $new_order );
 			}
 
 			// PaymentGatewayLogging — order creation + free activation

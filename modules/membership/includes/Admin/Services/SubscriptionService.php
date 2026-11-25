@@ -729,6 +729,7 @@ class SubscriptionService {
 		$member_service = new MembersService();
 		$member_service->update_user_meta( $members_data, $user->ID );
 
+		// Known limit: the old gateway subscription is cancelled before the new order exists, so a later order failure leaves it cancelled.
 		if ( isset( $data['upgrade'] ) && $data['upgrade'] && 'subscription' === $current_membership_details['type'] && 'bank' !== $payment_method && 'off' === $selected_membership_details['trial_status'] && ! isset( $upgrade_details['delayed_until'] ) ) {
 
 			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false, true );
@@ -753,23 +754,15 @@ class SubscriptionService {
 		$orders_data = $order_service->prepare_orders_data( $members_data, $user->ID, $subscription, $upgrade_details ); // prepare data for orders table.
 		$order       = $this->orders_repository->create( $orders_data );
 
-		// Free orders complete here and keep the use; the rest settle on their final status.
-		$needs_claim_marker = '' !== $claimed_coupon && ! empty( $order ) && 'completed' !== $order['status'];
-		$marker_saved       = ! $needs_claim_marker || false !== $this->orders_repository->update_order_meta(
-			array(
-				'order_id'   => $order['ID'],
-				'meta_key'   => 'urm_coupon_usage_claim', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- insert into the order meta table.
-				'meta_value' => $claimed_coupon, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- insert into the order meta table.
-			)
-		);
-
 		// Without the order, or the marker that lets a failed order give the use back, abort rather than strand the claim.
-		if ( empty( $order ) || ! $marker_saved ) {
+		$claim_kept = ! empty( $order ) && ( '' === $claimed_coupon || $this->orders_repository->keep_coupon_claim( $claimed_coupon, $order ) );
+
+		if ( ! $claim_kept ) {
 			if ( ! empty( $order['ID'] ) ) {
 				$this->orders_repository->delete( $order['ID'] );
 			}
 
-			if ( '' !== $claimed_coupon ) {
+			if ( '' !== $claimed_coupon && empty( $order ) ) {
 				ur_release_coupon_usage( $claimed_coupon );
 			}
 
@@ -818,7 +811,6 @@ class SubscriptionService {
 
 		} else {
 			$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
-			$this->orders_repository->settle_coupon_claim( $order['ID'], 'failed' );
 			$this->orders_repository->delete( $order['ID'] );
 		}
 
