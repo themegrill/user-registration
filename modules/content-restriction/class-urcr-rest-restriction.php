@@ -265,6 +265,53 @@ class URCR_REST_Restriction {
 	}
 
 	/**
+	 * Leave inaccessible posts out of REST collection queries.
+	 * Done in the query so X-WP-Total and X-WP-TotalPages cannot be used to probe restricted content.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param array           $args    WP_Query arguments built by the REST posts controller.
+	 * @param WP_REST_Request $request Request object.
+	 * @return array
+	 */
+	public static function exclude_restricted_posts( $args, $request ) {
+		if ( ! function_exists( 'urcr_is_content_access_granted' )
+			|| ! ur_string_to_bool( get_option( 'user_registration_content_restriction_enable', true ) ) ) {
+			return $args;
+		}
+
+		// ponytail: checks every matching post per request, cache the decisions if very large sites need it.
+		$candidates = new WP_Query(
+			array_merge(
+				$args,
+				array(
+					'fields'                 => 'ids',
+					'posts_per_page'         => -1,
+					'paged'                  => 1,
+					'offset'                 => 0,
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			)
+		);
+
+		$excluded = array();
+
+		foreach ( $candidates->posts as $post_id ) {
+			if ( ! self::is_post_access_granted( absint( $post_id ) ) ) {
+				$excluded[] = absint( $post_id );
+			}
+		}
+
+		if ( $excluded ) {
+			$args['post__not_in'] = array_merge( isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array(), $excluded );
+		}
+
+		return $args;
+	}
+
+	/**
 	 * Register a prepare filter for every publicly readable post type.
 	 *
 	 * @since 5.2.8
@@ -288,6 +335,7 @@ class URCR_REST_Restriction {
 
 		foreach ( (array) $post_types as $post_type ) {
 			add_filter( 'rest_prepare_' . $post_type, array( __CLASS__, 'restrict_response' ), PHP_INT_MAX, 3 );
+			add_filter( 'rest_' . $post_type . '_query', array( __CLASS__, 'exclude_restricted_posts' ), PHP_INT_MAX, 2 );
 		}
 	}
 
