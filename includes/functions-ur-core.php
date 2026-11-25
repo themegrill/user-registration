@@ -6517,38 +6517,75 @@ if ( ! function_exists( 'ur_get_ip_address' ) ) {
 	/**
 	 * Get current user IP Address.
 	 *
-	 * X-Real-IP / X-Forwarded-For are honored only when the immediate peer (REMOTE_ADDR) is in
-	 * the `user_registration_trusted_proxies` filter; otherwise REMOTE_ADDR is returned.
+	 * X-Forwarded-For / X-Real-IP are honored only when the immediate peer (REMOTE_ADDR) is listed in
+	 * the `user_registration_trusted_proxies` filter. X-Forwarded-For is read right to left, skipping
+	 * trusted proxies, so a client-supplied leftmost entry is never used. Anything invalid falls back
+	 * to REMOTE_ADDR.
 	 *
 	 * @since x.x.x Forwarded headers require a trusted proxy.
 	 *
-	 * @return string
+	 * @return string Valid IP address, or an empty string when REMOTE_ADDR is missing or invalid.
 	 */
 	function ur_get_ip_address() {
-		$remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated
+		$remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? rest_is_ip_address( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) ) : false; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+		if ( ! $remote_addr ) {
+			return '';
+		}
+
+		// Packed binary form, so equivalent IPv6 spellings and IPv4-mapped IPv6 (::ffff:a.b.c.d) match plain IPv4.
+		$pack = static function ( $ip ) {
+			$packed = inet_pton( $ip );
+
+			return 16 === strlen( $packed ) && 0 === strncmp( $packed, "\0\0\0\0\0\0\0\0\0\0\xff\xff", 12 ) ? substr( $packed, 12 ) : $packed;
+		};
+
+		$trusted_proxies = array();
 
 		/**
-		 * Filters the exact IPs of reverse proxies trusted to set X-Real-IP / X-Forwarded-For.
+		 * Filters the IPs of reverse proxies trusted to set X-Forwarded-For / X-Real-IP.
 		 *
 		 * @since x.x.x
 		 *
-		 * @param string[] $trusted_proxies Trusted proxy IPs. Default empty: no proxy is trusted.
+		 * @param string[] $trusted_proxies Trusted proxy IPs (IPv4 or IPv6). Default empty: no proxy is trusted.
 		 */
-		$trusted_proxies = (array) apply_filters( 'user_registration_trusted_proxies', array() );
+		foreach ( (array) apply_filters( 'user_registration_trusted_proxies', array() ) as $proxy ) {
+			if ( is_string( $proxy ) && rest_is_ip_address( trim( $proxy ) ) ) {
+				$trusted_proxies[] = $pack( trim( $proxy ) );
+			}
+		}
 
-		if ( '' === $remote_addr || ! in_array( $remote_addr, $trusted_proxies, true ) ) {
+		$is_trusted = static function ( $ip ) use ( $pack, $trusted_proxies ) {
+			return in_array( $pack( $ip ), $trusted_proxies, true );
+		};
+
+		if ( ! $is_trusted( $remote_addr ) ) {
 			return $remote_addr;
 		}
 
-		if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) { // WPCS: input var ok, CSRF ok.
-			return sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) );  // WPCS: input var ok, CSRF ok.
-		} elseif ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // WPCS: input var ok, CSRF ok.
-			// Proxy servers can send through this header like this: X-Forwarded-For: client1, proxy1, proxy2
-			// Make sure we always only send through the first IP in the list which should always be the client IP.
-			$forwarded_ip = trim( current( preg_split( '/,/', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) ) ) ); // WPCS: input var ok, CSRF ok.
-			// Remove the port from '<IPv4>:<port>', '[<IPv6>]' and '[<IPv6>]:<port>' while leaving bare IPv4/IPv6 intact.
-			$forwarded_ip = preg_replace( '/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\:.*|\[([^]]+)\].*/', '$1$2', $forwarded_ip );
-			return (string) rest_is_ip_address( $forwarded_ip );
+		if ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+			$hops = array_reverse( explode( ',', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) ) );
+
+			foreach ( $hops as $hop ) {
+				// Remove the port from '<IPv4>:<port>', '[<IPv6>]' and '[<IPv6>]:<port>' while leaving bare IPv4/IPv6 intact.
+				$hop_ip = rest_is_ip_address( preg_replace( '/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\:.*|\[([^]]+)\].*/', '$1$2', trim( $hop ) ) );
+
+				if ( ! $hop_ip ) {
+					return $remote_addr;
+				}
+
+				if ( ! $is_trusted( $hop_ip ) ) {
+					return $hop_ip;
+				}
+			}
+		}
+
+		if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) {
+			$real_ip = rest_is_ip_address( sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) ) );
+
+			if ( $real_ip ) {
+				return $real_ip;
+			}
 		}
 
 		return $remote_addr;
