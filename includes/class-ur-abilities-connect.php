@@ -61,15 +61,17 @@ class UR_Abilities_Connect {
 		}
 
 		$items = WP_Application_Passwords::get_user_application_passwords( $user->ID );
+		// The name of the AI user opens that user's profile page, where its details and role are.
+		$login = '<a class="ur-ai-conn__user" href="' . esc_url( get_edit_user_link( $user->ID ) ) . '">' . esc_html( $user->user_login ) . '</a>';
 		$title = '<h4 class="ur-ai-conn__title">' . esc_html__( 'Active connections', 'user-registration' ) . '</h4>';
 
 		if ( ! $items ) {
 			/* translators: %s: login of the AI user. */
-			return $title . '<p class="ur-ai-conn__empty">' . esc_html( sprintf( __( 'No AI app is connected yet. The AI user %s is ready.', 'user-registration' ), $user->user_login ) ) . '</p>';
+			return $title . '<p class="ur-ai-conn__empty">' . sprintf( esc_html__( 'No AI app is connected yet. The AI user %s is ready.', 'user-registration' ), $login ) . '</p>';
 		}
 
 		/* translators: %s: login of the AI user. */
-		$html = $title . '<p class="ur-ai-conn__lead">' . esc_html( sprintf( __( 'These apps reach your site as the AI user %s.', 'user-registration' ), $user->user_login ) ) . '</p><ul class="ur-ai-conn">';
+		$html = $title . '<p class="ur-ai-conn__lead">' . sprintf( esc_html__( 'These apps reach your site as the AI user %s.', 'user-registration' ), $login ) . '</p><ul class="ur-ai-conn">';
 
 		foreach ( $items as $item ) {
 			/* translators: 1: how long ago the password was made, 2: when it was last used. */
@@ -622,7 +624,7 @@ class UR_Abilities_Connect {
 			. '@keyframes urAiSpin{to{transform:rotate(360deg)}}.ur-ai-connect__checks .is-loading .ur-ai-connect__mark{position:relative;color:transparent;width:12px;height:12px;flex:none}'
 			. '.ur-ai-connect__checks .is-loading .ur-ai-connect__mark::after{content:"";position:absolute;inset:0;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}.ur-ai-connect__checks .is-loading em{display:none}'
 			. '.ur-ai-conn{margin:0 0 8px;padding:0;list-style:none;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-conn li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f7}.ur-ai-conn li:last-child{border-bottom:0}'
-			. '.ur-ai-conn em{display:block;font-style:normal;font-size:12px;color:#646a7a}.ur-ai-conn__lead,.ur-ai-conn__empty{margin:0 0 8px;color:#2d3559}.ur-ai-conn__empty{margin-bottom:8px;color:#646a7a}'
+			. '.ur-ai-conn em{display:block;font-style:normal;font-size:12px;color:#646a7a}.ur-ai-conn__user{color:#475bb2;font-weight:600;text-decoration:none}.ur-ai-conn__user:hover,.ur-ai-conn__user:focus{color:#2d3f94;text-decoration:none}.ur-ai-conn__lead,.ur-ai-conn__empty{margin:0 0 8px;color:#2d3559}.ur-ai-conn__empty{margin-bottom:8px;color:#646a7a}'
 			. '.ur-ai-apps{display:flex;gap:4px;flex-wrap:wrap;padding:4px;border:1px solid #e1e4ed;border-radius:999px;width:fit-content;max-width:100%}'
 			. '.ur-ai-apps__tab{border:0;background:none;padding:6px 14px;border-radius:999px;color:#646a7a;font-size:13px;cursor:pointer}.ur-ai-apps__tab:hover{color:#2d3559}.ur-ai-apps__tab.is-active{background:#eef1fb;color:#475bb2;font-weight:600}'
 			. '.ur-ai-panel{margin-top:18px}.ur-ai-panel h5{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-panel p{margin:0 0 12px}'
