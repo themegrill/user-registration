@@ -358,7 +358,7 @@ class UR_Abilities_Connect {
 	}
 
 	/**
-	 * Add the Connect card to the AI Integration page, under the master switch.
+	 * Add the Connect part to the AI Integration card, under the master switch.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -370,24 +370,10 @@ class UR_Abilities_Connect {
 			return $settings;
 		}
 
-		$card = array(
-			'title'    => __( 'Connect an AI Assistant', 'user-registration' ),
-			'type'     => 'card',
-			'desc'     => '',
-			'settings' => array( array( 'type' => 'ur_ai_connect' ) ),
-		);
-
-		$sections = array();
-
-		foreach ( $settings['sections'] as $key => $section ) {
-			$sections[ $key ] = $section;
-
-			if ( 'ai_integration' === $key ) {
-				$sections['ai_connect'] = $card;
-			}
+		// The Connect part lives inside the AI Integration card, under the master switch.
+		if ( isset( $settings['sections']['ai_integration']['settings'] ) ) {
+			$settings['sections']['ai_integration']['settings'][] = array( 'type' => 'ur_ai_connect' );
 		}
-
-		$settings['sections'] = $sections;
 
 		return $settings;
 	}
@@ -407,9 +393,9 @@ class UR_Abilities_Connect {
 		ob_start();
 		?>
 		<div class="ur-ai-connect">
-			<p class="ur-ai-connect__lead"><?php esc_html_e( 'Make a user just for the AI, with its own password and no admin rights, so a leaked password cannot reach the rest of your site. Then paste one line into your AI app.', 'user-registration' ); ?></p>
-			<p>
+			<p class="ur-ai-connect__row">
 				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect an AI assistant', 'user-registration' ); ?></button>
+				<?php echo ur_help_tip( __( 'Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?>
 				<span class="ur-ai-connect__last" id="ur-ai-last-card"><?php echo esc_html( self::last_call_text() ); ?></span>
 			</p>
 		</div>
@@ -525,7 +511,8 @@ class UR_Abilities_Connect {
 
 	/** Add the script and styles of the card. */
 	private static function enqueue() {
-		$css = '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
+		$css = '.ur-ai-connect__row{display:flex;align-items:center;gap:10px;margin:0}.ur-ai-connect__row .user-registration-help-tip{margin:0}.ur-ai-connect__row .ur-ai-connect__last{margin:0}'
+			. '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
 			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:600px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
 			. '.ur-ai-drawer.is-open{transform:none}.ur-ai-drawer[hidden],.ur-ai-drawer-overlay[hidden]{display:none}'
 			. '.ur-ai-drawer__header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e1e4ed}.ur-ai-drawer__header h2{margin:0;font-size:18px;font-weight:600;color:#2d3559}'

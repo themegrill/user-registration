@@ -261,17 +261,21 @@ $GLOBALS['options'][ UR_Abilities_Connect::LAST_CALL_OPTION ] = array(
 $last = UR_Abilities_Connect::last_call();
 security_assert( 'Claude' === $last['app'], 'The last call names the AI app' );
 
-// The card is added under the master switch, with no setting of its own to save.
+// The Connect part goes inside the AI Integration card, under the master switch, with no setting of its own to save.
 $settings = UR_Abilities_Connect::add_settings(
 	array(
 		'sections' => array(
-			'ai_integration'       => array( 'title' => 'AI Integration' ),
+			'ai_integration'      => array(
+				'title'    => 'AI Integration',
+				'settings' => array( array( 'id' => 'user_registration_enable_abilities' ) ),
+			),
 			'ai_abilities_access' => array( 'title' => 'Access' ),
 		),
 	)
 );
-security_assert( array( 'ai_integration', 'ai_connect', 'ai_abilities_access' ) === array_keys( $settings['sections'] ), 'The Connect card sits between the master switch and the access card' );
-security_assert( 'ur_ai_connect' === $settings['sections']['ai_connect']['settings'][0]['type'] && ! isset( $settings['sections']['ai_connect']['settings'][0]['id'] ), 'It has no id, so saving the page never touches it' );
+security_assert( array( 'ai_integration', 'ai_abilities_access' ) === array_keys( $settings['sections'] ), 'No card of its own is added; the Connect part joins the AI Integration card' );
+$inside = $settings['sections']['ai_integration']['settings'];
+security_assert( 2 === count( $inside ) && 'user_registration_enable_abilities' === $inside[0]['id'] && 'ur_ai_connect' === $inside[1]['type'] && ! isset( $inside[1]['id'] ), 'It sits under the master switch and has no id, so saving the page never touches it' );
 security_assert( 'odd' === UR_Abilities_Connect::add_settings( 'odd' ) && array( 'sections' => array() ) === UR_Abilities_Connect::add_settings( array( 'sections' => array() ) ), 'Settings of an unexpected shape are returned untouched' );
 
 // Claude Desktop reaches a remote server through mcp-remote, and the login stays out of the command line.
