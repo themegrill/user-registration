@@ -2276,6 +2276,11 @@ class AJAX {
 		$data['start_date'] = date( 'Y-m-d' );
 		$data['username']   = $member->user_login;
 
+		// Refuse a repeat purchase before any coupon use is claimed or order is created, so no live discounted order is left behind.
+		if ( 'free' !== $data['payment_method'] && in_array( $data['selected_membership_id'], urm_get_membership_process( $member_id )['multiple'] ) ) {
+			wp_send_json_error( array( 'message' => __( 'Membership purchase process already initiated.', 'user-registration' ) ) );
+		}
+
 		// Claim the coupon use before the order exists, so concurrent purchases cannot pass its cap.
 		$claimed_coupon = ( new CouponService() )->claim_for_checkout(
 			array(
@@ -2370,7 +2375,6 @@ class AJAX {
 					$membership_process['multiple'][] = $data['selected_membership_id'];
 					update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 				} else {
-					( new OrdersRepository() )->settle_coupon_claim( $data['order_id'], 'failed' );
 					wp_send_json_error(
 						array(
 							'message' => __( 'Membership purchase process already initiated.', 'user-registration' ),
