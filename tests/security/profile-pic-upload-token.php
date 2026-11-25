@@ -113,13 +113,15 @@ try {
 	$legacy_key   = hash( 'sha256', $GLOBALS['options']['ur_secret_key'] );
 	$legacy_iv    = substr( hash( 'sha256', $GLOBALS['options']['ur_secret_iv'] ), 0, 16 );
 	$legacy_token = base64_encode( openssl_encrypt( $plaintext, 'AES-256-CBC', $legacy_key, 0, $legacy_iv ) );
-	security_assert( false === crypt_the_string( $legacy_token, 'd' ), 'Rejects unauthenticated legacy fixed-IV ciphertext' );
+	security_assert( false === crypt_the_string( $legacy_token, 'd' ), 'Rejects unauthenticated legacy fixed-IV ciphertext by default' );
+	security_assert( crypt_the_string( $legacy_token, 'd', true ) === $plaintext, 'Allows legacy decryption only when caller explicitly opts in' );
+	security_assert( false === crypt_the_string( $flip_byte( $raw, 48 ), 'd', true ), 'Never falls back to legacy for tampered v2 tokens' );
 
 	$downgrade_iv  = random_bytes( 16 );
 	$mac_key       = hash_hmac( 'sha256', 'ur-mac-v2', $GLOBALS['options']['ur_secret_key'], true );
 	$downgrade_mac = hash_hmac( 'sha256', 'v2m' . $downgrade_iv . $plaintext, $mac_key, true );
 	$downgrade_tok = 'v2m.' . rtrim( strtr( base64_encode( $downgrade_iv . $downgrade_mac . $plaintext ), '+/', '-_' ), '=' );
-	security_assert( false === crypt_the_string( $downgrade_tok, 'd' ), 'Rejects non-OpenSSL v2m downgrade when OpenSSL is active' );
+	security_assert( false === crypt_the_string( $downgrade_tok, 'd' ), 'Rejects unencrypted v2m tokens' );
 
 	$saved_key                           = $GLOBALS['options']['ur_secret_key'];
 	$GLOBALS['options']['ur_secret_key'] = 'completely-different-secret-key-32!!';

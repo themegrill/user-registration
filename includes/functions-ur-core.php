@@ -4371,12 +4371,17 @@ if ( ! function_exists( 'crypt_the_string' ) ) {
 	 * Encrypt or decrypt a string using authenticated encryption (AES-256-CBC + HMAC-SHA256).
 	 * Uses a fresh random IV per encryption and verifies the HMAC before decrypting.
 	 *
-	 * @param string $string String to encrypt/decrypt.
-	 * @param string $action Encrypt/decrypt action. 'e' for encrypt and 'd' for decrypt.
+	 * @param string $string       String to encrypt/decrypt.
+	 * @param string $action       Encrypt/decrypt action. 'e' for encrypt and 'd' for decrypt.
+	 * @param bool   $allow_legacy Optional. Allow decrypting legacy pre-v2 tokens when the caller independently authenticates the token (e.g. via hash_equals against stored user meta). Default false.
 	 *
 	 * @return string|false Encrypted/decrypted string, or false on failure or tampering.
 	 */
-	function crypt_the_string( $string, $action = 'e' ) {
+	function crypt_the_string( $string, $action = 'e', $allow_legacy = false ) {
+		if ( ! function_exists( 'openssl_encrypt' ) || ! function_exists( 'openssl_decrypt' ) ) {
+			return false;
+		}
+
 		$secret_key = get_option( 'ur_secret_key' );
 
 		if ( empty( $secret_key ) ) {
@@ -4390,36 +4395,43 @@ if ( ! function_exists( 'crypt_the_string' ) ) {
 		$mac_key        = hash_hmac( 'sha256', 'ur-mac-v2', $secret_key, true );
 
 		if ( 'e' === $action ) {
-			$iv = function_exists( 'random_bytes' ) ? random_bytes( 16 ) : openssl_random_pseudo_bytes( 16 );
+			$iv = false;
+
+			if ( function_exists( 'random_bytes' ) ) {
+				try {
+					$iv = random_bytes( 16 );
+				} catch ( Exception $e ) {
+					$iv = false;
+				}
+			}
+
+			if ( false === $iv && function_exists( 'openssl_random_pseudo_bytes' ) ) {
+				$strong = false;
+				$bytes  = openssl_random_pseudo_bytes( 16, $strong );
+
+				if ( false !== $bytes && $strong ) {
+					$iv = $bytes;
+				}
+			}
 
 			if ( false === $iv || 16 !== strlen( $iv ) ) {
 				return false;
 			}
 
-			if ( function_exists( 'openssl_encrypt' ) ) {
-				$ciphertext = openssl_encrypt( (string) $string, $encrypt_method, $enc_key, OPENSSL_RAW_DATA, $iv );
+			$ciphertext = openssl_encrypt( (string) $string, $encrypt_method, $enc_key, OPENSSL_RAW_DATA, $iv );
 
-				if ( false === $ciphertext ) {
-					return false;
-				}
-
-				$mac    = hash_hmac( 'sha256', 'v2' . $iv . $ciphertext, $mac_key, true );
-				$output = 'v2.' . rtrim( strtr( base64_encode( $iv . $mac . $ciphertext ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
-			} else {
-				$payload = (string) $string;
-				$mac     = hash_hmac( 'sha256', 'v2m' . $iv . $payload, $mac_key, true );
-				$output  = 'v2m.' . rtrim( strtr( base64_encode( $iv . $mac . $payload ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+			if ( false === $ciphertext ) {
+				return false;
 			}
+
+			$mac    = hash_hmac( 'sha256', 'v2' . $iv . $ciphertext, $mac_key, true );
+			$output = 'v2.' . rtrim( strtr( base64_encode( $iv . $mac . $ciphertext ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
 		} elseif ( 'd' === $action ) {
 			if ( ! is_string( $string ) || '' === $string ) {
 				return false;
 			}
 
-			if ( function_exists( 'openssl_decrypt' ) ) {
-				if ( 0 !== strpos( $string, 'v2.' ) ) {
-					return false;
-				}
-
+			if ( 0 === strpos( $string, 'v2.' ) ) {
 				$encoded = strtr( substr( $string, 3 ), '-_', '+/' );
 				$pad     = strlen( $encoded ) % 4;
 				if ( $pad > 0 ) {
@@ -4443,33 +4455,22 @@ if ( ! function_exists( 'crypt_the_string' ) ) {
 				}
 
 				$output = openssl_decrypt( $ciphertext, $encrypt_method, $enc_key, OPENSSL_RAW_DATA, $iv );
-			} else {
-				if ( 0 !== strpos( $string, 'v2m.' ) ) {
+			} elseif ( $allow_legacy ) {
+				$secret_iv = get_option( 'ur_secret_iv' );
+
+				if ( empty( $secret_iv ) ) {
 					return false;
 				}
 
-				$encoded = strtr( substr( $string, 4 ), '-_', '+/' );
-				$pad     = strlen( $encoded ) % 4;
-				if ( $pad > 0 ) {
-					$encoded .= str_repeat( '=', 4 - $pad );
-				}
+				$decoded = base64_decode( $string, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 
-				$raw = base64_decode( $encoded, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
-
-				if ( false === $raw || strlen( $raw ) < 48 ) {
+				if ( false === $decoded ) {
 					return false;
 				}
 
-				$iv       = substr( $raw, 0, 16 );
-				$mac      = substr( $raw, 16, 32 );
-				$payload  = substr( $raw, 48 );
-				$expected = hash_hmac( 'sha256', 'v2m' . $iv . $payload, $mac_key, true );
-
-				if ( ! hash_equals( $expected, $mac ) ) {
-					return false;
-				}
-
-				$output = $payload;
+				$legacy_key = hash( 'sha256', $secret_key );
+				$legacy_iv  = substr( hash( 'sha256', $secret_iv ), 0, 16 );
+				$output     = openssl_decrypt( $decoded, $encrypt_method, $legacy_key, 0, $legacy_iv );
 			}
 		}
 
@@ -4702,7 +4703,8 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 				return false;
 			}
 
-			$expected_tmp_dir = realpath( ur_get_tmp_dir() );
+			$raw_tmp_dir      = rtrim( ur_get_tmp_dir(), '/\\' );
+			$expected_tmp_dir = is_link( $raw_tmp_dir ) ? false : realpath( $raw_tmp_dir );
 			$real_source_path = realpath( $upload['file_path'] );
 
 			if ( false === $expected_tmp_dir || false === $real_source_path || ! is_file( $real_source_path ) || is_link( $upload['file_path'] ) ) {

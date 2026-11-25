@@ -36,13 +36,26 @@ class UR_Email_Approval {
 
 			$ur_approval_token_raw = sanitize_text_field( wp_unslash( $_GET['ur_approval_token'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$ur_approval_token     = str_split( $ur_approval_token_raw, 50 );
-			$token_string          = $ur_approval_token[1];
+
+			if ( count( $ur_approval_token ) < 2 ) {
+				add_action( 'admin_notices', array( __CLASS__, 'invalid_approval_token_message' ) );
+				return;
+			}
+
+			$token_string = $ur_approval_token[1];
 
 			if ( 2 < count( $ur_approval_token ) ) {
 				unset( $ur_approval_token[0] );
 				$token_string = join( '', $ur_approval_token );
 			}
-			$output  = crypt_the_string( $token_string, 'd' );
+			// Stored approval tokens are independently verified via hash_equals() against user meta.
+			$output = crypt_the_string( $token_string, 'd', true );
+
+			if ( ! is_string( $output ) || '' === $output ) {
+				add_action( 'admin_notices', array( __CLASS__, 'invalid_approval_token_message' ) );
+				return;
+			}
+
 			$output  = explode( '_', $output );
 			$user_id = absint( $output[0] );
 			$form_id = ur_get_form_id_by_userid( $user_id );
@@ -80,14 +93,27 @@ class UR_Email_Approval {
 
 			$ur_denial_token_raw = sanitize_text_field( wp_unslash( $_GET['ur_denial_token'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$ur_denial_token     = str_split( $ur_denial_token_raw, 50 );
-			$token_string        = $ur_denial_token[1];
+
+			if ( count( $ur_denial_token ) < 2 ) {
+				add_action( 'admin_notices', array( __CLASS__, 'invalid_approval_token_message' ) );
+				return;
+			}
+
+			$token_string = $ur_denial_token[1];
 
 			if ( 2 < count( $ur_denial_token ) ) {
 				unset( $ur_denial_token[0] );
 				$token_string = join( '', $ur_denial_token );
 			}
 
-			$output  = crypt_the_string( $token_string, 'd' );
+			// Stored denial tokens are independently verified via hash_equals() against user meta.
+			$output = crypt_the_string( $token_string, 'd', true );
+
+			if ( ! is_string( $output ) || '' === $output ) {
+				add_action( 'admin_notices', array( __CLASS__, 'invalid_approval_token_message' ) );
+				return;
+			}
+
 			$output  = explode( '_', $output );
 			$user_id = absint( $output[0] );
 			$form_id = ur_get_form_id_by_userid( $user_id );
