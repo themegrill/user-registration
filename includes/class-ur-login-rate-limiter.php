@@ -88,8 +88,7 @@ class UR_Login_Rate_Limiter {
 
 		if ( ! empty( $_SERVER['REMOTE_ADDR'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			$raw_ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$valid  = rest_is_ip_address( $raw_ip );
-			$ip     = $valid ? (string) $valid : $raw_ip;
+			$ip     = rest_is_ip_address( $raw_ip ) ? $raw_ip : '';
 		}
 
 		return (string) apply_filters( 'user_registration_login_rate_limit_ip', $ip );
@@ -186,7 +185,12 @@ class UR_Login_Rate_Limiter {
 		$account_key = self::get_account_key( $identifier );
 
 		if ( '' !== $account_key ) {
-			delete_transient( $account_key );
+			$lock_type = self::acquire_lock( $account_key );
+			try {
+				delete_transient( $account_key );
+			} finally {
+				self::release_lock( $account_key, $lock_type );
+			}
 		}
 	}
 
@@ -227,24 +231,39 @@ class UR_Login_Rate_Limiter {
 		$base_lockout   = max( 60, (int) apply_filters( 'user_registration_login_lockout_duration', self::DEFAULT_LOCKOUT_DURATION ) );
 		$max_lockout    = max( $base_lockout, (int) apply_filters( 'user_registration_login_max_lockout_duration', self::DEFAULT_MAX_LOCKOUT_DURATION ) );
 
-		$state = self::get_bucket_state( $key );
+		$lock_type       = self::acquire_lock( $key );
+		$triggered_lock  = false;
+		$locked_duration = 0;
+		$lockouts_count  = 0;
 
-		// Do not extend an already active lockout.
-		if ( $state['locked_until'] > $now ) {
-			return true;
+		try {
+			$state = self::get_bucket_state( $key );
+
+			// Do not extend an already active lockout.
+			if ( $state['locked_until'] > $now ) {
+				return true;
+			}
+
+			$state['attempts']++;
+
+			if ( $state['attempts'] >= $max_limit ) {
+				$state['lockouts']++;
+				$exponent              = min( 20, max( 0, $state['lockouts'] - 1 ) );
+				$locked_duration       = min( $max_lockout, (int) ( $base_lockout * pow( 2, $exponent ) ) );
+				$state['attempts']     = 0;
+				$state['locked_until'] = $now + $locked_duration;
+				$lockouts_count        = $state['lockouts'];
+				$triggered_lock        = true;
+
+				set_transient( $key, $state, $locked_duration + $attempt_window );
+			} else {
+				set_transient( $key, $state, $attempt_window );
+			}
+		} finally {
+			self::release_lock( $key, $lock_type );
 		}
 
-		$state['attempts']++;
-
-		if ( $state['attempts'] >= $max_limit ) {
-			$state['lockouts']++;
-			$exponent              = min( 20, max( 0, $state['lockouts'] - 1 ) );
-			$duration              = min( $max_lockout, (int) ( $base_lockout * pow( 2, $exponent ) ) );
-			$state['attempts']     = 0;
-			$state['locked_until'] = $now + $duration;
-
-			set_transient( $key, $state, $duration + $attempt_window );
-
+		if ( $triggered_lock ) {
 			/**
 			 * Fires when a login rate-limit lockout is triggered.
 			 *
@@ -253,14 +272,69 @@ class UR_Login_Rate_Limiter {
 			 * @param int    $duration   Lockout duration in seconds.
 			 * @param int    $lockouts   Consecutive lockout count.
 			 */
-			do_action( 'user_registration_login_locked_out', $identifier, $ip, $duration, $state['lockouts'] );
-
-			return true;
+			do_action( 'user_registration_login_locked_out', $identifier, $ip, $locked_duration, $lockouts_count );
 		}
 
-		set_transient( $key, $state, $attempt_window );
+		return $triggered_lock;
+	}
 
-		return false;
+	/**
+	 * Acquire a per-bucket lock to serialize concurrent read/modify/write updates.
+	 *
+	 * @param string $key Bucket transient key.
+	 *
+	 * @return string Lock mechanism acquired ('cache', 'db', or 'none').
+	 */
+	private static function acquire_lock( $key ) {
+		$lock_name = 'ur_rl_' . md5( $key );
+
+		if ( function_exists( 'wp_using_ext_object_cache' ) && wp_using_ext_object_cache() && function_exists( 'wp_cache_add' ) ) {
+			for ( $i = 0; $i < 20; $i++ ) {
+				if ( wp_cache_add( $lock_name, 1, 'ur_login_rate_limit', 5 ) ) {
+					return 'cache';
+				}
+				usleep( 25000 );
+			}
+			return 'none';
+		}
+
+		global $wpdb;
+		if ( is_object( $wpdb ) && method_exists( $wpdb, 'get_var' ) && method_exists( $wpdb, 'prepare' ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$acquired = $wpdb->get_var( $wpdb->prepare( 'SELECT GET_LOCK( %s, %d )', $lock_name, 2 ) );
+			if ( '1' === (string) $acquired ) {
+				return 'db';
+			}
+		}
+
+		return 'none';
+	}
+
+	/**
+	 * Release a previously acquired per-bucket lock.
+	 *
+	 * @param string $key       Bucket transient key.
+	 * @param string $lock_type Lock mechanism returned by acquire_lock().
+	 *
+	 * @return void
+	 */
+	private static function release_lock( $key, $lock_type ) {
+		if ( 'none' === $lock_type ) {
+			return;
+		}
+
+		$lock_name = 'ur_rl_' . md5( $key );
+
+		if ( 'cache' === $lock_type && function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( $lock_name, 'ur_login_rate_limit' );
+			return;
+		}
+
+		global $wpdb;
+		if ( 'db' === $lock_type && is_object( $wpdb ) && method_exists( $wpdb, 'get_var' ) && method_exists( $wpdb, 'prepare' ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->get_var( $wpdb->prepare( 'SELECT RELEASE_LOCK( %s )', $lock_name ) );
+		}
 	}
 
 	/**
