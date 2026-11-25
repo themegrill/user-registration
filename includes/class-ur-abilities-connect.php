@@ -408,12 +408,12 @@ class UR_Abilities_Connect {
 
 		ob_start();
 		?>
-		<div class="ur-ai-connect"<?php echo $condition['attrs'] . $condition['initial_style']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped by the settings page. ?>>
-			<p class="ur-ai-connect__row">
-				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect an AI assistant', 'user-registration' ); ?></button>
-				<?php echo ur_help_tip( __( 'Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?>
+		<div class="ur-ai-connect user-registration-global-settings"<?php echo $condition['attrs'] . $condition['initial_style']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped by the settings page. ?>>
+			<label class="ur-label"><?php esc_html_e( 'Connect an AI Assistant', 'user-registration' ); ?> <?php echo ur_help_tip( __( 'Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?></label>
+			<div class="user-registration-global-settings--field ur-ai-connect__field">
+				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect', 'user-registration' ); ?></button>
 				<span class="ur-ai-connect__last" id="ur-ai-last-card"><?php echo esc_html( self::last_call_text() ); ?></span>
-			</p>
+			</div>
 		</div>
 
 		<div class="ur-ai-drawer-overlay" id="ur-ai-overlay" hidden></div>
@@ -522,7 +522,8 @@ class UR_Abilities_Connect {
 
 	/** Add the script and styles of the card. */
 	private static function enqueue() {
-		$css = '.ur-ai-connect__row{display:flex;align-items:center;gap:10px;margin:0}.ur-ai-connect__row .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0;padding:0;line-height:1}.ur-ai-connect__row .user-registration-help-tip::after{width:16px;height:16px;padding:0;box-sizing:border-box;background-size:contain}.ur-ai-connect__row .ur-ai-connect__last{margin:0}'
+		$css = '.user-registration-global-settings.ur-ai-connect .user-registration-global-settings--field.ur-ai-connect__field{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:12px;text-align:left}.ur-ai-connect__field .button{margin:0}.ur-ai-connect__last{color:#646a7a}'
+			. '.user-registration-global-settings.ur-ai-connect > label.ur-label{display:flex;align-items:center}.user-registration-global-settings.ur-ai-connect > label.ur-label .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;top:0 !important;line-height:1;vertical-align:middle}.user-registration-global-settings.ur-ai-connect > label.ur-label .user-registration-help-tip::after{width:16px !important;height:16px !important;padding:0 !important;box-sizing:border-box;background-size:contain !important}'
 			. '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
 			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:760px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
 			. '.ur-ai-drawer.is-open{transform:none}.ur-ai-drawer[hidden],.ur-ai-drawer-overlay[hidden]{display:none}'
