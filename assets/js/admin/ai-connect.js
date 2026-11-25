@@ -107,9 +107,9 @@
 
 	// Redraw what the server says exists: the checks, the connected apps and, once the AI user exists, the
 	// agreement that no longer talks about making a user.
-	// The one-line status above the checks: ready, or how many things need attention. It folds the list away while
-	// everything passes, and opens it when something does not.
-	function updateSummary(open) {
+	// The status at the top right: ready, or how many things need attention. Clicking it opens the checks in a small
+	// popover, so the list is there when wanted and out of the way otherwise.
+	function updateSummary() {
 		var bad = $("#ur-ai-checks").children(".is-bad").length;
 		var text = i18n.ready;
 
@@ -118,18 +118,17 @@
 		}
 
 		$("#ur-ai-ready-status").removeClass("is-ok is-bad is-loading").addClass(bad ? "is-bad" : "is-ok").text(text);
-		setList(undefined === open ? bad > 0 : open);
 	}
 
-	function setList(open) {
-		$("#ur-ai-checks").prop("hidden", !open);
-		$("#ur-ai-ready-toggle").attr("aria-expanded", open ? "true" : "false").text(open ? i18n.hideChecks : i18n.showChecks);
+	function setPop(open) {
+		$("#ur-ai-ready-pop").prop("hidden", !open);
+		$("#ur-ai-ready-status").attr("aria-expanded", open ? "true" : "false");
 	}
 
 	function applyState(data) {
 		if (data.checks) {
 			$("#ur-ai-checks").html(data.checks);
-			updateSummary($("#ur-ai-checks").prop("hidden") ? undefined : true);
+			updateSummary();
 		}
 
 		if (undefined !== data.connections) {
@@ -184,6 +183,11 @@
 	$(document).on("click", "#ur-ai-open", openDrawer);
 	$(document).on("click", "#ur-ai-close, #ur-ai-overlay", closeDrawer);
 	$(document).on("keydown", function (event) {
+		if ("Escape" === event.key && !$("#ur-ai-ready-pop").prop("hidden")) {
+			setPop(false);
+			return;
+		}
+
 		if ("Escape" === event.key && $("#ur-ai-drawer").hasClass("is-open")) {
 			closeDrawer();
 		}
@@ -265,8 +269,15 @@
 
 	// Every row spins while the site is checked, then settles one after another into a tick or a cross.
 	// The spinner shows for a moment even when the answer is instant, so the check is seen to happen.
-	$(document).on("click", "#ur-ai-ready-toggle", function () {
-		setList($("#ur-ai-checks").prop("hidden"));
+	$(document).on("click", "#ur-ai-ready-status", function () {
+		setPop($("#ur-ai-ready-pop").prop("hidden"));
+	});
+
+	// Clicking anywhere else, or pressing Escape, closes the popover.
+	$(document).on("click", function (event) {
+		if (!$(event.target).closest("#ur-ai-ready").length) {
+			setPop(false);
+		}
 	});
 
 	$(document).on("click", "#ur-ai-check", function () {
@@ -274,8 +285,8 @@
 		var list = $("#ur-ai-checks");
 		var started = Date.now();
 
-		// Open the list so every row is seen spinning, and say so in the status line.
-		setList(true);
+		// Open the popover so every row is seen spinning, and say so in the status.
+		setPop(true);
 		$("#ur-ai-ready-status").removeClass("is-ok is-bad").addClass("is-loading").text(i18n.checking);
 		list.children().removeClass("is-ok is-bad").addClass("is-loading");
 
@@ -293,7 +304,7 @@
 			setTimeout(function () {
 				// Rows may have been added or removed since the last check, so end on exactly what the server sent.
 				list.html(data.checks);
-				updateSummary(true);
+				updateSummary();
 				$("#ur-ai-last-card").text(data.last);
 				button.prop("disabled", false);
 			}, rows.length * 220 + 50);
@@ -303,7 +314,7 @@
 			.done(function (response) {
 				if (!response.success) {
 					list.children().removeClass("is-loading");
-					updateSummary(true);
+					updateSummary();
 					button.prop("disabled", false);
 					return;
 				}
@@ -314,7 +325,7 @@
 			})
 			.fail(function () {
 				list.children().removeClass("is-loading");
-				updateSummary(true);
+				updateSummary();
 				button.prop("disabled", false);
 			});
 	});

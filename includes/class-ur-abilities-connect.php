@@ -456,12 +456,26 @@ class UR_Abilities_Connect {
 				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
 			</header>
 			<div class="ur-ai-drawer__body ur-ai-connect">
-			<section class="ur-ai-connect-main">
-				<div class="ur-ai-apps ur-ai-apps--center" role="tablist">
-					<?php foreach ( self::apps() as $key => $app ) : ?>
-						<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
-					<?php endforeach; ?>
+			<div class="ur-ai-topbar">
+					<div class="ur-ai-apps ur-ai-apps--center" role="tablist">
+						<?php foreach ( self::apps() as $key => $app ) : ?>
+							<button type="button" role="tab" class="ur-ai-apps__tab<?php echo 'claude' === $key ? ' is-active' : ''; ?>" data-app="<?php echo esc_attr( $key ); ?>"><?php echo esc_html( $app['label'] ); ?></button>
+						<?php endforeach; ?>
+					</div>
+				<div class="ur-ai-ready" id="ur-ai-ready">
+					<?php
+					$checks  = self::checks();
+					$summary = self::checks_summary( $checks );
+					?>
+					<button type="button" class="ur-ai-ready__status <?php echo $summary['ok'] ? 'is-ok' : 'is-bad'; ?>" id="ur-ai-ready-status" aria-haspopup="true" aria-expanded="false" aria-controls="ur-ai-ready-pop"><?php echo esc_html( $summary['text'] ); ?></button>
+					<div class="ur-ai-ready__pop" id="ur-ai-ready-pop" role="dialog" aria-label="<?php esc_attr_e( 'Site checks', 'user-registration' ); ?>" hidden>
+						<div class="ur-ai-ready__pophead"><strong><?php esc_html_e( 'Site checks', 'user-registration' ); ?></strong><button type="button" class="button button-small" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button></div>
+						<ul class="ur-ai-connect__checks" id="ur-ai-checks"><?php echo self::checks_html( $checks ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
+					</div>
 				</div>
+			</div>
+
+			<section class="ur-ai-connect-main">
 				<div class="ur-ai-panel">
 					<h5 id="ur-ai-panel-title"></h5>
 					<p id="ur-ai-panel-intro"></p>
@@ -492,19 +506,6 @@ class UR_Abilities_Connect {
 				<div id="ur-ai-connections"><?php echo self::connections_html(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in connections_html(). ?></div>
 				<p class="ur-ai-connect__remove"><button type="button" class="ur-ai-link" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button></p>
 				<p class="ur-ai-connect__notice" id="ur-ai-result" role="status" hidden></p>
-			</section>
-
-			<section class="ur-ai-ready" id="ur-ai-ready">
-				<?php
-				$checks  = self::checks();
-				$summary = self::checks_summary( $checks );
-				?>
-				<div class="ur-ai-ready__bar">
-					<span class="ur-ai-ready__status <?php echo $summary['ok'] ? 'is-ok' : 'is-bad'; ?>" id="ur-ai-ready-status"><?php echo esc_html( $summary['text'] ); ?></span>
-					<button type="button" class="ur-ai-link" id="ur-ai-ready-toggle" aria-expanded="<?php echo $summary['ok'] ? 'false' : 'true'; ?>"><?php echo $summary['ok'] ? esc_html__( 'Show checks', 'user-registration' ) : esc_html__( 'Hide checks', 'user-registration' ); ?></button>
-					<button type="button" class="button button-small ur-ai-connect__recheck" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button>
-				</div>
-				<ul class="ur-ai-connect__checks" id="ur-ai-checks"<?php echo $summary['ok'] ? ' hidden' : ''; ?>><?php echo self::checks_html( $checks ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
 			</section>
 
 			<section class="ur-ai-tryasking">
@@ -624,8 +625,9 @@ class UR_Abilities_Connect {
 			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
 			. ''
 			. ''
-			. '.ur-ai-connect-main{margin:8px 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-ready{margin:0 0 24px}.ur-ai-ready__bar{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid #e1e4ed}.ur-ai-ready__status{font-weight:600}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}'
-			. '.ur-ai-ready__status.is-loading{color:#646a7a}.ur-ai-ready__status.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-2px;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}.ur-ai-ready .ur-ai-connect__recheck{margin-left:auto}.ur-ai-ready .ur-ai-connect__checks{padding-top:10px}.ur-ai-ready .ur-ai-connect__checks[hidden]{display:none}'
+			. '.ur-ai-connect-main{margin:0 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}'
+			. '.ur-ai-topbar{position:relative;display:flex;align-items:center;justify-content:center;margin:0 0 22px}.ur-ai-topbar .ur-ai-apps--center{margin:0}.ur-ai-ready{position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:5}.ur-ai-ready__status{display:inline-flex;align-items:center;margin:0;padding:6px 14px;border:1px solid #e1e4ed;border-radius:999px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;line-height:1.4}.ur-ai-ready__status:hover{border-color:#c5cbe0}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828;border-color:#f1c4c4;background:#fff8f8}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}.ur-ai-ready__status.is-loading{color:#646a7a}.ur-ai-ready__status.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}'
+			. '.ur-ai-ready__pop{position:absolute;top:calc(100% + 8px);right:0;width:340px;max-width:80vw;padding:14px 16px;border:1px solid #e1e4ed;border-radius:8px;background:#fff;box-shadow:0 8px 28px rgba(45,53,89,.16)}.ur-ai-ready__pop[hidden]{display:none}.ur-ai-ready__pophead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 8px;padding:0 0 10px;border-bottom:1px solid #f0f2f7;color:#2d3559}.ur-ai-ready__pop .ur-ai-connect__checks li{padding:4px 0;font-size:13px}@media (max-width:760px){.ur-ai-topbar{flex-direction:column;gap:12px}.ur-ai-ready{position:static;transform:none}.ur-ai-ready__pop{left:50%;right:auto;transform:translateX(-50%)}}'
 			. '.ur-ai-connect .ur-ai-tryasking__title{margin:0 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-connect h4{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
 			. ''
@@ -680,8 +682,6 @@ class UR_Abilities_Connect {
 					/* translators: %d: number of checks that did not pass. */
 					'attentionN' => __( '%d things need attention', 'user-registration' ),
 					'checking'   => __( 'Checking...', 'user-registration' ),
-					'showChecks' => __( 'Show checks', 'user-registration' ),
-					'hideChecks' => __( 'Hide checks', 'user-registration' ),
 					'removed'    => __( 'Removed.', 'user-registration' ),
 				),
 			)

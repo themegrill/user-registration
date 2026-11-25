@@ -248,14 +248,16 @@ security_assert( $checks['user']['ok'] && $checks['adapter']['ok'] && $checks['s
 $ready = UR_Abilities_Connect::checks_summary( UR_Abilities_Connect::checks() );
 security_assert( true === $ready['ok'] && 'Your site is ready' === $ready['text'], 'When every check passes the summary says the site is ready, so the list can stay folded away' );
 $source = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-connect.php' );
+$top    = strpos( $source, 'class="ur-ai-topbar"' );
 $main   = strpos( $source, 'class="ur-ai-connect-main"' );
 $active = strpos( $source, 'class="ur-ai-active"' );
-$ready_at = strpos( $source, 'class="ur-ai-ready"' );
 $asking = strpos( $source, 'class="ur-ai-tryasking"' );
-security_assert( false !== $main && $main < $active && $active < $ready_at && $ready_at < $asking, 'The Connect tab reads in this order: the connection, then the active connections, then the readiness line, then the questions' );
-security_assert( false === strpos( $source, 'ur-ai-hero' ) && false === strpos( $source, 'ur-ai-connect__step' ), 'There is no panel inside the card and no step numbers' );
-$apps_at = strpos( $source, 'ur-ai-apps ur-ai-apps--center' );
-security_assert( false !== $apps_at && $apps_at < strpos( $source, 'class="ur-ai-panel"' ) && false !== strpos( $source, '.ur-ai-apps--center{margin:0 auto' ), 'The switcher for choosing the AI app comes first, centered, above the connection' );
+security_assert( false !== $top && $top < $main && $main < $active && $active < $asking, 'The Connect tab reads in this order: the top bar, the connection, the active connections, then the questions' );
+$bar_end = strpos( $source, 'class="ur-ai-connect-main"' );
+$bar     = substr( $source, $top, $bar_end - $top );
+security_assert( false !== strpos( $bar, 'ur-ai-apps ur-ai-apps--center' ) && false !== strpos( $bar, 'id="ur-ai-ready-status"' ) && false !== strpos( $bar, 'id="ur-ai-ready-pop"' ) && false !== strpos( $bar, 'id="ur-ai-checks"' ) && false !== strpos( $bar, 'id="ur-ai-check"' ), 'The top bar holds the app switcher in the middle and, on the right, the status with its checks and Check again in a popover' );
+security_assert( false !== strpos( $source, '.ur-ai-ready{position:absolute;top:50%;right:0' ) && false !== strpos( $source, '.ur-ai-ready__pop[hidden]{display:none}' ), 'The status sits at the top right and the popover stays closed until it is opened' );
+security_assert( false === strpos( $source, 'ur-ai-hero' ) && false === strpos( $source, 'ur-ai-connect__step' ) && false === strpos( $source, 'ur-ai-ready-toggle' ), 'There is no panel inside the card, no step numbers and no Show checks link' );
 security_assert( false !== strpos( $source, 'Active connections' ) && false === strpos( $source, 'Connected apps:' ), 'The list of connected apps is called Active connections' );
 
 $GLOBALS['flags']['plugin'] = false;
