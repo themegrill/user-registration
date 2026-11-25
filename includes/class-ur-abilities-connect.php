@@ -494,7 +494,7 @@ class UR_Abilities_Connect {
 						<dt><?php esc_html_e( 'User', 'user-registration' ); ?></dt>
 						<dd><code id="ur-ai-m-user">-</code></dd>
 						<dt><?php esc_html_e( 'Application password', 'user-registration' ); ?></dt>
-						<dd><code id="ur-ai-m-pass">-</code> <button type="button" class="button button-small" id="ur-ai-copy-pass" hidden><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></dd>
+						<dd><code id="ur-ai-m-pass">-</code> <button type="button" class="ur-ai-iconbtn" id="ur-ai-copy-pass" aria-label="<?php esc_attr_e( 'Copy', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Copy', 'user-registration' ); ?>" hidden><?php echo self::copy_icon(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Fixed markup. ?></button></dd>
 						<dt><?php esc_html_e( 'How it signs in', 'user-registration' ); ?></dt>
 						<dd><?php esc_html_e( 'HTTP header Authorization: Basic, with the user and the application password.', 'user-registration' ); ?></dd>
 					</dl>
@@ -509,13 +509,23 @@ class UR_Abilities_Connect {
 
 			<section class="ur-ai-tryasking">
 				<?php $asks = self::prompts(); ?>
-				<p class="ur-ai-try"><span class="ur-ai-try__label"><?php esc_html_e( 'Try asking', 'user-registration' ); ?></span> <span class="ur-ai-try__text" id="ur-ai-ask-text"><?php echo esc_html( $asks['read']['questions'][0] ); ?></span><span class="ur-ai-try__actions"><button type="button" class="ur-ai-iconbtn" id="ur-ai-ask-next" aria-label="<?php esc_attr_e( 'Show a different question', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Show a different question', 'user-registration' ); ?>"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button><button type="button" class="ur-ai-link" id="ur-ai-ask-copy"><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></span></p>
+				<p class="ur-ai-try"><span class="ur-ai-try__label"><?php esc_html_e( 'Try asking', 'user-registration' ); ?></span> <span class="ur-ai-try__text" id="ur-ai-ask-text"><?php echo esc_html( $asks['read']['questions'][0] ); ?></span><span class="ur-ai-try__actions"><button type="button" class="ur-ai-iconbtn" id="ur-ai-ask-next" aria-label="<?php esc_attr_e( 'Show a different question', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Show a different question', 'user-registration' ); ?>"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button><button type="button" class="ur-ai-iconbtn" id="ur-ai-ask-copy" aria-label="<?php esc_attr_e( 'Copy', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Copy', 'user-registration' ); ?>"><?php echo self::copy_icon(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Fixed markup. ?></button></span></p>
 			</section>
 			</div>
 		</aside>
 		<?php
 
 		return $html . ob_get_clean();
+	}
+
+	/**
+	 * The icon for the copy buttons: a copy symbol, and a check mark that shows for a moment after copying.
+	 *
+	 * @return string Two inline SVG elements, fixed markup with nothing from the outside in it.
+	 */
+	private static function copy_icon() {
+		return '<svg class="ur-ai-iconbtn__copy" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
+			. '<svg class="ur-ai-iconbtn__done" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
 	}
 
 	/**
@@ -610,7 +620,7 @@ class UR_Abilities_Connect {
 			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
 			. ''
 			. ''
-			. '.ur-ai-connect-main{margin:0 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-tryasking{margin:0;padding:14px 0 0;border-top:1px solid #f0f2f7;color:#646a7a;font-size:13px;line-height:1.5}.ur-ai-tryasking p{margin:0}.ur-ai-tryasking .ur-ai-try{display:flex;align-items:flex-start;gap:14px}.ur-ai-try__label{flex:none;line-height:1.6}.ur-ai-try__text{flex:1 1 auto;min-width:0;line-height:1.6}.ur-ai-try__actions{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto;min-width:84px;justify-content:flex-end;line-height:1.6}.ur-ai-try__label{margin-right:6px;font-weight:600;color:#8a90a2}.ur-ai-try__text::before{content:"\201C"}.ur-ai-try__text::after{content:"\201D"}.ur-ai-iconbtn{margin:0;padding:2px 4px;border:0;border-radius:4px;background:none;color:#475bb2;cursor:pointer;line-height:1}.ur-ai-iconbtn:hover{background:#eef1fb}.ur-ai-iconbtn:focus{outline:0;box-shadow:0 0 0 2px #cfd6f3}.ur-ai-tryasking .ur-ai-link{font-size:12px}.ur-ai-try__actions .ur-ai-link{min-width:46px;text-align:right}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}'
+			. '.ur-ai-connect-main{margin:0 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-tryasking{margin:0;padding:14px 0 0;border-top:1px solid #f0f2f7;color:#646a7a;font-size:13px;line-height:1.5}.ur-ai-tryasking p{margin:0}.ur-ai-tryasking .ur-ai-try{display:flex;align-items:flex-start;gap:14px}.ur-ai-try__label{flex:none;line-height:1.6}.ur-ai-try__text{flex:1 1 auto;min-width:0;line-height:1.6}.ur-ai-try__actions{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto;min-width:58px;justify-content:flex-end;line-height:1.6}.ur-ai-try__label{margin-right:6px;font-weight:600;color:#8a90a2}.ur-ai-try__text::before{content:"\201C"}.ur-ai-try__text::after{content:"\201D"}.ur-ai-iconbtn{margin:0;padding:2px 4px;border:0;border-radius:4px;background:none;color:#475bb2;cursor:pointer;line-height:1}.ur-ai-iconbtn:hover{background:#eef1fb}.ur-ai-iconbtn svg{display:block;width:15px;height:15px}.ur-ai-iconbtn__done{display:none !important}.ur-ai-iconbtn.is-copied .ur-ai-iconbtn__copy{display:none !important}.ur-ai-iconbtn.is-copied .ur-ai-iconbtn__done{display:block !important}.ur-ai-iconbtn.is-copied{color:#2e7d32}.ur-ai-manual dd .ur-ai-iconbtn{vertical-align:middle;margin-left:6px}.ur-ai-iconbtn:focus{outline:0;box-shadow:0 0 0 2px #cfd6f3}.ur-ai-tryasking .ur-ai-link{font-size:12px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}'
 			. '.ur-ai-topbar{position:relative;display:flex;align-items:center;justify-content:center;margin:0 0 22px}.ur-ai-topbar .ur-ai-apps--center{margin:0}.ur-ai-ready{position:absolute;top:50%;right:0;transform:translateY(-50%);z-index:5}.ur-ai-ready__status{display:inline-flex;align-items:center;margin:0;padding:6px 14px;border:1px solid #e1e4ed;border-radius:999px;background:#fff;font-size:13px;font-weight:600;cursor:pointer;line-height:1.4}.ur-ai-ready__status:hover{border-color:#c5cbe0}.ur-ai-ready__status.is-ok{color:#2e7d32}.ur-ai-ready__status.is-ok::before{content:"\2713";margin-right:8px}.ur-ai-ready__status.is-bad{color:#c62828;border-color:#f1c4c4;background:#fff8f8}.ur-ai-ready__status.is-bad::before{content:"\2715";margin-right:8px}.ur-ai-ready__status.is-loading{color:#646a7a}.ur-ai-ready__status.is-loading::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}'
 			. '.ur-ai-ready__pop{position:absolute;top:calc(100% + 8px);right:0;width:340px;max-width:80vw;padding:14px 16px;border:1px solid #e1e4ed;border-radius:8px;background:#fff;box-shadow:0 8px 28px rgba(45,53,89,.16)}.ur-ai-ready__pop[hidden]{display:none}.ur-ai-ready__pophead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 8px;padding:0 0 10px;border-bottom:1px solid #f0f2f7;color:#2d3559}.ur-ai-ready__pop .ur-ai-connect__checks li{padding:4px 0;font-size:13px}@media (max-width:760px){.ur-ai-topbar{flex-direction:column;gap:12px}.ur-ai-ready{position:static;transform:none}.ur-ai-ready__pop{left:50%;right:auto;transform:translateX(-50%)}}'
 			. ''
@@ -632,7 +642,7 @@ class UR_Abilities_Connect {
 			. '.ur-ai-panel__actions{display:flex;align-items:center;gap:18px;margin-bottom:14px}.ur-ai-panel__actions .button{height:34px;line-height:32px;padding:0 16px;margin:0}'
 			. '.ur-ai-link{border:0;background:none;padding:0;color:#475bb2;text-decoration:none;cursor:pointer;font-size:13px}.ur-ai-link:hover{color:#2d3f94}.ur-ai-connect__remove{margin:18px 0 0}.ur-ai-connect__notice{margin:8px 0 0;color:#646a7a}'
 			. '.ur-ai-prompt{position:relative}#ur-ai-prompts[hidden]{display:none}.ur-ai-prompt{margin-bottom:14px}.ur-ai-prompt__label{margin:0 0 2px;font-weight:600;color:#2d3559}.ur-ai-prompt__hint{margin:0 0 8px;color:#646a7a}.ur-ai-prompt pre{margin:0;min-height:80px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
-			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .button{position:absolute;right:10px;bottom:10px;height:30px;line-height:28px;padding:0 14px;margin:0}'
+			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .ur-ai-iconbtn{position:absolute;right:10px;bottom:10px;padding:7px;border:1px solid #d9def2;background:#fff}.ur-ai-prompt .ur-ai-iconbtn:hover{background:#eef1fb}'
 			. '.ur-ai-manual{margin:12px 0 0;padding:12px 14px;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-manual dt{margin-top:8px;font-weight:600}.ur-ai-manual dt:first-child{margin-top:0}.ur-ai-manual dd{margin:2px 0 0;word-break:break-all}'
 			. ''
 			. ''
@@ -646,13 +656,14 @@ class UR_Abilities_Connect {
 			'user-registration-ai-connect',
 			'urAiConnect',
 			array(
-				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-				'nonce'   => wp_create_nonce( self::NONCE ),
-				'apps'    => self::apps(),
+				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+				'nonce'    => wp_create_nonce( self::NONCE ),
+				'apps'     => self::apps(),
 				// With the settings tabs on, the Connect content is a tab of its own, so the button switches tab instead of opening the drawer.
-				'inline'  => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled(),
-				'asks'    => self::prompts(),
-				'i18n'    => array(
+				'inline'   => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled(),
+				'asks'     => self::prompts(),
+				'copyIcon' => self::copy_icon(),
+				'i18n'     => array(
 					'working'    => __( 'Working...', 'user-registration' ),
 					'copied'     => __( 'Copied', 'user-registration' ),
 					'copy'       => __( 'Copy', 'user-registration' ),

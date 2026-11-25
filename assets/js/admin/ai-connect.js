@@ -26,6 +26,17 @@
 
 	function copyText(text, button) {
 		var done = function () {
+			var $button = $(button);
+
+			// An icon button shows a check mark for a moment, then the copy symbol again.
+			if ($button.hasClass("ur-ai-iconbtn")) {
+				$button.addClass("is-copied").attr({ title: i18n.copied, "aria-label": i18n.copied });
+				setTimeout(function () {
+					$button.removeClass("is-copied").attr({ title: i18n.copy, "aria-label": i18n.copy });
+				}, 1500);
+				return;
+			}
+
 			var label = $(button).data("label") || $(button).text();
 			$(button).data("label", label).text(i18n.copied);
 			setTimeout(function () {
@@ -77,7 +88,7 @@
 				box.append($('<p class="ur-ai-prompt__hint">').text(item.hint));
 			}
 
-			box.append($("<pre>").text(data.snippets[item.key]), $('<button type="button" class="button button-primary ur-ai-copy-prompt">').text(i18n.copy));
+			box.append($("<pre>").text(data.snippets[item.key]), $('<button type="button" class="ur-ai-iconbtn ur-ai-copy-prompt">').attr({ title: i18n.copy, "aria-label": i18n.copy }).html(cfg.copyIcon));
 			holder.append(box);
 		});
 	}
