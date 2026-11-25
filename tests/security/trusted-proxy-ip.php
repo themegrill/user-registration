@@ -57,6 +57,25 @@ ip_case(
 	array( '0:0:0:0:0:0:0:1' ),
 	'198.51.100.7'
 );
+ip_case(
+	'IPv4-mapped IPv6 peer matches a plain IPv4 entry',
+	array(
+		'REMOTE_ADDR'          => '::ffff:10.0.0.1',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7',
+	),
+	array( $lb ),
+	'198.51.100.7'
+);
+ip_case(
+	'IPv4-mapped IPv6 hop is skipped as a trusted proxy',
+	array(
+		'REMOTE_ADDR'          => $lb,
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7, ::ffff:10.0.0.2',
+	),
+	array( $lb, '10.0.0.2' ),
+	'198.51.100.7'
+);
+ip_case( 'a mapped address does not make an untrusted peer trusted', array_merge( $via_lb, array( 'REMOTE_ADDR' => '::ffff:10.0.0.9' ) ), array( $lb ), '::ffff:10.0.0.9' );
 
 // Trusted peer, bad or missing data: fall back safely.
 ip_case( 'garbage XFF falls back to REMOTE_ADDR', array_merge( $via_lb, array( 'HTTP_X_FORWARDED_FOR' => 'unknown' ) ), array( $lb ), $lb );

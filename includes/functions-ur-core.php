@@ -6453,6 +6453,13 @@ if ( ! function_exists( 'ur_get_ip_address' ) ) {
 			return '';
 		}
 
+		// Packed binary form, so equivalent IPv6 spellings and IPv4-mapped IPv6 (::ffff:a.b.c.d) match plain IPv4.
+		$pack = static function ( $ip ) {
+			$packed = inet_pton( $ip );
+
+			return 16 === strlen( $packed ) && 0 === strncmp( $packed, "\0\0\0\0\0\0\0\0\0\0\xff\xff", 12 ) ? substr( $packed, 12 ) : $packed;
+		};
+
 		$trusted_proxies = array();
 
 		/**
@@ -6464,13 +6471,12 @@ if ( ! function_exists( 'ur_get_ip_address' ) ) {
 		 */
 		foreach ( (array) apply_filters( 'user_registration_trusted_proxies', array() ) as $proxy ) {
 			if ( is_string( $proxy ) && rest_is_ip_address( trim( $proxy ) ) ) {
-				$trusted_proxies[] = inet_pton( trim( $proxy ) );
+				$trusted_proxies[] = $pack( trim( $proxy ) );
 			}
 		}
 
-		// Compare packed binary forms so equivalent IPv6 spellings match.
-		$is_trusted = static function ( $ip ) use ( $trusted_proxies ) {
-			return in_array( inet_pton( $ip ), $trusted_proxies, true );
+		$is_trusted = static function ( $ip ) use ( $pack, $trusted_proxies ) {
+			return in_array( $pack( $ip ), $trusted_proxies, true );
 		};
 
 		if ( ! $is_trusted( $remote_addr ) ) {
