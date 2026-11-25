@@ -195,7 +195,13 @@ class UR_Email_Approval {
 			$token .= $code_alphabet[ random_int( 0, $max - 1 ) ];
 		}
 
-		$token .= crypt_the_string( $user_id . '_' . time(), 'e' );
+		$encrypted = crypt_the_string( $user_id . '_' . time(), 'e' );
+
+		if ( false === $encrypted ) {
+			return '';
+		}
+
+		$token .= $encrypted;
 
 		return $token;
 

@@ -4440,7 +4440,7 @@ if ( ! function_exists( 'crypt_the_string' ) ) {
 
 				$raw = base64_decode( $encoded, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 
-				if ( false === $raw || strlen( $raw ) <= 48 ) {
+				if ( false === $raw || strlen( $raw ) < 64 ) {
 					return false;
 				}
 

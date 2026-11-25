@@ -490,6 +490,17 @@ class UR_AJAX {
 					'file_extension' => $file_extension,
 				);
 
+				$encrypted_files = crypt_the_string( maybe_serialize( $files ), 'e' );
+
+				if ( false === $encrypted_files ) {
+					@unlink( $file_path ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+					wp_send_json_error(
+						array(
+							'message' => __( 'File cannot be uploaded.', 'user-registration' ),
+						)
+					);
+				}
+
 				$attachment_id = wp_rand();
 
 				ur_clean_tmp_files();
@@ -497,7 +508,7 @@ class UR_AJAX {
 				wp_send_json_success(
 					array(
 						'attachment_id' => $attachment_id,
-						'upload_files'  => crypt_the_string( maybe_serialize( $files ), 'e' ),
+						'upload_files'  => $encrypted_files,
 						'url'           => $url,
 					)
 				);
