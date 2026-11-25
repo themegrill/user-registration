@@ -133,6 +133,7 @@
 
 		if (undefined !== data.connections) {
 			$("#ur-ai-connections").html(data.connections);
+			$(document).trigger("ur-ai-connections-changed");
 		}
 
 		if (data.consent) {

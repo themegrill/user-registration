@@ -85,6 +85,7 @@ class UR_Abilities_Tabs {
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.urcr-tab-active::before{opacity:1}.user-registration-options-container > .urcr-tabs .urcr-tab:focus{outline:0;box-shadow:none;border:0}'
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled{opacity:.5;cursor:not-allowed}.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled:hover{color:#666}'
 			. '.ur-ai-connect-pane .ur-ai-drawer__body{overflow:visible;padding:0 24px 24px}.ur-ai-connect-pane .ur-ai-drawer__body > h4:first-child{margin-top:8px}'
+			. '.ur-ai-active-pane .ur-ai-active{margin:0 0 8px}.ur-ai-active-pane .ur-ai-conn__title,.ur-ai-active-pane .ur-ai-conn__lead:empty{display:none}.ur-ai-active-pane--empty{display:none !important}'
 			. '.ur-ai-pane--off{display:none !important}';
 		wp_register_style( 'user-registration-ai-tabs', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-tabs' );
@@ -99,6 +100,7 @@ class UR_Abilities_Tabs {
 				'needsOn'      => __( 'Turn on Enable AI Abilities first.', 'user-registration' ),
 				// The Connect content gets a tab of its own, between the two cards, instead of the drawer.
 				'connectLabel' => __( 'Connect an AI Assistant', 'user-registration' ),
+				'activeLabel'  => __( 'Active connections', 'user-registration' ),
 				'inline'       => true,
 			)
 		);

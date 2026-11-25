@@ -30,8 +30,32 @@
 		pane.find(".user-registration-card__body").append(body);
 		pane.insertAfter(cards.last());
 
-		// Tab one is every card the page already had. Tab two is the Connect card.
-		var groups = [cards, pane];
+		// The apps that are connected already get a card of their own under it. It stays out of sight until there is one.
+		var activeSection = body.find(".ur-ai-active");
+		var activePane = $();
+
+		if (activeSection.length) {
+			activePane = $(
+				'<div class="user-registration-card ur-mt-4 ur-border-0 ur-ai-active-pane">' +
+					'<div class="user-registration-card__header ur-border-0"><div class="user-registration-card__header-wrapper"><h3 class="user-registration-card__title"></h3></div></div>' +
+					'<div class="pt-0 pb-0 user-registration-card__body"></div>' +
+					"</div>"
+			);
+
+			activePane.find(".user-registration-card__title").text(cfg.activeLabel);
+			activePane.find(".user-registration-card__body").append(activeSection);
+			activePane.insertAfter(pane);
+
+			var syncActive = function () {
+				activePane.toggleClass("ur-ai-active-pane--empty", !$.trim($("#ur-ai-connections").html()));
+			};
+
+			syncActive();
+			$(document).on("ur-ai-connections-changed", syncActive);
+		}
+
+		// Tab one is every card the page already had. Tab two is the Connect card and the card of active connections.
+		var groups = [cards, pane.add(activePane)];
 		var names = [(cfg.tabs || [])[0], cfg.connectLabel];
 		var nav = $('<div class="urcr-tabs" role="tablist">');
 		var active = 0;

@@ -84,13 +84,16 @@ security_assert( false !== strpos( $js_source, 'class="urcr-tabs"' ) && false !=
 
 // The content of the Connect drawer becomes a tab of its own, and the drawer stays for when the tabs are off.
 security_assert( 'Connect an AI Assistant' === $calls['localized']['urAiTabs']['connectLabel'] && true === $calls['localized']['urAiTabs']['inline'], 'The script is told the Connect tab name, and that the Connect content is shown inline' );
+security_assert( 'Active connections' === $calls['localized']['urAiTabs']['activeLabel'], 'The script is given the name of the card for active connections' );
+security_assert( false !== strpos( $js_source, 'ur-ai-active-pane' ) && false !== strpos( $js_source, 'body.find(".ur-ai-active")' ) && false !== strpos( $js_source, 'ur-ai-connections-changed' ) && false !== strpos( $js_source, 'pane.add(activePane)' ), 'The active connections are moved into a card of their own under the Connect card, on the same tab, and it follows the list as apps come and go' );
+security_assert( false !== strpos( $css, '.ur-ai-active-pane--empty{display:none !important}' ), 'That card stays out of sight while there are no connections' );
 security_assert( false !== strpos( $js_source, 'ur-ai-connect-pane' ) && false !== strpos( $js_source, '#ur-ai-drawer .ur-ai-drawer__body' ) && false !== strpos( $js_source, 'ur-ai-show-connect' ), 'The drawer content is moved, not copied, into a tab, and the Connect button switches to it' );
 $connect_js = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-connect.js' );
 security_assert( false !== strpos( $connect_js, 'if (cfg.inline)' ) && false !== strpos( $connect_js, 'ur-ai-show-connect' ), 'With the tabs on the Connect button asks for the tab; with them off it still opens the drawer' );
 $connect_php = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-connect.php' );
 security_assert( false !== strpos( $connect_php, "'inline'  => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled()" ), 'The Connect script only goes inline while the tabs are enabled, so turning the tabs off brings the drawer back' );
 security_assert( false !== strpos( $connect_php, "\$inline = class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled();" ) && false !== strpos( $connect_php, '<?php if ( ! $inline ) : ?>' ), 'The Connect row and its button are drawn only while the tabs are off' );
-security_assert( false !== strpos( $js_source, 'var groups = [cards, pane];' ) && false === strpos( $js_source, 'ur-ability-access' ), 'The first tab holds every card the page already had, the access card included, and the script never singles it out' );
+security_assert( false !== strpos( $js_source, 'var groups = [cards, pane.add(activePane)];' ) && false === strpos( $js_source, 'ur-ability-access' ), 'The first tab holds every card the page already had, the access card included, and the script never singles it out' );
 
 // Off with one filter: nothing is added, so the single long page is back.
 $calls                                      = array();
