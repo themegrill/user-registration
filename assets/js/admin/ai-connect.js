@@ -96,6 +96,35 @@
 		select("claude");
 	}
 
+	// The drawer lives outside the settings form, so nothing in it is ever saved with the settings.
+	$("#ur-ai-overlay, #ur-ai-drawer").appendTo("body");
+
+	function openDrawer() {
+		$("#ur-ai-overlay").prop("hidden", false);
+		$("#ur-ai-drawer").prop("hidden", false);
+		// Let the browser paint the closed state first, so the slide plays.
+		setTimeout(function () {
+			$("#ur-ai-drawer").addClass("is-open");
+			$("#ur-ai-close").trigger("focus");
+		}, 20);
+	}
+
+	function closeDrawer() {
+		$("#ur-ai-drawer").removeClass("is-open");
+		setTimeout(function () {
+			$("#ur-ai-drawer, #ur-ai-overlay").prop("hidden", true);
+		}, 250);
+		$("#ur-ai-open").trigger("focus");
+	}
+
+	$(document).on("click", "#ur-ai-open", openDrawer);
+	$(document).on("click", "#ur-ai-close, #ur-ai-overlay", closeDrawer);
+	$(document).on("keydown", function (event) {
+		if ("Escape" === event.key && $("#ur-ai-drawer").hasClass("is-open")) {
+			closeDrawer();
+		}
+	});
+
 	$(document).on("click", ".ur-ai-copy", function () {
 		copyText($(this).data("copy"), this);
 	});
@@ -107,7 +136,7 @@
 			.done(function (response) {
 				if (response.success) {
 					$("#ur-ai-checks").html(response.data.checks);
-					$("#ur-ai-last").text(response.data.last);
+					$("#ur-ai-last, #ur-ai-last-card").text(response.data.last);
 				}
 			})
 			.always(function () {

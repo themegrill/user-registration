@@ -320,29 +320,42 @@ class UR_Abilities_Connect {
 		ob_start();
 		?>
 		<div class="ur-ai-connect">
-			<p class="ur-ai-connect__lead"><?php esc_html_e( 'Check the site is ready, then make a user just for the AI. It has no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ); ?></p>
+			<p class="ur-ai-connect__lead"><?php esc_html_e( 'Make a user just for the AI, with its own password and no admin rights, so a leaked password cannot reach the rest of your site. Then paste one line into your AI app.', 'user-registration' ); ?></p>
+			<p>
+				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect an AI assistant', 'user-registration' ); ?></button>
+				<span class="ur-ai-connect__last" id="ur-ai-last-card"><?php echo esc_html( self::last_call_text() ); ?></span>
+			</p>
+		</div>
 
-			<h4><?php esc_html_e( 'Is the site ready?', 'user-registration' ); ?></h4>
+		<div class="ur-ai-drawer-overlay" id="ur-ai-overlay" hidden></div>
+		<aside class="ur-ai-drawer" id="ur-ai-drawer" role="dialog" aria-modal="true" aria-labelledby="ur-ai-drawer-title" hidden>
+			<header class="ur-ai-drawer__header">
+				<h2 id="ur-ai-drawer-title"><?php esc_html_e( 'Connect an AI Assistant', 'user-registration' ); ?></h2>
+				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
+			</header>
+			<div class="ur-ai-drawer__body ur-ai-connect">
+			<h4><span class="ur-ai-connect__step">1</span><?php esc_html_e( 'Is the site ready?', 'user-registration' ); ?></h4>
 			<ul class="ur-ai-connect__checks" id="ur-ai-checks"><?php echo self::checks_html( self::checks() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped in checks_html(). ?></ul>
 			<p><button type="button" class="button" id="ur-ai-check"><?php esc_html_e( 'Check again', 'user-registration' ); ?></button> <span class="ur-ai-connect__last" id="ur-ai-last"><?php echo esc_html( self::last_call_text() ); ?></span></p>
 
-			<h4><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
+			<h4><span class="ur-ai-connect__step">2</span><?php esc_html_e( 'Connect an AI app', 'user-registration' ); ?></h4>
+			<label for="ur-ai-app" class="ur-ai-connect__label"><?php esc_html_e( 'Name of the AI app', 'user-registration' ); ?></label>
+			<input type="text" id="ur-ai-app" value="Claude" maxlength="100" />
+			<p class="description"><?php esc_html_e( 'The name shows in the activity log, so you can tell apps apart. The password is shown once. Copy it now.', 'user-registration' ); ?></p>
 			<p>
-				<label for="ur-ai-app"><?php esc_html_e( 'Name of the AI app', 'user-registration' ); ?></label>
-				<input type="text" id="ur-ai-app" value="Claude" maxlength="100" />
 				<button type="button" class="button button-primary" id="ur-ai-create"><?php esc_html_e( 'Create AI user and password', 'user-registration' ); ?></button>
 				<button type="button" class="button" id="ur-ai-revoke"><?php esc_html_e( 'Remove all AI passwords', 'user-registration' ); ?></button>
 			</p>
-			<p class="description"><?php esc_html_e( 'The name shows in the activity log, so you can tell apps apart. The password is shown once. Copy it now.', 'user-registration' ); ?></p>
 			<div class="ur-ai-connect__result" id="ur-ai-result" hidden></div>
 
-			<h4><?php esc_html_e( 'Then ask it something', 'user-registration' ); ?></h4>
+			<h4><span class="ur-ai-connect__step">3</span><?php esc_html_e( 'Then ask it something', 'user-registration' ); ?></h4>
 			<ul class="ur-ai-connect__prompts">
 				<?php foreach ( self::prompts() as $prompt ) : ?>
 					<li><span><?php echo esc_html( $prompt ); ?></span> <button type="button" class="button button-small ur-ai-copy" data-copy="<?php echo esc_attr( $prompt ); ?>"><?php esc_html_e( 'Copy', 'user-registration' ); ?></button></li>
 				<?php endforeach; ?>
 			</ul>
-		</div>
+			</div>
+		</aside>
 		<?php
 
 		return $html . ob_get_clean();
@@ -382,13 +395,22 @@ class UR_Abilities_Connect {
 
 	/** Add the script and styles of the card. */
 	private static function enqueue() {
-		$css = '.ur-ai-connect h4{margin:20px 0 8px;font-size:14px}.ur-ai-connect h4:first-of-type{margin-top:8px}.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
+		$css = '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
+			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:448px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
+			. '.ur-ai-drawer.is-open{transform:none}.ur-ai-drawer[hidden],.ur-ai-drawer-overlay[hidden]{display:none}'
+			. '.ur-ai-drawer__header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e1e4ed}.ur-ai-drawer__header h2{margin:0;font-size:18px;font-weight:600;color:#2d3559}'
+			. '.ur-ai-drawer__close{border:0;background:none;font-size:28px;line-height:1;color:#646a7a;cursor:pointer;padding:0 4px}.ur-ai-drawer__close:hover{color:#2d3559}'
+			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
+			. '.ur-ai-connect h4{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
+			. '.ur-ai-connect__step{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#475bb2;color:#fff;font-size:12px;font-weight:600}'
+			. '.ur-ai-connect__label{display:block;margin-bottom:4px;font-weight:500}.ur-ai-drawer .ur-ai-connect input[type=text]{width:100%;margin:0;box-sizing:border-box}'
+			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
-			. '.ur-ai-connect input[type=text]{margin:0 8px 0 6px;min-width:200px}.ur-ai-connect__result{margin-top:12px;padding:14px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb}'
+			. '.ur-ai-connect__result{margin-top:12px;padding:14px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb}'
 			. '.ur-ai-connect__result pre{margin:6px 0 10px;padding:10px;background:#fff;border:1px solid #e1e4ed;border-radius:4px;white-space:pre-wrap;word-break:break-all;font-size:12px}'
 			. '.ur-ai-connect__tabs{display:flex;gap:6px;margin:10px 0 4px;flex-wrap:wrap}.ur-ai-connect__tabs .button.is-active{border-color:#475bb2;color:#475bb2}'
-			. '.ur-ai-connect__prompts{margin:0;padding:0;list-style:none}.ur-ai-connect__prompts li{display:flex;gap:10px;align-items:center;padding:4px 0}.ur-ai-connect__secret{font-weight:600}';
+			. '.ur-ai-connect__prompts{margin:0;padding:0;list-style:none}.ur-ai-connect__prompts li{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f2f7}.ur-ai-connect__secret{font-weight:600}';
 
 		wp_register_style( 'user-registration-ai-connect', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-connect' );
