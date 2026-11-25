@@ -2375,6 +2375,8 @@ class AJAX {
 					$membership_process['multiple'][] = $data['selected_membership_id'];
 					update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 				} else {
+					// A concurrent request won the slot after the early check, so end this order instead of leaving a live discounted one.
+					( new OrdersRepository() )->delete( $data['order_id'] );
 					wp_send_json_error(
 						array(
 							'message' => __( 'Membership purchase process already initiated.', 'user-registration' ),
