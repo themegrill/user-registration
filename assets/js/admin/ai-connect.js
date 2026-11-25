@@ -135,6 +135,17 @@
 		$(".ur-ai-prompt").prop("hidden", manual);
 		button.data("label", button.data("label") || button.text());
 		button.text(manual ? button.data("alt") : button.data("label"));
+
+		// The button and the agreement say what they will do in this view.
+		[$("#ur-ai-create"), $("#ur-ai-consent-text")].forEach(function (item, index) {
+			var html = index ? "html" : "text";
+
+			if (!item.data("base")) {
+				item.data("base", item[html]());
+			}
+
+			item[html](manual ? item.data("alt") : item.data("base"));
+		});
 	});
 
 	$(document).on("click", "#ur-ai-copy-prompt", function () {

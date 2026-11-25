@@ -398,10 +398,10 @@ class UR_Abilities_Connect {
 				<p id="ur-ai-panel-intro"></p>
 				<label class="ur-ai-consent">
 					<input type="checkbox" id="ur-ai-consent" />
-					<span><?php echo wp_kses( __( 'I understand that clicking <strong>Generate prompt</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ), array( 'strong' => array() ) ); ?></span>
+					<span id="ur-ai-consent-text" data-alt="<?php echo esc_attr( __( 'I understand that clicking <strong>Generate password</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ) ); ?>"><?php echo wp_kses( __( 'I understand that clicking <strong>Generate prompt</strong> will create a user and an application password for this site, just for the AI.', 'user-registration' ), array( 'strong' => array() ) ); ?></span>
 				</label>
 				<div class="ur-ai-panel__actions">
-					<button type="button" class="button button-primary" id="ur-ai-create" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
+					<button type="button" class="button button-primary" id="ur-ai-create" data-alt="<?php esc_attr_e( 'Generate password', 'user-registration' ); ?>" disabled><?php esc_html_e( 'Generate prompt', 'user-registration' ); ?></button>
 					<button type="button" class="ur-ai-link" id="ur-ai-manual-toggle" data-alt="<?php esc_attr_e( 'Back to the prompt', 'user-registration' ); ?>"><?php esc_html_e( 'Prefer manual configuration?', 'user-registration' ); ?></button>
 				</div>
 				<div class="ur-ai-prompt">
