@@ -244,7 +244,7 @@ class UR_Abilities_Access {
 			. '.ur-ability-access__empty{margin:4px 0 0;color:#646a7a}'
 			. '.ur-ability-access__area{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:start;gap:8px 24px;padding:16px 0;border-top:1px solid #e1e4ed}.ur-ability-access__area:first-child,.ur-ability-access__area--first{border-top:0;padding-top:0}'
 			. '.ur-ability-access__title{margin:0;padding-top:6px;display:flex;align-items:center;font-size:14px;font-weight:600;color:#1d2327}'
-			. '#ur-ability-access .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;top:-1px;line-height:1;vertical-align:middle}#ur-ability-access .user-registration-help-tip::after{width:16px;height:16px;padding:0;box-sizing:border-box;background-size:contain}'
+			. '#ur-ability-access .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;top:0;line-height:1;vertical-align:middle}#ur-ability-access .user-registration-help-tip::after{width:16px;height:16px;padding:0;box-sizing:border-box;background-size:contain}'
 			. '.ur-ability-access__pro{width:16px;height:16px;margin-left:6px}'
 			. '#ur-ability-access .ur-ability-access__list .user-registration-global-settings{display:flex;align-items:center;gap:16px;margin:0 !important;padding:8px 0}'
 			. '#ur-ability-access .ur-ability-access__list .user-registration-global-settings > label{flex:1 1 auto !important;min-width:0;width:auto !important;max-width:none !important;margin:0}'
