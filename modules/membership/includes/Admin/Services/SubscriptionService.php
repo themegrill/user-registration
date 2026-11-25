@@ -791,6 +791,7 @@ class SubscriptionService {
 				'transaction_id'           => $orders_data['orders_data']['transaction_id'],
 				'order_id'                 => $order['ID'],
 				'updated_membership_title' => $selected_membership_details['post_title'],
+				'current_membership_id'    => $data['current_membership_id'],
 			),
 			'response' => $response,
 		);
