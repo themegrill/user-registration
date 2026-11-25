@@ -17,6 +17,30 @@
 			return;
 		}
 
+		// The content that used to slide in from the side (the checks, connecting an app, the questions to try) becomes
+		// a tab of its own, between the two cards. It is the same markup, moved, so everything in it keeps working.
+		var body = $("#ur-ai-drawer .ur-ai-drawer__body");
+
+		if (cfg.inline && body.length) {
+			var pane = $(
+				'<div class="user-registration-card ur-mt-4 ur-border-0 ur-ai-connect-pane">' +
+					'<div class="user-registration-card__header ur-border-0"><div class="user-registration-card__header-wrapper"><h3 class="user-registration-card__title"></h3></div></div>' +
+					'<div class="pt-0 pb-0 user-registration-card__body"></div>' +
+					"</div>"
+			);
+
+			pane.find(".user-registration-card__title").text(cfg.connectLabel);
+			pane.find(".user-registration-card__body").append(body);
+			pane.insertAfter(cards.first());
+			cards = box.children(".user-registration-card");
+			names = names.slice(0, 1).concat([cfg.connectLabel], names.slice(1));
+
+			// The Connect button on the first tab takes you to this tab.
+			$(document).on("ur-ai-show-connect", function () {
+				show(1);
+			});
+		}
+
 		var nav = $('<div class="urcr-tabs" role="tablist">');
 		var active = 0;
 

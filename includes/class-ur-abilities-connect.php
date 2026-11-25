@@ -601,6 +601,8 @@ class UR_Abilities_Connect {
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( self::NONCE ),
 				'apps'    => self::apps(),
+				// With the settings tabs on, the Connect content is a tab of its own, so the button switches tab instead of opening the drawer.
+				'inline'  => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled(),
 				'asks'    => self::prompts(),
 				'i18n'    => array(
 					'working'    => __( 'Working...', 'user-registration' ),

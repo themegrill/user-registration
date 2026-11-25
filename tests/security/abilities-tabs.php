@@ -82,6 +82,14 @@ security_assert( false !== strpos( $css, '.urcr-tabs{display:flex;gap:8px;' ) &&
 $js_source = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-tabs.js' );
 security_assert( false !== strpos( $js_source, 'class="urcr-tabs"' ) && false !== strpos( $js_source, 'class="urcr-tab"' ) && false !== strpos( $js_source, 'urcr-tab-active' ) && false === strpos( $js_source, 'ur-ai-tabs__tab' ), 'The tabs are drawn with the Content Rules class names and no new tab design' );
 
+// The content of the Connect drawer becomes a tab of its own, and the drawer stays for when the tabs are off.
+security_assert( 'Connect an AI Assistant' === $calls['localized']['urAiTabs']['connectLabel'] && true === $calls['localized']['urAiTabs']['inline'], 'The script is told the Connect tab name, and that the Connect content is shown inline' );
+security_assert( false !== strpos( $js_source, 'ur-ai-connect-pane' ) && false !== strpos( $js_source, '#ur-ai-drawer .ur-ai-drawer__body' ) && false !== strpos( $js_source, 'ur-ai-show-connect' ), 'The drawer content is moved, not copied, into a tab, and the Connect button switches to it' );
+$connect_js = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-connect.js' );
+security_assert( false !== strpos( $connect_js, 'if (cfg.inline)' ) && false !== strpos( $connect_js, 'ur-ai-show-connect' ), 'With the tabs on the Connect button asks for the tab; with them off it still opens the drawer' );
+$connect_php = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-connect.php' );
+security_assert( false !== strpos( $connect_php, "'inline'  => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled()" ), 'The Connect script only goes inline while the tabs are enabled, so turning the tabs off brings the drawer back' );
+
 // Off with one filter: nothing is added, so the single long page is back.
 $calls                                      = array();
 $tab_filters['user_registration_ai_settings_tabs'] = false;

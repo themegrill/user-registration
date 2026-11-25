@@ -138,6 +138,12 @@
 	selectApp(current);
 
 	function openDrawer() {
+		// The settings tabs show this content as a tab, so there is no drawer to open: ask them to switch to it.
+		if (cfg.inline) {
+			$(document).trigger("ur-ai-show-connect");
+			return;
+		}
+
 		$("#ur-ai-overlay").prop("hidden", false);
 		$("#ur-ai-drawer").prop("hidden", false);
 		// Let the browser paint the closed state first, so the slide plays.
