@@ -5864,6 +5864,67 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 	}
 }
 
+if ( ! function_exists( 'ur_is_registration_rate_limited' ) ) {
+	/**
+	 * Count this registration submission against the client IP and report whether the limit is exceeded.
+	 *
+	 * Opt-in via the `user_registration_registration_rate_limit_enabled` filter, so existing sites see no change.
+	 * Independent of the per-form CAPTCHA setting.
+	 *
+	 * @since x.x.x
+	 *
+	 * @return bool True when the submission must be rejected.
+	 */
+	function ur_is_registration_rate_limited() {
+		/**
+		 * Filters whether registration submissions are rate limited per client IP. Default false.
+		 *
+		 * @since x.x.x
+		 *
+		 * @param bool $enabled Whether the limiter is active.
+		 */
+		if ( ! apply_filters( 'user_registration_registration_rate_limit_enabled', false ) ) {
+			return false;
+		}
+
+		$ip = ur_get_ip_address();
+
+		if ( '' === $ip ) {
+			return false;
+		}
+
+		/**
+		 * Filters the maximum registration submissions allowed per IP in the time window.
+		 *
+		 * @since x.x.x
+		 *
+		 * @param int $max_attempts Default 10.
+		 */
+		$max_attempts = max( 1, (int) apply_filters( 'user_registration_registration_rate_limit_max_attempts', 10 ) );
+
+		/**
+		 * Filters the registration rate limit window in seconds, counted from the last counted submission.
+		 *
+		 * @since x.x.x
+		 *
+		 * @param int $window Default one hour.
+		 */
+		$window = max( 1, (int) apply_filters( 'user_registration_registration_rate_limit_window', HOUR_IN_SECONDS ) );
+
+		$key      = 'ur_reg_rl_' . md5( $ip );
+		$attempts = (int) get_transient( $key );
+
+		if ( $attempts >= $max_attempts ) {
+			return true;
+		}
+
+		// ponytail: get/set is not atomic, so concurrent requests can overshoot by the burst size; use a locked counter if that matters.
+		set_transient( $key, $attempts + 1, $window );
+
+		return false;
+	}
+}
+
 if ( ! function_exists( 'ur_process_registration' ) ) {
 	/**
 	 * Process Registration.
@@ -5918,6 +5979,22 @@ if ( ! function_exists( 'ur_process_registration' ) ) {
 			wp_send_json_error(
 				array(
 					'message' => __( 'You are already logged in.', 'user-registration' ),
+				)
+			);
+		}
+
+		if ( ! is_user_logged_in() && ur_is_registration_rate_limited() ) {
+			$logger->warning(
+				sprintf( '[Form #%d] Registration rate limit exceeded.', $form_id ),
+				array(
+					'source'  => 'form-submission',
+					'form_id' => $form_id,
+				)
+			);
+
+			wp_send_json_error(
+				array(
+					'message' => __( 'Too many registration attempts. Please try again later.', 'user-registration' ),
 				)
 			);
 		}
