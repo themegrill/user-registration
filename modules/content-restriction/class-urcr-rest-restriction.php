@@ -276,12 +276,14 @@ class URCR_REST_Restriction {
 	 * @return array
 	 */
 	public static function exclude_restricted_posts( $args, $request ) {
+		// Super admins are always granted access, so scanning for them would only cost time.
 		if ( ! function_exists( 'urcr_is_content_access_granted' )
+			|| is_super_admin()
 			|| ! ur_string_to_bool( get_option( 'user_registration_content_restriction_enable', true ) ) ) {
 			return $args;
 		}
 
-		// ponytail: checks every matching post per request, cache the decisions if very large sites need it.
+		// Every matching post is access checked per request; posts and meta are primed in bulk to keep that cheap.
 		$candidates = new WP_Query(
 			array_merge(
 				$args,
@@ -297,6 +299,10 @@ class URCR_REST_Restriction {
 			)
 		);
 
+		if ( $candidates->posts ) {
+			_prime_post_caches( $candidates->posts, false, true );
+		}
+
 		$excluded = array();
 
 		foreach ( $candidates->posts as $post_id ) {
@@ -305,9 +311,18 @@ class URCR_REST_Restriction {
 			}
 		}
 
-		if ( $excluded ) {
-			$args['post__not_in'] = array_merge( isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array(), $excluded );
+		if ( ! $excluded ) {
+			return $args;
 		}
+
+		// WP_Query ignores post__not_in when post__in is set, so an include list is trimmed instead.
+		if ( ! empty( $args['post__in'] ) ) {
+			$remaining        = array_values( array_diff( array_map( 'absint', (array) $args['post__in'] ), $excluded ) );
+			$args['post__in'] = $remaining ? $remaining : array( 0 );
+			return $args;
+		}
+
+		$args['post__not_in'] = array_merge( isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array(), $excluded );
 
 		return $args;
 	}

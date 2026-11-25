@@ -23,6 +23,10 @@ function get_current_user_id() {
 	return $GLOBALS['current_user']; }
 function ur_string_to_bool( $value ) {
 	return (bool) $value; }
+function is_super_admin() {
+	return ! empty( $GLOBALS['super_admin'] ); }
+function _prime_post_caches( $ids, $terms = true, $meta = true ) {
+	$GLOBALS['primed'] = $ids; }
 function urcr_is_content_access_granted( $post_id ) {
 	return ! in_array( (int) $post_id, $GLOBALS['restricted_posts'], true ); }
 
@@ -57,6 +61,25 @@ $GLOBALS['current_user']     = 22;
 $GLOBALS['restricted_posts'] = array();
 $args                        = URCR_REST_Restriction::exclude_restricted_posts( array( 's' => 'open' ), null );
 security_assert( ! isset( $args['post__not_in'] ), 'No exclusion is added when every post is accessible' );
+
+// WP_Query ignores post__not_in when post__in is set, so an include list is trimmed instead.
+$GLOBALS['current_user']     = 24;
+$GLOBALS['restricted_posts'] = array( 2, 4 );
+$args                    = URCR_REST_Restriction::exclude_restricted_posts( array( 'post__in' => array( 1, 2, 3 ) ), null );
+security_assert( array( 1, 3 ) === $args['post__in'] && ! isset( $args['post__not_in'] ), 'Restricted posts are removed from an include list' );
+$args = URCR_REST_Restriction::exclude_restricted_posts( array( 'post__in' => array( '2', 4 ) ), null );
+security_assert( array( 0 ) === $args['post__in'], 'An include list of only restricted posts matches nothing instead of everything' );
+
+// The bulk cache prime covers the candidate posts.
+security_assert( array( 1, 2, 3, 4 ) === $GLOBALS['primed'], 'Candidate posts are primed in bulk before the access checks' );
+
+// A super admin is granted everything, so no scan runs.
+$GLOBALS['current_user']   = 25;
+$GLOBALS['super_admin']    = true;
+$GLOBALS['candidate_args'] = null;
+$args                      = URCR_REST_Restriction::exclude_restricted_posts( array( 's' => 'secret' ), null );
+security_assert( null === $GLOBALS['candidate_args'] && ! isset( $args['post__not_in'] ), 'A super admin skips the scan' );
+$GLOBALS['super_admin'] = false;
 
 // Restriction switched off: no scan runs at all.
 $GLOBALS['current_user']        = 23;
