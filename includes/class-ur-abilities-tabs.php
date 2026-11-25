@@ -1,9 +1,11 @@
 <?php
 /**
- * Tabs on the AI Integration settings: the switch and the connection on the first, the access switches on the second.
+ * Tabs on the AI Integration settings: the page as it was (the Enable AI Abilities switch and the access switches) on the
+ * first tab, and connecting an AI app (the checks, the app tabs, the questions to try) on the second.
  *
- * This is a layout only. Every field stays in the same form, so Save Changes saves both tabs. To go back to the single
- * long page, turn it off with one line:
+ * This is a layout only. Every field stays in the same form, so Save Changes saves everything. With the tabs off, the
+ * Connect row and its button come back and the content slides in from the side, as before. To go back, turn the tabs
+ * off with one line:
  *
  *     add_filter( 'user_registration_ai_settings_tabs', '__return_false' );
  *
@@ -83,7 +85,7 @@ class UR_Abilities_Tabs {
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.urcr-tab-active::before{opacity:1}.user-registration-options-container > .urcr-tabs .urcr-tab:focus{outline:0;box-shadow:none;border:0}'
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled{opacity:.5;cursor:not-allowed}.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled:hover{color:#666}'
 			. '.ur-ai-connect-pane .ur-ai-drawer__body{overflow:visible;padding:0 24px 24px}.ur-ai-connect-pane .ur-ai-drawer__body > h4:first-child{margin-top:8px}'
-			. '.ur-ai-pane--off{display:none !important}.user-registration-options-container:not(.ur-ai-tabs-ready) #ur-ability-access{display:none !important}';
+			. '.ur-ai-pane--off{display:none !important}';
 		wp_register_style( 'user-registration-ai-tabs', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-tabs' );
 		wp_add_inline_style( 'user-registration-ai-tabs', $css );
@@ -92,7 +94,7 @@ class UR_Abilities_Tabs {
 			'user-registration-ai-tabs',
 			'urAiTabs',
 			array(
-				'tabs'         => $labels,
+				'tabs'         => array( $labels[0] ),
 				'switchId'     => 'user_registration_enable_abilities',
 				'needsOn'      => __( 'Turn on Enable AI Abilities first.', 'user-registration' ),
 				// The Connect content gets a tab of its own, between the two cards, instead of the drawer.

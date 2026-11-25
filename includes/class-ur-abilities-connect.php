@@ -432,8 +432,13 @@ class UR_Abilities_Connect {
 			'initial_style' => '',
 		);
 
+		// With the settings tabs on, the Connect content is a tab of its own and there is no row or button here: only the
+		// content, which the tabs script moves into that tab. With the tabs off, the row and its button open the drawer.
+		$inline = class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled();
+
 		ob_start();
 		?>
+		<?php if ( ! $inline ) : ?>
 		<div class="ur-ai-connect user-registration-global-settings"<?php echo $condition['attrs'] . $condition['initial_style']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped by the settings page. ?>>
 			<label class="ur-label"><?php esc_html_e( 'Connect an AI Assistant', 'user-registration' ); ?> <?php echo ur_help_tip( __( 'Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?></label>
 			<div class="user-registration-global-settings--field ur-ai-connect__field">
@@ -441,6 +446,7 @@ class UR_Abilities_Connect {
 				<span class="ur-ai-connect__last" id="ur-ai-last-card"><?php echo esc_html( self::last_call_text() ); ?></span>
 			</div>
 		</div>
+		<?php endif; ?>
 
 		<div class="ur-ai-drawer-overlay" id="ur-ai-overlay" hidden></div>
 		<aside class="ur-ai-drawer" id="ur-ai-drawer" role="dialog" aria-modal="true" aria-labelledby="ur-ai-drawer-title" hidden>

@@ -73,9 +73,9 @@ security_assert( true === UR_Abilities_Tabs::enabled(), 'The tabs are on by defa
 $result = UR_Abilities_Tabs::add_tabs( $settings );
 security_assert( $settings === $result, 'The settings are returned exactly as they came, so no field or card changes' );
 security_assert( isset( $calls['script']['user-registration-ai-tabs'] ) && false !== strpos( $calls['script']['user-registration-ai-tabs'], '/assets/js/admin/ai-tabs.js' ), 'The tabs script is added' );
-security_assert( array( 'AI Integration', 'AI Abilities Access' ) === $calls['localized']['urAiTabs']['tabs'] && 'user_registration_enable_abilities' === $calls['localized']['urAiTabs']['switchId'], 'The script is given the tab names and the id of the master switch' );
+security_assert( array( 'AI Integration' ) === $calls['localized']['urAiTabs']['tabs'] && 'user_registration_enable_abilities' === $calls['localized']['urAiTabs']['switchId'], 'The script is given the first tab name and the id of the master switch, and adds the Connect tab itself' );
 $css = $calls['inline_style']['user-registration-ai-tabs'] ?? '';
-security_assert( false !== strpos( $css, '.ur-ai-pane--off{display:none !important}' ) && false !== strpos( $css, '#ur-ability-access{display:none !important}' ), 'The styles hide the inactive card, and the access card until the tabs are drawn' );
+security_assert( false !== strpos( $css, '.ur-ai-pane--off{display:none !important}' ) && false === strpos( $css, '#ur-ability-access{display:none' ), 'The styles hide the cards of the inactive tab, and leave the access card alone, since it shows on the first tab' );
 
 // The tabs look like the Content Rules tabs: same class names, same rules.
 security_assert( false !== strpos( $css, '.urcr-tabs{display:flex;gap:8px;' ) && false !== strpos( $css, 'border-bottom:1px solid #e0e0e0' ) && false !== strpos( $css, '.urcr-tab{padding:12px 16px;font-size:14px;font-weight:500;color:#666;' ) && false !== strpos( $css, '.urcr-tab.urcr-tab-active{color:#475bb2;' ), 'The tab styles are the Content Rules ones: spacing, text, colours and the active underline' );
@@ -89,6 +89,8 @@ $connect_js = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-co
 security_assert( false !== strpos( $connect_js, 'if (cfg.inline)' ) && false !== strpos( $connect_js, 'ur-ai-show-connect' ), 'With the tabs on the Connect button asks for the tab; with them off it still opens the drawer' );
 $connect_php = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-connect.php' );
 security_assert( false !== strpos( $connect_php, "'inline'  => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled()" ), 'The Connect script only goes inline while the tabs are enabled, so turning the tabs off brings the drawer back' );
+security_assert( false !== strpos( $connect_php, "\$inline = class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled();" ) && false !== strpos( $connect_php, '<?php if ( ! $inline ) : ?>' ), 'The Connect row and its button are drawn only while the tabs are off' );
+security_assert( false !== strpos( $js_source, 'var groups = [cards, pane];' ) && false === strpos( $js_source, 'ur-ability-access' ), 'The first tab holds every card the page already had, the access card included, and the script never singles it out' );
 
 // Off with one filter: nothing is added, so the single long page is back.
 $calls                                      = array();
