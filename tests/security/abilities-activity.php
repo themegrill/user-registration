@@ -205,6 +205,17 @@ $remove( array( 'id' => 4 ) );
 list( , $line ) = last_line();
 security_assert( 0 === strpos( $line, 'AI [DELETE] delete-member by user 3' ), 'A delete is labelled DELETE, next to READ and WRITE' );
 
+// The last call is remembered for the Connect card, even though the log itself follows Enable Log.
+$GLOBALS['writes']  = array();
+$GLOBALS['options'] = array( 'user_registration_ai_last_call' => array( 'time' => time(), 'app' => '' ) );
+$read( array() );
+security_assert( array() === $GLOBALS['writes'], 'A second call within a minute from the same app does not write again' );
+$GLOBALS['options'] = array( 'user_registration_ai_last_call' => array( 'time' => time() - 600, 'app' => '' ) );
+$read( array() );
+$noted = $GLOBALS['writes']['user_registration_ai_last_call'] ?? array();
+security_assert( isset( $noted['time'] ) && time() - $noted['time'] < 5 && '' === $noted['app'], 'An older record is replaced with the time of the new call' );
+security_assert( array( 'time', 'app' ) === array_keys( $noted ), 'The record holds only the time and the app, no member details' );
+
 // The AI app is the name of the application password. The doubles are declared only now, so the lines above had none.
 $no_app_before = false === strpos( $line, '(' );
 if ( ! class_exists( 'WP_Application_Passwords' ) ) {

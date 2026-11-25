@@ -48,6 +48,13 @@ class UR_Abilities_Role {
 	private static $name = '';
 
 	/**
+	 * Rights an ability asked for while it ran that were on the allowed list but not lent, keyed by right.
+	 *
+	 * @var array
+	 */
+	private static $missed = array();
+
+	/**
 	 * Rights each ability asked for in its permission check, keyed by ability name.
 	 *
 	 * @var array
@@ -151,16 +158,32 @@ class UR_Abilities_Role {
 				return call_user_func( $callback, $input );
 			}
 
-			self::$phase = 'run';
-			self::$name  = $name;
+			self::$phase  = 'run';
+			self::$name   = $name;
+			self::$missed = array();
 
 			try {
 				return call_user_func( $callback, $input );
 			} finally {
 				self::$phase = '';
 				self::$name  = '';
+				self::report_missed( $name );
 			}
 		};
+	}
+
+	/**
+	 * Say in the plugin log when an ability asked for a right it was not given, so the gap is found and the right declared.
+	 *
+	 * @param string $name Ability name.
+	 */
+	private static function report_missed( $name ) {
+		if ( ! empty( self::$missed ) && function_exists( 'ur_get_logger' ) ) {
+			/* translators: 1: ability name, 2: rights. */
+			ur_get_logger()->warning( sprintf( 'AI ability %1$s asked for rights it was not given: %2$s. Declare them with caps on the ability.', $name, implode( ', ', array_keys( self::$missed ) ) ), array( 'source' => 'user-registration-ai' ) );
+		}
+
+		self::$missed = array();
 	}
 
 	/**
@@ -200,6 +223,8 @@ class UR_Abilities_Role {
 				$allcaps[ $cap ]                   = true;
 			} elseif ( isset( self::$lent[ self::$name ][ $cap ] ) ) {
 				$allcaps[ $cap ] = true;
+			} else {
+				self::$missed[ $cap ] = true;
 			}
 		}
 

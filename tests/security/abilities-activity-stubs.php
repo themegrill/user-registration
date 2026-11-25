@@ -47,3 +47,11 @@ if ( ! function_exists( 'wp_get_current_user' ) ) {
 if ( ! class_exists( 'UR_Abilities_Role' ) ) {
 	require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-role.php';
 }
+
+if ( ! class_exists( 'UR_Abilities_Connect' ) ) {
+	require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-connect.php';
+}
+
+if ( ! defined( 'MINUTE_IN_SECONDS' ) ) {
+	define( 'MINUTE_IN_SECONDS', 60 );
+}

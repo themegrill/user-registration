@@ -59,6 +59,19 @@ function get_userdata( $id ) {
 function get_role( $name ) {
 	return false;
 }
+if ( ! class_exists( 'Role_Test_Logger' ) ) {
+	class Role_Test_Logger {
+		public $lines = array();
+
+		public function warning( $message, $context = array() ) {
+			$this->lines[] = array( $message, $context['source'] ?? '' );
+		}
+	}
+}
+function ur_get_logger() {
+	$GLOBALS['role_logger'] = $GLOBALS['role_logger'] ?? new Role_Test_Logger();
+	return $GLOBALS['role_logger'];
+}
 function add_role( $name, $label, $caps ) {
 	$GLOBALS['role_added'] = array( $name, $label, $caps );
 }
@@ -160,6 +173,42 @@ UR_Abilities_Role::wrap_execute(
 )();
 security_assert( $deep['edit_users'] && $deep['promote_users'], 'A declared right on the allowed list is lent with the ones the check asked for' );
 security_assert( ! $deep['install_plugins'] && ! $deep['manage_options'], 'A declared right outside the list is not lent, and an admin right nobody asked for stays out' );
+
+// A right the ability asked for but did not declare is lent to nobody, and the gap is written to the log.
+$GLOBALS['current']     = $ai;
+$GLOBALS['role_logger'] = null;
+UR_Abilities_Role::wrap_permission(
+	'list-members',
+	function () {
+		return can( 'list_users' );
+	}
+)();
+$gap = null;
+UR_Abilities_Role::wrap_execute(
+	'list-members',
+	function () use ( &$gap ) {
+		$gap = can( 'manage_options' ) || can( 'install_plugins' );
+	}
+)();
+$lines = $GLOBALS['role_logger']->lines ?? array();
+security_assert( false === $gap, 'A right the ability never declared is not lent' );
+security_assert( 1 === count( $lines ) && 'user-registration-ai' === $lines[0][1] && false !== strpos( $lines[0][0], 'list-members' ) && false !== strpos( $lines[0][0], 'manage_options' ), 'The gap is written to the log with the ability and the right, so it can be declared' );
+security_assert( false === strpos( $lines[0][0], 'install_plugins' ), 'A right that can never be lent is not reported as a gap' );
+
+$GLOBALS['role_logger'] = null;
+UR_Abilities_Role::wrap_permission(
+	'list-members',
+	function () {
+		return can( 'list_users' );
+	}
+)();
+UR_Abilities_Role::wrap_execute(
+	'list-members',
+	function () {
+		can( 'list_users' );
+	}
+)();
+security_assert( empty( $GLOBALS['role_logger']->lines ), 'An ability that only asks for what it declared writes nothing' );
 
 // The user must hold the AI right.
 $GLOBALS['current'] = $stray;

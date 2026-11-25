@@ -15,6 +15,7 @@ class UR_Abilities {
 		add_action( 'wp_abilities_api_init', array( __CLASS__, 'register_abilities' ) );
 		UR_Abilities_Settings::init();
 		UR_Abilities_Role::init();
+		UR_Abilities_Connect::init();
 		UR_Abilities_Access::init();
 	}
 
@@ -712,6 +713,7 @@ class UR_Abilities {
 				),
 				'abilities'   => array(
 					'list-forms'           => array(
+						'caps'        => array( 'edit_user_registrations', 'edit_others_user_registrations', 'edit_published_user_registrations', 'edit_private_user_registrations' ),
 						'label'       => __( 'List registration forms', 'user-registration' ),
 						'description' => __( 'List editable registration forms. Pagination follows scanned form pages; inaccessible forms are omitted.', 'user-registration' ),
 						'input'       => $pagination,

@@ -111,6 +111,8 @@ class UR_Abilities_Activity {
 			'duration_ms' => (int) ( $entry['duration_ms'] ?? 0 ),
 		);
 
+		self::note_call( $row );
+
 		if ( function_exists( 'ur_get_logger' ) ) {
 			// A mistake the AI can fix, such as an unknown id, is a warning. Only a real fault is an error.
 			$client = isset( $entry['status'] ) && $entry['status'] >= 400 && $entry['status'] < 500;
@@ -128,6 +130,29 @@ class UR_Abilities_Activity {
 		 *                   holds no member details.
 		 */
 		do_action( 'user_registration_ai_activity_logged', $row );
+	}
+
+	/**
+	 * Remember the last AI call, so the Connect card can show when an AI app last connected. It works even while logging is off.
+	 *
+	 * @param array $row The entry.
+	 */
+	private static function note_call( $row ) {
+		$last = get_option( UR_Abilities_Connect::LAST_CALL_OPTION );
+
+		// One write a minute is enough to say when an AI app was last seen.
+		if ( is_array( $last ) && ! empty( $last['time'] ) && time() - (int) $last['time'] < MINUTE_IN_SECONDS && $last['app'] === $row['app'] ) {
+			return;
+		}
+
+		update_option(
+			UR_Abilities_Connect::LAST_CALL_OPTION,
+			array(
+				'time' => time(),
+				'app'  => $row['app'],
+			),
+			false
+		);
 	}
 
 	/**
