@@ -511,7 +511,7 @@ class UR_Abilities_Connect {
 
 	/** Add the script and styles of the card. */
 	private static function enqueue() {
-		$css = '.ur-ai-connect__row{display:flex;align-items:center;gap:10px;margin:0}.ur-ai-connect__row .user-registration-help-tip{margin:0}.ur-ai-connect__row .ur-ai-connect__last{margin:0}'
+		$css = '.ur-ai-connect__row{display:flex;align-items:center;gap:10px;margin:0}.ur-ai-connect__row .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0;padding:0;line-height:1}.ur-ai-connect__row .user-registration-help-tip::after{width:16px;height:16px;padding:0;box-sizing:border-box;background-size:contain}.ur-ai-connect__row .ur-ai-connect__last{margin:0}'
 			. '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
 			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:600px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
 			. '.ur-ai-drawer.is-open{transform:none}.ur-ai-drawer[hidden],.ur-ai-drawer-overlay[hidden]{display:none}'
