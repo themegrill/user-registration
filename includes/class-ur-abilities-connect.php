@@ -372,7 +372,16 @@ class UR_Abilities_Connect {
 
 		// The Connect part lives inside the AI Integration card, under the master switch.
 		if ( isset( $settings['sections']['ai_integration']['settings'] ) ) {
-			$settings['sections']['ai_integration']['settings'][] = array( 'type' => 'ur_ai_connect' );
+			$settings['sections']['ai_integration']['settings'][] = array(
+				'type'              => 'ur_ai_connect',
+				// Shown only while the master switch is on, and the page shows or hides it as the switch is flipped.
+				'display_condition' => array(
+					'field'    => 'user_registration_enable_abilities',
+					'operator' => 'equals',
+					'value'    => 'yes',
+					'case'     => 'insensitive',
+				),
+			);
 		}
 
 		return $settings;
@@ -390,9 +399,14 @@ class UR_Abilities_Connect {
 	public static function render( $html, $field = array() ) {
 		self::enqueue();
 
+		$condition = class_exists( 'UR_Admin_Settings' ) && is_array( $field ) ? UR_Admin_Settings::get_display_condition_attributes( $field ) : array(
+			'attrs'         => '',
+			'initial_style' => '',
+		);
+
 		ob_start();
 		?>
-		<div class="ur-ai-connect">
+		<div class="ur-ai-connect"<?php echo $condition['attrs'] . $condition['initial_style']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped by the settings page. ?>>
 			<p class="ur-ai-connect__row">
 				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect an AI assistant', 'user-registration' ); ?></button>
 				<?php echo ur_help_tip( __( 'Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?>

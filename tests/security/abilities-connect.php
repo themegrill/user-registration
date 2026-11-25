@@ -276,6 +276,8 @@ $settings = UR_Abilities_Connect::add_settings(
 security_assert( array( 'ai_integration', 'ai_abilities_access' ) === array_keys( $settings['sections'] ), 'No card of its own is added; the Connect part joins the AI Integration card' );
 $inside = $settings['sections']['ai_integration']['settings'];
 security_assert( 2 === count( $inside ) && 'user_registration_enable_abilities' === $inside[0]['id'] && 'ur_ai_connect' === $inside[1]['type'] && ! isset( $inside[1]['id'] ), 'It sits under the master switch and has no id, so saving the page never touches it' );
+$condition = $inside[1]['display_condition'] ?? array();
+security_assert( 'user_registration_enable_abilities' === ( $condition['field'] ?? '' ) && 'yes' === ( $condition['value'] ?? '' ) && 'equals' === ( $condition['operator'] ?? '' ), 'The Connect part shows only while Enable AI Abilities is on' );
 security_assert( 'odd' === UR_Abilities_Connect::add_settings( 'odd' ) && array( 'sections' => array() ) === UR_Abilities_Connect::add_settings( array( 'sections' => array() ) ), 'Settings of an unexpected shape are returned untouched' );
 
 // Claude Desktop reaches a remote server through mcp-remote, and the login stays out of the command line.
