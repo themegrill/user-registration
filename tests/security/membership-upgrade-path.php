@@ -17,6 +17,22 @@ namespace WPEverest\URMembership\Admin\Services {
 	}
 	class UpgradeMembershipService {
 		public function get_upgrade_details( $details ) {
+			if ( ! empty( $GLOBALS['keyed'] ) ) {
+				// Group mode: the whole per-plan map comes back once the current plan has a path.
+				return isset( $GLOBALS['paths'][ $details['ID'] ] ) ? array(
+					'upgrade_path' => array_map(
+						function ( $ids ) {
+							return array_map(
+								function ( $id ) {
+									return array( 'membership_id' => $id );
+								},
+								$ids
+							);
+						},
+						$GLOBALS['paths']
+					),
+				) : array();
+			}
 			return array( 'upgrade_path' => $GLOBALS['paths'][ $details['ID'] ] ?? '' ); }
 	}
 	class RepoDouble {
@@ -125,4 +141,26 @@ namespace {
 		'Another member\'s subscription cannot be upgraded'
 	);
 	security_assert( false === upgrade_allowed( array( 'selected_membership_id' => 11 ) ), 'A request without a subscription is refused' );
+
+	$GLOBALS['keyed'] = true;
+	security_assert(
+		true === upgrade_allowed(
+			array(
+				'current_subscription_id' => 100,
+				'current_membership_id'   => 10,
+				'selected_membership_id'  => 11,
+			)
+		),
+		'Group paths: an honest upgrade is allowed'
+	);
+	security_assert(
+		false === upgrade_allowed(
+			array(
+				'current_subscription_id' => 100,
+				'current_membership_id'   => 20,
+				'selected_membership_id'  => 30,
+			)
+		),
+		'Group paths: a forged current_membership_id cannot borrow another plan\'s path'
+	);
 }

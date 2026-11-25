@@ -1931,6 +1931,10 @@ class AJAX {
 			);
 		}
 
+		// Ownership is verified by can_upgrade(); everything after must key off the real plan, not the submitted one.
+		$owned_subscription            = ( new SubscriptionRepository() )->retrieve( $data['current_subscription_id'] );
+		$data['current_membership_id'] = (int) $owned_subscription['item_id'];
+
 		$upgrade_membership_response = $subscription_service->upgrade_membership( $data );
 		$response                    = $upgrade_membership_response['response'];
 

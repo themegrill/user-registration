@@ -602,7 +602,7 @@ class SubscriptionService {
 			return array(
 				'response' => array(
 					'status'  => false,
-					'message' => $eligibility['message'] ?? __( 'Sorry, you cannot upgrade to the selected plan.', 'user-registration' ),
+					'message' => $eligibility['message'],
 				),
 			);
 		}
@@ -873,11 +873,13 @@ class SubscriptionService {
 	}
 
 	/**
-	 * validate if a membership can validate from current to another
+	 * Validate that the current user may upgrade their own subscription to the selected membership.
 	 *
-	 * @param $data
+	 * The current plan is read from the owned subscription; any submitted current_membership_id is ignored.
 	 *
-	 * @return array
+	 * @param array $data Request data; needs current_subscription_id and selected_membership_id.
+	 *
+	 * @return array Array with a boolean `status` and, on failure, a `message`.
 	 */
 	public function can_upgrade( $data ) {
 		$subscription = $this->subscription_repository->retrieve( $data['current_subscription_id'] ?? 0 );
