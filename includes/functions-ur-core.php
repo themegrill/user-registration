@@ -4368,41 +4368,108 @@ if ( ! function_exists( 'ur_file_get_contents' ) ) {
 
 if ( ! function_exists( 'crypt_the_string' ) ) {
 	/**
-	 * Encrypt/Decrypt the provided string.
-	 * Encrypt while setting token and updating to database, decrypt while comparing the stored token.
+	 * Encrypt or decrypt a string using authenticated encryption (AES-256-CBC + HMAC-SHA256).
+	 * Uses a fresh random IV per encryption and verifies the HMAC before decrypting.
 	 *
 	 * @param string $string String to encrypt/decrypt.
 	 * @param string $action Encrypt/decrypt action. 'e' for encrypt and 'd' for decrypt.
 	 *
-	 * @return string Encrypted/Decrypted string.
+	 * @return string|false Encrypted/decrypted string, or false on failure or tampering.
 	 */
 	function crypt_the_string( $string, $action = 'e' ) {
 		$secret_key = get_option( 'ur_secret_key' );
-		$secret_iv  = get_option( 'ur_secret_iv' );
 
-		if ( empty( $secret_key ) || empty( $secret_iv ) ) {
+		if ( empty( $secret_key ) ) {
 			$secret_key = ur_generate_random_key();
-			$secret_iv  = ur_generate_random_key();
 			update_option( 'ur_secret_key', $secret_key );
-			update_option( 'ur_secret_iv', $secret_iv );
 		}
 
 		$output         = false;
 		$encrypt_method = 'AES-256-CBC';
-		$key            = hash( 'sha256', $secret_key );
-		$iv             = substr( hash( 'sha256', $secret_iv ), 0, 16 );
+		$enc_key        = hash_hmac( 'sha256', 'ur-enc-v2', $secret_key, true );
+		$mac_key        = hash_hmac( 'sha256', 'ur-mac-v2', $secret_key, true );
 
-		if ( 'e' == $action ) {
-			if ( function_exists( 'openssl_encrypt' ) ) {
-				$output = base64_encode( openssl_encrypt( $string, $encrypt_method, $key, 0, $iv ) );
-			} else {
-				$output = base64_encode( $string );
+		if ( 'e' === $action ) {
+			$iv = function_exists( 'random_bytes' ) ? random_bytes( 16 ) : openssl_random_pseudo_bytes( 16 );
+
+			if ( false === $iv || 16 !== strlen( $iv ) ) {
+				return false;
 			}
-		} elseif ( 'd' == $action ) {
-			if ( function_exists( 'openssl_decrypt' ) ) {
-				$output = openssl_decrypt( base64_decode( $string ), $encrypt_method, $key, 0, $iv );
+
+			if ( function_exists( 'openssl_encrypt' ) ) {
+				$ciphertext = openssl_encrypt( (string) $string, $encrypt_method, $enc_key, OPENSSL_RAW_DATA, $iv );
+
+				if ( false === $ciphertext ) {
+					return false;
+				}
+
+				$mac    = hash_hmac( 'sha256', 'v2' . $iv . $ciphertext, $mac_key, true );
+				$output = 'v2.' . rtrim( strtr( base64_encode( $iv . $mac . $ciphertext ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
 			} else {
-				$output = base64_decode( $string );
+				$payload = (string) $string;
+				$mac     = hash_hmac( 'sha256', 'v2m' . $iv . $payload, $mac_key, true );
+				$output  = 'v2m.' . rtrim( strtr( base64_encode( $iv . $mac . $payload ), '+/', '-_' ), '=' ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+			}
+		} elseif ( 'd' === $action ) {
+			if ( ! is_string( $string ) || '' === $string ) {
+				return false;
+			}
+
+			if ( function_exists( 'openssl_decrypt' ) ) {
+				if ( 0 !== strpos( $string, 'v2.' ) ) {
+					return false;
+				}
+
+				$encoded = strtr( substr( $string, 3 ), '-_', '+/' );
+				$pad     = strlen( $encoded ) % 4;
+				if ( $pad > 0 ) {
+					$encoded .= str_repeat( '=', 4 - $pad );
+				}
+
+				$raw = base64_decode( $encoded, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+
+				if ( false === $raw || strlen( $raw ) <= 48 ) {
+					return false;
+				}
+
+				$iv         = substr( $raw, 0, 16 );
+				$mac        = substr( $raw, 16, 32 );
+				$ciphertext = substr( $raw, 48 );
+				$expected   = hash_hmac( 'sha256', 'v2' . $iv . $ciphertext, $mac_key, true );
+
+				// Verify MAC before decrypting to reject tampered ciphertext and prevent padding oracles.
+				if ( ! hash_equals( $expected, $mac ) ) {
+					return false;
+				}
+
+				$output = openssl_decrypt( $ciphertext, $encrypt_method, $enc_key, OPENSSL_RAW_DATA, $iv );
+			} else {
+				if ( 0 !== strpos( $string, 'v2m.' ) ) {
+					return false;
+				}
+
+				$encoded = strtr( substr( $string, 4 ), '-_', '+/' );
+				$pad     = strlen( $encoded ) % 4;
+				if ( $pad > 0 ) {
+					$encoded .= str_repeat( '=', 4 - $pad );
+				}
+
+				$raw = base64_decode( $encoded, true ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+
+				if ( false === $raw || strlen( $raw ) < 48 ) {
+					return false;
+				}
+
+				$iv       = substr( $raw, 0, 16 );
+				$mac      = substr( $raw, 16, 32 );
+				$payload  = substr( $raw, 48 );
+				$expected = hash_hmac( 'sha256', 'v2m' . $iv . $payload, $mac_key, true );
+
+				if ( ! hash_equals( $expected, $mac ) ) {
+					return false;
+				}
+
+				$output = $payload;
 			}
 		}
 
@@ -4626,18 +4693,36 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 		}
 
 		if ( ! is_numeric( $upload_file ) ) {
-			$upload = ur_maybe_unserialize( crypt_the_string( $upload_file, 'd' ) );
-			$logger = ur_get_logger();
+			$decrypted = crypt_the_string( $upload_file, 'd' );
+			$upload    = false !== $decrypted ? ur_maybe_unserialize( $decrypted ) : false;
+			$logger    = ur_get_logger();
 
-			if ( ! isset( $upload['file_name'], $upload['file_path'], $upload['file_extension'] ) || ! file_exists( $upload['file_path'] ) ) {
+			if ( ! is_array( $upload ) || ! isset( $upload['file_name'], $upload['file_path'], $upload['file_extension'] ) || ! is_string( $upload['file_name'] ) || ! is_string( $upload['file_path'] ) || ! is_string( $upload['file_extension'] ) ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: invalid upload token.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
+			$expected_tmp_dir = realpath( ur_get_tmp_dir() );
+			$real_source_path = realpath( $upload['file_path'] );
+
+			if ( false === $expected_tmp_dir || false === $real_source_path || ! is_file( $real_source_path ) || is_link( $upload['file_path'] ) ) {
 				$logger->warning( sprintf( 'Profile picture not saved for user %d: the uploaded file is no longer available.', $user_id ), array( 'source' => 'user-registration' ) );
 				return false;
 			}
 
+			$expected_tmp_root   = rtrim( $expected_tmp_dir, DIRECTORY_SEPARATOR );
+			$expected_tmp_prefix = $expected_tmp_root . DIRECTORY_SEPARATOR;
+
+			// Confirm the resolved source path stays inside the plugin temp-upload directory regardless of token contents.
+			if ( 0 !== strpos( $real_source_path, $expected_tmp_prefix ) || dirname( $real_source_path ) !== $expected_tmp_root || basename( $real_source_path ) !== $upload['file_name'] ) {
+				$logger->warning( sprintf( 'Profile picture not saved for user %d: unexpected upload path.', $user_id ), array( 'source' => 'user-registration' ) );
+				return false;
+			}
+
 			if ( function_exists( 'mime_content_type' ) ) {
-				$upload_file_type = mime_content_type( $upload['file_path'] );
+				$upload_file_type = mime_content_type( $real_source_path );
 			} else {
-				$upload_file_info = wp_check_filetype( $upload['file_path'] );
+				$upload_file_info = wp_check_filetype( $real_source_path );
 				$upload_file_type = ! empty( $upload_file_info ) ? $upload_file_info['type'] : '';
 			}
 
@@ -4646,17 +4731,12 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 				return false;
 			}
 
-			if ( basename( $upload['file_path'] ) !== $upload['file_name'] ) {
-				$logger->warning( sprintf( 'Profile picture not saved for user %d: unexpected upload path.', $user_id ), array( 'source' => 'user-registration' ) );
-				return false;
-			}
-
 			$upload_path = $upload_path . '/';
 			$file_name   = wp_unique_filename( $upload_path, $upload['file_name'] );
 			$file_path   = $upload_path . sanitize_file_name( $file_name );
 			$filetype    = wp_check_filetype( basename( $file_name ), null );
 
-			if ( ! rename( $upload['file_path'], $file_path ) ) {
+			if ( ! rename( $real_source_path, $file_path ) ) {
 				$logger->warning( sprintf( 'Profile picture not saved for user %d: could not move the file into %s.', $user_id, $upload_path ), array( 'source' => 'user-registration' ) );
 				return false;
 			}
@@ -4679,7 +4759,9 @@ if ( ! function_exists( 'ur_upload_profile_pic' ) ) {
 				return false;
 			}
 
-			include_once ABSPATH . 'wp-admin/includes/image.php';
+			if ( ! function_exists( 'wp_generate_attachment_metadata' ) ) {
+				include_once ABSPATH . 'wp-admin/includes/image.php';
+			}
 			wp_update_attachment_metadata( $attachment_id, wp_generate_attachment_metadata( $attachment_id, $file_path ) );
 		} else {
 			// A numeric value is sent when the user keeps their existing profile picture
