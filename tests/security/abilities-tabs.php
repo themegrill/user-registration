@@ -77,6 +77,11 @@ security_assert( array( 'AI Integration', 'AI Abilities Access' ) === $calls['lo
 $css = $calls['inline_style']['user-registration-ai-tabs'] ?? '';
 security_assert( false !== strpos( $css, '.ur-ai-pane--off{display:none !important}' ) && false !== strpos( $css, '#ur-ability-access{display:none !important}' ), 'The styles hide the inactive card, and the access card until the tabs are drawn' );
 
+// The tabs look like the Content Rules tabs: same class names, same rules.
+security_assert( false !== strpos( $css, '.urcr-tabs{display:flex;gap:8px;' ) && false !== strpos( $css, 'border-bottom:1px solid #e0e0e0' ) && false !== strpos( $css, '.urcr-tab{padding:12px 16px;font-size:14px;font-weight:500;color:#666;' ) && false !== strpos( $css, '.urcr-tab.urcr-tab-active{color:#475bb2;' ), 'The tab styles are the Content Rules ones: spacing, text, colours and the active underline' );
+$js_source = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-tabs.js' );
+security_assert( false !== strpos( $js_source, 'class="urcr-tabs"' ) && false !== strpos( $js_source, 'class="urcr-tab"' ) && false !== strpos( $js_source, 'urcr-tab-active' ) && false === strpos( $js_source, 'ur-ai-tabs__tab' ), 'The tabs are drawn with the Content Rules class names and no new tab design' );
+
 // Off with one filter: nothing is added, so the single long page is back.
 $calls                                      = array();
 $tab_filters['user_registration_ai_settings_tabs'] = false;

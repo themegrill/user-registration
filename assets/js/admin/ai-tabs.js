@@ -17,11 +17,11 @@
 			return;
 		}
 
-		var nav = $('<div class="ur-ai-tabs" role="tablist">');
+		var nav = $('<div class="urcr-tabs" role="tablist">');
 		var active = 0;
 
 		names.forEach(function (name, index) {
-			$('<button type="button" role="tab" class="ur-ai-tabs__tab">').text(name).attr("data-tab", index).appendTo(nav);
+			$('<button type="button" role="tab" class="urcr-tab">').text(name).attr("data-tab", index).appendTo(nav);
 		});
 
 		nav.insertBefore(cards.first());
@@ -42,7 +42,7 @@
 			nav.children().each(function (index) {
 				var waiting = index > 0 && !on;
 
-				$(this).toggleClass("is-active", index === active).toggleClass("is-disabled", waiting).attr({ "aria-selected": index === active ? "true" : "false", "aria-disabled": waiting ? "true" : "false", title: waiting ? cfg.needsOn : "" });
+				$(this).toggleClass("urcr-tab-active", index === active).toggleClass("is-disabled", waiting).attr({ "aria-selected": index === active ? "true" : "false", "aria-disabled": waiting ? "true" : "false", title: waiting ? cfg.needsOn : "" });
 			});
 		}
 
@@ -61,7 +61,7 @@
 			}
 		}
 
-		nav.on("click", ".ur-ai-tabs__tab", function () {
+		nav.on("click", ".urcr-tab", function () {
 			show(parseInt($(this).attr("data-tab"), 10));
 		});
 

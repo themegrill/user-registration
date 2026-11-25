@@ -74,12 +74,15 @@ class UR_Abilities_Tabs {
 			return $settings;
 		}
 
-		$css = '.ur-ai-tabs{display:flex;gap:4px;margin:16px 0 0;border-bottom:1px solid #e1e4ed}'
-			. '.ur-ai-tabs__tab{margin:0 0 -1px;padding:10px 18px;border:0;border-bottom:2px solid transparent;background:none;font-size:14px;color:#646a7a;cursor:pointer}'
-			. '.ur-ai-tabs__tab:hover{color:#2d3559}.ur-ai-tabs__tab.is-active{border-bottom-color:#475bb2;color:#475bb2;font-weight:600}'
-			. '.ur-ai-tabs__tab.is-disabled{opacity:.5;cursor:not-allowed}.ur-ai-tabs__tab.is-disabled:hover{color:#646a7a}'
+		// The same tabs as Content Rules (Membership Rules and Custom Rules): their class names and their rules. Those rules
+		// are scoped to the Content Rules page, so the same ones are given here, scoped to this settings page.
+		$css = '.user-registration-options-container > .urcr-tabs{display:flex;gap:8px;margin:16px 0 8px;border-bottom:1px solid #e0e0e0;padding-bottom:0}'
+			. '.user-registration-options-container > .urcr-tabs .urcr-tab{padding:12px 16px;font-size:14px;font-weight:500;color:#666;background:0 0;border:none;cursor:pointer;transition:all .2s ease;border-radius:4px 4px 0 0;margin:0;box-shadow:none;position:relative}'
+			. '.user-registration-options-container > .urcr-tabs .urcr-tab::before{content:"";position:absolute;width:100%;height:2px;background:#475bb2;opacity:0;bottom:0;left:0;transition:all .3s ease}'
+			. '.user-registration-options-container > .urcr-tabs .urcr-tab:hover{color:#222}.user-registration-options-container > .urcr-tabs .urcr-tab.urcr-tab-active{color:#475bb2;border-bottom-color:#475bb2}'
+			. '.user-registration-options-container > .urcr-tabs .urcr-tab.urcr-tab-active::before{opacity:1}.user-registration-options-container > .urcr-tabs .urcr-tab:focus{outline:0;box-shadow:none;border:0}'
+			. '.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled{opacity:.5;cursor:not-allowed}.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled:hover{color:#666}'
 			. '.ur-ai-pane--off{display:none !important}.user-registration-options-container:not(.ur-ai-tabs-ready) #ur-ability-access{display:none !important}';
-
 		wp_register_style( 'user-registration-ai-tabs', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-tabs' );
 		wp_add_inline_style( 'user-registration-ai-tabs', $css );
