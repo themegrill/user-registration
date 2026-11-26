@@ -39,3 +39,16 @@ foreach ( $widgets as $label => $file ) {
 	security_assert( false === strpos( $output, '[caption' ) && false === strpos( $output, '[/caption' ), "$label widget output carries no live shortcode for a later do_shortcode() pass" );
 	security_assert( false !== strpos( $output, 'PWNED' ) && false !== strpos( $output, '<ul class="user-registration-error">' ), "$label widget keeps its markup and text intact" );
 }
+
+// Popup widgets render admin-authored popup data and UR_Widget is never registered, so they stay raw on purpose.
+$allowed   = array( 'class-ur-widget.php', 'class-ur-widgets-popup.php', 'class-ur-oxygen-widget-popup.php' );
+$unescaped = array();
+foreach ( array( 'elementor', 'oxygen' ) as $builder ) {
+	$iterator = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( dirname( __DIR__, 2 ) . '/includes/3rd-party/' . $builder, FilesystemIterator::SKIP_DOTS ) );
+	foreach ( $iterator as $file ) {
+		if ( 'php' === $file->getExtension() && ! in_array( $file->getFilename(), $allowed, true ) && preg_match( '/echo\s+do_shortcode\s*\(/', file_get_contents( $file->getPathname() ) ) ) {
+			$unescaped[] = $file->getFilename();
+		}
+	}
+}
+security_assert( array() === $unescaped, 'Every Elementor and Oxygen widget escapes its shortcode output; unescaped: ' . implode( ', ', $unescaped ) );

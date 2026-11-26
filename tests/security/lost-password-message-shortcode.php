@@ -39,9 +39,10 @@ function queued_error_messages( $message ) {
 $payload = '[caption width="1" caption="PWNED"]x[/caption]';
 // PHP decodes a request once into $_GET, so `url-encoded` here is a request whose message was encoded twice.
 $inputs = array(
-	'plain'            => $payload,
-	'url-encoded'      => rawurlencode( $payload ),
-	'nested-brackets'  => '[' . $payload . ']',
+	'plain'           => $payload,
+	'url-encoded'     => rawurlencode( $payload ),
+	'nested-brackets' => '[' . $payload . ']',
+	'unbalanced'      => ']' . $payload . '[',
 );
 foreach ( $inputs as $label => $input ) {
 	$messages = queued_error_messages( $input );
