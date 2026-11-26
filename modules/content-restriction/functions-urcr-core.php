@@ -2078,7 +2078,7 @@ function urcr_is_content_access_granted( $target_post ) {
  * @since 5.2.8
  */
 function urcr_is_content_drip_pending( $target_post ) {
-	if ( ! defined( 'UR_PRO_ACTIVE' ) || ! UR_PRO_ACTIVE || ! ur_check_module_activation( 'content-drip' ) ) {
+	if ( ! urcr_is_content_drip_enabled() ) {
 		return false;
 	}
 
@@ -2087,4 +2087,62 @@ function urcr_is_content_drip_pending( $target_post ) {
 	}
 
 	return \WPEverest\URM\ContentDrip\Frontend::is_drip_pending( $target_post );
+}
+
+/**
+ * See if the content drip module is running.
+ *
+ * @return bool
+ * @since x.x.x
+ */
+function urcr_is_content_drip_enabled() {
+	return defined( 'UR_PRO_ACTIVE' ) && UR_PRO_ACTIVE && ur_check_module_activation( 'content-drip' );
+}
+
+/**
+ * See if any published access rule can be evaluated.
+ *
+ * @return bool
+ * @since x.x.x
+ */
+function urcr_has_evaluable_access_rule() {
+	foreach ( urcr_get_published_access_rules() as $access_rule_post ) {
+		if ( urcr_is_access_rule_evaluable( json_decode( $access_rule_post->post_content, true ) ) ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * See if any post replaces the global restriction settings with its own.
+ *
+ * @return bool
+ * @since x.x.x
+ */
+function urcr_has_post_override() {
+	global $wpdb;
+
+	// Every string ur_string_to_bool() reads as true, so no override can be missed.
+	$enabled_values = array( '1', 'yes', 'on', 'true', 'today', 'range' );
+	$placeholders   = implode( ', ', array_fill( 0, count( $enabled_values ), '%s' ) );
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Existence check on one meta key; the placeholders are generated above.
+	$override_id = $wpdb->get_var( $wpdb->prepare( "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value IN ( {$placeholders} ) LIMIT 1", array_merge( array( 'urcr_meta_override_global_settings' ), $enabled_values ) ) );
+
+	return null !== $override_id;
+}
+
+/**
+ * See if anything on this site can restrict a post, so callers can skip per post access checks.
+ *
+ * @return bool
+ * @since x.x.x
+ */
+function urcr_has_restriction_source() {
+	return ur_string_to_bool( get_option( 'user_registration_content_restriction_whole_site_access', false ) )
+		|| urcr_is_content_drip_enabled()
+		|| urcr_has_evaluable_access_rule()
+		|| urcr_has_post_override();
 }

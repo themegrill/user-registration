@@ -19,6 +19,11 @@ defined( 'ABSPATH' ) || exit;
 class URCR_REST_Restriction {
 
 	/**
+	 * Posts access checked per batch when scanning a REST collection.
+	 */
+	const SCAN_CHUNK_SIZE = 500;
+
+	/**
 	 * Hook in the REST response filters.
 	 *
 	 * @since 5.2.8
@@ -219,6 +224,67 @@ class URCR_REST_Restriction {
 	}
 
 	/**
+	 * IDs of every post matching the query that the current user cannot access.
+	 * No post can be skipped, or the totals would leak again, so the scan runs in chunks to keep memory flat.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param array $args WP_Query arguments built by the REST controller.
+	 * @return int[]
+	 */
+	private static function find_restricted_post_ids( $args ) {
+		$candidates = new WP_Query(
+			array_merge(
+				$args,
+				array(
+					'fields'                 => 'ids',
+					'posts_per_page'         => -1,
+					'paged'                  => 1,
+					'offset'                 => 0,
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			)
+		);
+
+		$excluded = array();
+
+		foreach ( array_chunk( $candidates->posts, self::SCAN_CHUNK_SIZE ) as $chunk ) {
+			// Posts and meta are primed in bulk so each access check reads from cache instead of the database.
+			_prime_post_caches( $chunk, false, true );
+
+			foreach ( $chunk as $post_id ) {
+				if ( ! self::is_post_access_granted( absint( $post_id ) ) ) {
+					$excluded[] = absint( $post_id );
+				}
+			}
+
+			self::release_post_caches( $chunk );
+		}
+
+		return $excluded;
+	}
+
+	/**
+	 * Drop checked posts from the in-memory cache, unless an external object cache holds them for other requests.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int[] $post_ids Post IDs that were just access checked.
+	 */
+	private static function release_post_caches( $post_ids ) {
+		if ( wp_using_ext_object_cache() ) {
+			return;
+		}
+
+		foreach ( $post_ids as $post_id ) {
+			wp_cache_delete( $post_id, 'posts' );
+			wp_cache_delete( $post_id, 'post_meta' );
+		}
+	}
+
+	/**
 	 * Access decision for a post, worked out once per user and request.
 	 * Each decision walks every access rule, so repeats are worth avoiding.
 	 *
@@ -276,40 +342,15 @@ class URCR_REST_Restriction {
 	 * @return array
 	 */
 	public static function exclude_restricted_posts( $args, $request ) {
-		// Super admins are always granted access, so scanning for them would only cost time.
+		// Super admins are always granted access, and a site with nothing that can restrict a post has nothing to hide.
 		if ( ! function_exists( 'urcr_is_content_access_granted' )
 			|| is_super_admin()
-			|| ! ur_string_to_bool( get_option( 'user_registration_content_restriction_enable', true ) ) ) {
+			|| ! ur_string_to_bool( get_option( 'user_registration_content_restriction_enable', true ) )
+			|| ! urcr_has_restriction_source() ) {
 			return $args;
 		}
 
-		// Every matching post is access checked per request; posts and meta are primed in bulk to keep that cheap.
-		$candidates = new WP_Query(
-			array_merge(
-				$args,
-				array(
-					'fields'                 => 'ids',
-					'posts_per_page'         => -1,
-					'paged'                  => 1,
-					'offset'                 => 0,
-					'no_found_rows'          => true,
-					'update_post_meta_cache' => false,
-					'update_post_term_cache' => false,
-				)
-			)
-		);
-
-		if ( $candidates->posts ) {
-			_prime_post_caches( $candidates->posts, false, true );
-		}
-
-		$excluded = array();
-
-		foreach ( $candidates->posts as $post_id ) {
-			if ( ! self::is_post_access_granted( absint( $post_id ) ) ) {
-				$excluded[] = absint( $post_id );
-			}
-		}
+		$excluded = self::find_restricted_post_ids( $args );
 
 		if ( ! $excluded ) {
 			return $args;

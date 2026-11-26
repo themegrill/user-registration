@@ -6,7 +6,7 @@
  */
 
 // WordPress test doubles intentionally use minimal declarations.
-// phpcs:disable Squiz.Commenting.ClassComment, Squiz.Commenting.FunctionComment, Squiz.Commenting.VariableComment, Generic.Files.OneObjectStructurePerFile, Universal.Files.SeparateFunctionsFromOO, Generic.CodeAnalysis.UnusedFunctionParameter, WordPress.PHP.YodaConditions.NotYoda, WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Formatting.MultipleStatementAlignment, Generic.Classes.DuplicateClassName
+// phpcs:disable Squiz.PHP.Eval.Discouraged, Squiz.Commenting.ClassComment, Squiz.Commenting.FunctionComment, Squiz.Commenting.VariableComment, Generic.Files.OneObjectStructurePerFile, Universal.Files.SeparateFunctionsFromOO, Generic.CodeAnalysis.UnusedFunctionParameter, WordPress.PHP.YodaConditions.NotYoda, WordPress.WP.GlobalVariablesOverride.Prohibited, Generic.Formatting.MultipleStatementAlignment, Generic.Classes.DuplicateClassName
 
 require __DIR__ . '/bootstrap.php';
 
@@ -26,13 +26,40 @@ function ur_string_to_bool( $value ) {
 function is_super_admin() {
 	return ! empty( $GLOBALS['super_admin'] ); }
 function _prime_post_caches( $ids, $terms = true, $meta = true ) {
-	$GLOBALS['primed'] = $ids; }
+	$GLOBALS['primed'][] = $ids; }
+function wp_using_ext_object_cache() {
+	return ! empty( $GLOBALS['ext_cache'] ); }
+function wp_cache_delete( $key, $group = '' ) {
+	$GLOBALS['cache_deleted'][ $group ][] = $key; }
+function ur_check_module_activation( $slug ) {
+	return ! empty( $GLOBALS['drip_active'] ); }
+function urcr_get_published_access_rules() {
+	return $GLOBALS['rules']; }
+function urcr_is_access_rule_evaluable( $rule ) {
+	return is_array( $rule ) && ! empty( $rule['enabled'] ); }
+class SecurityWpdb {
+	public $postmeta = 'wp_postmeta';
+	public function prepare( $sql, $args ) {
+		$GLOBALS['override_query'] = array( $sql, $args );
+		return $sql; }
+	public function get_var( $sql ) {
+		return $GLOBALS['override_row']; }
+}
+$GLOBALS['wpdb'] = new SecurityWpdb();
+define( 'UR_PRO_ACTIVE', true );
 function urcr_is_content_access_granted( $post_id ) {
 	return ! in_array( (int) $post_id, $GLOBALS['restricted_posts'], true ); }
+
+foreach ( array( 'urcr_is_content_drip_enabled', 'urcr_has_evaluable_access_rule', 'urcr_has_post_override', 'urcr_has_restriction_source' ) as $core_function ) {
+	eval( security_function( 'modules/content-restriction/functions-urcr-core.php', $core_function ) );
+}
 
 require dirname( __DIR__, 2 ) . '/modules/content-restriction/class-urcr-rest-restriction.php';
 
 $GLOBALS['options']['user_registration_content_restriction_enable'] = true;
+$GLOBALS['options']['user_registration_content_restriction_whole_site_access'] = true;
+$GLOBALS['rules']        = array();
+$GLOBALS['override_row'] = null;
 $GLOBALS['restricted_posts']    = array( 2, 4 );
 $GLOBALS['matching_posts']      = array( 1, 2, 3, 4 );
 $GLOBALS['current_user']        = 20;
@@ -71,7 +98,55 @@ $args = URCR_REST_Restriction::exclude_restricted_posts( array( 'post__in' => ar
 security_assert( array( 0 ) === $args['post__in'], 'An include list of only restricted posts matches nothing instead of everything' );
 
 // The bulk cache prime covers the candidate posts.
-security_assert( array( 1, 2, 3, 4 ) === $GLOBALS['primed'], 'Candidate posts are primed in bulk before the access checks' );
+security_assert( array( 1, 2, 3, 4 ) === $GLOBALS['primed'][0], 'Candidate posts are primed in bulk before the access checks' );
+
+// A large collection is checked in chunks, every post is still checked, and each chunk is released after its checks.
+$GLOBALS['current_user']     = 26;
+$GLOBALS['matching_posts']   = range( 1, 1201 );
+$GLOBALS['restricted_posts'] = array( 2, 1200 );
+$GLOBALS['primed']           = array();
+$GLOBALS['cache_deleted']    = array();
+$args                        = URCR_REST_Restriction::exclude_restricted_posts( array( 's' => 'big' ), null );
+security_assert( array( 500, 500, 201 ) === array_map( 'count', $GLOBALS['primed'] ), 'The scan is split into chunks of 500 posts' );
+security_assert( array( 2, 1200 ) === $args['post__not_in'], 'Restricted posts in any chunk are excluded' );
+security_assert( 1201 === count( $GLOBALS['cache_deleted']['posts'] ) && 1201 === count( $GLOBALS['cache_deleted']['post_meta'] ), 'Every chunk is released after it is checked' );
+
+// An external object cache keeps posts for other requests, so nothing is dropped from it.
+$GLOBALS['current_user']  = 27;
+$GLOBALS['ext_cache']     = true;
+$GLOBALS['cache_deleted'] = array();
+URCR_REST_Restriction::exclude_restricted_posts( array( 's' => 'big' ), null );
+security_assert( array() === $GLOBALS['cache_deleted'], 'An external object cache is left alone' );
+$GLOBALS['ext_cache']      = false;
+$GLOBALS['matching_posts'] = array( 1, 2, 3, 4 );
+
+// Nothing on the site can restrict a post: no scan runs and the query is left alone.
+$GLOBALS['current_user']     = 28;
+$GLOBALS['restricted_posts'] = array( 2, 4 );
+$GLOBALS['options']['user_registration_content_restriction_whole_site_access'] = false;
+$GLOBALS['candidate_args']   = null;
+$args                        = URCR_REST_Restriction::exclude_restricted_posts( array( 's' => 'secret' ), null );
+security_assert( null === $GLOBALS['candidate_args'] && ! isset( $args['post__not_in'] ), 'No scan runs when no rule, override or setting can restrict a post' );
+
+// Each restriction source on its own switches the scan back on.
+security_assert( false === urcr_has_restriction_source(), 'A site with no restriction source reports none' );
+$GLOBALS['options']['user_registration_content_restriction_whole_site_access'] = true;
+security_assert( true === urcr_has_restriction_source(), 'Whole site members only counts as a restriction source' );
+$GLOBALS['options']['user_registration_content_restriction_whole_site_access'] = false;
+$GLOBALS['drip_active'] = true;
+security_assert( true === urcr_has_restriction_source(), 'Content drip counts as a restriction source' );
+$GLOBALS['drip_active'] = false;
+$GLOBALS['rules']       = array( (object) array( 'post_content' => '{"enabled":false}' ), (object) array( 'post_content' => 'not json' ) );
+security_assert( false === urcr_has_restriction_source(), 'Disabled and unreadable rules are not a restriction source' );
+$GLOBALS['rules'][]     = (object) array( 'post_content' => '{"enabled":true}' );
+security_assert( true === urcr_has_restriction_source(), 'An enabled rule counts as a restriction source' );
+$GLOBALS['rules']        = array();
+$GLOBALS['override_row'] = '7';
+security_assert( true === urcr_has_restriction_source(), 'A post with its own restriction settings counts as a restriction source' );
+list( $override_sql, $override_args ) = $GLOBALS['override_query'];
+security_assert( 'urcr_meta_override_global_settings' === $override_args[0] && in_array( 'yes', $override_args, true ) && false !== strpos( $override_sql, 'LIMIT 1' ), 'The override check is one limited lookup on the override meta key' );
+$GLOBALS['override_row'] = null;
+$GLOBALS['options']['user_registration_content_restriction_whole_site_access'] = true;
 
 // A super admin is granted everything, so no scan runs.
 $GLOBALS['current_user']   = 25;
