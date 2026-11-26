@@ -12,7 +12,7 @@
  *
  * @see     https://docs.wpuserregistration.com/docs/how-to-edit-user-registration-template-files-such-as-login-form/
  * @package UserRegistration/Templates
- * @version 1.4.8
+ * @version 1.4.7
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -27,24 +27,28 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @return function.
  */
 
-// Check for error message stored in URL parameter and transient
-if ( isset( $_GET['urm_error'] ) ) {
-	$error_key     = sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
-	$error_message = ur_is_login_error_key( $error_key ) ? get_transient( $error_key ) : false;
+// Check for error message stored in URL parameter and transient.
+if ( isset( $_GET['urm_error'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$error_key = is_string( $_GET['urm_error'] ) ? sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
-	if ( $error_message ) {
-		ur_add_notice( $error_message, 'error' );
-		delete_transient( $error_key );
-	} else {
+	// Restrict transient lookups to plugin-owned login error keys so arbitrary transients cannot be read or deleted.
+	if ( ur_is_valid_login_error_key( $error_key ) ) {
+		$error_message = get_transient( $error_key );
 
-		// filter to add your custom message if the message is not found.
-		$urm_error_not_found_message = apply_filters(
-			'user_registration_login_errors_not_found_message',
-			''
-		);
+		if ( is_string( $error_message ) && '' !== $error_message ) {
+			ur_add_notice( $error_message, 'error' );
+			delete_transient( $error_key );
+		} else {
 
-		if ( '' !== $urm_error_not_found_message ) {
-			ur_add_notice( $urm_error_not_found_message, 'error' );
+			// Filter to add a custom message if the error transient is not found.
+			$urm_error_not_found_message = apply_filters(
+				'user_registration_login_errors_not_found_message',
+				''
+			);
+
+			if ( '' !== $urm_error_not_found_message ) {
+				ur_add_notice( $urm_error_not_found_message, 'error' );
+			}
 		}
 	}
 } else {

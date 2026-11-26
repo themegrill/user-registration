@@ -486,6 +486,42 @@ function ur_get_template( $template_name, $args = array(), $template_path = '', 
 }
 
 /**
+ * Checks whether a query key refers to a plugin-owned login error transient.
+ *
+ * @since x.x.x
+ *
+ * @param string $error_key Sanitized error transient key.
+ * @return bool
+ */
+function ur_is_valid_login_error_key( $error_key ) {
+	$prefix = 'ur_login_error_';
+	return is_string( $error_key ) && 0 === strpos( $error_key, $prefix ) && strlen( $error_key ) > strlen( $prefix );
+}
+
+/**
+ * Drops invalid ?urm_error= query values before the login template renders,
+ * protecting sites with outdated theme overrides of myaccount/form-login.php.
+ *
+ * @since x.x.x
+ *
+ * @param string $template_name Template name being rendered.
+ * @return void
+ */
+function ur_sanitize_login_error_query_param( $template_name ) {
+	if ( 'myaccount/form-login.php' !== $template_name || ! isset( $_GET['urm_error'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return;
+	}
+
+	$error_key = is_string( $_GET['urm_error'] ) ? sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+	// Unset non-plugin transient keys before any overridden login template can read or delete them.
+	if ( ! ur_is_valid_login_error_key( $error_key ) ) {
+		unset( $_GET['urm_error'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	}
+}
+add_action( 'user_registration_before_template_part', 'ur_sanitize_login_error_query_param', 1 );
+
+/**
  * Locate a template and return the path for inclusion.
  *
  * This is the load order:
@@ -14019,23 +14055,6 @@ if ( ! function_exists( 'ur_escape_shortcodes' ) ) {
 	}
 }
 
-if ( ! function_exists( 'ur_is_login_error_key' ) ) {
-	/**
-	 * Whether a value is a login-error transient key created by this plugin.
-	 *
-	 * Guards the public `urm_error` query arg so it can never address an unrelated transient.
-	 *
-	 * @since x.x.x
-	 *
-	 * @param mixed $key Candidate transient key.
-	 *
-	 * @return bool
-	 */
-	function ur_is_login_error_key( $key ) {
-		return is_string( $key ) && 1 === preg_match( '/^ur_login_error_[A-Za-z0-9]{1,64}$/D', $key );
-	}
-}
-
 if ( ! defined( 'UR_PENDING_SESSION_META_KEY' ) ) {
 	define( 'UR_PENDING_SESSION_META_KEY', 'urm_pending_session' );
 }
@@ -14109,23 +14128,3 @@ if ( ! function_exists( 'ur_clear_pending_member_session' ) ) {
 		delete_user_meta( $user_id, UR_PENDING_SESSION_META_KEY );
 	}
 }
-
-if ( ! function_exists( 'ur_strip_invalid_login_error_arg' ) ) {
-	/**
-	 * Drop a `urm_error` query arg that is not one of this plugin's login-error keys.
-	 *
-	 * Protects themes that override the login template and still read the arg directly.
-	 *
-	 * @since x.x.x
-	 *
-	 * @return void
-	 */
-	function ur_strip_invalid_login_error_arg() {
-		foreach ( array( '_GET', '_REQUEST' ) as $source ) {
-			if ( isset( $GLOBALS[ $source ]['urm_error'] ) && ! ur_is_login_error_key( $GLOBALS[ $source ]['urm_error'] ) ) {
-				unset( $GLOBALS[ $source ]['urm_error'] );
-			}
-		}
-	}
-}
-add_action( 'init', 'ur_strip_invalid_login_error_arg', 1 );
