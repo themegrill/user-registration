@@ -631,6 +631,7 @@ class UR_Abilities_Connect {
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
 			. '.ur-ai-connect h4 .ur-ai-connect__recheck{margin:0 0 0 auto;font-weight:400}'
+			. '.ur-ai-busy{pointer-events:none}.ur-ai-busy::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:urAiSpin .7s linear infinite;vertical-align:-2px;box-sizing:border-box}.ur-ai-conn li.is-removing{opacity:.55;pointer-events:none}'
 			. '@keyframes urAiSpin{to{transform:rotate(360deg)}}.ur-ai-connect__checks .is-loading .ur-ai-connect__mark{position:relative;color:transparent;width:12px;height:12px;flex:none}'
 			. '.ur-ai-connect__checks .is-loading .ur-ai-connect__mark::after{content:"";position:absolute;inset:0;border:2px solid #e1e4ed;border-top-color:#475bb2;border-radius:50%;animation:urAiSpin .7s linear infinite}.ur-ai-connect__checks .is-loading em{display:none}'
 			. '.ur-ai-conn{margin:0 0 8px;padding:0;list-style:none;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-conn li{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-bottom:1px solid #f0f2f7}.ur-ai-conn li:last-child{border-bottom:0}'
@@ -679,6 +680,7 @@ class UR_Abilities_Connect {
 					'attentionN' => __( '%d things need attention', 'user-registration' ),
 					'checking'   => __( 'Checking...', 'user-registration' ),
 					'removed'    => __( 'Removed.', 'user-registration' ),
+					'removing'   => __( 'Removing...', 'user-registration' ),
 				),
 			)
 		);
