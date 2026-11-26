@@ -665,7 +665,6 @@ class UR_Abilities_Connect {
 				'asks'     => self::prompts(),
 				'copyIcon' => self::copy_icon(),
 				'i18n'     => array(
-					'working'    => __( 'Working...', 'user-registration' ),
 					'copied'     => __( 'Copied', 'user-registration' ),
 					'copy'       => __( 'Copy', 'user-registration' ),
 					'failed'     => __( 'Something went wrong. Try again.', 'user-registration' ),
@@ -680,7 +679,6 @@ class UR_Abilities_Connect {
 					'attentionN' => __( '%d things need attention', 'user-registration' ),
 					'checking'   => __( 'Checking...', 'user-registration' ),
 					'removed'    => __( 'Removed.', 'user-registration' ),
-					'removing'   => __( 'Removing...', 'user-registration' ),
 				),
 			)
 		);

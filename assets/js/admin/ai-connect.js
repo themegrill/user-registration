@@ -344,9 +344,8 @@
 
 	$(document).on("click", "#ur-ai-create", function () {
 		var button = $(this).prop("disabled", true);
-		var label = button.text();
 
-		button.text(i18n.working).addClass("ur-ai-busy");
+		button.addClass("ur-ai-busy");
 		notice("");
 
 		post("ur_ai_connect_create", { app: apps[current].name || apps[current].label })
@@ -363,7 +362,7 @@
 			})
 			.always(function () {
 				// The consent covers one password. Ask again for the next one.
-				button.text(label).removeClass("ur-ai-busy").prop("disabled", true);
+				button.removeClass("ur-ai-busy").prop("disabled", true);
 				$("#ur-ai-consent").prop("checked", false);
 			});
 	});
@@ -374,9 +373,8 @@
 		}
 
 		var link = $(this);
-		var text = link.text();
 
-		link.text(i18n.removing).addClass("ur-ai-busy").prop("disabled", true);
+		link.addClass("ur-ai-busy").prop("disabled", true);
 		post("ur_ai_connect_revoke")
 			.done(function (response) {
 				if (response.success) {
@@ -386,7 +384,7 @@
 				}
 			})
 			.always(function () {
-				link.text(text).removeClass("ur-ai-busy").prop("disabled", false);
+				link.removeClass("ur-ai-busy").prop("disabled", false);
 			});
 	});
 
@@ -396,10 +394,9 @@
 		}
 
 		var link = $(this);
-		var text = link.text();
 		var row = link.closest("li").addClass("is-removing");
 
-		link.text(i18n.removing).addClass("ur-ai-busy").prop("disabled", true);
+		link.addClass("ur-ai-busy").prop("disabled", true);
 		post("ur_ai_connect_remove", { uuid: link.data("uuid") })
 			.done(function (response) {
 				if (response.success) {
@@ -410,7 +407,7 @@
 			})
 			.always(function () {
 				row.removeClass("is-removing");
-				link.text(text).removeClass("ur-ai-busy").prop("disabled", false);
+				link.removeClass("ur-ai-busy").prop("disabled", false);
 			});
 	});
 })(jQuery);
