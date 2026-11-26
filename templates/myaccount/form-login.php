@@ -29,8 +29,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Check for error message stored in URL parameter and transient
 if ( isset( $_GET['urm_error'] ) ) {
-	$error_key     = sanitize_text_field( $_GET['urm_error'] );
-	$error_message = get_transient( $error_key );
+	$error_key     = sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ); // phpcs:ignore WordPress.Security.NonceVerification
+	$error_message = ur_is_login_error_key( $error_key ) ? get_transient( $error_key ) : false;
 
 	if ( $error_message ) {
 		ur_add_notice( $error_message, 'error' );

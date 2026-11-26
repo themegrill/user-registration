@@ -5843,7 +5843,7 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				}
 
 				$error_message = apply_filters( 'login_errors', $message );
-				$error_key     = 'ur_login_error_' . uniqid();
+				$error_key     = 'ur_login_error_' . wp_generate_password( 32, false );
 				set_transient( $error_key, $error_message, 300 ); // 5 minutes
 
 				/**
@@ -14015,5 +14015,22 @@ if ( ! function_exists( 'ur_escape_shortcodes' ) ) {
 		}
 
 		return $escaped;
+	}
+}
+
+if ( ! function_exists( 'ur_is_login_error_key' ) ) {
+	/**
+	 * Whether a value is a login-error transient key created by this plugin.
+	 *
+	 * Guards the public `urm_error` query arg so it can never address an unrelated transient.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param mixed $key Candidate transient key.
+	 *
+	 * @return bool
+	 */
+	function ur_is_login_error_key( $key ) {
+		return is_string( $key ) && 1 === preg_match( '/^ur_login_error_[A-Za-z0-9]+$/D', $key );
 	}
 }

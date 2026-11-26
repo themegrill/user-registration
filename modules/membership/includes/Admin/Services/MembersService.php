@@ -338,16 +338,6 @@ class MembersService {
 			if ( empty( $saved_hash ) ) {
 				return false;
 			}
-
-			$expected_hash = hash_hmac(
-				'sha256',
-				(string) $user_id,
-				wp_salt( 'auth' )
-			);
-
-			if ( ! hash_equals( $expected_hash, $saved_hash ) ) {
-				return false;
-			}
 		} else {
 
 			if ( ! wp_check_password( $password, $user->user_pass, $user_id ) ) {

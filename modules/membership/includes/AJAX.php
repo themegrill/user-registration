@@ -859,8 +859,8 @@ class AJAX {
 
 	/**
 	 * Verify a logged-out payment confirmation belongs to the browser that created
-	 * this pending registration: the cookie must match the signup transient, or
-	 * (UR-4727) the server-recomputed HMAC when the transient was cleared mid-flow.
+	 * this pending registration: the cookie must match the random token stored
+	 * server-side at signup; fails closed once that token is gone.
 	 *
 	 * @param int $member_id Pending member/user ID.
 	 * @return bool
@@ -874,14 +874,8 @@ class AJAX {
 		}
 
 		$saved_hash = get_transient( $cookie_key );
-		if ( ! empty( $saved_hash ) && hash_equals( (string) $saved_hash, (string) $cookie_token ) ) {
-			return true;
-		}
 
-		// Fallback: transient gone but the cookie still proves this browser registered.
-		$expected_hash = hash_hmac( 'sha256', (string) $member_id, wp_salt( 'auth' ) );
-
-		return hash_equals( $expected_hash, (string) $cookie_token );
+		return ! empty( $saved_hash ) && hash_equals( (string) $saved_hash, (string) $cookie_token );
 	}
 
 	public static function confirm_payment() {

@@ -566,11 +566,7 @@ class UR_Frontend_Form_Handler {
 		$login_option = ur_get_user_login_option( $user_id );
 
 		if ( ! empty( $_POST['membership_type'] ) ) {
-			$hash = hash_hmac(
-				'sha256',
-				(string) $user_id,
-				wp_salt( 'auth' )
-			);
+			$hash = wp_generate_password( 64, false );
 
 			set_transient( 'urm_pending_login_' . $user_id, $hash, 2 * HOUR_IN_SECONDS );
 			// Bind the pending nopriv payment/auto-login flow to this browser session.
