@@ -219,7 +219,7 @@ class UR_Abilities_Connect {
 	}
 
 	/**
-	 * The AI apps the drawer offers, in tab order.
+	 * The AI apps the Connect tab offers, in tab order.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -429,34 +429,9 @@ class UR_Abilities_Connect {
 	public static function render( $html, $field = array() ) {
 		self::enqueue();
 
-		$condition = class_exists( 'UR_Admin_Settings' ) && is_array( $field ) ? UR_Admin_Settings::get_display_condition_attributes( $field ) : array(
-			'attrs'         => '',
-			'initial_style' => '',
-		);
-
-		// With the settings tabs on, the Connect content is a tab of its own and there is no row or button here: only the
-		// content, which the tabs script moves into that tab. With the tabs off, the row and its button open the drawer.
-		$inline = class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled();
-
 		ob_start();
 		?>
-		<?php if ( ! $inline ) : ?>
-		<div class="ur-ai-connect user-registration-global-settings"<?php echo $condition['attrs'] . $condition['initial_style']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped by the settings page. ?>>
-			<label class="ur-label"><?php esc_html_e( 'Connect MCP', 'user-registration' ); ?> <?php echo ur_help_tip( __( 'Connects an AI app to this site through MCP. Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?></label>
-			<div class="user-registration-global-settings--field ur-ai-connect__field">
-				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect', 'user-registration' ); ?></button>
-				<span class="ur-ai-connect__last" id="ur-ai-last-card"><?php echo esc_html( self::last_call_text() ); ?></span>
-			</div>
-		</div>
-		<?php endif; ?>
-
-		<div class="ur-ai-drawer-overlay" id="ur-ai-overlay" hidden></div>
-		<aside class="ur-ai-drawer" id="ur-ai-drawer" role="dialog" aria-modal="true" aria-labelledby="ur-ai-drawer-title" hidden>
-			<header class="ur-ai-drawer__header">
-				<h2 id="ur-ai-drawer-title"><?php esc_html_e( 'Connect MCP', 'user-registration' ); ?></h2>
-				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
-			</header>
-			<div class="ur-ai-drawer__body ur-ai-connect">
+		<div class="ur-ai-connect-content ur-ai-connect">
 			<div class="ur-ai-topbar">
 					<div class="ur-ai-apps ur-ai-apps--center" role="tablist">
 						<?php foreach ( self::apps() as $key => $app ) : ?>
@@ -514,7 +489,6 @@ class UR_Abilities_Connect {
 				<p class="ur-ai-try"><span class="ur-ai-try__label"><?php esc_html_e( 'Try asking', 'user-registration' ); ?></span> <span class="ur-ai-try__text" id="ur-ai-ask-text"><?php echo esc_html( $asks['read']['questions'][0] ); ?></span><span class="ur-ai-try__actions"><button type="button" class="ur-ai-iconbtn" id="ur-ai-ask-next" aria-label="<?php esc_attr_e( 'Show a different question', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Show a different question', 'user-registration' ); ?>"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></button><button type="button" class="ur-ai-iconbtn" id="ur-ai-ask-copy" aria-label="<?php esc_attr_e( 'Copy', 'user-registration' ); ?>" title="<?php esc_attr_e( 'Copy', 'user-registration' ); ?>"><?php echo self::copy_icon(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Fixed markup. ?></button></span></p>
 			</section>
 			</div>
-		</aside>
 		<?php
 
 		return $html . ob_get_clean();
@@ -612,14 +586,7 @@ class UR_Abilities_Connect {
 
 	/** Add the script and styles of the card. */
 	private static function enqueue() {
-		$css = '.user-registration-global-settings.ur-ai-connect .user-registration-global-settings--field.ur-ai-connect__field{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:12px;text-align:left}.ur-ai-connect__field .button{margin:0}.ur-ai-connect__last{color:#646a7a}'
-			. '.user-registration-global-settings.ur-ai-connect > label.ur-label{display:flex;align-items:center}.user-registration-global-settings.ur-ai-connect > label.ur-label .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;top:0 !important;line-height:1;vertical-align:middle}.user-registration-global-settings.ur-ai-connect > label.ur-label .user-registration-help-tip::after{width:16px !important;height:16px !important;padding:0 !important;box-sizing:border-box;background-size:contain !important}'
-			. '.ur-ai-drawer-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.05);backdrop-filter:blur(1px)}'
-			. '.ur-ai-drawer{position:fixed;top:var(--wp-admin--admin-bar--height,32px);right:0;bottom:0;z-index:100001;width:760px;max-width:100vw;display:flex;flex-direction:column;background:#fff;box-shadow:-8px 0 30px rgba(45,53,89,.15);color:#2d3559;transform:translateX(100%);transition:transform .25s ease}'
-			. '.ur-ai-drawer.is-open{transform:none}.ur-ai-drawer[hidden],.ur-ai-drawer-overlay[hidden]{display:none}'
-			. '.ur-ai-drawer__header{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid #e1e4ed}.ur-ai-drawer__header h2{margin:0;font-size:18px;font-weight:600;color:#2d3559}'
-			. '.ur-ai-drawer__close{border:0;background:none;font-size:28px;line-height:1;color:#646a7a;cursor:pointer;padding:0 4px}.ur-ai-drawer__close:hover{color:#2d3559}'
-			. '.ur-ai-drawer__body{flex:1;overflow-y:auto;padding:8px 24px 32px}'
+		$css = ''
 			. ''
 			. ''
 			. '.ur-ai-connect-main{margin:0 0 24px}.ur-ai-apps--center{margin:0 auto 22px}.ur-ai-active{margin:0 0 24px}.ur-ai-tryasking{margin:0;padding:14px 0 0;border-top:1px solid #f0f2f7;color:#646a7a;font-size:13px;line-height:1.5}.ur-ai-tryasking p{margin:0}.ur-ai-tryasking .ur-ai-try{display:flex;align-items:flex-start;gap:14px}.ur-ai-try__label{flex:none;line-height:1.6}.ur-ai-try__text{flex:1 1 auto;min-width:0;line-height:1.6}.ur-ai-try__actions{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto;min-width:58px;justify-content:flex-end;line-height:1.6}.ur-ai-try__label{margin-right:6px;font-weight:600;color:#8a90a2}.ur-ai-try__text::before{content:"\201C"}.ur-ai-try__text::after{content:"\201D"}.ur-ai-iconbtn{margin:0;padding:2px 4px;border:0;border-radius:4px;background:none;color:#475bb2;cursor:pointer;line-height:1}.ur-ai-iconbtn:hover{background:#eef1fb}.ur-ai-iconbtn svg{display:block;width:15px;height:15px}.ur-ai-iconbtn__done{display:none !important}.ur-ai-iconbtn.is-copied .ur-ai-iconbtn__copy{display:none !important}.ur-ai-iconbtn.is-copied .ur-ai-iconbtn__done{display:block !important}.ur-ai-iconbtn.is-copied{color:#2e7d32}.ur-ai-manual dd .ur-ai-iconbtn{vertical-align:middle;margin-left:6px}.ur-ai-iconbtn:focus{outline:0;box-shadow:0 0 0 2px #cfd6f3}.ur-ai-tryasking .ur-ai-link{font-size:12px}.ur-ai-connect .ur-ai-conn__title{margin:0 0 6px;font-size:15px;font-weight:600;color:#2d3559}'
@@ -628,7 +595,7 @@ class UR_Abilities_Connect {
 			. ''
 			. '.ur-ai-connect h4{display:flex;align-items:center;gap:10px;margin:24px 0 10px;font-size:15px;font-weight:600;color:#2d3559}'
 			. ''
-			. '.ur-ai-connect__label{display:block;margin-bottom:4px;font-weight:500}.ur-ai-drawer .ur-ai-connect input[type=text]{width:100%;margin:0;box-sizing:border-box}'
+			. '.ur-ai-connect__label{display:block;margin-bottom:4px;font-weight:500}.ur-ai-connect input[type=text]{width:100%;margin:0;box-sizing:border-box}'
 			. '.ur-ai-connect__checks{margin:0;padding:0;list-style:none}'
 			. '.ur-ai-connect__checks li{display:flex;gap:10px;align-items:baseline;padding:3px 0}.ur-ai-connect__checks .is-ok .ur-ai-connect__mark{color:#4cc741;font-weight:700}.ur-ai-connect__checks .is-bad .ur-ai-connect__mark{color:#ff4f55;font-weight:700}'
 			. '.ur-ai-connect__checks em{display:block;font-style:normal;color:#646a7a;font-size:12px}.ur-ai-connect__last{margin-left:10px;color:#646a7a}'
@@ -662,8 +629,6 @@ class UR_Abilities_Connect {
 				'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
 				'nonce'    => wp_create_nonce( self::NONCE ),
 				'apps'     => self::apps(),
-				// With the settings tabs on, the Connect content is a tab of its own, so the button switches tab instead of opening the drawer.
-				'inline'   => class_exists( 'UR_Abilities_Tabs' ) && UR_Abilities_Tabs::enabled(),
 				'asks'     => self::prompts(),
 				'copyIcon' => self::copy_icon(),
 				'i18n'     => array(

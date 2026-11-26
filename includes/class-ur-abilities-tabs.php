@@ -3,13 +3,7 @@
  * Tabs on the AI Integration settings: the page as it was (the Enable AI Abilities switch and the access switches) on the
  * first tab, and connecting an AI app (the checks, the app tabs, the questions to try) on the second.
  *
- * This is a layout only. Every field stays in the same form, so Save Changes saves everything. With the tabs off, the
- * Connect row and its button come back and the content slides in from the side, as before. To go back, turn the tabs
- * off with one line:
- *
- *     add_filter( 'user_registration_ai_settings_tabs', '__return_false' );
- *
- * or delete the `UR_Abilities_Tabs::init();` line in `UR_Abilities::init()`. Nothing else depends on it.
+ * This is a layout only. Every field stays in the same form, so Save Changes saves everything.
  *
  * @package UserRegistration
  */
@@ -21,24 +15,6 @@ class UR_Abilities_Tabs {
 	/** Hook the tabs in. */
 	public static function init() {
 		add_filter( 'user_registration_settings_advanced_ai_integration', array( __CLASS__, 'add_tabs' ), 99 );
-	}
-
-	/**
-	 * Whether the tabbed layout is on.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @return bool
-	 */
-	public static function enabled() {
-		/**
-		 * Filters whether the AI Integration settings use tabs. Return false for the single long page.
-		 *
-		 * @since xx.xx.xx
-		 *
-		 * @param bool $enabled Default true.
-		 */
-		return (bool) apply_filters( 'user_registration_ai_settings_tabs', true );
 	}
 
 	/**
@@ -72,7 +48,7 @@ class UR_Abilities_Tabs {
 	public static function add_tabs( $settings ) {
 		$labels = self::labels( $settings );
 
-		if ( ! self::enabled() || count( $labels ) < 2 ) {
+		if ( count( $labels ) < 2 ) {
 			return $settings;
 		}
 
@@ -84,7 +60,7 @@ class UR_Abilities_Tabs {
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab:hover{color:#222}.user-registration-options-container > .urcr-tabs .urcr-tab.urcr-tab-active{color:#475bb2;border-bottom-color:#475bb2}'
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.urcr-tab-active::before{opacity:1}.user-registration-options-container > .urcr-tabs .urcr-tab:focus{outline:0;box-shadow:none;border:0}'
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled{opacity:.5;cursor:not-allowed}.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled:hover{color:#666}'
-			. '.ur-ai-connect-pane .ur-ai-drawer__body{overflow:visible;padding:0 24px 24px}.ur-ai-connect-pane .ur-ai-drawer__body > h4:first-child{margin-top:8px}'
+			. '.ur-ai-connect-pane .ur-ai-connect-content{padding:0 24px 24px}.ur-ai-connect-pane .ur-ai-connect-content > h4:first-child{margin-top:8px}'
 			. '.ur-ai-active-pane .ur-ai-active{margin:0 0 8px}.ur-ai-active-pane .ur-ai-conn__title,.ur-ai-active-pane .ur-ai-conn__lead:empty{display:none}.ur-ai-active-pane--empty{display:none !important}'
 			. '.ur-ai-pane--off{display:none !important}';
 		wp_register_style( 'user-registration-ai-tabs', false, array(), UR_VERSION );
@@ -98,10 +74,9 @@ class UR_Abilities_Tabs {
 				'tabs'         => array( $labels[0] ),
 				'switchId'     => 'user_registration_enable_abilities',
 				'needsOn'      => __( 'Turn on Enable AI Abilities first.', 'user-registration' ),
-				// The Connect content gets a tab of its own, between the two cards, instead of the drawer.
+				// The Connect content gets a tab of its own, after the cards.
 				'connectLabel' => __( 'Connect MCP', 'user-registration' ),
 				'activeLabel'  => __( 'Active connections', 'user-registration' ),
-				'inline'       => true,
 			)
 		);
 

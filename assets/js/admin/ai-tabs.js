@@ -11,15 +11,14 @@
 	$(function () {
 		var box = $(".user-registration-options-container").first();
 		var cards = box.children(".user-registration-card");
-		var body = $("#ur-ai-drawer .ur-ai-drawer__body");
+		var body = $(".ur-ai-connect-content");
 
 		if (!cards.length || !body.length) {
 			box.addClass("ur-ai-tabs-ready");
 			return;
 		}
 
-		// The content that used to slide in from the side (the checks, connecting an app, the questions to try) becomes
-		// a card of its own, the second tab. It is the same markup, moved, so everything in it keeps working.
+		// The Connect content (the checks, connecting an app, the questions to try) is a card of its own, the second tab. It is the same markup, moved, so everything in it keeps working.
 		// No card title: the tab already names it, and the panel inside has its own heading.
 		var pane = $(
 			'<div class="user-registration-card ur-mt-4 ur-border-0 ur-ai-connect-pane">' +
@@ -111,11 +110,6 @@
 			}
 
 			paint();
-		});
-
-		// The Connect part asks for its tab, for example from a link elsewhere on the page.
-		$(document).on("ur-ai-show-connect", function () {
-			show(1);
 		});
 
 		var wanted = /ai-tab=(\d+)/.exec(window.location.hash);

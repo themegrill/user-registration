@@ -321,9 +321,9 @@ $desktop = json_decode( $snippets['desktop'], true );
 $entry   = $desktop['mcpServers']['shop-example-com'] ?? array();
 security_assert( 'npx' === ( $entry['command'] ?? '' ) && in_array( $result['endpoint'], $entry['args'] ?? array(), true ) && 'Basic ' . $result['code'] === ( $entry['env']['UR_AI_AUTH'] ?? '' ), 'Claude Desktop gets an mcp-remote entry with the login in its environment' );
 
-// The drawer offers four apps. Claude is one tab with one password and two things to paste.
+// The Connect tab offers four apps. Claude is one tab with one password and two things to paste.
 $apps = UR_Abilities_Connect::apps();
-security_assert( array( 'claude', 'codex', 'cursor', 'other' ) === array_keys( $apps ), 'The drawer offers Claude, Codex, Cursor and Other, in that order' );
+security_assert( array( 'claude', 'codex', 'cursor', 'other' ) === array_keys( $apps ), 'The Connect tab offers Claude, Codex, Cursor and Other, in that order' );
 security_assert( 'Claude' === $apps['claude']['label'] && array( 'claude', 'desktop' ) === array_column( $apps['claude']['snippets'], 'key' ) && array( 'Claude Code', 'Claude Desktop' ) === array_column( $apps['claude']['snippets'], 'label' ), 'Claude holds both the Claude Code command and the Claude Desktop config' );
 $missing = array();
 foreach ( $apps as $app ) {

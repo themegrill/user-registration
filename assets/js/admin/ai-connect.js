@@ -1,5 +1,5 @@
 /**
- * The Connect MCP drawer on Settings, Advanced, AI Integration.
+ * Connect MCP on Settings, Advanced, AI Integration.
  *
  * Runs the readiness check, makes the AI user and its password in one click once the admin agrees, and shows
  * what the chosen AI app needs.
@@ -173,44 +173,12 @@
 		$("#ur-ai-copy-pass").data("password", data.password.replace(/\s+/g, ""));
 	}
 
-	// The drawer lives outside the settings form, so nothing in it is ever saved with the settings.
-	$("#ur-ai-overlay, #ur-ai-drawer").appendTo("body");
 	selectApp(current);
 
-	function openDrawer() {
-		// The settings tabs show this content as a tab, so there is no drawer to open: ask them to switch to it.
-		if (cfg.inline) {
-			$(document).trigger("ur-ai-show-connect");
-			return;
-		}
-
-		$("#ur-ai-overlay").prop("hidden", false);
-		$("#ur-ai-drawer").prop("hidden", false);
-		// Let the browser paint the closed state first, so the slide plays.
-		setTimeout(function () {
-			$("#ur-ai-drawer").addClass("is-open");
-			$("#ur-ai-close").trigger("focus");
-		}, 20);
-	}
-
-	function closeDrawer() {
-		$("#ur-ai-drawer").removeClass("is-open");
-		setTimeout(function () {
-			$("#ur-ai-drawer, #ur-ai-overlay").prop("hidden", true);
-		}, 250);
-		$("#ur-ai-open").trigger("focus");
-	}
-
-	$(document).on("click", "#ur-ai-open", openDrawer);
-	$(document).on("click", "#ur-ai-close, #ur-ai-overlay", closeDrawer);
 	$(document).on("keydown", function (event) {
 		if ("Escape" === event.key && !$("#ur-ai-ready-pop").prop("hidden")) {
 			setPop(false);
 			return;
-		}
-
-		if ("Escape" === event.key && $("#ur-ai-drawer").hasClass("is-open")) {
-			closeDrawer();
 		}
 	});
 
@@ -326,7 +294,6 @@
 				// Rows may have been added or removed since the last check, so end on exactly what the server sent.
 				list.html(data.checks);
 				updateSummary();
-				$("#ur-ai-last-card").text(data.last);
 				button.prop("disabled", false);
 			}, rows.length * 220 + 50);
 		}
