@@ -6,7 +6,7 @@
  */
 
 // Test doubles and hostile fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.Commenting.VariableComment.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.WP.GlobalVariablesOverride.Prohibited, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+// phpcs:disable Generic.Files.OneObjectStructurePerFile.MultipleFound, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.FunctionComment.MissingParamTag, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.WP.GlobalVariablesOverride.Prohibited, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 require __DIR__ . '/bootstrap.php';
 
@@ -55,7 +55,12 @@ function add_filter( $tag, $cb ) {
 	return true;
 }
 
-class WP_User {}
+class WP_User {
+	public $ID         = 0;
+	public $user_login = '';
+	public $user_email = '';
+	public $roles      = array();
+}
 
 function do_action( $tag ) {
 	$GLOBALS['mock_actions'][ $tag ][] = array_slice( func_get_args(), 1 );
@@ -253,3 +258,177 @@ $GLOBALS['mock_filters']['user_registration_login_lockout_message'] = array(
 );
 security_assert( '&lt;script&gt;alert(1)&lt;/script&gt;' === UR_Login_Rate_Limiter::get_lockout_message( $user, $ip_a ), 'Lockout message output is HTML-escaped' );
 unset( $GLOBALS['mock_filters']['user_registration_login_lockout_message'] );
+
+// 11. End-to-end integration through ur_process_login() (lockout + unknown-email branches).
+
+/**
+ * Minimal WP_Error test double for ur_process_login() integration tests.
+ */
+class WP_Error {
+	public $errors = array();
+	public function __construct( $code = '', $message = '' ) {
+		if ( '' !== $code ) {
+			$this->errors[ $code ] = array( $message );
+		}
+	}
+	public function get_error_code() {
+		$codes = array_keys( $this->errors );
+		return empty( $codes ) ? '' : $codes[0];
+	}
+	public function get_error_message() {
+		$code = $this->get_error_code();
+		return '' === $code ? '' : $this->errors[ $code ][0];
+	}
+}
+
+function is_wp_error( $thing ) {
+	return $thing instanceof WP_Error;
+}
+
+function ur_clean( $value ) {
+	return is_array( $value ) ? array_map( 'ur_clean', $value ) : sanitize_text_field( $value );
+}
+
+function ur_option_checked( $option, $default = false ) {
+	return (bool) get_option( $option, $default );
+}
+
+function ur_string_to_bool( $string ) {
+	return is_bool( $string ) ? $string : ( 'yes' === strtolower( (string) $string ) || 1 === $string || 'true' === strtolower( (string) $string ) || '1' === $string );
+}
+
+function ur_captcha_type_has_keys() {
+	return false;
+}
+
+function ur_is_ajax_login_enabled() {
+	return true;
+}
+
+function sanitize_user( $username ) {
+	return trim( (string) $username );
+}
+
+function is_email( $email ) {
+	return false !== filter_var( $email, FILTER_VALIDATE_EMAIL );
+}
+
+function is_multisite() {
+	return false;
+}
+
+function is_ssl() {
+	return false;
+}
+
+function get_user_by( $field, $value ) {
+	foreach ( $GLOBALS['mock_users'] ?? array() as $mock_user ) {
+		if ( 'login' === $field && $mock_user->user_login === $value ) {
+			return $mock_user;
+		}
+		if ( 'email' === $field && $mock_user->user_email === $value ) {
+			return $mock_user;
+		}
+	}
+	return false;
+}
+
+function wp_signon( $credentials, $secure_cookie = '' ) {
+	$GLOBALS['mock_signon_calls'] = ( $GLOBALS['mock_signon_calls'] ?? 0 ) + 1;
+	return $GLOBALS['mock_signon_result'];
+}
+
+eval( security_function( 'includes/functions-ur-core.php', 'ur_process_login' ) ); // phpcs:ignore Squiz.PHP.Eval.Discouraged
+
+$alice             = new WP_User();
+$alice->ID         = 42;
+$alice->user_login = 'alice_login';
+$alice->user_email = 'alice_login@example.com';
+$alice->roles      = array( 'subscriber' );
+
+$GLOBALS['mock_users']         = array( $alice );
+$GLOBALS['mock_signon_calls']  = 0;
+$GLOBALS['mock_signon_result'] = new WP_Error( 'incorrect_password', 'Incorrect password' );
+$GLOBALS['options']            = array();
+unset( $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] );
+
+// 11a. Five wrong passwords through ur_process_login() lock the account; 6th attempt via email short-circuits before wp_signon().
+$_SERVER['REMOTE_ADDR'] = '203.0.113.200';
+$_POST                  = array(
+	'username' => 'alice_login',
+	'password' => 'wrong-pass',
+);
+for ( $i = 1; $i <= 4; $i++ ) {
+	$resp = security_response(
+		static function () {
+			ur_process_login( 'valid' );
+		}
+	);
+	security_assert( false === $resp->success && false !== strpos( $resp->data['message'], 'incorrect' ), "ur_process_login attempt {$i} returns normal incorrect-password error" );
+}
+$resp_5 = security_response(
+	static function () {
+		ur_process_login( 'valid' );
+	}
+);
+security_assert( false === $resp_5->success && false !== strpos( $resp_5->data['message'], 'Too many failed login attempts' ), 'ur_process_login 5th failed attempt triggers lockout message' );
+security_assert( 5 === $GLOBALS['mock_signon_calls'], 'wp_signon() was called for the first 5 attempts' );
+
+$_POST['username'] = 'alice_login@example.com';
+$resp_6            = security_response(
+	static function () {
+		ur_process_login( 'valid' );
+	}
+);
+security_assert( false === $resp_6->success && false !== strpos( $resp_6->data['message'], 'Too many failed login attempts' ), 'ur_process_login 6th attempt via email is blocked by canonical lockout' );
+security_assert( 5 === $GLOBALS['mock_signon_calls'], 'Locked attempt in ur_process_login() short-circuits before wp_signon()' );
+
+// 11b. Unknown-email branch (default username-or-email mode) counts failures and locks on the 5th attempt.
+$_SERVER['REMOTE_ADDR'] = '203.0.113.201';
+$_POST                  = array(
+	'username' => 'ghost@example.com',
+	'password' => 'anything',
+);
+for ( $i = 1; $i <= 4; $i++ ) {
+	$resp = security_response(
+		static function () {
+			ur_process_login( 'valid' );
+		}
+	);
+	security_assert( false === $resp->success && false !== strpos( $resp->data['message'], 'could not be found' ), "Unknown-email attempt {$i} returns unknown_email error" );
+}
+$resp_unknown_5 = security_response(
+	static function () {
+		ur_process_login( 'valid' );
+	}
+);
+security_assert( false === $resp_unknown_5->success && false !== strpos( $resp_unknown_5->data['message'], 'Too many failed login attempts' ), 'Unknown-email 5th attempt triggers lockout through ur_process_login()' );
+$resp_unknown_6 = security_response(
+	static function () {
+		ur_process_login( 'valid' );
+	}
+);
+security_assert( false === $resp_unknown_6->success && false !== strpos( $resp_unknown_6->data['message'], 'Too many failed login attempts' ), 'Unknown-email 6th attempt stays locked at top of ur_process_login()' );
+security_assert( 5 === $GLOBALS['mock_signon_calls'], 'Unknown-email branch never reaches wp_signon()' );
+
+// 11c. Unknown-email branch in email-only login mode also counts failures and locks on the 5th attempt.
+$GLOBALS['options']['user_registration_general_setting_login_options_with'] = 'email';
+$_SERVER['REMOTE_ADDR'] = '203.0.113.202';
+$_POST                  = array(
+	'username' => 'ghost-email-only@example.com',
+	'password' => 'anything',
+);
+for ( $i = 1; $i <= 4; $i++ ) {
+	$resp = security_response(
+		static function () {
+			ur_process_login( 'valid' );
+		}
+	);
+	security_assert( false === $resp->success && false !== strpos( $resp->data['message'], 'could not be found' ), "Email-only unknown-email attempt {$i} returns unknown_email error" );
+}
+$resp_email_only_5 = security_response(
+	static function () {
+		ur_process_login( 'valid' );
+	}
+);
+security_assert( false === $resp_email_only_5->success && false !== strpos( $resp_email_only_5->data['message'], 'Too many failed login attempts' ), 'Email-only unknown-email 5th attempt triggers lockout through ur_process_login()' );
