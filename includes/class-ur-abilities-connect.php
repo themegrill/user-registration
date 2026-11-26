@@ -669,7 +669,7 @@ class UR_Abilities_Connect {
 					'copy'       => __( 'Copy', 'user-registration' ),
 					'failed'     => __( 'Something went wrong. Try again.', 'user-registration' ),
 					/* translators: %s: name of the AI app. */
-					'title'      => __( 'Connect this site to %s', 'user-registration' ),
+					'title'      => __( 'Connect %s through MCP', 'user-registration' ),
 					'confirm'    => __( 'Remove every AI password? Apps already connected stop working until you make a new one.', 'user-registration' ),
 					'confirmOne' => __( 'Remove this MCP connection? It stops working until you make a new password for it.', 'user-registration' ),
 					'ready'      => __( 'Your site is ready', 'user-registration' ),
