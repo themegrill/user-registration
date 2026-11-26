@@ -94,7 +94,7 @@ function urm_get_membership_process( $member_id ) {
 
 $stripe_service = 'modules/membership/includes/Admin/Services/Stripe/StripeService.php';
 $methods        = '';
-foreach ( array( 'handle_succeeded_invoice', 'get_invoice_payment_intent_id', 'get_invoice_period', 'extract_stripe_id', 'is_renewing_membership' ) as $method ) {
+foreach ( array( 'handle_succeeded_invoice', 'cancel_replaced_subscription_for_paid_upgrade', 'get_invoice_payment_intent_id', 'get_invoice_period', 'extract_stripe_id', 'is_renewing_membership' ) as $method ) {
 	$methods .= security_function( $stripe_service, $method );
 }
 eval( 'class StripeReplayHarness { public $members_subscription_repository; public $membership_repository; ' . $methods . '}' );

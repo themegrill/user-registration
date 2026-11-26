@@ -2691,7 +2691,7 @@ class StripeService {
 		// terminal; everything else — including expired after a late renewal — becomes active.
 		$subscription_status = ( 'canceled' === ( $current_subscription['status'] ?? '' ) ) ? 'canceled' : 'active';
 
-		$member_id         = $current_subscription['user_id'];
+		$member_id = $current_subscription['user_id'];
 
 		// A renewal or 3D Secure upgrade left the old subscription running; stop it now that the new one is paid.
 		$replaced_subscription = get_user_meta( absint( $member_id ), 'urm_stripe_replaced_subscription', true );
@@ -2699,11 +2699,7 @@ class StripeService {
 			$this->stop_replaced_subscription( $replaced_subscription['old'] ?? '', $subscription_id, $member_id, 'active' );
 		}
 
-		$previous_upgrade_subscription = json_decode( get_user_meta( absint( $member_id ), 'urm_previous_subscription_data', true ), true );
-		$next_upgrade_subscription     = json_decode( get_user_meta( absint( $member_id ), 'urm_next_subscription_data', true ), true );
-		if ( is_array( $previous_upgrade_subscription ) && ! empty( $previous_upgrade_subscription ) && empty( $next_upgrade_subscription['delayed_until'] ) && ( $previous_upgrade_subscription['subscription_id'] ?? '' ) !== $subscription_id ) {
-			$this->cancel_previous_upgrade_subscription( absint( $member_id ), $previous_upgrade_subscription, $subscription_id );
-		}
+		$this->cancel_replaced_subscription_for_paid_upgrade( absint( $member_id ), $current_subscription, $subscription_id );
 		$membership_id = $current_subscription['item_id'];
 		$invoice_id    = $event['data']['object']['id'];
 		try {
@@ -3802,6 +3798,7 @@ class StripeService {
 		}
 
 		$subscription          = ! empty( $member_order['subscription_id'] ) ? $this->members_subscription_repository->retrieve( $member_order['subscription_id'] ) : array();
+		$subscription          = is_array( $subscription ) ? $subscription : array();
 		$previous_subscription = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
 		$previous_subscription = is_array( $previous_subscription ) ? $previous_subscription : array();
 
@@ -3810,6 +3807,10 @@ class StripeService {
 		}
 
 		$this->ensure_paid_upgrade_records_active( $member_id, $member_order, $subscription );
+
+		if ( 'completed' !== ( $member_order['status'] ?? '' ) ) {
+			$this->send_paid_upgrade_email( $member_id, $member_order, $subscription );
+		}
 
 		PaymentGatewayLogging::log_general(
 			'stripe',
@@ -3829,6 +3830,26 @@ class StripeService {
 			'status'  => true,
 			'message' => __( 'Membership upgraded successfully.', 'user-registration' ),
 		);
+	}
+
+	/**
+	 * Send the payment emails for an upgrade completed from Stripe state instead of the client confirmation.
+	 *
+	 * @param int   $member_id    Member user ID.
+	 * @param array $order        Upgrade order row.
+	 * @param array $subscription Local subscription row of the upgrade.
+	 * @return void
+	 */
+	private function send_paid_upgrade_email( int $member_id, array $order, array $subscription ): void {
+		$membership = $this->membership_repository->get_single_membership_by_ID( $order['item_id'] ?? 0 );
+		if ( empty( $membership['meta_value'] ) || empty( $order['ID'] ) ) {
+			return;
+		}
+
+		$membership_metas               = wp_unslash( json_decode( $membership['meta_value'], true ) );
+		$membership_metas['post_title'] = $membership['post_title'];
+
+		$this->sendEmail( $order['ID'], $subscription, $membership_metas, $member_id, array( 'status' => true ), true );
 	}
 
 	/**
@@ -3860,6 +3881,30 @@ class StripeService {
 		}
 
 		delete_transient( 'urm_pending_login_' . $member_id );
+	}
+
+	/**
+	 * Cancel the replaced subscription once the upgrade's own subscription has a paid invoice.
+	 *
+	 * Ignores invoices of any other subscription, since the upgrade snapshot outlives an abandoned upgrade.
+	 *
+	 * @param int    $member_id              Member user ID.
+	 * @param array  $paid_subscription      Membership lookup row of the paid subscription, keyed by its local row ID in sub_id.
+	 * @param string $stripe_subscription_id Stripe ID of the paid subscription.
+	 * @return void
+	 */
+	private function cancel_replaced_subscription_for_paid_upgrade( int $member_id, array $paid_subscription, string $stripe_subscription_id ): void {
+		$previous_subscription = json_decode( get_user_meta( $member_id, 'urm_previous_subscription_data', true ), true );
+		$next_subscription     = json_decode( get_user_meta( $member_id, 'urm_next_subscription_data', true ), true );
+
+		if ( ! is_array( $previous_subscription ) || empty( $previous_subscription['ID'] ) || ! empty( $next_subscription['delayed_until'] ) ) {
+			return;
+		}
+
+		$is_upgrade_row = absint( $previous_subscription['ID'] ) === absint( $paid_subscription['sub_id'] ?? 0 );
+		if ( $is_upgrade_row && ( $previous_subscription['subscription_id'] ?? '' ) !== $stripe_subscription_id ) {
+			$this->cancel_previous_upgrade_subscription( $member_id, $previous_subscription, $stripe_subscription_id );
+		}
 	}
 
 	/**
@@ -3895,7 +3940,7 @@ class StripeService {
 
 		// Never cancel the newly created Stripe subscription if IDs match.
 		$needs_remote_cancel = ! empty( $old_remote_id ) && $old_remote_id !== $new_stripe_subscription_id;
-		$canceled            = true;
+		$canceled            = ! $needs_remote_cancel;
 
 		if ( $needs_remote_cancel ) {
 			if ( ! empty( $previous_order['payment_method'] ) ) {

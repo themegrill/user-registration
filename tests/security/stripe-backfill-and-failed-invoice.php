@@ -138,7 +138,7 @@ namespace {
 
 	$stripe_service = 'modules/membership/includes/Admin/Services/Stripe/StripeService.php';
 	$methods        = '';
-	foreach ( array( 'extract_stripe_id', 'get_invoice_payment_intent_id', 'run_missed_payment_backfill', 'handle_failed_invoice', 'handle_succeeded_invoice', 'has_backfill_failure' ) as $method ) {
+	foreach ( array( 'extract_stripe_id', 'get_invoice_payment_intent_id', 'run_missed_payment_backfill', 'handle_failed_invoice', 'handle_succeeded_invoice', 'cancel_replaced_subscription_for_paid_upgrade', 'has_backfill_failure' ) as $method ) {
 		$methods .= security_function( $stripe_service, $method );
 	}
 	eval( 'class StripeBackfillHarness { public $members_subscription_repository; public $orders_repository; private $backfill_failed = false; ' . $methods . '}' );

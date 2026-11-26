@@ -163,9 +163,18 @@ namespace {
 		}
 	}
 
+	class MembershipRepoDouble {
+		public function get_single_membership_by_ID( $id ) {
+			return array(
+				'meta_value' => '{"type":"paid"}',
+				'post_title' => 'Plan ' . $id,
+			);
+		}
+	}
+
 	class SubscriptionRepoDouble {
 		public function retrieve( $id ) {
-			return $GLOBALS['subscriptions_db'][ $id ] ?? array();
+			return $GLOBALS['subscriptions_db'][ $id ] ?? false;
 		}
 
 		public function update( $id, $data ) {
@@ -187,7 +196,9 @@ namespace {
 			public $members_orders_repository;
 			public $orders_repository;
 			public $members_subscription_repository;
+			public $membership_repository;
 			public function __construct() {
+				$this->membership_repository = new MembershipRepoDouble();
 				$this->members_orders_repository       = new OrdersRepoDouble();
 				$this->orders_repository               = $this->members_orders_repository;
 				$this->members_subscription_repository = new SubscriptionRepoDouble();
@@ -208,6 +219,13 @@ namespace {
 				);
 				return array( "status" => true );
 			}
+			public function sendEmail( int $id, $subscription, array $metas, int $member_id, array $response, $is_upgrading = false ): array {
+				$GLOBALS["sent_emails"][] = array( "order" => $id, "upgrade" => $is_upgrading );
+				return $response;
+			}
+			public function run_paid_invoice_cancel( int $member_id, array $paid, string $stripe_id ): void {
+				$this->cancel_replaced_subscription_for_paid_upgrade( $member_id, $paid, $stripe_id );
+			}
 			public function refund( $order, $subscription ) {
 				$GLOBALS["refunded_calls"][] = $order["ID"] ?? 0;
 				return array( "status" => true );
@@ -221,6 +239,8 @@ namespace {
 			' . security_function( $stripe_file, 'extract_stripe_id' ) . '
 			' . security_function( $stripe_file, 'update_order' ) . '
 			' . security_function( $stripe_file, 'verify_and_complete_paid_upgrade_order' ) . '
+			' . security_function( $stripe_file, 'send_paid_upgrade_email' ) . '
+			' . security_function( $stripe_file, 'cancel_replaced_subscription_for_paid_upgrade' ) . '
 			' . security_function( $stripe_file, 'ensure_paid_upgrade_records_active' ) . '
 			' . security_function( $stripe_file, 'cancel_previous_upgrade_subscription' ) . '
 			' . security_function( $stripe_file, 'complete_paid_upgrade' ) . '
@@ -244,6 +264,7 @@ namespace {
 		$GLOBALS['latest_order']               = array();
 		$GLOBALS['subscriptions_db']           = array();
 		$GLOBALS['orders_by_tx']               = array();
+		$GLOBALS['sent_emails']                = array();
 		\Stripe\Subscription::$records         = array();
 		\Stripe\SubscriptionSchedule::$records = array();
 		\Stripe\PaymentIntent::$records        = array();
@@ -696,5 +717,44 @@ namespace {
 	);
 	security_assert( true === $res_pi_fallback['status'], 'Incomplete subscription with succeeded PaymentIntent falls back to PI and confirms upgrade' );
 
-	echo "ALL_ASSERTIONS_PASSED\n";
+	// 11. A paid invoice on ANOTHER membership's subscription must not cancel the abandoned upgrade's old plan.
+	reset_fixtures();
+	update_user_meta( $member_id, 'urm_previous_subscription_data', json_encode( array( 'ID' => 536, 'item_id' => 10, 'subscription_id' => 'sub_old', 'status' => 'active' ) ) );
+	$runner->run_paid_invoice_cancel( $member_id, array( 'ID' => 20, 'sub_id' => 777, 'subscription_id' => 'sub_other' ), 'sub_other' );
+	security_assert( empty( $GLOBALS['canceled_subs'] ), 'Another subscription invoice does not cancel the old plan' );
+	security_assert( '' !== get_user_meta( $member_id, 'urm_previous_subscription_data', true ), 'Another subscription invoice keeps the upgrade snapshot' );
+
+	// 12. The upgrade row's own paid invoice cancels the old plan and clears the markers.
+	$runner->run_paid_invoice_cancel( $member_id, array( 'ID' => 20, 'sub_id' => 536, 'subscription_id' => 'sub_new' ), 'sub_new' );
+	security_assert( 1 === count( $GLOBALS['canceled_subs'] ) && 'sub_old' === $GLOBALS['canceled_subs'][0]['subscription'], 'Upgrade row invoice cancels the old Stripe subscription' );
+	security_assert( '' === get_user_meta( $member_id, 'urm_previous_subscription_data', true ), 'Upgrade row invoice clears the snapshot' );
+
+	// 13. A missing local subscription row must not fatal the failed-confirmation recovery.
+	reset_fixtures();
+	$GLOBALS['latest_order'] = array( 'ID' => 300, 'subscription_id' => 999, 'payment_method' => 'stripe', 'order_type' => 'subscription', 'status' => 'pending', 'transaction_id' => 'pi_x' );
+	$_POST                   = array( 'member_id' => $member_id, 'current_membership_id' => 10 );
+	update_user_meta( $member_id, 'urm_membership_process', array( 'upgrade' => array( 10 => array( 'to' => 20 ) ) ) );
+	\Stripe\PaymentIntent::$records['pi_x'] = (object) array( 'id' => 'pi_x', 'status' => 'succeeded' );
+	$res_missing             = $runner->update_order( array( 'payment_status' => 'failed', 'payment_result' => array( 'error' => array() ) ) );
+	security_assert( true === $res_missing['status'], 'Paid upgrade with a missing local subscription row completes without fataling' );
+
+	// 14. An old remote id that is not a Stripe sub_ id and has no stored payment method is not cleared as canceled.
+	reset_fixtures();
+	update_user_meta( $member_id, 'urm_previous_subscription_data', json_encode( array( 'ID' => 536, 'subscription_id' => 'I-PAYPAL123' ) ) );
+	security_assert( false === $runner->run_cancel_previous_upgrade( $member_id, array( 'ID' => 536, 'subscription_id' => 'I-PAYPAL123' ), 'sub_new' ), 'Uncancellable old subscription reports failure' );
+	security_assert( '' !== get_user_meta( $member_id, 'urm_previous_subscription_data', true ), 'Uncancellable old subscription keeps retry markers' );
+
+	// 15. Recovering a paid upgrade from Stripe state sends the upgrade email once, never again for a completed order.
+	reset_fixtures();
+	$_POST = array( 'member_id' => $member_id, 'current_membership_id' => 10 );
+	update_user_meta( $member_id, 'urm_membership_process', array( 'upgrade' => array( 10 => array( 'to' => 20 ) ) ) );
+	update_user_meta( $member_id, 'urm_previous_subscription_data', json_encode( array( 'ID' => 536, 'item_id' => 10, 'subscription_id' => 'sub_old', 'status' => 'active' ) ) );
+	$GLOBALS['latest_order']                  = array( 'ID' => 400, 'item_id' => 20, 'subscription_id' => 536, 'payment_method' => 'stripe', 'order_type' => 'subscription', 'status' => 'pending', 'transaction_id' => 'pi_new' );
+	$GLOBALS['subscriptions_db'][536]         = array( 'ID' => 536, 'item_id' => 20, 'subscription_id' => 'sub_new', 'status' => 'pending' );
+	\Stripe\Subscription::$records['sub_new'] = (object) array( 'id' => 'sub_new', 'status' => 'active' );
+	$failed_payload                           = array( 'payment_status' => 'failed', 'payment_result' => array( 'error' => array() ) );
+	$runner->update_order( $failed_payload );
+	security_assert( array( array( 'order' => 400, 'upgrade' => true ) ) === $GLOBALS['sent_emails'], 'Recovered paid upgrade sends the upgrade email' );
+	$runner->update_order( $failed_payload );
+	security_assert( 1 === count( $GLOBALS['sent_emails'] ), 'Recovery does not resend the email for an already completed order' );
 }
