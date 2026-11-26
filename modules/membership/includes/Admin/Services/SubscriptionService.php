@@ -233,6 +233,16 @@ class SubscriptionService {
 				return apply_filters( 'user_registration_membership_cancel_subscription', array( 'status' => false ), $order, $subscription, $force_cancel );
 		}
 	}
+	/**
+	 * Ask the payment gateway to reactivate a canceled subscription.
+	 *
+	 * A subscription with no payment method (admin-assigned) or paid by bank transfer has no gateway, so it reactivates locally.
+	 *
+	 * @param array $order        Order the subscription belongs to.
+	 * @param array $subscription Subscription row.
+	 *
+	 * @return array{status: bool, message?: string} Gateway outcome; `status` is false when the gateway refuses.
+	 */
 	public function reactivate_subscription( $order, $subscription ) {
 		$logger   = ur_get_logger();
 		$response = array( 'status' => false );
