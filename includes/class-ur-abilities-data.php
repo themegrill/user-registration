@@ -1269,6 +1269,837 @@ class UR_Abilities_Data {
 	}
 
 	/**
+	 * Read one membership plan in full.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function get_membership( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$plan = self::plan_post( $input['id'] );
+
+		return is_wp_error( $plan ) ? $plan : self::plan_detail( $plan );
+	}
+
+	/**
+	 * Describe the plan a create request would make.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_create_membership( $input ) {
+		$values = self::plan_values( $input, null );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		$text = sprintf(
+			/* translators: 1: plan name, 2: what it costs, 3: on or off. */
+			__( 'Create a new membership plan called "%1$s" (%2$s), %3$s, like Add New on the Memberships screen.', 'user-registration' ),
+			$values['name'],
+			self::plan_price_text( $values ),
+			$values['enabled'] ? __( 'turned on', 'user-registration' ) : __( 'turned off', 'user-registration' )
+		);
+
+		// Only a plan that costs something is created in Stripe, and only when Stripe is connected.
+		if ( 'free' !== $values['type'] ) {
+			$text .= ' ' . ( function_exists( 'urm_is_payment_gateway_configured' ) && urm_is_payment_gateway_configured( 'stripe' )
+				? __( 'Stripe is connected, so the plan is created there too.', 'user-registration' )
+				: __( 'The payment gateways for the plan are chosen on the plan screen.', 'user-registration' ) );
+		}
+
+		return $text;
+	}
+
+	/**
+	 * Create a membership plan through the same code as the plan editor.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function create_membership( $input ) {
+		$values = self::plan_values( $input, null );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		$result = ( new \WPEverest\URMembership\Admin\Services\MembershipService() )->create_membership_plan( self::plan_editor_data( $values, null ) );
+
+		if ( empty( $result['status'] ) ) {
+			return new WP_Error( 'ur_abilities_create_failed', wp_strip_all_tags( $result['message'] ?? '' ), array( 'status' => 400 ) );
+		}
+
+		return self::plan_detail( get_post( $result['membership_id'] ) );
+	}
+
+	/**
+	 * Describe what a change to a plan would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_update_membership( $input ) {
+		$change = self::plan_change( $input );
+
+		if ( is_wp_error( $change ) ) {
+			return $change;
+		}
+
+		return sprintf(
+			/* translators: 1: plan name, 2: the list of changes. */
+			__( 'Change the plan "%1$s", like Save on the plan screen: %2$s.', 'user-registration' ),
+			$change['plan']->post_title,
+			implode( '; ', $change['changes'] )
+		);
+	}
+
+	/**
+	 * Change a membership plan through the same code as the plan editor.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function update_membership( $input ) {
+		$change = self::plan_change( $input );
+
+		if ( is_wp_error( $change ) ) {
+			return $change;
+		}
+
+		$result = ( new \WPEverest\URMembership\Admin\Services\MembershipService() )->update_membership_plan( self::plan_editor_data( $change['values'], $change['plan'] ) );
+
+		if ( empty( $result['status'] ) ) {
+			return new WP_Error( 'ur_abilities_update_failed', wp_strip_all_tags( $result['message'] ?? '' ), array( 'status' => 400 ) );
+		}
+
+		clean_post_cache( $change['plan']->ID );
+
+		return self::plan_detail( get_post( $change['plan']->ID ) );
+	}
+
+	/**
+	 * List plan groups, newest first.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function list_membership_groups( $input ) {
+		$ready = self::groups_ready();
+
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
+		$page             = self::page( $input );
+		$groups           = get_posts(
+			array(
+				'post_type'      => 'ur_membership_groups',
+				'post_status'    => array( 'publish', 'draft' ),
+				'orderby'        => 'ID',
+				'order'          => 'DESC',
+				'posts_per_page' => $page['per_page'] + 1,
+				'paged'          => $page['page'],
+				'no_found_rows'  => true,
+			)
+		);
+		$page['has_more'] = count( $groups ) > $page['per_page'];
+
+		foreach ( array_slice( $groups, 0, $page['per_page'] ) as $group ) {
+			$page['items'][] = self::group_detail( $group );
+		}
+
+		return $page;
+	}
+
+	/**
+	 * Describe the plan group a create request would make.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_create_membership_group( $input ) {
+		$values = self::group_values( $input, null );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		return sprintf(
+			/* translators: 1: group name, 2: the plan names, 3: the mode. */
+			__( 'Create a new plan group called "%1$s" holding %2$s, where members may hold %3$s, like Add New on the Membership Groups screen.', 'user-registration' ),
+			$values['name'],
+			self::plan_names( $values['plan_ids'] ),
+			'multiple' === $values['mode'] ? __( 'several of its plans at once', 'user-registration' ) : __( 'one of its plans', 'user-registration' )
+		);
+	}
+
+	/**
+	 * Create a plan group through the same code as the Membership Groups screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function create_membership_group( $input ) {
+		$values = self::group_values( $input, null );
+
+		return is_wp_error( $values ) ? $values : self::save_group( $values, null );
+	}
+
+	/**
+	 * Describe what a change to a plan group would do.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return string|WP_Error
+	 */
+	public static function preview_update_membership_group( $input ) {
+		$change = self::group_change( $input );
+
+		if ( is_wp_error( $change ) ) {
+			return $change;
+		}
+
+		return sprintf(
+			/* translators: 1: group name, 2: the list of changes. */
+			__( 'Change the plan group "%1$s", like Save on the Membership Groups screen: %2$s.', 'user-registration' ),
+			$change['group']->post_title,
+			implode( '; ', $change['changes'] )
+		);
+	}
+
+	/**
+	 * Change a plan group through the same code as the Membership Groups screen.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error
+	 */
+	public static function update_membership_group( $input ) {
+		$change = self::group_change( $input );
+
+		return is_wp_error( $change ) ? $change : self::save_group( $change['values'], $change['group'] );
+	}
+
+	/**
+	 * Find a plan that is not in the trash.
+	 *
+	 * @param int $id Plan ID.
+	 * @return WP_Post|WP_Error
+	 */
+	private static function plan_post( $id ) {
+		$plan = get_post( $id );
+
+		return ( ! $plan || 'ur_membership' !== $plan->post_type || 'trash' === $plan->post_status ) ? self::not_found() : $plan;
+	}
+
+	/**
+	 * Decode a plan's settings.
+	 *
+	 * @param WP_Post $plan Plan.
+	 * @return array
+	 */
+	private static function plan_meta( $plan ) {
+		$meta = json_decode( wp_unslash( get_post_meta( $plan->ID, 'ur_membership', true ) ), true );
+
+		return is_array( $meta ) ? $meta : array();
+	}
+
+	/**
+	 * Describe a plan with the same fields the plan screen has, minus the payment keys.
+	 *
+	 * @param WP_Post $plan Plan.
+	 * @return array
+	 */
+	private static function plan_detail( $plan ) {
+		$meta       = self::plan_meta( $plan );
+		$content    = json_decode( wp_unslash( $plan->post_content ), true );
+		$type       = isset( $meta['type'] ) ? (string) $meta['type'] : '';
+		$billing    = 'subscription' === $type && isset( $meta['subscription']['value'], $meta['subscription']['duration'] );
+		$trial      = $billing && 'on' === ( $meta['trial_status'] ?? '' ) && isset( $meta['trial_data']['value'], $meta['trial_data']['duration'] );
+		$members    = ( new \WPEverest\URMembership\Admin\Repositories\MembershipRepository() )->count_members_by_membership( 'active' );
+		$gateways   = array();
+		$gateway_on = isset( $meta['payment_gateways'] ) && is_array( $meta['payment_gateways'] ) ? $meta['payment_gateways'] : array();
+
+		foreach ( $gateway_on as $key => $gateway ) {
+			if ( is_array( $gateway ) && 'on' === ( $gateway['status'] ?? '' ) ) {
+				$gateways[] = (string) $key;
+			}
+		}
+
+		return array(
+			'id'               => (int) $plan->ID,
+			'name'             => wp_strip_all_tags( $plan->post_title ),
+			'description'      => wp_strip_all_tags( (string) get_post_meta( $plan->ID, 'ur_membership_description', true ) ),
+			'enabled'          => 'publish' === $plan->post_status && ! empty( $content['status'] ),
+			'type'             => $type,
+			'amount'           => isset( $meta['amount'] ) ? (string) $meta['amount'] : '0',
+			'currency'         => get_option( 'user_registration_payment_currency', 'USD' ),
+			'billing_interval' => $billing ? (int) $meta['subscription']['value'] : null,
+			'billing_period'   => $billing ? (string) $meta['subscription']['duration'] : null,
+			'trial_interval'   => $trial ? (int) $meta['trial_data']['value'] : null,
+			'trial_period'     => $trial ? (string) $meta['trial_data']['duration'] : null,
+			'role'             => isset( $meta['role'] ) ? (string) $meta['role'] : '',
+			'payment_gateways' => $gateways,
+			'active_members'   => isset( $members[ $plan->ID ] ) ? (int) $members[ $plan->ID ] : 0,
+		);
+	}
+
+	/**
+	 * Check the plan fields a request gives, on top of the plan it changes, and settle them into one set of values.
+	 *
+	 * The limits are the plan editor's own: a paid plan needs a price, a subscription needs a billing period, a trial
+	 * belongs to a subscription, and a recurring plan needs Pro.
+	 *
+	 * @param array        $input   Validated input.
+	 * @param WP_Post|null $current The plan being changed, or null when making a new one.
+	 * @return array|WP_Error
+	 */
+	private static function plan_values( $input, $current ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$values = $current ? self::plan_detail( $current ) : array(
+			'name'             => '',
+			'description'      => '',
+			'enabled'          => true,
+			'type'             => '',
+			'amount'           => '0',
+			'billing_interval' => null,
+			'billing_period'   => null,
+			'trial_interval'   => null,
+			'trial_period'     => null,
+			'role'             => 'subscriber',
+		);
+
+		foreach ( array( 'name', 'description', 'enabled', 'type', 'amount', 'billing_interval', 'billing_period', 'trial_interval', 'trial_period', 'role' ) as $field ) {
+			if ( array_key_exists( $field, $input ) ) {
+				$values[ $field ] = $input[ $field ];
+			}
+		}
+
+		$values['name']        = trim( sanitize_text_field( (string) $values['name'] ) );
+		$values['description'] = (string) $values['description'];
+		$values['enabled']     = (bool) $values['enabled'];
+		$values['role']        = '' === (string) $values['role'] ? 'subscriber' : sanitize_key( (string) $values['role'] );
+
+		if ( '' === $values['name'] ) {
+			return self::invalid_plan( __( 'A plan needs a name.', 'user-registration' ) );
+		}
+
+		if ( ! in_array( $values['type'], array( 'free', 'paid', 'subscription' ), true ) ) {
+			return self::invalid_plan( __( 'The type must be free, paid or subscription.', 'user-registration' ) );
+		}
+
+		if ( ! \WPEverest\URMembership\Admin\Services\MembershipService::is_plan_type_available( $values['type'] ) ) {
+			return self::pro_only();
+		}
+
+		if ( 'free' === $values['type'] ) {
+			$values['amount'] = '0';
+		} else {
+			$amount = (float) $values['amount'];
+
+			if ( $amount <= 0 ) {
+				return self::invalid_plan( __( 'A paid plan needs a price above 0.', 'user-registration' ) );
+			}
+
+			$values['amount'] = rtrim( rtrim( number_format( $amount, 2, '.', '' ), '0' ), '.' );
+		}
+
+		if ( 'subscription' === $values['type'] ) {
+			if ( (int) $values['billing_interval'] < 1 || ! in_array( $values['billing_period'], UR_Abilities::PLAN_PERIODS, true ) ) {
+				return self::invalid_plan( __( 'A subscription needs a billing interval of 1 or more and a billing period: day, week, month or year.', 'user-registration' ) );
+			}
+
+			$values['billing_interval'] = (int) $values['billing_interval'];
+
+			$has_trial = null !== $values['trial_interval'] || null !== $values['trial_period'];
+
+			if ( $has_trial && ( (int) $values['trial_interval'] < 1 || ! in_array( $values['trial_period'], UR_Abilities::PLAN_PERIODS, true ) ) ) {
+				return self::invalid_plan( __( 'A free trial needs a length of 1 or more and a period: day, week, month or year.', 'user-registration' ) );
+			}
+
+			$values['trial_interval'] = $has_trial ? (int) $values['trial_interval'] : null;
+			$values['trial_period']   = $has_trial ? $values['trial_period'] : null;
+		} else {
+			if ( null !== ( $input['trial_interval'] ?? null ) || null !== ( $input['trial_period'] ?? null ) ) {
+				return self::invalid_plan( __( 'A free trial belongs to a subscription plan.', 'user-registration' ) );
+			}
+
+			$values['billing_interval'] = null;
+			$values['billing_period']   = null;
+			$values['trial_interval']   = null;
+			$values['trial_period']     = null;
+		}
+
+		return $values;
+	}
+
+	/**
+	 * Work out what changing a plan would do, and refuse a change that would surprise the members who hold it.
+	 *
+	 * The price, type, billing period and trial are only changed on a plan nobody holds. A plan with members keeps them,
+	 * so a new plan is the way to change what new members pay.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error The plan, the settled values and a list of the changes.
+	 */
+	private static function plan_change( $input ) {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		$plan = self::plan_post( $input['id'] );
+
+		if ( is_wp_error( $plan ) ) {
+			return $plan;
+		}
+
+		$before = self::plan_detail( $plan );
+		$values = self::plan_values( $input, $plan );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		$labels  = array(
+			'name'             => __( 'name', 'user-registration' ),
+			'description'      => __( 'description', 'user-registration' ),
+			'enabled'          => __( 'turned on', 'user-registration' ),
+			'type'             => __( 'type', 'user-registration' ),
+			'amount'           => __( 'price', 'user-registration' ),
+			'billing_interval' => __( 'billing interval', 'user-registration' ),
+			'billing_period'   => __( 'billing period', 'user-registration' ),
+			'trial_interval'   => __( 'trial length', 'user-registration' ),
+			'trial_period'     => __( 'trial period', 'user-registration' ),
+			'role'             => __( 'role', 'user-registration' ),
+		);
+		$changes = array();
+		$money   = false;
+
+		foreach ( $labels as $field => $label ) {
+			if ( (string) $before[ $field ] === (string) $values[ $field ] || ( is_bool( $before[ $field ] ) && $before[ $field ] === $values[ $field ] ) ) {
+				continue;
+			}
+
+			$money = $money || in_array( $field, array( 'type', 'amount', 'billing_interval', 'billing_period', 'trial_interval', 'trial_period' ), true );
+
+			if ( 'description' === $field ) {
+				$changes[] = __( 'the description is replaced', 'user-registration' );
+			} elseif ( 'enabled' === $field ) {
+				$changes[] = $values['enabled'] ? __( 'turned on', 'user-registration' ) : __( 'turned off', 'user-registration' );
+			} else {
+				/* translators: 1: the setting, 2: the old value, 3: the new value. */
+				$changes[] = sprintf( __( '%1$s from "%2$s" to "%3$s"', 'user-registration' ), $label, (string) $before[ $field ], (string) $values[ $field ] );
+			}
+		}
+
+		if ( ! $changes ) {
+			return new WP_Error( 'ur_abilities_no_change', __( 'Nothing would change. The plan already has these values.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		if ( $money ) {
+			$holding = ( new \WPEverest\URMembership\Admin\Services\MembershipService() )->count_delete_blocking_members( $plan->ID );
+
+			if ( $holding ) {
+				/* translators: %d: number of members. */
+				return new WP_Error( 'ur_abilities_in_use', sprintf( _n( '%d member has an active, pending or trial subscription to this plan, so its price, type, billing period and trial cannot change. Make a new plan for new members instead. The name, description, role and on or off can still change.', '%d members have an active, pending or trial subscription to this plan, so its price, type, billing period and trial cannot change. Make a new plan for new members instead. The name, description, role and on or off can still change.', $holding, 'user-registration' ), $holding ), array( 'status' => 409 ) );
+			}
+		}
+
+		return array(
+			'plan'    => $plan,
+			'values'  => $values,
+			'changes' => $changes,
+		);
+	}
+
+	/**
+	 * Build what the plan editor posts for a plan, so the shared save code takes it as it would from the screen.
+	 *
+	 * A plan that already exists keeps every setting this does not set, such as its payment gateways. A new paid plan
+	 * starts with every gateway off, as in the editor, and the admin picks the gateways on the plan screen.
+	 *
+	 * @param array        $values  Settled values from plan_values().
+	 * @param WP_Post|null $current The plan being changed, or null.
+	 * @return array
+	 */
+	private static function plan_editor_data( $values, $current ) {
+		$meta = $current ? self::plan_meta( $current ) : array(
+			'email_marketing_sync' => array( 'addons_sync_details' => array() ),
+			'local_currency'       => array(),
+			'upgrade_settings'     => array(
+				'upgrade_action' => false,
+				'upgrade_path'   => array(),
+				'upgrade_type'   => 'full',
+			),
+			'cancel_subscription'  => '',
+		);
+
+		$meta['type']   = $values['type'];
+		$meta['role']   = $values['role'];
+		$meta['amount'] = 'free' === $values['type'] ? 0 : $values['amount'];
+
+		unset( $meta['subscription'], $meta['trial_status'], $meta['trial_data'] );
+
+		if ( 'subscription' === $values['type'] ) {
+			$meta['subscription'] = array(
+				'value'    => $values['billing_interval'],
+				'duration' => $values['billing_period'],
+			);
+			$meta['trial_status'] = null === $values['trial_interval'] ? 'off' : 'on';
+
+			if ( null !== $values['trial_interval'] ) {
+				$meta['trial_data'] = array(
+					'value'    => $values['trial_interval'],
+					'duration' => $values['trial_period'],
+				);
+			}
+		}
+
+		if ( 'free' === $values['type'] ) {
+			unset( $meta['payment_gateways'] );
+		} elseif ( empty( $meta['payment_gateways'] ) ) {
+			$meta['payment_gateways'] = array(
+				'paypal'    => array(
+					'status'     => 'off',
+					'email'      => '',
+					'mode'       => 'sandbox',
+					'cancel_url' => '',
+					'return_url' => '',
+				),
+				'stripe'    => array( 'status' => 'off' ),
+				'bank'      => array( 'status' => 'off' ),
+				'authorize' => array( 'status' => 'off' ),
+				'mollie'    => array( 'status' => 'off' ),
+			);
+		}
+
+		$post_data = array(
+			'name'        => $values['name'],
+			'status'      => $values['enabled'],
+			'description' => $values['description'],
+		);
+
+		if ( $current ) {
+			$post_data['ID'] = $current->ID;
+		}
+
+		return array(
+			'post_data'      => $post_data,
+			'post_meta_data' => $meta,
+		);
+	}
+
+	/**
+	 * Say in a few words what a plan costs.
+	 *
+	 * @param array $values Settled values.
+	 * @return string
+	 */
+	private static function plan_price_text( $values ) {
+		$currency = get_option( 'user_registration_payment_currency', 'USD' );
+
+		if ( 'free' === $values['type'] ) {
+			return __( 'free', 'user-registration' );
+		}
+
+		if ( 'subscription' === $values['type'] ) {
+			/* translators: 1: price, 2: currency, 3: how long, for example 3 months. */
+			$text = sprintf( __( '%1$s %2$s every %3$s', 'user-registration' ), $values['amount'], $currency, self::period_text( $values['billing_interval'], $values['billing_period'] ) );
+
+			if ( null !== $values['trial_interval'] ) {
+				/* translators: %s: how long, for example 14 days. */
+				$text .= sprintf( __( ', with a free trial of %s', 'user-registration' ), self::period_text( $values['trial_interval'], $values['trial_period'] ) );
+			}
+
+			return $text;
+		}
+
+		/* translators: 1: price, 2: currency. */
+		return sprintf( __( '%1$s %2$s, paid once', 'user-registration' ), $values['amount'], $currency );
+	}
+
+	/**
+	 * Say a length of time in words, for example "3 months".
+	 *
+	 * @param int    $count  How many.
+	 * @param string $period day, week, month or year.
+	 * @return string
+	 */
+	private static function period_text( $count, $period ) {
+		$names = array(
+			/* translators: %d: number of days. */
+			'day'   => _n( '%d day', '%d days', $count, 'user-registration' ),
+			/* translators: %d: number of weeks. */
+			'week'  => _n( '%d week', '%d weeks', $count, 'user-registration' ),
+			/* translators: %d: number of months. */
+			'month' => _n( '%d month', '%d months', $count, 'user-registration' ),
+			/* translators: %d: number of years. */
+			'year'  => _n( '%d year', '%d years', $count, 'user-registration' ),
+		);
+
+		return sprintf( $names[ $period ] ?? '%d', $count ) . ( isset( $names[ $period ] ) ? '' : ' ' . $period );
+	}
+
+	/**
+	 * Return the error for a plan or group field that is not allowed.
+	 *
+	 * @param string $message What is wrong.
+	 * @return WP_Error
+	 */
+	private static function invalid_plan( $message ) {
+		return new WP_Error( 'ur_abilities_invalid_plan', $message, array( 'status' => 400 ) );
+	}
+
+	/**
+	 * Check plan groups can be used here: Pro, a Plus or higher plan, and the module on.
+	 *
+	 * @return true|WP_Error
+	 */
+	private static function groups_ready() {
+		if ( ! self::membership_ready() ) {
+			return self::membership_unavailable();
+		}
+
+		if ( ! \WPEverest\URMembership\Admin\Services\MembershipGroupService::is_available() ) {
+			return new WP_Error( 'ur_ability_plan_required', __( 'Membership groups need Pro with a Plus or higher plan and the Membership Groups module turned on.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Describe a plan group.
+	 *
+	 * @param WP_Post $group Group.
+	 * @return array
+	 */
+	private static function group_detail( $group ) {
+		$content = json_decode( wp_unslash( $group->post_content ), true );
+		$plans   = json_decode( wp_unslash( (string) get_post_meta( $group->ID, 'urmg_memberships', true ) ), true );
+
+		return array(
+			'id'          => (int) $group->ID,
+			'name'        => wp_strip_all_tags( $group->post_title ),
+			'description' => wp_strip_all_tags( (string) ( $content['description'] ?? '' ) ),
+			'enabled'     => ! empty( $content['status'] ),
+			'mode'        => (string) get_post_meta( $group->ID, 'urmg_mode', true ),
+			'plan_ids'    => is_array( $plans ) ? array_values( array_map( 'intval', $plans ) ) : array(),
+		);
+	}
+
+	/**
+	 * Check the group fields a request gives, on top of the group it changes, and settle them.
+	 *
+	 * @param array        $input   Validated input.
+	 * @param WP_Post|null $current The group being changed, or null.
+	 * @return array|WP_Error
+	 */
+	private static function group_values( $input, $current ) {
+		$ready = self::groups_ready();
+
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
+		$values = $current ? self::group_detail( $current ) : array(
+			'name'        => '',
+			'description' => '',
+			'enabled'     => true,
+			'mode'        => 'single',
+			'plan_ids'    => array(),
+		);
+
+		foreach ( array( 'name', 'description', 'enabled', 'mode', 'plan_ids' ) as $field ) {
+			if ( array_key_exists( $field, $input ) ) {
+				$values[ $field ] = $input[ $field ];
+			}
+		}
+
+		$values['name']        = trim( sanitize_text_field( (string) $values['name'] ) );
+		$values['description'] = sanitize_text_field( (string) $values['description'] );
+		$values['enabled']     = (bool) $values['enabled'];
+		$values['plan_ids']    = array_values( array_unique( array_map( 'absint', (array) $values['plan_ids'] ) ) );
+
+		if ( '' === $values['name'] ) {
+			return self::invalid_plan( __( 'A plan group needs a name.', 'user-registration' ) );
+		}
+
+		if ( ! in_array( $values['mode'], array( 'single', 'multiple' ), true ) ) {
+			return self::invalid_plan( __( 'The mode must be single (one plan at a time) or multiple (several plans at once). Upgrade groups are set up on the Membership Groups screen.', 'user-registration' ) );
+		}
+
+		if ( ! $values['plan_ids'] ) {
+			return self::invalid_plan( __( 'A plan group needs at least one plan. List the plans first to find their IDs.', 'user-registration' ) );
+		}
+
+		$missing = array();
+
+		foreach ( $values['plan_ids'] as $plan_id ) {
+			if ( is_wp_error( self::plan_post( $plan_id ) ) ) {
+				$missing[] = $plan_id;
+			}
+		}
+
+		if ( $missing ) {
+			/* translators: %s: plan IDs. */
+			return self::invalid_plan( sprintf( __( 'No plan with the ID %s. List the plans first to find their IDs.', 'user-registration' ), implode( ', ', $missing ) ) );
+		}
+
+		return $values;
+	}
+
+	/**
+	 * Work out what changing a plan group would do.
+	 *
+	 * @param array $input Validated input.
+	 * @return array|WP_Error The group, the settled values and a list of the changes.
+	 */
+	private static function group_change( $input ) {
+		$ready = self::groups_ready();
+
+		if ( is_wp_error( $ready ) ) {
+			return $ready;
+		}
+
+		$group = get_post( $input['id'] );
+
+		if ( ! $group || 'ur_membership_groups' !== $group->post_type || 'trash' === $group->post_status ) {
+			return self::not_found();
+		}
+
+		$before = self::group_detail( $group );
+
+		if ( 'upgrade' === $before['mode'] ) {
+			return new WP_Error( 'ur_abilities_unsupported', __( 'This group uses upgrade mode, with its own upgrade paths. Change it on the Membership Groups screen.', 'user-registration' ), array( 'status' => 409 ) );
+		}
+
+		$values = self::group_values( $input, $group );
+
+		if ( is_wp_error( $values ) ) {
+			return $values;
+		}
+
+		$changes = array();
+
+		if ( $before['name'] !== $values['name'] ) {
+			/* translators: 1: the old name, 2: the new name. */
+			$changes[] = sprintf( __( 'name from "%1$s" to "%2$s"', 'user-registration' ), $before['name'], $values['name'] );
+		}
+
+		if ( $before['description'] !== $values['description'] ) {
+			$changes[] = __( 'the description is replaced', 'user-registration' );
+		}
+
+		if ( $before['enabled'] !== $values['enabled'] ) {
+			$changes[] = $values['enabled'] ? __( 'turned on', 'user-registration' ) : __( 'turned off', 'user-registration' );
+		}
+
+		if ( $before['mode'] !== $values['mode'] ) {
+			/* translators: 1: the old mode, 2: the new mode. */
+			$changes[] = sprintf( __( 'mode from %1$s to %2$s', 'user-registration' ), $before['mode'], $values['mode'] );
+		}
+
+		if ( $before['plan_ids'] !== $values['plan_ids'] ) {
+			/* translators: 1: the old plans, 2: the new plans. */
+			$changes[] = sprintf( __( 'plans from %1$s to %2$s', 'user-registration' ), self::plan_names( $before['plan_ids'] ), self::plan_names( $values['plan_ids'] ) );
+		}
+
+		if ( ! $changes ) {
+			return new WP_Error( 'ur_abilities_no_change', __( 'Nothing would change. The group already has these values.', 'user-registration' ), array( 'status' => 400 ) );
+		}
+
+		return array(
+			'group'   => $group,
+			'values'  => $values,
+			'changes' => $changes,
+		);
+	}
+
+	/**
+	 * Save a plan group through the service the Membership Groups screen uses.
+	 *
+	 * @param array        $values  Settled values from group_values().
+	 * @param WP_Post|null $current The group being changed, or null.
+	 * @return array|WP_Error
+	 */
+	private static function save_group( $values, $current ) {
+		$post_data = array(
+			'name'        => $values['name'],
+			'description' => $values['description'],
+			'status'      => $values['enabled'],
+		);
+
+		if ( $current ) {
+			$post_data['ID'] = $current->ID;
+		}
+
+		// The service reads what the screen posts, which WordPress has slashed, so give it the same.
+		$result = ( new \WPEverest\URMembership\Admin\Services\MembershipGroupService() )->create_membership_groups(
+			wp_slash(
+				wp_json_encode(
+					array(
+						'post_data'      => $post_data,
+						'post_meta_data' => array(
+							'memberships' => $values['plan_ids'],
+							'mode'        => $values['mode'],
+						),
+					)
+				)
+			)
+		);
+
+		if ( empty( $result['status'] ) ) {
+			return new WP_Error( 'ur_abilities_group_failed', wp_strip_all_tags( $result['message'] ?? __( 'The group could not be saved.', 'user-registration' ) ), array( 'status' => 409 ) );
+		}
+
+		clean_post_cache( $result['membership_group_id'] );
+
+		return self::group_detail( get_post( $result['membership_group_id'] ) );
+	}
+
+	/**
+	 * Name plans for a sentence, for example "Free and Gold".
+	 *
+	 * @param int[] $ids Plan IDs.
+	 * @return string
+	 */
+	private static function plan_names( $ids ) {
+		$names = array();
+
+		foreach ( $ids as $id ) {
+			$names[] = '"' . wp_strip_all_tags( get_the_title( $id ) ) . '"';
+		}
+
+		return $names ? implode( ', ', $names ) : __( 'no plans', 'user-registration' );
+	}
+
+	/**
 	 * Find a plan that can be deleted now.
 	 *
 	 * @param array $input Validated input.

@@ -200,7 +200,7 @@ foreach ( $changing as $name => $entry ) {
 }
 
 // Risky abilities wait for a confirmation. Every delete is risky.
-$risky = array( 'remove-form-field', 'update-form-settings', 'approve-member', 'deny-member', 'delete-member', 'assign-membership', 'extend-subscription', 'cancel-subscription', 'delete-subscription', 'delete-membership', 'delete-membership-group', 'disable-module', 'update-setting', 'create-content-rule', 'update-content-rule', 'set-content-rule-status', 'trash-content-rule' );
+$risky = array( 'remove-form-field', 'update-form-settings', 'approve-member', 'deny-member', 'delete-member', 'assign-membership', 'extend-subscription', 'cancel-subscription', 'delete-subscription', 'delete-membership', 'delete-membership-group', 'create-membership', 'update-membership', 'create-membership-group', 'update-membership-group', 'disable-module', 'update-setting', 'create-content-rule', 'update-content-rule', 'set-content-rule-status', 'trash-content-rule' );
 foreach ( $changing as $name => $entry ) {
 	if ( 'delete' === $entry[1] || in_array( substr( $name, strlen( 'user-registration/' ) ), $risky, true ) ) {
 		security_assert( ! empty( $entry[2]['confirm'] ) && isset( $at_delete[ $name ]['input_schema']['properties']['confirm_token'] ), $name . ' waits for a confirmation code' );

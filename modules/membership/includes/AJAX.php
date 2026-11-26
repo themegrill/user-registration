@@ -130,62 +130,24 @@ class AJAX {
 			$rule_data = is_array( $data['urcr_membership_access_rule_data'] ) ? $data['urcr_membership_access_rule_data'] : json_decode( $data['urcr_membership_access_rule_data'], true );
 		}
 
-		$is_stripe_enabled = urm_is_payment_gateway_configured( 'stripe' );
-		$data              = $membership->prepare_membership_post_data( $data );
+		// The saving itself is shared with the AI abilities.
+		$result = $membership->create_membership_plan( $data, $rule_data );
 
-		if ( isset( $data['status'] ) && ! $data['status'] ) {
+		if ( empty( $result['status'] ) ) {
 			wp_send_json_error(
 				array(
-					'message' => $data['message'],
+					'message' => $result['message'],
 				)
 			);
 		}
 
-		$data = apply_filters( 'ur_membership_after_create_membership_data_prepare', $data );
+		$response = array(
+			'membership_id' => $result['membership_id'],
+			'message'       => esc_html__( 'Successfully created the membership . ', 'user-registration' ),
+		);
 
-		$new_membership_ID = wp_insert_post( $data['post_data'] );
-
-		if ( $new_membership_ID ) {
-			if ( ! empty( $data['post_meta_data'] ) ) {
-				foreach ( $data['post_meta_data'] as $datum ) {
-					add_post_meta( $new_membership_ID, $datum['meta_key'], $datum['meta_value'] );
-				}
-			}
-			$meta_data = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
-
-			if ( $is_stripe_enabled && 'free' !== $meta_data['type'] ) {
-				$stripe_service        = new StripeService();
-				$data['membership_id'] = $new_membership_ID;
-				$membership_repository = new MembershipRepository();
-				$membership            = $membership_repository->get_single_membership_by_ID( $new_membership_ID );
-				try {
-					$stripe_service->sync_product_and_price_in_stripe( $membership );
-				} catch ( \Exception $e ) {
-					wp_delete_post( $new_membership_ID, true );
-					wp_send_json_error( array( 'message' => $e->getMessage() ) );
-				}
-			}
-
-			// Create or update content access rule if rule data provided
-			if ( $rule_data && function_exists( 'urcr_create_or_update_membership_rule' ) ) {
-				$_POST['urcr_membership_access_rule_data'] = wp_unslash( json_encode( $rule_data ) );
-				urcr_create_or_update_membership_rule( $new_membership_ID, $rule_data );
-			}
-
-			$response = array(
-				'membership_id' => $new_membership_ID,
-				'message'       => esc_html__( 'Successfully created the membership . ', 'user-registration' ),
-			);
-
-			$response = apply_filters( 'ur_membership_before_create_membership_response', $response );
-			wp_send_json_success( $response );
-		} else {
-			wp_send_json_error(
-				array(
-					'message' => esc_html__( 'Sorry! There was an unexpected error while saving the membership data . ', 'user-registration' ),
-				)
-			);
-		}
+		$response = apply_filters( 'ur_membership_before_create_membership_response', $response );
+		wp_send_json_success( $response );
 	}
 
 	/**
@@ -210,9 +172,8 @@ class AJAX {
 		}
 		ur_membership_verify_nonce( 'ur_membership' );
 
-		$membership         = new MembershipService();
-		$data               = isset( $_POST['membership_data'] ) ? (array) json_decode( wp_unslash( $_POST['membership_data'] ), true ) : array();
-		$membership_details = $membership->get_membership_details( $_POST['membership_id'] );
+		$membership = new MembershipService();
+		$data       = isset( $_POST['membership_data'] ) ? (array) json_decode( wp_unslash( $_POST['membership_data'] ), true ) : array();
 		// Get rule data from POST if available (check both in POST directly and in membership_data)
 		$rule_data = null;
 		if ( isset( $_POST['urcr_membership_access_rule_data'] ) && ! empty( $_POST['urcr_membership_access_rule_data'] ) ) {
@@ -220,95 +181,24 @@ class AJAX {
 			$rule_data     = json_decode( $rule_data_raw, true );
 		}
 
-		$is_stripe_enabled = urm_is_payment_gateway_configured( 'stripe' );
-		$is_mollie_enabled = urm_is_payment_gateway_configured( 'mollie' );
+		// The saving itself is shared with the AI abilities.
+		$result = $membership->update_membership_plan( $data, $rule_data );
 
-		$data = $membership->prepare_membership_post_data( $data );
-
-		if ( isset( $data['status'] ) && ! $data['status'] ) {
+		if ( empty( $result['status'] ) ) {
 			wp_send_json_error(
 				array(
-					'message' => $data['message'],
+					'message' => $result['message'],
 				)
 			);
 		}
 
-		$data = apply_filters( 'ur_membership_after_create_membership_data_prepare', $data );
+		$response = array(
+			'membership_id' => $result['membership_id'],
+			'message'       => esc_html__( 'Successfully updated the membership data.', 'user-registration' ),
+		);
 
-		if ( $is_stripe_enabled ) {
-			$meta_data_check = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
-			if (
-				'free' !== $meta_data_check['type'] &&
-				isset( $meta_data_check['subscription']['duration'], $meta_data_check['subscription']['value'] ) &&
-				'year' === $meta_data_check['subscription']['duration'] &&
-				(int) $meta_data_check['subscription']['value'] > 3
-			) {
-				wp_send_json_error(
-					array(
-						'message' => __( 'Stripe does not support yearly subscription periods greater than 3 years.', 'user-registration' ),
-					)
-				);
-			}
-		}
-
-		$updated_ID = wp_insert_post( $data['post_data'] );
-
-		if ( $updated_ID ) {
-			if ( ! empty( $data['post_meta_data'] ) ) {
-				foreach ( $data['post_meta_data'] as $datum ) {
-					update_post_meta( $updated_ID, $datum['meta_key'], $datum['meta_value'] );
-				}
-			}
-
-			$meta_data = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
-
-			if ( $is_stripe_enabled && 'free' !== $meta_data['type'] ) {
-				$stripe_service = new StripeService();
-				try {
-					$stripe_result = $stripe_service->sync_product_and_price_in_stripe(
-						array(
-							'ID'         => $updated_ID,
-							'post_title' => $data['post_data']['post_title'],
-							'meta_value' => $meta_data,
-						)
-					);
-
-					if ( empty( $stripe_result['success'] ) ) {
-						wp_send_json_error(
-							array(
-								'message' => $stripe_result['message']
-									?? __( 'Could not update product/price in Stripe.', 'user-registration' ),
-							)
-						);
-					}
-				} catch ( \Exception $e ) {
-					wp_send_json_error(
-						array(
-							'message' => $e->getMessage(),
-						)
-					);
-				}
-			}
-
-			// Create or update content access rule if rule data provided
-			if ( $rule_data && function_exists( 'urcr_create_or_update_membership_rule' ) ) {
-				urcr_create_or_update_membership_rule( $updated_ID, $rule_data );
-			}
-
-			$response = array(
-				'membership_id' => $updated_ID,
-				'message'       => esc_html__( 'Successfully updated the membership data.', 'user-registration' ),
-			);
-
-			$response = apply_filters( 'ur_membership_before_create_membership_response', $response );
-			wp_send_json_success( $response );
-		} else {
-			wp_send_json_error(
-				array(
-					'message' => esc_html__( 'Sorry! There was an unexpected error while saving the membership data . ', 'user-registration' ),
-				)
-			);
-		}
+		$response = apply_filters( 'ur_membership_before_create_membership_response', $response );
+		wp_send_json_success( $response );
 	}
 
 	/**

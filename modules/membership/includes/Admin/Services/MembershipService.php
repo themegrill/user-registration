@@ -1022,6 +1022,168 @@ class MembershipService {
 	}
 
 	/**
+	 * Create a membership plan from the data the plan editor posts.
+	 *
+	 * Shared by the plan editor and the AI abilities, so a plan made either way is checked, saved and
+	 * synced to Stripe by the same code.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array      $data      Plan data: post_data and post_meta_data, as the plan editor posts them.
+	 * @param array|null $rule_data Content access rule data, when the editor sends it.
+	 * @return array status (bool), and membership_id on success or message on failure.
+	 */
+	public function create_membership_plan( $data, $rule_data = null ) {
+		$is_stripe_enabled = urm_is_payment_gateway_configured( 'stripe' );
+		$data              = $this->prepare_membership_post_data( $data );
+
+		if ( isset( $data['status'] ) && ! $data['status'] ) {
+			return array(
+				'status'  => false,
+				'message' => $data['message'],
+			);
+		}
+
+		$data = apply_filters( 'ur_membership_after_create_membership_data_prepare', $data );
+
+		$new_membership_id = wp_insert_post( $data['post_data'] );
+
+		if ( ! $new_membership_id ) {
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Sorry! There was an unexpected error while saving the membership data . ', 'user-registration' ),
+			);
+		}
+
+		if ( ! empty( $data['post_meta_data'] ) ) {
+			foreach ( $data['post_meta_data'] as $datum ) {
+				add_post_meta( $new_membership_id, $datum['meta_key'], $datum['meta_value'] );
+			}
+		}
+		$meta_data = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
+
+		if ( $is_stripe_enabled && 'free' !== $meta_data['type'] ) {
+			$stripe_service        = new StripeService();
+			$data['membership_id'] = $new_membership_id;
+			$membership_repository = new MembershipRepository();
+			$membership            = $membership_repository->get_single_membership_by_ID( $new_membership_id );
+			try {
+				$stripe_service->sync_product_and_price_in_stripe( $membership );
+			} catch ( \Exception $e ) {
+				wp_delete_post( $new_membership_id, true );
+
+				return array(
+					'status'  => false,
+					'message' => $e->getMessage(),
+				);
+			}
+		}
+
+		// Create or update content access rule if rule data provided.
+		if ( $rule_data && function_exists( 'urcr_create_or_update_membership_rule' ) ) {
+			$_POST['urcr_membership_access_rule_data'] = wp_unslash( wp_json_encode( $rule_data ) );
+			urcr_create_or_update_membership_rule( $new_membership_id, $rule_data );
+		}
+
+		return array(
+			'status'        => true,
+			'membership_id' => $new_membership_id,
+		);
+	}
+
+	/**
+	 * Update a membership plan from the data the plan editor posts.
+	 *
+	 * Shared by the plan editor and the AI abilities.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array      $data      Plan data: post_data (with the ID) and post_meta_data.
+	 * @param array|null $rule_data Content access rule data, when the editor sends it.
+	 * @return array status (bool), and membership_id on success or message on failure.
+	 */
+	public function update_membership_plan( $data, $rule_data = null ) {
+		$is_stripe_enabled = urm_is_payment_gateway_configured( 'stripe' );
+		$data              = $this->prepare_membership_post_data( $data );
+
+		if ( isset( $data['status'] ) && ! $data['status'] ) {
+			return array(
+				'status'  => false,
+				'message' => $data['message'],
+			);
+		}
+
+		$data = apply_filters( 'ur_membership_after_create_membership_data_prepare', $data );
+
+		if ( $is_stripe_enabled ) {
+			$meta_data_check = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
+			if (
+				'free' !== $meta_data_check['type'] &&
+				isset( $meta_data_check['subscription']['duration'], $meta_data_check['subscription']['value'] ) &&
+				'year' === $meta_data_check['subscription']['duration'] &&
+				(int) $meta_data_check['subscription']['value'] > 3
+			) {
+				return array(
+					'status'  => false,
+					'message' => __( 'Stripe does not support yearly subscription periods greater than 3 years.', 'user-registration' ),
+				);
+			}
+		}
+
+		$updated_id = wp_insert_post( $data['post_data'] );
+
+		if ( ! $updated_id ) {
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Sorry! There was an unexpected error while saving the membership data . ', 'user-registration' ),
+			);
+		}
+
+		if ( ! empty( $data['post_meta_data'] ) ) {
+			foreach ( $data['post_meta_data'] as $datum ) {
+				update_post_meta( $updated_id, $datum['meta_key'], $datum['meta_value'] );
+			}
+		}
+
+		$meta_data = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
+
+		if ( $is_stripe_enabled && 'free' !== $meta_data['type'] ) {
+			$stripe_service = new StripeService();
+			try {
+				$stripe_result = $stripe_service->sync_product_and_price_in_stripe(
+					array(
+						'ID'         => $updated_id,
+						'post_title' => $data['post_data']['post_title'],
+						'meta_value' => $meta_data,
+					)
+				);
+
+				if ( empty( $stripe_result['success'] ) ) {
+					return array(
+						'status'  => false,
+						'message' => $stripe_result['message'] ?? __( 'Could not update product/price in Stripe.', 'user-registration' ),
+					);
+				}
+			} catch ( \Exception $e ) {
+				return array(
+					'status'  => false,
+					'message' => $e->getMessage(),
+				);
+			}
+		}
+
+		// Create or update content access rule if rule data provided.
+		if ( $rule_data && function_exists( 'urcr_create_or_update_membership_rule' ) ) {
+			urcr_create_or_update_membership_rule( $updated_id, $rule_data );
+		}
+
+		return array(
+			'status'        => true,
+			'membership_id' => $updated_id,
+		);
+	}
+
+	/**
 	 * Count the members whose subscription stops the plan from being deleted.
 	 *
 	 * Shared by the plan delete and the AI abilities, so they agree.

@@ -9,6 +9,9 @@ defined( 'ABSPATH' ) || exit;
 
 /** Registers abilities only when WordPress initializes its native API. */
 class UR_Abilities {
+	/** Billing and trial periods a plan can use, as the plan editor offers them. */
+	const PLAN_PERIODS = array( 'day', 'week', 'month', 'year' );
+
 	/** Attach lazy hooks; older WordPress versions never invoke them. */
 	public static function init() {
 		add_action( 'wp_abilities_api_categories_init', array( __CLASS__, 'register_category' ) );
@@ -477,6 +480,101 @@ class UR_Abilities {
 				'billing_period'   => $nullable_string,
 				'active_members'   => $count,
 			)
+		);
+		$nullable_count  = array( 'type' => array( 'integer', 'null' ) );
+		$plan_detail     = self::object_schema(
+			array(
+				'id'               => $id,
+				'name'             => $string,
+				'description'      => $string,
+				'enabled'          => array( 'type' => 'boolean' ),
+				'type'             => $string,
+				'amount'           => $string,
+				'currency'         => $string,
+				'billing_interval' => $nullable_count,
+				'billing_period'   => $nullable_string,
+				'trial_interval'   => $nullable_count,
+				'trial_period'     => $nullable_string,
+				'role'             => $string,
+				'payment_gateways' => array(
+					'type'  => 'array',
+					'items' => $string,
+				),
+				'active_members'   => $count,
+			)
+		);
+		$group_detail    = self::object_schema(
+			array(
+				'id'          => $id,
+				'name'        => $string,
+				'description' => $string,
+				'enabled'     => array( 'type' => 'boolean' ),
+				'mode'        => $string,
+				'plan_ids'    => array(
+					'type'  => 'array',
+					'items' => $id,
+				),
+			)
+		);
+		$plan_period     = array(
+			'type' => 'string',
+			'enum' => self::PLAN_PERIODS,
+		);
+		$plan_fields     = array(
+			'name'             => array(
+				'type'      => 'string',
+				'minLength' => 1,
+				'maxLength' => 200,
+			),
+			'description'      => array(
+				'type'      => 'string',
+				'maxLength' => 2000,
+			),
+			'enabled'          => array( 'type' => 'boolean' ),
+			'type'             => array(
+				'type' => 'string',
+				'enum' => array( 'free', 'paid', 'subscription' ),
+			),
+			'amount'           => array(
+				'type'    => 'number',
+				'minimum' => 0,
+				'maximum' => 1000000,
+			),
+			'billing_interval' => array(
+				'type'    => 'integer',
+				'minimum' => 1,
+				'maximum' => 365,
+			),
+			'billing_period'   => $plan_period,
+			'trial_interval'   => array(
+				'type'    => 'integer',
+				'minimum' => 1,
+				'maximum' => 365,
+			),
+			'trial_period'     => $plan_period,
+			'role'             => $key,
+		);
+		$group_fields    = array(
+			'name'        => array(
+				'type'      => 'string',
+				'minLength' => 1,
+				'maxLength' => 200,
+			),
+			'description' => array(
+				'type'      => 'string',
+				'maxLength' => 500,
+			),
+			'enabled'     => array( 'type' => 'boolean' ),
+			'mode'        => array(
+				'type' => 'string',
+				'enum' => array( 'single', 'multiple' ),
+			),
+			'plan_ids'    => array(
+				'type'     => 'array',
+				'items'    => $id,
+				'minItems' => 1,
+				'maxItems' => 50,
+			),
 		);
 		$subscription    = self::object_schema(
 			array(
@@ -1000,9 +1098,13 @@ class UR_Abilities {
 			),
 			'memberships' => array(
 				'label'       => __( 'Memberships', 'user-registration' ),
-				'description' => __( 'Lets AI assistants see your membership plans and who is subscribed to them. The other switches let them assign a plan, extend a subscription or cancel one, and delete subscriptions, plans and plan groups.', 'user-registration' ),
+				'description' => __( 'Lets AI assistants see your membership plans, plan groups and who is subscribed to them. The other switches let them create and edit plans and plan groups, assign a plan, extend a subscription or cancel one, and delete subscriptions, plans and plan groups.', 'user-registration' ),
 				'groups'      => array(
 					'view'   => array( 'label' => __( 'See plans and subscriptions', 'user-registration' ) ),
+					'plans'  => array(
+						'label'     => __( 'Create and edit plans and plan groups', 'user-registration' ),
+						'abilities' => array( 'create-membership', 'update-membership', 'create-membership-group', 'update-membership-group' ),
+					),
 					'manage' => array(
 						'label'     => __( 'Manage subscriptions', 'user-registration' ),
 						'abilities' => array( 'assign-membership', 'extend-subscription', 'cancel-subscription' ),
@@ -1020,6 +1122,71 @@ class UR_Abilities {
 						'output'      => self::page_schema( $plan ),
 						'permission'  => array( __CLASS__, 'members_permission' ),
 						'execute'     => array( 'UR_Abilities_Data', 'list_memberships' ),
+					),
+					'get-membership'          => array(
+						'label'       => __( 'Get membership plan', 'user-registration' ),
+						'description' => __( 'Read one membership plan in full: name, description, whether it is on, type, price, billing period, free trial, the role members get, which payment gateways are on for it and how many members it has.', 'user-registration' ),
+						'input'       => array( 'id' => $id ),
+						'required'    => array( 'id' ),
+						'output'      => $plan_detail,
+						'permission'  => array( __CLASS__, 'members_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'get_membership' ),
+					),
+					'list-membership-groups'  => array(
+						'label'       => __( 'List plan groups', 'user-registration' ),
+						'description' => __( 'List plan groups with their plans and mode, newest first. Needs Pro with a Plus or higher plan and the Membership Groups module.', 'user-registration' ),
+						'input'       => $pagination,
+						'output'      => self::page_schema( $group_detail ),
+						'permission'  => array( __CLASS__, 'members_permission' ),
+						'execute'     => array( 'UR_Abilities_Data', 'list_membership_groups' ),
+					),
+					'create-membership'       => array(
+						'label'       => __( 'Create membership plan', 'user-registration' ),
+						'description' => __( 'Create a membership plan, like Add New on the Memberships screen. type is free, paid (one payment) or subscription (billed every billing_interval billing_period, which needs Pro). A paid plan needs an amount above 0. A subscription may have a free trial. The payment gateways for the plan are chosen on the plan screen. If Stripe is connected, the plan is created there too. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => $plan_fields,
+						'required'    => array( 'name', 'type' ),
+						'output'      => $plan_detail,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_create_membership' ),
+						'execute'     => array( 'UR_Abilities_Data', 'create_membership' ),
+					),
+					'update-membership'       => array(
+						'label'       => __( 'Change membership plan', 'user-registration' ),
+						'description' => __( 'Change a membership plan, like Save on the plan screen. Send only what should change. The price, type, billing period and trial only change on a plan nobody holds: a plan with active, pending or trial subscriptions keeps them, so make a new plan for new members instead. The name, description, role and on or off can always change. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ) + $plan_fields,
+						'required'    => array( 'id' ),
+						'output'      => $plan_detail,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_update_membership' ),
+						'execute'     => array( 'UR_Abilities_Data', 'update_membership' ),
+					),
+					'create-membership-group' => array(
+						'label'       => __( 'Create plan group', 'user-registration' ),
+						'description' => __( 'Create a plan group from existing plans, like Add New on the Membership Groups screen. mode is single (a member holds one of its plans) or multiple (several at once). Upgrade groups are set up on the screen. Needs Pro with a Plus or higher plan and the Membership Groups module. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => $group_fields,
+						'required'    => array( 'name', 'plan_ids' ),
+						'output'      => $group_detail,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_create_membership_group' ),
+						'execute'     => array( 'UR_Abilities_Data', 'create_membership_group' ),
+					),
+					'update-membership-group' => array(
+						'label'       => __( 'Change plan group', 'user-registration' ),
+						'description' => __( 'Change a plan group, like Save on the Membership Groups screen. Send only what should change. plan_ids replaces the whole list of plans. Groups in upgrade mode are changed on the screen. Needs Pro with a Plus or higher plan and the Membership Groups module. Shows a preview first.', 'user-registration' ),
+						'level'       => 'write',
+						'confirm'     => true,
+						'input'       => array( 'id' => $id ) + $group_fields,
+						'required'    => array( 'id' ),
+						'output'      => $group_detail,
+						'permission'  => array( __CLASS__, 'subscriptions_permission' ),
+						'preview'     => array( 'UR_Abilities_Data', 'preview_update_membership_group' ),
+						'execute'     => array( 'UR_Abilities_Data', 'update_membership_group' ),
 					),
 					'list-subscriptions'      => array(
 						'label'       => __( 'List membership subscriptions', 'user-registration' ),
