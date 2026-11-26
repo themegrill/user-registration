@@ -321,7 +321,7 @@ class UR_Abilities_Connect {
 				'id'    => 'visible',
 				'label' => __( 'The AI can see at least one ability', 'user-registration' ),
 				'ok'    => ! empty( $abilities ),
-				'fix'   => __( 'Switch on at least one ability in AI Abilities Access.', 'user-registration' ),
+				'fix'   => __( 'Choose at least one module in Enabled Abilities.', 'user-registration' ),
 			),
 			array(
 				'id'    => 'user',
@@ -347,7 +347,7 @@ class UR_Abilities_Connect {
 
 	/**
 	 * Questions to try once connected, for each kind of action. Reads only look. Writes and deletes change the site,
-	 * so the matching ability has to be switched on in AI Abilities Access first.
+	 * so the matching ability has to be allowed under Allow changes in AI Abilities Access first.
 	 *
 	 * @since xx.xx.xx
 	 *

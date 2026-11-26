@@ -7,160 +7,61 @@
 
 defined( 'ABSPATH' ) || exit;
 
-/** Reads which of each area's switches the admin turned on, and adds those switches to the settings. */
+/** Reads which modules the admin gave to AI assistants, and whether they may change things in them. */
 class UR_Abilities_Access {
-	/** Access levels, each one including the ones before it. */
-	const LEVELS = array(
-		'off'    => 0,
-		'read'   => 1,
-		'write'  => 2,
-		'delete' => 3,
-	);
+	/** Option that stores the modules (ability area slugs) AI assistants can use. Not saved yet means every module. */
+	const MODULES_OPTION = 'user_registration_ability_modules';
 
-	/** Start of the option names that store whether one of an area's switches is on. */
-	const GROUP_PREFIX = 'user_registration_ability_group_';
+	/** Option that stores whether AI assistants can also make changes in those modules. Off means they only read. */
+	const WRITE_OPTION = 'user_registration_ability_allow_changes';
 
-	/** Add the settings from the ability areas, so a new area gets its setting without extra code. */
+	/** Add the settings from the ability areas, so a new area shows up in the list without extra code. */
 	public static function init() {
 		add_filter( 'user_registration_settings_advanced_ai_integration', array( __CLASS__, 'add_settings' ) );
 	}
 
 	/**
-	 * Get the option name that stores the access level chosen for a whole area, before areas had switches.
+	 * Get the modules AI assistants can use. Every module until the admin saves the list.
 	 *
 	 * @since xx.xx.xx
 	 *
-	 * @param string $slug Area slug.
-	 * @return string
+	 * @return string[] Area slugs.
 	 */
-	public static function option_id( $slug ) {
-		return 'user_registration_ability_access_' . sanitize_key( $slug );
+	public static function modules() {
+		$saved = get_option( self::MODULES_OPTION, null );
+
+		return null === $saved ? array_map( 'sanitize_key', array_keys( UR_Abilities::get_areas() ) ) : array_map( 'sanitize_key', array_filter( (array) $saved, 'is_string' ) );
 	}
 
 	/**
-	 * Get the access chosen for an area. Read only until the admin changes it. Switches that were never saved follow it.
+	 * Whether AI assistants may make changes, and not only read.
 	 *
 	 * @since xx.xx.xx
 	 *
-	 * @param string $slug Area slug.
-	 * @return string One of the keys of self::LEVELS.
-	 */
-	public static function get( $slug ) {
-		$access = get_option( self::option_id( $slug ), 'read' );
-
-		return is_string( $access ) && isset( self::LEVELS[ $access ] ) ? $access : 'read';
-	}
-
-	/**
-	 * Whether the chosen access for an area covers a level.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @param string $slug  Area slug.
-	 * @param string $level `read`, `write` or `delete`.
 	 * @return bool
 	 */
-	public static function allows( $slug, $level ) {
-		return isset( self::LEVELS[ $level ] ) && self::LEVELS[ $level ] <= self::LEVELS[ self::get( $slug ) ];
+	public static function can_change() {
+		return true === ur_string_to_bool( get_option( self::WRITE_OPTION, 'no' ) );
 	}
 
 	/**
-	 * Get an area's switches: one for all its read abilities, one for each group it defines, and one for every other ability.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @param array $area Area definition, with an optional `groups` list of `label` and `abilities` (ability names), keyed by group slug.
-	 * @return array Groups keyed by slug, in the order their first ability appears, the read group first. Each has `label`,
-	 *               `abilities` (names), `covers` (ability labels), `level` (the highest of its abilities) and `confirm`
-	 *               (whether any asks first).
-	 */
-	public static function get_groups( $area ) {
-		$defined   = isset( $area['groups'] ) && is_array( $area['groups'] ) ? $area['groups'] : array();
-		$abilities = isset( $area['abilities'] ) && is_array( $area['abilities'] ) ? $area['abilities'] : array();
-		$group_of  = array();
-		$groups    = array();
-
-		foreach ( $defined as $key => $group ) {
-			foreach ( (array) ( $group['abilities'] ?? array() ) as $name ) {
-				$group_of[ sanitize_key( $name ) ] = sanitize_key( $key );
-			}
-		}
-
-		foreach ( $abilities as $name => $ability ) {
-			$name = sanitize_key( $name );
-
-			if ( '' === $name || ! is_array( $ability ) || empty( $ability['label'] ) ) {
-				continue;
-			}
-
-			$level = UR_Abilities::level( $ability );
-			$key   = $group_of[ $name ] ?? ( 'read' === $level ? 'view' : $name );
-
-			if ( ! isset( $groups[ $key ] ) ) {
-				$groups[ $key ] = array(
-					'label'     => $defined[ $key ]['label'] ?? ( 'view' === $key ? __( 'See this area', 'user-registration' ) : $ability['label'] ),
-					'abilities' => array(),
-					'covers'    => array(),
-					'level'     => $level,
-					'confirm'   => false,
-				);
-			}
-
-			$groups[ $key ]['abilities'][] = $name;
-			$groups[ $key ]['covers'][]    = $ability['label'];
-			$groups[ $key ]['confirm']     = $groups[ $key ]['confirm'] || ! empty( $ability['confirm'] );
-
-			if ( self::LEVELS[ $level ] > self::LEVELS[ $groups[ $key ]['level'] ] ) {
-				$groups[ $key ]['level'] = $level;
-			}
-		}
-
-		return isset( $groups['view'] ) ? array( 'view' => $groups['view'] ) + $groups : $groups;
-	}
-
-	/**
-	 * Get the option name that stores whether one of an area's switches is on.
-	 *
-	 * @since xx.xx.xx
-	 *
-	 * @param string $slug  Area slug.
-	 * @param string $group Group slug.
-	 * @return string
-	 */
-	public static function group_option_id( $slug, $group ) {
-		return self::GROUP_PREFIX . sanitize_key( $slug ) . '_' . sanitize_key( $group );
-	}
-
-	/**
-	 * Whether the switch that covers an ability is on. Until the admin saves that switch, it follows the access chosen for the area.
+	 * Whether an ability is available to AI assistants: its module is chosen, and it only reads or changes are allowed.
+	 * Making changes and deleting both sit under the one changes switch, and the ones that ask first still do.
 	 *
 	 * @since xx.xx.xx
 	 *
 	 * @param string     $slug  Area slug.
 	 * @param string     $name  Ability name, without the `user-registration/` prefix.
 	 * @param string     $level `read`, `write` or `delete`.
-	 * @param array|null $area  Area definition, when the caller already has it.
+	 * @param array|null $area  Unused, kept so callers need no change.
 	 * @return bool
 	 */
-	public static function is_enabled( $slug, $name, $level, $area = null ) {
-		if ( null === $area ) {
-			$areas = UR_Abilities::get_areas();
-			$area  = $areas[ $slug ] ?? array();
-		}
-
-		foreach ( self::get_groups( $area ) as $key => $group ) {
-			if ( in_array( $name, $group['abilities'], true ) ) {
-				$saved = get_option( self::group_option_id( $slug, $key ), null );
-
-				return null === $saved ? self::allows( $slug, $group['level'] ) : true === ur_string_to_bool( $saved );
-			}
-		}
-
-		return self::allows( $slug, $level );
+	public static function is_enabled( $slug, $name, $level, $area = null ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed, VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable
+		return in_array( sanitize_key( $slug ), self::modules(), true ) && ( 'read' === $level || self::can_change() );
 	}
 
 	/**
-	 * Add one card with each area's few switches under its name, shown only while AI abilities are switched on.
+	 * Add one card with the module list and the switch for changes, shown only while AI abilities are switched on.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -172,45 +73,15 @@ class UR_Abilities_Access {
 			return $settings;
 		}
 
-		$fields = array();
-		$areas  = array();
+		$options = array();
 
 		foreach ( UR_Abilities::get_areas() as $slug => $area ) {
-			$slug = sanitize_key( $slug );
-
-			if ( '' === $slug || ! is_array( $area ) || empty( $area['label'] ) || ! is_string( $area['label'] ) ) {
-				continue;
+			if ( is_array( $area ) && ! empty( $area['label'] ) && is_string( $area['label'] ) && '' !== sanitize_key( $slug ) ) {
+				$options[ sanitize_key( $slug ) ] = $area['label'];
 			}
-
-			$groups = self::get_groups( $area );
-
-			if ( empty( $groups ) ) {
-				continue;
-			}
-
-			foreach ( $groups as $key => $group ) {
-				$fields[] = array(
-					'title'             => $group['label'],
-					'desc'              => implode( ', ', $group['covers'] ),
-					'id'                => self::group_option_id( $slug, $key ),
-					'type'              => 'toggle',
-					'default'           => self::allows( $slug, $group['level'] ) ? 'yes' : 'no',
-					'css'               => '',
-					'custom_attributes' => array(
-						'data-ur-ability-area'    => $slug,
-						'data-ur-ability-confirm' => $group['confirm'] ? 'yes' : 'no',
-					),
-				);
-			}
-
-			$areas[ $slug ] = array(
-				'label' => $area['label'],
-				'tip'   => ! empty( $area['description'] ) && is_string( $area['description'] ) ? $area['description'] : '',
-				'pro'   => ! empty( $area['plan'] ),
-			);
 		}
 
-		if ( empty( $fields ) ) {
+		if ( empty( $options ) ) {
 			return $settings;
 		}
 
@@ -219,7 +90,28 @@ class UR_Abilities_Access {
 			'title'             => __( 'AI Abilities Access', 'user-registration' ),
 			'type'              => 'card',
 			'desc'              => '',
-			'settings'          => $fields,
+			'settings'          => array(
+				array(
+					'title'    => __( 'Enabled Abilities', 'user-registration' ),
+					'desc'     => __( 'The parts of the site AI assistants can work with. They can only read them, unless you allow changes below.', 'user-registration' ),
+					'id'       => self::MODULES_OPTION,
+					'type'     => 'multiselect',
+					'class'    => 'ur-enhanced-select',
+					'css'      => 'min-width: 350px;',
+					'desc_tip' => true,
+					'default'  => array_keys( $options ),
+					'options'  => $options,
+				),
+				array(
+					'title'    => __( 'Allow changes', 'user-registration' ),
+					'desc'     => __( 'Let AI assistants also create, change and delete things in the chosen modules. Risky changes still show a preview and wait for your confirmation.', 'user-registration' ),
+					'id'       => self::WRITE_OPTION,
+					'type'     => 'toggle',
+					'desc_tip' => true,
+					'css'      => '',
+					'default'  => 'no',
+				),
+			),
 			'display_condition' => array(
 				'field'    => 'user_registration_enable_abilities',
 				'operator' => 'equals',
@@ -227,50 +119,7 @@ class UR_Abilities_Access {
 				'case'     => 'insensitive',
 			),
 		);
-		self::enqueue_script( $areas );
 
 		return $settings;
-	}
-
-	/**
-	 * Add the script and styles that put each area's switches under its name, with a search in the card header.
-	 *
-	 * @param array $areas Label, description and Pro flag of each area, keyed by area slug.
-	 */
-	private static function enqueue_script( $areas ) {
-		$css = '#ur-ability-access > .user-registration-card__header{display:flex;align-items:center;gap:16px;flex-wrap:wrap}#ur-ability-access > .user-registration-card__header .user-registration-card__header-wrapper{flex:1}'
-			. '.ur-ability-access__search{position:relative;width:260px;max-width:100%}.ur-ability-access__search input{width:100%;font-size:13px;line-height:1.5;border:1px solid #e1e4ed;border-radius:6px;padding:6px 34px 6px 12px;margin:0}'
-			. '.ur-ability-access__search svg{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:#646a7a;pointer-events:none}'
-			. '.ur-ability-access__empty{margin:4px 0 0;color:#646a7a}'
-			. '.ur-ability-access__area{display:grid;grid-template-columns:200px minmax(0,1fr);align-items:start;gap:8px 24px;padding:16px 0;border-top:1px solid #e1e4ed}.ur-ability-access__area:first-child,.ur-ability-access__area--first{border-top:0;padding-top:0}'
-			. '.ur-ability-access__title{margin:0;padding-top:6px;display:flex;align-items:center;font-size:14px;font-weight:600;color:#1d2327}'
-			. '#ur-ability-access .user-registration-help-tip{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin:0 0 0 6px;padding:0;top:0;line-height:1;vertical-align:middle}#ur-ability-access .user-registration-help-tip::after{width:16px;height:16px;padding:0;box-sizing:border-box;background-size:contain}'
-			. '.ur-ability-access__pro{width:16px;height:16px;margin-left:6px}'
-			. '#ur-ability-access .ur-ability-access__list .user-registration-global-settings{display:flex;align-items:center;gap:16px;margin:0 !important;padding:8px 0}'
-			. '#ur-ability-access .ur-ability-access__list .user-registration-global-settings > label{flex:1 1 auto !important;min-width:0;width:auto !important;max-width:none !important;margin:0}'
-			. '#ur-ability-access .ur-ability-access__list .user-registration-global-settings--field{flex:0 0 auto !important;width:auto !important}'
-			. '.ur-ability-access__name{display:block;font-weight:500;color:#1d2327}'
-			. '.ur-ability-access__list .ur-ability-access__covers{display:block;margin:2px 0 0;font-size:12px;font-weight:400;color:#646a7a}'
-			. '.ur-ability-access__asks{margin-left:6px;padding:1px 6px;border-radius:4px;background:#eceffa;color:#2d3559;font-size:11px;font-weight:500;white-space:nowrap}'
-			. '@media (max-width:782px){.ur-ability-access__area{grid-template-columns:1fr}}';
-
-		wp_register_style( 'user-registration-ability-access', false, array(), UR_VERSION );
-		wp_enqueue_style( 'user-registration-ability-access' );
-		wp_add_inline_style( 'user-registration-ability-access', $css );
-		wp_enqueue_script( 'user-registration-ability-access', UR()->plugin_url() . '/assets/js/admin/ability-access.js', array( 'jquery' ), UR_VERSION, true );
-		wp_localize_script(
-			'user-registration-ability-access',
-			'urAbilityAccess',
-			array(
-				'asks'    => __( 'Asks first', 'user-registration' ),
-				'search'  => __( 'Search abilities', 'user-registration' ),
-				/* translators: Example shown in the empty ability search box, the name of an ability. */
-				'example' => __( 'e.g. Approve member', 'user-registration' ),
-				'noMatch' => __( 'No abilities match your search.', 'user-registration' ),
-				'askstip' => __( 'Shows you a preview and waits for your confirmation before it runs.', 'user-registration' ),
-				'proIcon' => UR()->plugin_url() . '/assets/images/icons/ur-pro-icon.png',
-				'areas'   => $areas,
-			)
-		);
 	}
 }

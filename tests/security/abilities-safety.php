@@ -117,6 +117,11 @@ function wp_register_ability( $name, $args ) {
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-activity.php';
 require __DIR__ . '/abilities-activity-stubs.php';
+if ( ! function_exists( 'ur_string_to_bool' ) ) {
+	function ur_string_to_bool( $value ) {
+		return true === $value || in_array( $value, array( 'yes', '1', 1, 'true', 'on' ), true );
+	}
+}
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-access.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-safety.php';
 
@@ -166,7 +171,7 @@ function abilities_registered( $options ) {
 
 $open = array(
 	'user_registration_enable_abilities'      => 'yes',
-	'user_registration_ability_access_people' => 'delete',
+	'user_registration_ability_allow_changes'  => 'yes',
 );
 
 // A risky ability shows a preview first.

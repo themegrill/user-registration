@@ -129,20 +129,24 @@ function urcr_is_access_rule_enabled( $rule ) {
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-activity.php';
 require __DIR__ . '/abilities-activity-stubs.php';
+if ( ! function_exists( 'ur_string_to_bool' ) ) {
+	function ur_string_to_bool( $value ) {
+		return true === $value || in_array( $value, array( 'yes', '1', 1, 'true', 'on' ), true );
+	}
+}
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-access.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-safety.php';
 require dirname( __DIR__, 2 ) . '/modules/content-restriction/class-urcr-abilities.php';
 
 /**
- * Set every area to one access level and register the abilities again.
+ * Choose every module, with changes allowed or not, and register the abilities again.
  *
  * @param string $level off, read, write or delete.
  * @return array Registered abilities keyed by name.
  */
 function register_at( $level ) {
-	foreach ( UR_Abilities::get_areas() as $slug => $area ) {
-		$GLOBALS['options'][ UR_Abilities_Access::option_id( $slug ) ] = $level;
-	}
+	$GLOBALS['options'][ UR_Abilities_Access::MODULES_OPTION ] = 'off' === $level ? array() : array_keys( UR_Abilities::get_areas() );
+	$GLOBALS['options'][ UR_Abilities_Access::WRITE_OPTION ]   = in_array( $level, array( 'write', 'delete' ), true ) ? 'yes' : 'no';
 	$GLOBALS['registered'] = array();
 	UR_Abilities::register_abilities();
 	return $GLOBALS['registered'];
@@ -163,16 +167,16 @@ $changing = array_filter(
 );
 security_assert( isset( $levels['user-registration/create-content-rule'], $levels['user-registration/update-setting'], $levels['user-registration/set-form-layout'] ), 'The new areas and abilities are part of the registration' );
 
-// The access switch hides every ability above the chosen level.
+// Allow changes hides every changing ability until it is on.
 $at_off    = register_at( 'off' );
 $at_read   = register_at( 'read' );
 $at_write  = register_at( 'write' );
 $at_delete = register_at( 'delete' );
-security_assert( array() === $at_off, 'Off hides every ability of every area' );
+security_assert( array() === $at_off, 'No module chosen hides every ability' );
 foreach ( $changing as $name => $entry ) {
-	security_assert( ! isset( $at_read[ $name ] ), $name . ' is hidden while its area is on Read only' );
-	security_assert( ( 'write' === $entry[1] ) === isset( $at_write[ $name ] ), $name . ' is only there on Read and change when it changes data without deleting' );
-	security_assert( isset( $at_delete[ $name ] ), $name . ' is there once its area allows deleting' );
+	security_assert( ! isset( $at_read[ $name ] ), $name . ' is hidden while changes are not allowed' );
+	security_assert( isset( $at_write[ $name ] ), $name . ' is there once changes are allowed' );
+	security_assert( isset( $at_delete[ $name ] ), $name . ' is there once changes are allowed, deleting included' );
 }
 
 // Without the screen's permission, every changing ability is refused, and the refusal is logged.

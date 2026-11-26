@@ -149,12 +149,9 @@ add_filter(
 	}
 );
 
-function abilities_with_access( $access = array() ) {
+function abilities_with( $options = array() ) {
 	$GLOBALS['registered'] = array();
-	$GLOBALS['options']    = array();
-	foreach ( $access as $slug => $level ) {
-		$GLOBALS['options'][ UR_Abilities_Access::option_id( $slug ) ] = $level;
-	}
+	$GLOBALS['options']    = $options;
 	UR_Abilities::register_abilities();
 	return array_map(
 		function ( $name ) {
@@ -164,49 +161,20 @@ function abilities_with_access( $access = array() ) {
 	);
 }
 
-// Read only until the admin changes it, and a bad stored value cannot widen access.
+$modules = UR_Abilities_Access::MODULES_OPTION;
+$changes = UR_Abilities_Access::WRITE_OPTION;
+
+// Every module, read only, until the admin changes it.
 $GLOBALS['options'] = array();
-security_assert( 'read' === UR_Abilities_Access::get( 'forms' ), 'An area is read only until the admin changes it' );
-$GLOBALS['options']['user_registration_ability_access_forms'] = 'banana';
-security_assert( 'read' === UR_Abilities_Access::get( 'forms' ), 'An unknown stored value falls back to read only' );
-$GLOBALS['options']['user_registration_ability_access_forms'] = array( 'delete' );
-security_assert( 'read' === UR_Abilities_Access::get( 'forms' ), 'A stored value of the wrong type falls back to read only' );
-security_assert( 'user_registration_ability_access_my-area' === UR_Abilities_Access::option_id( 'My-Area<>' ), 'The option name is built from a cleaned slug' );
+security_assert( array_keys( UR_Abilities::get_areas() ) === UR_Abilities_Access::modules(), 'Every module is chosen until the admin saves the list' );
+security_assert( false === UR_Abilities_Access::can_change(), 'Changes are off until the admin turns them on' );
+$GLOBALS['options'][ $changes ] = 'banana';
+security_assert( false === UR_Abilities_Access::can_change(), 'A stored value that is not a clear yes keeps changes off' );
 
-// Each level includes the ones before it.
-$matrix = array(
-	'off'    => array( false, false, false ),
-	'read'   => array( true, false, false ),
-	'write'  => array( true, true, false ),
-	'delete' => array( true, true, true ),
-);
-foreach ( $matrix as $access => $expected ) {
-	$GLOBALS['options']['user_registration_ability_access_forms'] = $access;
-	$actual = array(
-		UR_Abilities_Access::allows( 'forms', 'read' ),
-		UR_Abilities_Access::allows( 'forms', 'write' ),
-		UR_Abilities_Access::allows( 'forms', 'delete' ),
-	);
-	security_assert( $expected === $actual, 'Access ' . $access . ' allows exactly the levels up to it' );
-}
-security_assert( false === UR_Abilities_Access::allows( 'forms', 'admin' ), 'An unknown level is never allowed' );
-
-// Anything above the chosen level is not registered, so the AI cannot see it.
-$default = abilities_with_access();
-security_assert( in_array( 'list-forms', $default, true ) && in_array( 'list-coupons', $default, true ), 'Read abilities are available by default' );
-security_assert( ! in_array( 'update-coupon', $default, true ) && ! in_array( 'delete-coupon', $default, true ) && ! in_array( 'update-settings', $default, true ), 'Write and delete abilities are hidden by default' );
-
-$write = abilities_with_access( array( 'coupons' => 'write' ) );
-security_assert( in_array( 'update-coupon', $write, true ) && ! in_array( 'delete-coupon', $write, true ), 'Read and change shows write abilities but not delete' );
-security_assert( ! in_array( 'update-settings', $write, true ), 'Changing one area does not open another' );
-
-$delete = abilities_with_access( array( 'coupons' => 'delete' ) );
-security_assert( in_array( 'delete-coupon', $delete, true ), 'Read, change and delete shows delete abilities' );
-
-$off = abilities_with_access( array( 'forms' => 'off' ) );
-security_assert( ! in_array( 'list-forms', $off, true ) && ! in_array( 'get-form', $off, true ), 'Off hides even the read abilities of that area' );
-security_assert( in_array( 'list-members', $off, true ) && in_array( 'list-coupons', $off, true ), 'Turning one area off leaves the other areas alone' );
-abilities_with_access();
+$default = abilities_with();
+security_assert( in_array( 'list-forms', $default, true ) && in_array( 'list-coupons', $default, true ), 'Read abilities of every module are available by default' );
+security_assert( ! in_array( 'update-coupon', $default, true ) && ! in_array( 'delete-coupon', $default, true ) && ! in_array( 'update-settings', $default, true ), 'Changing and deleting abilities are hidden by default' );
+abilities_with();
 $writers = array_filter(
 	$GLOBALS['registered'],
 	function ( $ability ) {
@@ -214,6 +182,24 @@ $writers = array_filter(
 	}
 );
 security_assert( array() === $writers, 'Every ability the AI sees by default only reads' );
+
+// Allow changes opens every changing ability, but only in the chosen modules.
+$write = abilities_with( array( $changes => 'yes' ) );
+security_assert( in_array( 'update-coupon', $write, true ) && in_array( 'delete-coupon', $write, true ) && in_array( 'update-settings', $write, true ), 'Allow changes shows changing and deleting abilities of every module' );
+$some = abilities_with(
+	array(
+		$modules => array( 'coupons', 'members' ),
+		$changes => 'yes',
+	)
+);
+security_assert( in_array( 'update-coupon', $some, true ) && in_array( 'list-members', $some, true ), 'A chosen module gets read and change' );
+security_assert( ! in_array( 'list-forms', $some, true ) && ! in_array( 'update-settings', $some, true ) && ! in_array( 'get-settings', $some, true ), 'A module that is not chosen is hidden completely, reading included' );
+$reading = abilities_with( array( $modules => array( 'coupons' ) ) );
+security_assert( in_array( 'list-coupons', $reading, true ) && ! in_array( 'update-coupon', $reading, true ) && ! in_array( 'list-forms', $reading, true ), 'A chosen module alone is read only' );
+security_assert( array() === abilities_with( array( $modules => array() ) ), 'Choosing no module hides everything' );
+security_assert( array() === abilities_with( array( $modules => '' ) ), 'An empty stored value also hides everything, it never opens everything' );
+$odd = abilities_with( array( $modules => array( 'coupons', array( 'x' ), 5 ) ) );
+security_assert( in_array( 'list-coupons', $odd, true ) && ! in_array( 'list-forms', $odd, true ), 'Odd entries in the stored list are ignored' );
 
 // A hidden name stays reserved, so an addon cannot take over a built-in ability that is switched off.
 add_filter(
@@ -226,8 +212,8 @@ add_filter(
 		return $areas;
 	}
 );
-$off = abilities_with_access( array( 'forms' => 'off' ) );
-security_assert( ! in_array( 'list-forms', $off, true ), 'A switched-off built-in ability cannot be replaced by an addon using its name' );
+$off = abilities_with( array( 'user_registration_ability_modules' => array( 'coupons' ) ) );
+security_assert( ! in_array( 'list-forms', $off, true ), 'A hidden built-in ability cannot be replaced by an addon using its name' );
 
 // Another module can hide abilities through the filter.
 $seen = array();
@@ -238,40 +224,12 @@ add_filter(
 		return 'get-member' === $name ? false : $enabled;
 	}
 );
-$paused = abilities_with_access();
+$paused = abilities_with();
 security_assert( ! in_array( 'get-member', $paused, true ) && in_array( 'list-members', $paused, true ), 'A module can hide one ability through the filter' );
 security_assert( array( 'members', 'read' ) === $seen['get-member'] && array( 'coupons', 'write' ) === $seen['update-coupon'], 'The filter receives the area and the level' );
 
-// An area's abilities share a few switches: all reads one, each defined group one, any other ability its own.
-$coupon_groups = UR_Abilities_Access::get_groups( UR_Abilities::get_areas()['coupons'] );
-security_assert( array( 'view', 'change', 'delete-coupon' ) === array_keys( $coupon_groups ), 'Reads share one switch, a defined group has one, and an ability left out of the groups keeps its own' );
-security_assert( array( 'create-coupon', 'update-coupon' ) === $coupon_groups['change']['abilities'] && 'Change coupons' === $coupon_groups['change']['label'], 'A defined group covers exactly the abilities it lists, under its own name' );
-security_assert( 'See coupons' === $coupon_groups['view']['label'] && 'delete' === $coupon_groups['delete-coupon']['level'], 'The read switch takes the area\'s own name, and a switch knows the highest level it covers' );
-$settings_groups = UR_Abilities_Access::get_groups( UR_Abilities::get_areas()['settings'] );
-security_assert( array( 'view', 'update-settings' ) === array_keys( $settings_groups ) && 'Addon ability' === $settings_groups['update-settings']['label'], 'An area without groups still merges its reads and names each other switch after its ability' );
-
-// Until a switch is saved, it follows the access chosen for the area.
-security_assert( 'user_registration_ability_group_coupons_change' === UR_Abilities_Access::group_option_id( 'coupons', 'change' ), 'The switch is stored under the area and group' );
-$GLOBALS['options'] = array( 'user_registration_ability_access_coupons' => 'write' );
-security_assert( true === UR_Abilities_Access::is_enabled( 'coupons', 'update-coupon', 'write' ) && false === UR_Abilities_Access::is_enabled( 'coupons', 'delete-coupon', 'delete' ), 'A switch never saved follows the level an existing site chose for the area' );
-$GLOBALS['options']['user_registration_ability_group_coupons_change']        = '';
-$GLOBALS['options']['user_registration_ability_group_coupons_delete-coupon'] = '1';
-security_assert( false === UR_Abilities_Access::is_enabled( 'coupons', 'update-coupon', 'write' ) && false === UR_Abilities_Access::is_enabled( 'coupons', 'create-coupon', 'write' ), 'A saved off switch turns off every ability it covers, whatever the area level' );
-security_assert( true === UR_Abilities_Access::is_enabled( 'coupons', 'delete-coupon', 'delete' ), 'A saved on switch wins over the area level' );
-$GLOBALS['options']['user_registration_ability_group_coupons_delete-coupon'] = 'banana';
-security_assert( false === UR_Abilities_Access::is_enabled( 'coupons', 'delete-coupon', 'delete' ), 'A stored value that is not a clear yes keeps the switch off' );
-
-$GLOBALS['registered'] = array();
-$GLOBALS['options']    = array(
-	'user_registration_ability_group_coupons_delete-coupon' => '1',
-	'user_registration_ability_group_coupons_view' => '',
-);
-UR_Abilities::register_abilities();
-security_assert( isset( $GLOBALS['registered']['user-registration/delete-coupon'] ) && ! isset( $GLOBALS['registered']['user-registration/update-coupon'] ), 'Deleting can be switched on without changing' );
-security_assert( ! isset( $GLOBALS['registered']['user-registration/list-coupons'] ) && isset( $GLOBALS['registered']['user-registration/list-forms'] ), 'One area\'s read switch leaves the other areas alone' );
-
-// The settings are built from the areas: one card with each area's switches.
-$GLOBALS['options'] = array( 'user_registration_ability_access_settings' => 'write' );
+// The settings: one card with the module list and the changes switch.
+$GLOBALS['options'] = array();
 $settings           = UR_Abilities_Access::add_settings(
 	array(
 		'title'    => '',
@@ -284,36 +242,15 @@ $by_id              = array();
 foreach ( $card['settings'] ?? array() as $field ) {
 	$by_id[ $field['id'] ] = $field;
 }
-$coupon_ids = array_keys(
-	array_filter(
-		$by_id,
-		function ( $field ) {
-			return 'coupons' === $field['custom_attributes']['data-ur-ability-area'];
-		}
-	)
-);
 
 security_assert( array( 'ai_integration', 'ai_abilities_access' ) === array_keys( $cards ), 'The existing card is kept, followed by one access card' );
-security_assert( 'ur-ability-access' === $card['id'] && 'card' === $card['type'], 'All switches sit in one card' );
-security_assert( isset( $by_id['user_registration_ability_group_settings_view'], $by_id['user_registration_ability_group_coupons_view'], $by_id['user_registration_ability_group_forms_view'] ), 'Every area, including addon areas, gets its switches' );
-security_assert( ! isset( $by_id['user_registration_ability_group_nameless_view'], $by_id['user_registration_ability_group_broken_view'] ), 'An area without a usable definition gets no switches' );
-security_assert( array( 'user_registration_ability_group_coupons_view', 'user_registration_ability_group_coupons_change', 'user_registration_ability_group_coupons_delete-coupon' ) === $coupon_ids, 'An area gets one switch per group, reads first' );
-security_assert( 'Addon ability, Addon ability' === $by_id['user_registration_ability_group_coupons_change']['desc'] && 'yes' === $by_id['user_registration_ability_group_coupons_change']['custom_attributes']['data-ur-ability-confirm'], 'A switch lists the abilities it covers and says when one of them asks first' );
-security_assert(
-	array_reduce(
-		$by_id,
-		function ( $carry, $field ) {
-			return $carry && 'toggle' === $field['type'] && '' !== $field['title'] && isset( $field['custom_attributes']['data-ur-ability-area'] );
-		},
-		true
-	),
-	'Each switch is a toggle with a name that says its area'
-);
-security_assert( 'yes' === $by_id['user_registration_ability_group_coupons_view']['default'] && 'no' === $by_id['user_registration_ability_group_coupons_change']['default'], 'A new site starts with only the read switches on' );
-security_assert( 'yes' === $by_id['user_registration_ability_group_settings_update-settings']['default'], 'An area an existing site set to read and change starts with its change switches on' );
+security_assert( array( $modules, $changes ) === array_keys( $by_id ), 'The card has exactly two settings: the module list and the changes switch' );
+security_assert( 'multiselect' === $by_id[ $modules ]['type'] && 'Enabled Abilities' === $by_id[ $modules ]['title'], 'The module list is a multiselect called Enabled Abilities' );
+security_assert( isset( $by_id[ $modules ]['options']['forms'], $by_id[ $modules ]['options']['members'], $by_id[ $modules ]['options']['settings'] ) && 'Coupons' === $by_id[ $modules ]['options']['coupons'], 'Every area, addon areas included, is an option under its own name' );
+security_assert( ! isset( $by_id[ $modules ]['options']['broken'] ) && ! isset( $by_id[ $modules ]['options']['nameless'] ), 'An area without a usable definition is not offered' );
+security_assert( array_keys( $by_id[ $modules ]['options'] ) === $by_id[ $modules ]['default'], 'A new site starts with every module chosen' );
+security_assert( 'toggle' === $by_id[ $changes ]['type'] && 'no' === $by_id[ $changes ]['default'], 'Changes are a toggle, off by default' );
 security_assert( 'user_registration_enable_abilities' === $card['display_condition']['field'] && 'yes' === $card['display_condition']['value'], 'The card shows only while AI abilities are switched on' );
-security_assert( ! isset( $by_id['user_registration_ability_group_coupons_view']['display_condition'] ), 'The switches leave the showing and hiding to the card' );
-security_assert( in_array( 'user-registration-ability-access', $GLOBALS['enqueued'], true ), 'The page gets the script that lays the switches out by area' );
 
 $odd = UR_Abilities_Access::add_settings( 'not-settings' );
 security_assert( 'not-settings' === $odd, 'Settings of an unexpected shape are returned untouched' );

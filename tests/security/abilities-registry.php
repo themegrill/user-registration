@@ -101,7 +101,13 @@ function wp_register_ability( $name, $args ) {
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities.php';
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-activity.php';
 require __DIR__ . '/abilities-activity-stubs.php';
+if ( ! function_exists( 'ur_string_to_bool' ) ) {
+	function ur_string_to_bool( $value ) {
+		return true === $value || in_array( $value, array( 'yes', '1', 1, 'true', 'on' ), true );
+	}
+}
 require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-access.php';
+require dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-safety.php';
 
 function abilities_after_register( $enabled = true, $site_plan = '' ) {
 	$GLOBALS['registered'] = array();
@@ -138,6 +144,9 @@ security_assert( $original === array_values( array_intersect( $core, $original )
 foreach ( $GLOBALS['registered'] as $name => $ability ) {
 	security_assert( true === $ability['meta']['annotations']['readonly'] && false === $ability['meta']['annotations']['destructive'], $name . ' only reads while its area is on Read only' );
 }
+// With changes allowed, the core abilities that count for the addon check below.
+$GLOBALS['options']['user_registration_ability_allow_changes'] = 'yes';
+$core = array_keys( abilities_after_register() );
 security_assert( array() === abilities_after_register( false ), 'Nothing is registered while the admin has abilities switched off' );
 
 // An addon adds its own area from its own code.
@@ -162,8 +171,8 @@ add_filter(
 		return $areas;
 	}
 );
-// The admin has opened the addon area up to deleting, so every level is registered.
-$GLOBALS['options']['user_registration_ability_access_addon'] = 'delete';
+// The admin has allowed changes, so every level is registered.
+$GLOBALS['options']['user_registration_ability_allow_changes'] = 'yes';
 $all = abilities_after_register();
 
 security_assert( isset( $all['user-registration/addon-read'] ), 'An addon area is registered through the filter' );
