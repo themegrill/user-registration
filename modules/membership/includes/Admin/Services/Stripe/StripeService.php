@@ -21,6 +21,11 @@ use WPEverest\URMembership\Local_Currency\Admin\CoreFunctions;
 class StripeService {
 
 	/**
+	 * Minor units a PaymentIntent may fall short of the order total, absorbing per-line tax rounding.
+	 */
+	const PAYMENT_AMOUNT_TOLERANCE = 1;
+
+	/**
 	 * Members orders repository instance.
 	 *
 	 * @var MembersOrderRepository
@@ -1076,6 +1081,26 @@ class StripeService {
 			);
 		}
 
+		// Only a plain one-time purchase is checked: its PaymentIntent amount is built from the same inputs as the order total, unlike invoice-priced subscriptions, upgrades and team orders.
+		$is_plain_one_time_order = 'paid' === ( $latest_order['order_type'] ?? '' ) && ! $this->is_team_order( $latest_order['ID'] ) && ! $is_upgrading && ! $this->is_renewing_membership( $membership_process, $latest_order['item_id'] );
+
+		if ( $is_plain_one_time_order && ! $this->is_payment_intent_covering_order( $intent, $latest_order ) ) {
+			return $this->update_order_error(
+				$response,
+				__( 'Payment verification failed for this order.', 'user-registration' ),
+				'Payment confirmation rejected: PaymentIntent amount or currency does not match the order',
+				array(
+					'error_code'        => 'PAYMENT_AMOUNT_MISMATCH',
+					'member_id'         => $member_id,
+					'order_id'          => $latest_order['ID'],
+					'payment_intent_id' => $pi_id,
+					'intent_amount'     => $intent->amount,
+					'intent_currency'   => $intent->currency,
+					'order_total'       => $latest_order['total_amount'],
+				)
+			);
+		}
+
 		// Exclude the order that actually owns this transaction (already fetched above), not the
 		// client-supplied order_id which can arrive empty on the registration/first-purchase
 		// flow. Otherwise the order's own transaction is treated as a duplicate and the payment
@@ -1340,6 +1365,56 @@ class StripeService {
 	 */
 	private function is_renewing_membership( $membership_process, $membership_id ) {
 		return ! empty( $membership_process['renew'] ) && in_array( absint( $membership_id ), array_map( 'absint', (array) $membership_process['renew'] ), true );
+	}
+
+	/**
+	 * Whether an order belongs to a team, read from the team post the server linked to it, never from request input.
+	 *
+	 * @param int|string $order_id Order ID.
+	 * @return bool
+	 */
+	private function is_team_order( $order_id ) {
+		return ! empty(
+			get_posts(
+				array(
+					'post_type'      => 'ur_membership_team',
+					'post_status'    => 'any',
+					'fields'         => 'ids',
+					'posts_per_page' => 1,
+					'meta_key'       => 'urm_order_id', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- one indexed lookup per confirmation.
+					'meta_value'     => absint( $order_id ), // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- one indexed lookup per confirmation.
+				)
+			)
+		);
+	}
+
+	/**
+	 * Whether a succeeded PaymentIntent paid at least the order it is confirming, in the store currency.
+	 *
+	 * Only underpayment is rejected: the order total already includes tax and coupons, and a larger charge cannot
+	 * be a price-manipulation attempt. A local-currency order is not compared, because its fixed-coupon discount is
+	 * converted in a different order than in the order total and the two can legitimately differ.
+	 *
+	 * @param \Stripe\PaymentIntent $intent Succeeded PaymentIntent.
+	 * @param array                 $order  Order row (needs `ID` and `total_amount`).
+	 * @return bool
+	 */
+	private function is_payment_intent_covering_order( $intent, $order ) {
+		$local_currency = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $order['ID'], 'local_currency' );
+
+		if ( ! empty( $local_currency['meta_value'] ) ) {
+			return true;
+		}
+
+		$currency = strtoupper( get_option( 'user_registration_payment_currency', 'USD' ) );
+
+		if ( strtoupper( (string) $intent->currency ) !== $currency ) {
+			return false;
+		}
+
+		$expected = $this->calculate_stripe_amount( (float) $order['total_amount'], $currency );
+
+		return (int) $intent->amount >= $expected - self::PAYMENT_AMOUNT_TOLERANCE;
 	}
 
 	/**

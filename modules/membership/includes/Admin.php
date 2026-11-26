@@ -599,6 +599,9 @@ if ( ! class_exists( 'Admin' ) ) :
 
 			// Tax comes from the submitted country and the tax settings, never from client members_data.
 			unset( $data['tax_rate'], $data['tax_calculation_method'] );
+
+			// A first registration is never an upgrade, so the upgrade price fields are never taken from the client.
+			unset( $data['upgrade'], $data['chargeable_amount'], $data['remaining_subscription_value'] );
 			foreach ( $valid_form_data as $field_data ) {
 				if ( isset( $field_data->extra_params['field_key'] ) && 'country' === $field_data->extra_params['field_key'] ) {
 					$data = array_merge( $data, urm_get_tax_details( $field_data->value ) );
