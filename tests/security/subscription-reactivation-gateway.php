@@ -9,7 +9,7 @@
  */
 
 // Test doubles and fixture inputs intentionally bypass production-only conventions.
-// phpcs:disable Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, WordPress.Files.FileName.InvalidClassFileName, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
+// phpcs:disable Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.VariableComment.Missing, Squiz.PHP.Eval.Discouraged, Generic.Files.OneObjectStructurePerFile.MultipleFound, WordPress.Files.FileName.InvalidClassFileName, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound, WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents
 
 require __DIR__ . '/bootstrap.php';
 
@@ -73,3 +73,15 @@ security_assert( true === $result['status'] && 'active' === $updates[0]['status'
 
 list( $result, $updates ) = run_reactivation( array( 'status' => true ), 'pending' );
 security_assert( true === $result['status'] && 'pending' === $updates[0]['status'], 'A confirmed reactivation with a pending order stays pending' );
+
+list( $result, $updates ) = run_reactivation(
+	array(
+		'status'  => false,
+		'message' => '',
+	),
+	'completed'
+);
+security_assert( 'Failed to reactivate subscription with payment gateway.' === $result['message'], 'An empty gateway message falls back to the default message' );
+
+list( $result, $updates ) = run_reactivation( new stdClass(), 'completed' );
+security_assert( false === $result['status'] && array() === $updates, 'A non-array gateway response is treated as a refusal' );
