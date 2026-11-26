@@ -180,7 +180,17 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 		}
 	}
 
-	public function reactivate_subscription_by_id( $subscription_id, $send_email = true ) {
+	/**
+	 * Reactivates a subscription, only restoring it locally once the payment gateway confirms.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int  $subscription_id Local subscription ID.
+	 * @param bool $send_email      Unused; kept for caller compatibility.
+	 *
+	 * @return array Result with a `status` flag and, on failure, an optional `message`.
+	 */
+	public function reactivate_subscription_by_id($subscription_id, $send_email = true ) {
 		$subscription       = $this->retrieve( $subscription_id );
 		$pending_cancel_key = 'urm_pending_cancel_' . $subscription_id;
 
