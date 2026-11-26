@@ -14032,7 +14032,7 @@ if ( ! function_exists( 'ur_is_login_error_key' ) ) {
 	 * @return bool
 	 */
 	function ur_is_login_error_key( $key ) {
-		return is_string( $key ) && 1 === preg_match( '/^ur_login_error_[A-Za-z0-9]+$/D', $key );
+		return is_string( $key ) && 1 === preg_match( '/^ur_login_error_[A-Za-z0-9]{1,64}$/D', $key );
 	}
 }
 
@@ -14121,11 +14121,11 @@ if ( ! function_exists( 'ur_strip_invalid_login_error_arg' ) ) {
 	 * @return void
 	 */
 	function ur_strip_invalid_login_error_arg() {
-		// phpcs:disable WordPress.Security.NonceVerification
-		if ( isset( $_GET['urm_error'] ) && ! ur_is_login_error_key( sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ) ) ) {
-			unset( $_GET['urm_error'], $_REQUEST['urm_error'] );
+		foreach ( array( '_GET', '_REQUEST' ) as $source ) {
+			if ( isset( $GLOBALS[ $source ]['urm_error'] ) && ! ur_is_login_error_key( $GLOBALS[ $source ]['urm_error'] ) ) {
+				unset( $GLOBALS[ $source ]['urm_error'] );
+			}
 		}
-		// phpcs:enable WordPress.Security.NonceVerification
 	}
 }
 add_action( 'init', 'ur_strip_invalid_login_error_arg', 1 );

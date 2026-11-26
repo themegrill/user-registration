@@ -13,9 +13,10 @@
 require __DIR__ . '/bootstrap.php';
 
 function get_user_meta( $id, $key, $single ) {
-	return $GLOBALS['usermeta'][ $id ] ?? ''; }
+	return UR_PENDING_SESSION_META_KEY === $key ? ( $GLOBALS['usermeta'][ $id ] ?? '' ) : ''; }
 function delete_user_meta( $id, $key ) {
-	unset( $GLOBALS['usermeta'][ $id ] ); }
+	if ( UR_PENDING_SESSION_META_KEY === $key ) {
+		unset( $GLOBALS['usermeta'][ $id ] ); } }
 define( 'UR_PENDING_SESSION_META_KEY', 'urm_pending_session' );
 
 eval( security_function( 'includes/functions-ur-core.php', 'ur_is_login_error_key' ) );
@@ -66,3 +67,14 @@ security_assert( ! isset( $_GET['urm_error'], $_REQUEST['urm_error'] ), 'Foreign
 $_GET = $_REQUEST = array( 'urm_error' => 'ur_login_error_abc123' );
 ur_strip_invalid_login_error_arg();
 security_assert( 'ur_login_error_abc123' === $_GET['urm_error'], 'Own urm_error is kept' );
+$_GET = $_REQUEST = array( 'urm_error' => '<b>ur_login_error_abc123</b>' );
+ur_strip_invalid_login_error_arg();
+security_assert( ! isset( $_GET['urm_error'], $_REQUEST['urm_error'] ), 'Tag-wrapped urm_error is stripped, not sanitized into validity' );
+$_GET     = array();
+$_REQUEST = array( 'urm_error' => 'urm_pending_login_7' );
+ur_strip_invalid_login_error_arg();
+security_assert( ! isset( $_REQUEST['urm_error'] ), 'POST-only urm_error is stripped from REQUEST' );
+$_GET = $_REQUEST = array( 'urm_error' => array( 'x' ) );
+ur_strip_invalid_login_error_arg();
+security_assert( ! isset( $_GET['urm_error'] ), 'Array urm_error is stripped' );
+security_assert( ! ur_is_login_error_key( 'ur_login_error_' . str_repeat( 'a', 65 ) ), 'Oversized key is rejected' );
