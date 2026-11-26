@@ -11,6 +11,7 @@
 	var i18n = cfg.i18n || {};
 	var apps = cfg.apps || {};
 	var current = "claude";
+	var generated = null;
 
 	function post(action, data) {
 		return $.post(cfg.ajaxUrl, $.extend({ action: action, security: cfg.nonce }, data || {}));
@@ -93,8 +94,7 @@
 		});
 	}
 
-	// A fresh tab starts from nothing: nothing generated, nothing agreed to. Each app gets its own password,
-	// named after it, so the activity log can tell the apps apart.
+	// A fresh page starts from nothing: nothing generated, nothing agreed to. Each generate makes a password named after the app it was made for, so the activity log can tell the apps apart.
 	function selectApp(key) {
 		var app = apps[key];
 
@@ -110,10 +110,18 @@
 		$("#ur-ai-panel-intro").text(app.intro);
 		$("#ur-ai-consent").prop("checked", false);
 		$("#ur-ai-create").prop("disabled", true);
+		notice("");
+
+		// A prompt that was generated stays while the person looks at the other apps, which all share the same
+		// password. It is only forgotten on reload, or when the passwords are removed.
+		if (generated) {
+			showResult(generated);
+			return;
+		}
+
 		drawPrompts(app, null);
 		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", true);
 		$("#ur-ai-m-user, #ur-ai-m-pass").text("-");
-		notice("");
 	}
 
 	// Redraw what the server says exists: the checks, the connected apps and, once the AI user exists, the
@@ -156,6 +164,7 @@
 	}
 
 	function showResult(data) {
+		generated = data;
 		drawPrompts(apps[current], data);
 		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
 		$("#ur-ai-m-user").text(data.login);
@@ -379,6 +388,7 @@
 			.done(function (response) {
 				if (response.success) {
 					applyState(response.data);
+					generated = null;
 					selectApp(current);
 					notice(i18n.removed);
 				}
@@ -401,6 +411,7 @@
 			.done(function (response) {
 				if (response.success) {
 					applyState(response.data);
+					generated = null;
 					selectApp(current);
 					notice(i18n.removed);
 				}
