@@ -236,7 +236,7 @@ class SubscriptionService {
 	public function reactivate_subscription( $order, $subscription ) {
 		$logger   = ur_get_logger();
 		$response = array( 'status' => false );
-		switch ( $order['payment_method'] ) {
+		switch ( $order['payment_method'] ?? '' ) {
 			case 'paypal':
 				$paypal_service = new NewPaypalService();
 				$logger->notice( 'PayPal reactivation Reached', array( 'source' => 'urm-reactivation-log' ) );
@@ -246,6 +246,7 @@ class SubscriptionService {
 				$stripe_service = new StripeService();
 				return $stripe_service->reactivate_subscription( $subscription['subscription_id'] );
 				break;
+			case '':
 			case 'bank':
 				return array( 'status' => true );
 			default:
