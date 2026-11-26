@@ -1974,7 +1974,9 @@ function urcr_is_basic_access_granted( $allow_access_to, $allowed_roles, $allowe
  * Authorization gate for the WordPress core REST API. It mirrors the decisions taken by
  * the template based restriction flow, which still evaluates access inline in
  * URCR_Frontend, and it only decides, it never applies a restriction. Keep both in step
- * until the template flow is consolidated onto this function.
+ * until the template flow is consolidated onto this function. Anything that can make this
+ * return false must also be reported by urcr_has_restriction_source(), which lets the REST
+ * API skip checking every post on a site where nothing can restrict content.
  *
  * @param int|object $target_post Post ID or post object to check against.
  *
@@ -2124,12 +2126,12 @@ function urcr_has_evaluable_access_rule() {
 function urcr_has_post_override() {
 	global $wpdb;
 
-	// Every string ur_string_to_bool() reads as true, so no override can be missed.
-	$enabled_values = array( '1', 'yes', 'on', 'true', 'today', 'range' );
-	$placeholders   = implode( ', ', array_fill( 0, count( $enabled_values ), '%s' ) );
+	// Only values that are clearly off are ignored, so an unfamiliar value errs towards checking the posts.
+	$disabled_values = array( '', '0', 'no', 'off', 'false' );
+	$placeholders    = implode( ', ', array_fill( 0, count( $disabled_values ), '%s' ) );
 
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Existence check on one meta key; the placeholders are generated above.
-	$override_id = $wpdb->get_var( $wpdb->prepare( "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value IN ( {$placeholders} ) LIMIT 1", array_merge( array( 'urcr_meta_override_global_settings' ), $enabled_values ) ) );
+	$override_id = $wpdb->get_var( $wpdb->prepare( "SELECT meta_id FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value NOT IN ( {$placeholders} ) LIMIT 1", array_merge( array( 'urcr_meta_override_global_settings' ), $disabled_values ) ) );
 
 	return null !== $override_id;
 }

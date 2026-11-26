@@ -26,7 +26,8 @@ function ur_string_to_bool( $value ) {
 function is_super_admin() {
 	return ! empty( $GLOBALS['super_admin'] ); }
 function _prime_post_caches( $ids, $terms = true, $meta = true ) {
-	$GLOBALS['primed'][] = $ids; }
+	$GLOBALS['primed'][] = $ids;
+	$GLOBALS['primed_terms'] = $terms; }
 function wp_using_ext_object_cache() {
 	return ! empty( $GLOBALS['ext_cache'] ); }
 function wp_cache_delete( $key, $group = '' ) {
@@ -144,8 +145,21 @@ $GLOBALS['rules']        = array();
 $GLOBALS['override_row'] = '7';
 security_assert( true === urcr_has_restriction_source(), 'A post with its own restriction settings counts as a restriction source' );
 list( $override_sql, $override_args ) = $GLOBALS['override_query'];
-security_assert( 'urcr_meta_override_global_settings' === $override_args[0] && in_array( 'yes', $override_args, true ) && false !== strpos( $override_sql, 'LIMIT 1' ), 'The override check is one limited lookup on the override meta key' );
+security_assert( 'urcr_meta_override_global_settings' === $override_args[0] && false !== strpos( $override_sql, 'LIMIT 1' ), 'The override check is one limited lookup on the override meta key' );
+security_assert( false !== strpos( $override_sql, 'NOT IN' ) && array( '', '0', 'no', 'off', 'false' ) === array_slice( $override_args, 1 ), 'Only clearly disabled values are ignored, so an unfamiliar override value still triggers the scan' );
 $GLOBALS['override_row'] = null;
+
+// Terms are primed with the posts so taxonomy targeted rules do not query each post's terms one by one.
+security_assert( true === $GLOBALS['primed_terms'], 'The bulk prime includes the term cache' );
+
+// Tripwire: whatever can restrict a post in urcr_is_content_access_granted() must be reported by urcr_has_restriction_source().
+$access_source = security_function( 'modules/content-restriction/functions-urcr-core.php', 'urcr_is_content_access_granted' );
+preg_match_all( "/\b(get_option|get_post_meta)\(\s*(?:\\\$[a-z_]+,\s*)?'([a-z_]+)'/", $access_source, $reads );
+preg_match_all( '/\b(urcr_[a-z_]+)\(/', $access_source, $calls );
+$known_reads = array( 'user_registration_content_restriction_enable', 'urcr_meta_override_global_settings', 'urcr_allow_to', 'urcr_meta_roles', 'urcr_meta_memberships', 'user_registration_content_restriction_whole_site_access', 'user_registration_content_restriction_allow_access_to', 'user_registration_content_restriction_allow_to_roles', 'user_registration_content_restriction_allow_to_memberships' );
+$known_calls = array( 'urcr_is_content_access_granted', 'urcr_is_page_excluded', 'urcr_is_basic_access_granted', 'urcr_resolve_access_rules', 'urcr_has_whole_site_access_rule', 'urcr_is_content_drip_pending' );
+security_assert( array() === array_diff( array_unique( $reads[2] ), $known_reads ) && array() === array_diff( array_unique( $calls[1] ), $known_calls ), 'urcr_is_content_access_granted() reads a new setting or calls a new helper: add it to urcr_has_restriction_source() and to this list' );
+security_assert( false === strpos( $access_source, 'apply_filters' ), 'A filter in urcr_is_content_access_granted() can restrict posts that urcr_has_restriction_source() cannot see' );
 $GLOBALS['options']['user_registration_content_restriction_whole_site_access'] = true;
 
 // A super admin is granted everything, so no scan runs.

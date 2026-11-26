@@ -225,7 +225,7 @@ class URCR_REST_Restriction {
 
 	/**
 	 * IDs of every post matching the query that the current user cannot access.
-	 * No post can be skipped, or the totals would leak again, so the scan runs in chunks to keep memory flat.
+	 * No post can be skipped, or the totals would leak again, so the scan runs in chunks and holds one chunk of posts in memory at a time.
 	 *
 	 * @since x.x.x
 	 *
@@ -251,8 +251,8 @@ class URCR_REST_Restriction {
 		$excluded = array();
 
 		foreach ( array_chunk( $candidates->posts, self::SCAN_CHUNK_SIZE ) as $chunk ) {
-			// Posts and meta are primed in bulk so each access check reads from cache instead of the database.
-			_prime_post_caches( $chunk, false, true );
+			// Posts, meta and terms are primed in bulk so each access check reads from cache instead of the database.
+			_prime_post_caches( $chunk, true, true );
 
 			foreach ( $chunk as $post_id ) {
 				if ( ! self::is_post_access_granted( absint( $post_id ) ) ) {
