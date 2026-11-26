@@ -566,9 +566,8 @@ class UR_Frontend_Form_Handler {
 		$login_option = ur_get_user_login_option( $user_id );
 
 		if ( ! empty( $_POST['membership_type'] ) ) {
-			$hash = bin2hex( random_bytes( 32 ) );
+			$hash = ur_start_pending_member_session( $user_id );
 
-			set_transient( 'urm_pending_login_' . $user_id, $hash, 2 * HOUR_IN_SECONDS );
 			// Bind the pending nopriv payment/auto-login flow to this browser session.
 			setcookie(
 				'urm_pending_login_' . $user_id,

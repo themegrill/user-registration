@@ -2602,6 +2602,7 @@ class NewPaypalService {
 
 		if ( ! empty( $order['user_id'] ) ) {
 			delete_transient( 'urm_pending_login_' . absint( $order['user_id'] ) );
+			ur_clear_pending_member_session( absint( $order['user_id'] ) );
 		}
 
 		PaymentGatewayLogging::log_general(

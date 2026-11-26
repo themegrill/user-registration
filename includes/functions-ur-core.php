@@ -7103,6 +7103,7 @@ if ( ! function_exists( 'ur_automatic_user_login' ) ) {
 	 */
 	function ur_automatic_user_login( $user ) {
 		delete_transient( 'urm_pending_login_' . $user->ID );
+		ur_clear_pending_member_session( $user->ID );
 		wp_clear_auth_cookie();
 		$remember = apply_filters( 'user_registration_autologin_remember_user', false );
 		wp_set_auth_cookie( $user->ID, $remember );
@@ -14034,3 +14035,97 @@ if ( ! function_exists( 'ur_is_login_error_key' ) ) {
 		return is_string( $key ) && 1 === preg_match( '/^ur_login_error_[A-Za-z0-9]+$/D', $key );
 	}
 }
+
+if ( ! defined( 'UR_PENDING_SESSION_META_KEY' ) ) {
+	define( 'UR_PENDING_SESSION_META_KEY', 'urm_pending_session' );
+}
+
+if ( ! function_exists( 'ur_start_pending_member_session' ) ) {
+	/**
+	 * Start a pending-member session: a random token kept server-side with an expiry.
+	 *
+	 * The token lives in user meta so webhooks that clear the auto-login transient cannot lock the registering browser out.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int $user_id Pending member ID.
+	 *
+	 * @return string The token to hand to the browser cookie.
+	 */
+	function ur_start_pending_member_session( $user_id ) {
+		$token = bin2hex( random_bytes( 32 ) );
+
+		update_user_meta(
+			$user_id,
+			UR_PENDING_SESSION_META_KEY,
+			array(
+				'token'   => $token,
+				'expires' => time() + 2 * HOUR_IN_SECONDS,
+			)
+		);
+		set_transient( 'urm_pending_login_' . $user_id, $token, 2 * HOUR_IN_SECONDS );
+
+		return $token;
+	}
+}
+
+if ( ! function_exists( 'ur_get_pending_member_token' ) ) {
+	/**
+	 * Get a pending member's stored session token, or an empty string when absent or expired.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int $user_id Pending member ID.
+	 *
+	 * @return string
+	 */
+	function ur_get_pending_member_token( $user_id ) {
+		$session = get_user_meta( $user_id, UR_PENDING_SESSION_META_KEY, true );
+
+		if ( ! is_array( $session ) || empty( $session['token'] ) || ! is_string( $session['token'] ) ) {
+			return '';
+		}
+
+		if ( empty( $session['expires'] ) || (int) $session['expires'] < time() ) {
+			delete_user_meta( $user_id, UR_PENDING_SESSION_META_KEY );
+			return '';
+		}
+
+		return $session['token'];
+	}
+}
+
+if ( ! function_exists( 'ur_clear_pending_member_session' ) ) {
+	/**
+	 * Remove a pending member's stored session token once the flow has finished.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int $user_id Pending member ID.
+	 *
+	 * @return void
+	 */
+	function ur_clear_pending_member_session( $user_id ) {
+		delete_user_meta( $user_id, UR_PENDING_SESSION_META_KEY );
+	}
+}
+
+if ( ! function_exists( 'ur_strip_invalid_login_error_arg' ) ) {
+	/**
+	 * Drop a `urm_error` query arg that is not one of this plugin's login-error keys.
+	 *
+	 * Protects themes that override the login template and still read the arg directly.
+	 *
+	 * @since x.x.x
+	 *
+	 * @return void
+	 */
+	function ur_strip_invalid_login_error_arg() {
+		// phpcs:disable WordPress.Security.NonceVerification
+		if ( isset( $_GET['urm_error'] ) && ! ur_is_login_error_key( sanitize_text_field( wp_unslash( $_GET['urm_error'] ) ) ) ) {
+			unset( $_GET['urm_error'], $_REQUEST['urm_error'] );
+		}
+		// phpcs:enable WordPress.Security.NonceVerification
+	}
+}
+add_action( 'init', 'ur_strip_invalid_login_error_arg', 1 );

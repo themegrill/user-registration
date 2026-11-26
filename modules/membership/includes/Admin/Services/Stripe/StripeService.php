@@ -3174,6 +3174,7 @@ class StripeService {
 		$member_id = ! empty( $order['user_id'] ) ? absint( $order['user_id'] ) : 0;
 		if ( $member_id ) {
 			delete_transient( 'urm_pending_login_' . $member_id );
+			ur_clear_pending_member_session( $member_id );
 		}
 
 		$subscription_id = ! empty( $order['subscription_id'] ) ? absint( $order['subscription_id'] ) : 0;
@@ -3531,6 +3532,7 @@ class StripeService {
 
 		if ( ! empty( $order['user_id'] ) ) {
 			delete_transient( 'urm_pending_login_' . absint( $order['user_id'] ) );
+			ur_clear_pending_member_session( absint( $order['user_id'] ) );
 		}
 
 		PaymentGatewayLogging::log_general(

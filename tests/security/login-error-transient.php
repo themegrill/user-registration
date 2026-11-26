@@ -12,11 +12,14 @@
 
 require __DIR__ . '/bootstrap.php';
 
-$GLOBALS['transients'] = array();
-function get_transient( $key ) {
-	return $GLOBALS['transients'][ $key ] ?? false; }
+function get_user_meta( $id, $key, $single ) {
+	return $GLOBALS['usermeta'][ $id ] ?? ''; }
+function delete_user_meta( $id, $key ) {
+	unset( $GLOBALS['usermeta'][ $id ] ); }
+define( 'UR_PENDING_SESSION_META_KEY', 'urm_pending_session' );
 
 eval( security_function( 'includes/functions-ur-core.php', 'ur_is_login_error_key' ) );
+eval( security_function( 'includes/functions-ur-core.php', 'ur_get_pending_member_token' ) );
 eval( 'class PendingSessionRunner { public static ' . security_function( 'modules/membership/includes/AJAX.php', 'verify_pending_member_session' ) . ' }' );
 
 // Key allowlist: only the plugin's own error keys pass.
@@ -26,16 +29,40 @@ foreach ( array( 'urm_pending_login_5', 'ur_login_error_', 'ur_login_error_a b',
 	security_assert( ! ur_is_login_error_key( $bad ), 'Foreign key rejected: ' . json_encode( $bad ) );
 }
 
-// Credential: the old recomputable HMAC must not authenticate once the transient is gone.
-$hmac                           = hash_hmac( 'sha256', '7', 'any-salt' );
-$_COOKIE['urm_pending_login_7'] = $hmac;
-security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'Recomputed HMAC without transient is refused' );
+// Credential: a random token in user meta authorizes the browser; the recomputable HMAC and the auto-login transient do not.
+$cookie = 'urm_pending_login_7';
+$setup  = function ( $token, $expires ) {
+	$GLOBALS['usermeta'][7] = array(
+		'token'   => $token,
+		'expires' => $expires,
+	); };
+$token  = bin2hex( random_bytes( 32 ) );
 
-$token                                     = bin2hex( random_bytes( 32 ) );
-$GLOBALS['transients']['urm_pending_login_7'] = $token;
-$_COOKIE['urm_pending_login_7']            = $token;
+$_COOKIE[ $cookie ] = hash_hmac( 'sha256', '7', 'any-salt' );
+security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'No stored token: recomputed HMAC is refused' );
+
+$setup( $token, time() + 3600 );
+$_COOKIE[ $cookie ] = $token;
 security_assert( true === PendingSessionRunner::verify_pending_member_session( 7 ), 'Matching stored token is accepted' );
-$_COOKIE['urm_pending_login_7'] = 'wrong';
+security_assert( true === PendingSessionRunner::verify_pending_member_session( 7 ), 'Token survives the auto-login transient being cleared' );
+
+$_COOKIE[ $cookie ] = 'wrong';
 security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'Mismatched cookie is refused' );
-$_COOKIE['urm_pending_login_7'] = array( 'x' );
+
+$_COOKIE[ $cookie ] = array( 'x' );
 security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'Array cookie is refused without a warning' );
+
+$setup( $token, time() - 1 );
+$_COOKIE[ $cookie ] = $token;
+security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'Expired token is refused' );
+security_assert( ! isset( $GLOBALS['usermeta'][7] ), 'Expired token is purged' );
+
+// Early strip: an invalid urm_error never reaches a theme override.
+eval( security_function( 'includes/functions-ur-core.php', 'ur_strip_invalid_login_error_arg' ) );
+$_GET     = array( 'urm_error' => 'urm_pending_login_7' );
+$_REQUEST = $_GET;
+ur_strip_invalid_login_error_arg();
+security_assert( ! isset( $_GET['urm_error'], $_REQUEST['urm_error'] ), 'Foreign urm_error is stripped from GET and REQUEST' );
+$_GET = $_REQUEST = array( 'urm_error' => 'ur_login_error_abc123' );
+ur_strip_invalid_login_error_arg();
+security_assert( 'ur_login_error_abc123' === $_GET['urm_error'], 'Own urm_error is kept' );

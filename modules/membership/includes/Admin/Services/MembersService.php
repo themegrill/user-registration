@@ -346,6 +346,7 @@ class MembersService {
 		}
 
 		delete_transient( 'urm_pending_login_' . $user_id );
+		ur_clear_pending_member_session( $user_id );
 		wp_clear_auth_cookie();
 		$remember = apply_filters( 'user_registration_autologin_remember_user', false );
 		wp_set_auth_cookie( $user_id, $remember );
