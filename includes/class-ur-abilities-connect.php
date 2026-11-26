@@ -63,15 +63,15 @@ class UR_Abilities_Connect {
 		$items = WP_Application_Passwords::get_user_application_passwords( $user->ID );
 		// The name of the AI user opens that user's profile page, where its details and role are.
 		$login = '<a class="ur-ai-conn__user" href="' . esc_url( get_edit_user_link( $user->ID ) ) . '">' . esc_html( $user->user_login ) . '</a>';
-		$title = '<h4 class="ur-ai-conn__title">' . esc_html__( 'Active connections', 'user-registration' ) . '</h4>';
+		$title = '<h4 class="ur-ai-conn__title">' . esc_html__( 'Generated passwords', 'user-registration' ) . '</h4>';
 
 		if ( ! $items ) {
 			/* translators: %s: login of the AI user. */
-			return $title . '<p class="ur-ai-conn__empty">' . sprintf( esc_html__( 'No MCP connection yet. The AI user %s is ready.', 'user-registration' ), $login ) . '</p>';
+			return $title . '<p class="ur-ai-conn__empty">' . sprintf( esc_html__( 'No passwords generated yet. The AI user %s is ready.', 'user-registration' ), $login ) . '</p>';
 		}
 
 		/* translators: %s: login of the AI user. */
-		$html = $title . '<p class="ur-ai-conn__lead">' . sprintf( esc_html__( 'These apps reach your site as the AI user %s.', 'user-registration' ), $login ) . '</p><ul class="ur-ai-conn">';
+		$html = $title . '<p class="ur-ai-conn__lead">' . sprintf( esc_html__( 'These passwords sign in as the AI user %s.', 'user-registration' ), $login ) . '</p><ul class="ur-ai-conn">';
 
 		foreach ( $items as $item ) {
 			/* translators: 1: how long ago the password was made, 2: when it was last used. */
@@ -638,7 +638,7 @@ class UR_Abilities_Connect {
 					/* translators: %s: name of the AI app. */
 					'title'      => __( 'Connect %s through MCP', 'user-registration' ),
 					'confirm'    => __( 'Remove every AI password? Apps already connected stop working until you make a new one.', 'user-registration' ),
-					'confirmOne' => __( 'Remove this MCP connection? It stops working until you make a new password for it.', 'user-registration' ),
+					'confirmOne' => __( 'Remove this password? The app using it stops working until you make a new one.', 'user-registration' ),
 					'ready'      => __( 'Your site is ready', 'user-registration' ),
 					/* translators: %d: number of checks that did not pass. */
 					'attention1' => __( '1 thing needs attention', 'user-registration' ),

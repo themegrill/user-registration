@@ -76,7 +76,7 @@ class UR_Abilities_Tabs {
 				'needsOn'      => __( 'Turn on Enable AI Abilities first.', 'user-registration' ),
 				// The Connect content gets a tab of its own, after the cards.
 				'connectLabel' => __( 'Connect MCP', 'user-registration' ),
-				'activeLabel'  => __( 'Active connections', 'user-registration' ),
+				'activeLabel'  => __( 'Generated passwords', 'user-registration' ),
 			)
 		);
 

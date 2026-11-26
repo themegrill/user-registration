@@ -83,7 +83,7 @@ security_assert( false !== strpos( $js_source, 'class="urcr-tabs"' ) && false !=
 
 // The Connect content is a tab of its own. There is no drawer and no way back to one.
 security_assert( 'Connect MCP' === $calls['localized']['urAiTabs']['connectLabel'] && ! isset( $calls['localized']['urAiTabs']['inline'] ), 'The script is told the Connect tab name' );
-security_assert( 'Active connections' === $calls['localized']['urAiTabs']['activeLabel'], 'The script is given the name of the card for active connections' );
+security_assert( 'Generated passwords' === $calls['localized']['urAiTabs']['activeLabel'], 'The script is given the name of the card for active connections' );
 security_assert( false !== strpos( $js_source, 'ur-ai-active-pane' ) && false !== strpos( $js_source, 'body.find(".ur-ai-active")' ) && false !== strpos( $js_source, 'ur-ai-connections-changed' ) && false !== strpos( $js_source, 'pane.add(activePane)' ), 'The active connections are moved into a card of their own under the Connect card, on the same tab, and it follows the list as apps come and go' );
 security_assert( false !== strpos( $css, '.ur-ai-active-pane--empty{display:none !important}' ), 'That card stays out of sight while there are no connections' );
 security_assert( false !== strpos( $js_source, 'ur-ai-connect-pane' ) && false !== strpos( $js_source, '.ur-ai-connect-content' ), 'The Connect content is moved, not copied, into a tab' );

@@ -378,7 +378,6 @@
 			.done(function (response) {
 				if (response.success) {
 					applyState(response.data);
-					generated = null;
 					selectApp(current);
 					notice(i18n.removed);
 				}
