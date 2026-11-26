@@ -6470,23 +6470,135 @@ if ( ! function_exists( 'ur_get_ip_address' ) ) {
 	/**
 	 * Get current user IP Address.
 	 *
-	 * @return string
+	 * X-Forwarded-For / X-Real-IP are honored only when the immediate peer (REMOTE_ADDR) is listed in
+	 * the `user_registration_trusted_proxies` filter. X-Forwarded-For is read right to left, skipping
+	 * trusted proxies, so a client-supplied leftmost entry is never used. Anything invalid falls back
+	 * to REMOTE_ADDR.
+	 *
+	 * @since x.x.x Forwarded headers require a trusted proxy.
+	 *
+	 * @return string Valid IP address, or an empty string when REMOTE_ADDR is missing or invalid.
 	 */
 	function ur_get_ip_address() {
-		if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) { // WPCS: input var ok, CSRF ok.
-			return sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) );  // WPCS: input var ok, CSRF ok.
-		} elseif ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // WPCS: input var ok, CSRF ok.
-			// Proxy servers can send through this header like this: X-Forwarded-For: client1, proxy1, proxy2
-			// Make sure we always only send through the first IP in the list which should always be the client IP.
-			$forwarded_ip = trim( current( preg_split( '/,/', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) ) ) ); // WPCS: input var ok, CSRF ok.
-			// Remove the port from '<IPv4>:<port>', '[<IPv6>]' and '[<IPv6>]:<port>' while leaving bare IPv4/IPv6 intact.
-			$forwarded_ip = preg_replace( '/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\:.*|\[([^]]+)\].*/', '$1$2', $forwarded_ip );
-			return (string) rest_is_ip_address( $forwarded_ip );
-		} elseif ( isset( $_SERVER['REMOTE_ADDR'] ) ) { // @codingStandardsIgnoreLine
-			return sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ); // @codingStandardsIgnoreLine
+		$remote_addr = isset( $_SERVER['REMOTE_ADDR'] ) ? rest_is_ip_address( sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) ) : false; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+		if ( ! $remote_addr ) {
+			return '';
 		}
 
-		return '';
+		// Packed binary form, so equivalent IPv6 spellings and IPv4-mapped IPv6 (::ffff:a.b.c.d) match plain IPv4.
+		$pack = static function ( $ip ) {
+			$packed = inet_pton( $ip );
+
+			return 16 === strlen( $packed ) && 0 === strncmp( $packed, "\0\0\0\0\0\0\0\0\0\0\xff\xff", 12 ) ? substr( $packed, 12 ) : $packed;
+		};
+
+		$trusted_proxies = array();
+
+		/**
+		 * Filters the IPs or CIDR ranges of reverse proxies trusted to set X-Forwarded-For / X-Real-IP.
+		 *
+		 * @since x.x.x
+		 *
+		 * @param string[] $trusted_proxies Trusted proxy IPs or CIDRs (IPv4 or IPv6). Default empty: no proxy is trusted.
+		 */
+		foreach ( (array) apply_filters( 'user_registration_trusted_proxies', array() ) as $proxy ) {
+			if ( ! is_string( $proxy ) ) {
+				continue;
+			}
+
+			$entry = trim( $proxy );
+
+			if ( false === strpos( $entry, '/' ) ) {
+				if ( rest_is_ip_address( $entry ) ) {
+					$packed            = $pack( $entry );
+					$trusted_proxies[] = array( $packed, str_repeat( "\xff", strlen( $packed ) ) );
+				}
+				continue;
+			}
+
+			$parts = explode( '/', $entry );
+			if ( 2 !== count( $parts ) || ! preg_match( '/^\d+$/', trim( $parts[1] ) ) ) {
+				continue;
+			}
+
+			$subnet_ip = rest_is_ip_address( trim( $parts[0] ) );
+			if ( ! $subnet_ip ) {
+				continue;
+			}
+
+			$raw_subnet = inet_pton( $subnet_ip );
+			$prefix     = (int) trim( $parts[1] );
+
+			// Normalize IPv4-mapped IPv6 CIDRs (::ffff:a.b.c.d/96..128) to 4-byte IPv4 so they match $pack().
+			if ( 16 === strlen( $raw_subnet ) && 0 === strncmp( $raw_subnet, "\0\0\0\0\0\0\0\0\0\0\xff\xff", 12 ) ) {
+				if ( $prefix < 96 || $prefix > 128 ) {
+					continue;
+				}
+				$raw_subnet = substr( $raw_subnet, 12 );
+				$prefix    -= 96;
+			}
+
+			$max_bits = 8 * strlen( $raw_subnet );
+			if ( $prefix < 0 || $prefix > $max_bits ) {
+				continue;
+			}
+
+			$full_bytes = intdiv( $prefix, 8 );
+			$rem_bits   = $prefix % 8;
+			$mask       = str_repeat( "\xff", $full_bytes );
+			if ( $rem_bits > 0 ) {
+				$mask .= chr( ( 0xff << ( 8 - $rem_bits ) ) & 0xff );
+			}
+			$mask              = str_pad( $mask, strlen( $raw_subnet ), "\x00" );
+			$trusted_proxies[] = array( $raw_subnet & $mask, $mask );
+		}
+
+		$is_trusted = static function ( $ip ) use ( $pack, $trusted_proxies ) {
+			$packed = $pack( $ip );
+
+			foreach ( $trusted_proxies as $rule ) {
+				if ( strlen( $packed ) === strlen( $rule[0] ) && ( $packed & $rule[1] ) === $rule[0] ) {
+					return true;
+				}
+			}
+
+			return false;
+		};
+
+		if ( ! $is_trusted( $remote_addr ) ) {
+			return $remote_addr;
+		}
+
+		if ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+			$hops = array_reverse( explode( ',', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) ) );
+
+			foreach ( $hops as $hop ) {
+				// Remove the port from '<IPv4>:<port>', '[<IPv6>]' and '[<IPv6>]:<port>' while leaving bare IPv4/IPv6 intact.
+				$hop_ip = rest_is_ip_address( preg_replace( '/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\:.*|\[([^]]+)\].*/', '$1$2', trim( $hop ) ) );
+
+				if ( ! $hop_ip ) {
+					return $remote_addr;
+				}
+
+				if ( ! $is_trusted( $hop_ip ) ) {
+					return $hop_ip;
+				}
+			}
+
+			// Do not fall through to X-Real-IP when every X-Forwarded-For hop was a trusted proxy.
+			return $remote_addr;
+		}
+
+		if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) {
+			$real_ip = rest_is_ip_address( sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) ) );
+
+			if ( $real_ip ) {
+				return $real_ip;
+			}
+		}
+
+		return $remote_addr;
 	}
 }
 
@@ -6858,30 +6970,6 @@ if ( ! function_exists( 'user_registration_conditional_user_meta_filter' ) ) {
 
 add_filter( 'user_registration_before_user_meta_update', 'user_registration_conditional_user_meta_filter', 10, 3 );
 add_filter( 'user_registration_before_save_profile_details', 'user_registration_conditional_user_meta_filter', 10, 3 );
-
-if ( ! function_exists( 'ur_get_ip_address' ) ) {
-	/**
-	 * Get current user IP Address.
-	 *
-	 * @return string
-	 */
-	function ur_get_ip_address() {
-		if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) { // WPCS: input var ok, CSRF ok.
-			return sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) );  // WPCS: input var ok, CSRF ok.
-		} elseif ( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // WPCS: input var ok, CSRF ok.
-			// Proxy servers can send through this header like this: X-Forwarded-For: client1, proxy1, proxy2.
-			// Make sure we always only send through the first IP in the list which should always be the client IP.
-			$forwarded_ip = trim( current( preg_split( '/,/', sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) ) ) ); // WPCS: input var ok, CSRF ok.
-			// Remove the port from '<IPv4>:<port>', '[<IPv6>]' and '[<IPv6>]:<port>' while leaving bare IPv4/IPv6 intact.
-			$forwarded_ip = preg_replace( '/([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\:.*|\[([^]]+)\].*/', '$1$2', $forwarded_ip );
-			return (string) rest_is_ip_address( $forwarded_ip );
-		} elseif ( isset( $_SERVER['REMOTE_ADDR'] ) ) { // @codingStandardsIgnoreLine
-			return sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ); // @codingStandardsIgnoreLine
-		}
-
-		return '';
-	}
-}
 
 if ( ! function_exists( 'ur_get_all_page_slugs' ) ) {
 	/**
