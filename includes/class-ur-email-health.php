@@ -88,15 +88,38 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 		}
 
 		/**
-		 * Compute the sidebar indicator state for Email Health without running heavy form queries if not needed.
+		 * Compute the sidebar indicator state for Email Health using only lightweight options and transients.
 		 *
 		 * @param string $incoming_issue Optional incoming issue context.
 		 * @return string 'critical' | 'warning' | ''
 		 */
 		public static function get_sidebar_dot_status( $incoming_issue = '' ) {
-			$report = self::get_report( $incoming_issue );
+			if ( ur_option_checked( 'user_registration_email_setting_disable_email' ) || ! ur_option_checked( 'user_registration_enable_email_confirmation', true ) ) {
+				return 'critical';
+			}
 
-			return $report['sidebar_dot'];
+			$recent_failures = self::get_recent_failures();
+			if ( (int) $recent_failures['count'] > 0 || '' !== $recent_failures['last_error'] ) {
+				return 'critical';
+			}
+
+			if ( ! function_exists( 'is_plugin_active' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			}
+
+			// Check Gmail token health directly from stored options without triggering mail probes.
+			if ( is_plugin_active( 'smart-smtp/smart-smtp.php' ) && 'gmail' === (string) get_option( 'smart_smtp_provider_type', 'default' ) ) {
+				$gmail_config = get_option( 'smart_smtp_gmail_configuration', array() );
+				if ( is_array( $gmail_config ) && ! empty( $gmail_config['access_token'] ) && self::is_gmail_token_expired( $gmail_config, $recent_failures['last_error'] ) ) {
+					return 'critical';
+				}
+			}
+
+			if ( '' !== self::sanitize_incoming_issue( $incoming_issue ) ) {
+				return 'warning';
+			}
+
+			return '';
 		}
 
 		/**
@@ -526,11 +549,13 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 
 			$form_ids = get_posts(
 				array(
-					'post_type'      => 'user_registration',
-					'post_status'    => 'publish',
-					'posts_per_page' => 50,
-					'fields'         => 'ids',
-					'no_found_rows'  => true,
+					'post_type'              => 'user_registration',
+					'post_status'            => 'publish',
+					'posts_per_page'         => -1,
+					'fields'                 => 'ids',
+					'no_found_rows'          => true,
+					'update_post_term_cache' => false,
+					'update_post_meta_cache' => true,
 				)
 			);
 
@@ -575,10 +600,12 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 			}
 
 			$matches = false;
-			if ( '' !== $site_domain && '' !== $from_domain ) {
-				$matches = ( $from_domain === $site_domain ) || self::ends_with( $from_domain, '.' . $site_domain );
-			} elseif ( '' === $site_domain ) {
+			if ( self::is_local_host( $site_domain ) ) {
 				$matches = true;
+			} elseif ( '' !== $from_domain ) {
+				$matches = ( $from_domain === $site_domain )
+					|| self::ends_with( $from_domain, '.' . $site_domain )
+					|| self::ends_with( $site_domain, '.' . $from_domain );
 			}
 
 			return array(
@@ -659,6 +686,26 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 		public static function sanitize_incoming_issue( $issue ) {
 			$issue = sanitize_key( (string) $issue );
 			return in_array( $issue, array( 'spam', 'not_received', 'failed' ), true ) ? $issue : '';
+		}
+
+		/**
+		 * Check whether a host is a local development hostname rather than a public domain.
+		 *
+		 * @param string $host Normalized hostname.
+		 * @return bool
+		 */
+		private static function is_local_host( $host ) {
+			if ( '' === $host || in_array( $host, array( 'localhost', '127.0.0.1', '::1' ), true ) ) {
+				return true;
+			}
+
+			foreach ( array( '.local', '.test', '.localhost', '.invalid' ) as $suffix ) {
+				if ( self::ends_with( $host, $suffix ) ) {
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		/**

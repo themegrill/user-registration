@@ -674,8 +674,8 @@ class UR_Admin_Assets {
 							'server_failed_title'        => __( 'Server failed to send email', 'user-registration' ),
 							'unauth_server_title'        => __( 'Using unauthenticated server mail (PHP mail)', 'user-registration' ),
 							/* translators: %s: server error text */
-							'server_failed_desc'         => __( 'Server error: "%s". Connect SmartSMTP (free) or another SMTP plugin to send reliably through your email provider.', 'user-registration' ),
-							'unauth_server_desc'         => __( 'Default server mail lacks authentication, so Gmail and Outlook often filter it to Spam or block it. Connect SmartSMTP (free) or any SMTP plugin for reliable delivery.', 'user-registration' ),
+							'server_failed_desc'         => __( 'Server error: "%s". Connect SmartSMTP to send reliably through your email provider.', 'user-registration' ),
+							'unauth_server_desc'         => __( 'Default server mail lacks authentication, so email providers often filter it to Spam or block it. Connect SmartSMTP for reliable delivery.', 'user-registration' ),
 							'server_default_label'       => __( "Using your server's default mail system", 'user-registration' ),
 							'setup_smtp_link'            => __( 'Set up SMTP', 'user-registration' ),
 							'setup_smtp_confirm_copy'    => __( 'Install <strong>SmartSMTP</strong> to send all emails from this site through Google Workspace, Brevo, or your SMTP host.', 'user-registration' ),
@@ -719,8 +719,7 @@ class UR_Admin_Assets {
 							'tips_not_received_title'    => __( "Next steps if it still hasn't arrived", 'user-registration' ),
 							'tip_spf_dkim'               => __( "<strong>Check SPF, DKIM &amp; DMARC records:</strong> Confirm your domain's DNS records match your connected mail provider.", 'user-registration' ),
 							'tip_match_from'             => __( '<strong>Match your sender address:</strong> Ensure your "From" address matches your authenticated SMTP account (or enable Force From Email).', 'user-registration' ),
-							'tip_major_inbox'            => __( '<strong>Test with Gmail or Outlook:</strong> Verify with a standard inbox to rule out strict test-mailbox filters.', 'user-registration' ),
-							'tip_new_domain'             => __( '<strong>New domain or first sends:</strong> Mark the test email as "Not spam" once. New domains can take a few days to build trust with Gmail and Outlook.', 'user-registration' ),
+							'tip_new_domain'             => __( '<strong>New domain or first sends:</strong> Mark the test email as "Not spam" once. New domains can take a few days to build trust with email providers.', 'user-registration' ),
 							'tip_logs_smartsmtp'         => __( '<strong>Check your mail logs:</strong> Review SmartSMTP → Mail Logs to see if the provider accepted or bounced the email.', 'user-registration' ),
 							/* translators: %s: SMTP plugin name */
 							'tip_logs_other'             => __( '<strong>Check your mail logs:</strong> Review %s logs to see if the provider accepted or bounced the email.', 'user-registration' ),
@@ -732,7 +731,6 @@ class UR_Admin_Assets {
 							'test_box_title'             => __( 'Send a Test Email', 'user-registration' ),
 							'send_test_email'            => __( 'Send Test Email', 'user-registration' ),
 							'sending'                    => __( 'Sending…', 'user-registration' ),
-							'test_box_hint'              => __( 'Tip: test with a Gmail or Outlook address for accurate inbox delivery results.', 'user-registration' ),
 							/* translators: %s: provider name */
 							'retest_prompt'              => __( '<strong>%s is connected.</strong> Click <strong>Send Test Email</strong> above to verify inbox delivery.', 'user-registration' ),
 							/* translators: %s: recipient email */

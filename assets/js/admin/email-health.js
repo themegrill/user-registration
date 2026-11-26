@@ -60,19 +60,6 @@
 		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val || "").trim());
 	}
 
-	function isMajorInbox(email) {
-		const lower = String(email || "")
-			.trim()
-			.toLowerCase();
-		return (
-			lower.endsWith("@gmail.com") ||
-			lower.endsWith("@googlemail.com") ||
-			lower.endsWith("@outlook.com") ||
-			lower.endsWith("@hotmail.com") ||
-			lower.endsWith("@live.com")
-		);
-	}
-
 	function ensureToastStack() {
 		let stack = document.getElementById("ur-eh-toast-stack");
 		if (!stack) {
@@ -206,9 +193,6 @@
 			esc(i18n.send_test_email) +
 			"</button>" +
 			"    </div>" +
-			'    <div class="ur-eh-test-hint">' +
-			esc(i18n.test_box_hint) +
-			"</div>" +
 			'    <div id="ur-eh-test-feedback-slot" aria-live="polite"></div>' +
 			"  </div>" +
 			"</div>";
@@ -247,7 +231,7 @@
 		const hasDeliveryEvidence = recentFailedCount > 0 || Boolean(lastError) || Boolean(incomingIssue);
 		const forceFromBySmartSmtp = smtp.status === "connected" && Boolean(smtp.force_from);
 		const forceFromByOther = smtp.status === "other-smtp" && Boolean(smtp.force_from);
-		const fromOk = Boolean(fromInfo.matches_domain) || forceFromBySmartSmtp || forceFromByOther;
+		const fromOk = smtpReady || Boolean(fromInfo.matches_domain) || !hasDeliveryEvidence;
 
 		const issues = [];
 		const quietRows = [];
@@ -562,11 +546,7 @@
 			if (!forceFromBySmartSmtp && !forceFromByOther) {
 				spamTips.push("<li>" + i18n.tip_match_from + "</li>");
 			}
-			if (!isMajorInbox(state.testEmail)) {
-				spamTips.push("<li>" + i18n.tip_major_inbox + "</li>");
-			} else {
-				spamTips.push("<li>" + i18n.tip_new_domain + "</li>");
-			}
+			spamTips.push("<li>" + i18n.tip_new_domain + "</li>");
 
 			const notReceivedTips = [
 				"<li>" +
