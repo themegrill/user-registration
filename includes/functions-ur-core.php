@@ -14071,7 +14071,7 @@ if ( ! function_exists( 'ur_start_pending_member_session' ) ) {
 
 if ( ! function_exists( 'ur_get_pending_member_token' ) ) {
 	/**
-	 * Get a pending member's stored session token, or an empty string when absent or expired.
+	 * Get a pending member's stored session token, or an empty string when absent or expired (an expired token is purged).
 	 *
 	 * @since x.x.x
 	 *
