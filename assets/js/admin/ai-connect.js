@@ -89,7 +89,7 @@
 				box.append($('<p class="ur-ai-prompt__hint">').text(item.hint));
 			}
 
-			box.append($("<pre>").text(data.snippets[item.key]), $('<button type="button" class="ur-ai-iconbtn ur-ai-copy-prompt">').attr({ title: i18n.copy, "aria-label": i18n.copy }).html(cfg.copyIcon));
+			box.append($('<div class="ur-ai-prompt__code">').append($("<pre>").text(data.snippets[item.key]), $('<button type="button" class="ur-ai-iconbtn ur-ai-copy-prompt">').attr({ title: i18n.copy, "aria-label": i18n.copy }).html(cfg.copyIcon)));
 			holder.append(box);
 		});
 	}
