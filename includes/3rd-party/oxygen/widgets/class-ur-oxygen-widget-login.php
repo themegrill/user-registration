@@ -63,7 +63,7 @@ class UR_OXYGEN_WIDGET_LOGIN extends UR_OXYGEN_WIDGET {
 	public function add_form( $login_shortcode ) {
 		if ( ! empty( $login_shortcode ) ) {
 			$shortcode = '[' . $login_shortcode . ']';
-			echo do_shortcode( $shortcode );
+			echo ur_escape_shortcodes( do_shortcode( $shortcode ) );
 		} else {
 			echo __( 'Please select a form.', 'user-registration' );
 		}

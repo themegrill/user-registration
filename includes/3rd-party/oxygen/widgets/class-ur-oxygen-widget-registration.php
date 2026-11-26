@@ -63,6 +63,6 @@ class UR_OXYGEN_WIDGET_REGISTRATION extends UR_OXYGEN_WIDGET {
 			return;
 		}
 		$shortcode = '[user_registration_form id="' . esc_attr( $form_id ) . '"]';
-		echo do_shortcode( $shortcode );
+		echo ur_escape_shortcodes( do_shortcode( $shortcode ) );
 	}
 }

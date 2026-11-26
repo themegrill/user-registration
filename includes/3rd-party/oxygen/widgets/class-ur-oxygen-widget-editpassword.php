@@ -63,7 +63,7 @@ class UR_OXYGEN_WIDGET_EDITPASSWORD extends UR_OXYGEN_WIDGET {
 	public function add_form( $shortcode ) {
 		if ( ! empty( $shortcode ) ) {
 			$shortcode = '[' . $shortcode . ']';
-			echo do_shortcode( $shortcode );
+			echo ur_escape_shortcodes( do_shortcode( $shortcode ) );
 		} else {
 			echo __( 'Please select a form.', 'user-registration' );
 		}
