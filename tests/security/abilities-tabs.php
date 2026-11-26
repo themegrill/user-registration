@@ -83,7 +83,7 @@ $js_source = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-tab
 security_assert( false !== strpos( $js_source, 'class="urcr-tabs"' ) && false !== strpos( $js_source, 'class="urcr-tab"' ) && false !== strpos( $js_source, 'urcr-tab-active' ) && false === strpos( $js_source, 'ur-ai-tabs__tab' ), 'The tabs are drawn with the Content Rules class names and no new tab design' );
 
 // The content of the Connect drawer becomes a tab of its own, and the drawer stays for when the tabs are off.
-security_assert( 'Connect an AI Assistant' === $calls['localized']['urAiTabs']['connectLabel'] && true === $calls['localized']['urAiTabs']['inline'], 'The script is told the Connect tab name, and that the Connect content is shown inline' );
+security_assert( 'Connect MCP' === $calls['localized']['urAiTabs']['connectLabel'] && true === $calls['localized']['urAiTabs']['inline'], 'The script is told the Connect tab name, and that the Connect content is shown inline' );
 security_assert( 'Active connections' === $calls['localized']['urAiTabs']['activeLabel'], 'The script is given the name of the card for active connections' );
 security_assert( false !== strpos( $js_source, 'ur-ai-active-pane' ) && false !== strpos( $js_source, 'body.find(".ur-ai-active")' ) && false !== strpos( $js_source, 'ur-ai-connections-changed' ) && false !== strpos( $js_source, 'pane.add(activePane)' ), 'The active connections are moved into a card of their own under the Connect card, on the same tab, and it follows the list as apps come and go' );
 security_assert( false !== strpos( $css, '.ur-ai-active-pane--empty{display:none !important}' ), 'That card stays out of sight while there are no connections' );

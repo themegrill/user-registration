@@ -1,5 +1,5 @@
 /**
- * The Connect an AI Assistant drawer on Settings, Advanced, AI Integration.
+ * The Connect MCP drawer on Settings, Advanced, AI Integration.
  *
  * Runs the readiness check, makes the AI user and its password in one click once the admin agrees, and shows
  * what the chosen AI app needs.

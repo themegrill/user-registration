@@ -64,7 +64,7 @@ class UR_Abilities_Settings {
 						'settings' => array(
 							array(
 								'title'   => __( 'Enable AI Abilities', 'user-registration' ),
-								'desc'    => __( 'Let AI assistants connect to this site. Once on, you choose what they can do in each area. <a href="https://docs.wpuserregistration.com/global-settings/ai-abilities/" rel="noreferrer noopener" target="_blank">Learn more</a>', 'user-registration' ),
+								'desc'    => __( 'Let AI apps connect to this site through MCP. Once on, you choose what they can do in each area. <a href="https://docs.wpuserregistration.com/global-settings/ai-abilities/" rel="noreferrer noopener" target="_blank">Learn more</a>', 'user-registration' ),
 								'id'      => 'user_registration_enable_abilities',
 								'type'    => 'toggle',
 								'css'     => '',

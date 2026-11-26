@@ -99,7 +99,7 @@ class UR_Abilities_Tabs {
 				'switchId'     => 'user_registration_enable_abilities',
 				'needsOn'      => __( 'Turn on Enable AI Abilities first.', 'user-registration' ),
 				// The Connect content gets a tab of its own, between the two cards, instead of the drawer.
-				'connectLabel' => __( 'Connect an AI Assistant', 'user-registration' ),
+				'connectLabel' => __( 'Connect MCP', 'user-registration' ),
 				'activeLabel'  => __( 'Active connections', 'user-registration' ),
 				'inline'       => true,
 			)

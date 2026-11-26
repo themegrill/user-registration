@@ -67,7 +67,7 @@ class UR_Abilities_Connect {
 
 		if ( ! $items ) {
 			/* translators: %s: login of the AI user. */
-			return $title . '<p class="ur-ai-conn__empty">' . sprintf( esc_html__( 'No AI app is connected yet. The AI user %s is ready.', 'user-registration' ), $login ) . '</p>';
+			return $title . '<p class="ur-ai-conn__empty">' . sprintf( esc_html__( 'No MCP connection yet. The AI user %s is ready.', 'user-registration' ), $login ) . '</p>';
 		}
 
 		/* translators: %s: login of the AI user. */
@@ -440,7 +440,7 @@ class UR_Abilities_Connect {
 		?>
 		<?php if ( ! $inline ) : ?>
 		<div class="ur-ai-connect user-registration-global-settings"<?php echo $condition['attrs'] . $condition['initial_style']; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built and escaped by the settings page. ?>>
-			<label class="ur-label"><?php esc_html_e( 'Connect an AI Assistant', 'user-registration' ); ?> <?php echo ur_help_tip( __( 'Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?></label>
+			<label class="ur-label"><?php esc_html_e( 'Connect MCP', 'user-registration' ); ?> <?php echo ur_help_tip( __( 'Connects an AI app to this site through MCP. Makes a separate AI user with no admin rights, so a leaked password cannot reach the rest of your site.', 'user-registration' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in ur_help_tip(). ?></label>
 			<div class="user-registration-global-settings--field ur-ai-connect__field">
 				<button type="button" class="button button-primary" id="ur-ai-open"><?php esc_html_e( 'Connect', 'user-registration' ); ?></button>
 				<span class="ur-ai-connect__last" id="ur-ai-last-card"><?php echo esc_html( self::last_call_text() ); ?></span>
@@ -451,7 +451,7 @@ class UR_Abilities_Connect {
 		<div class="ur-ai-drawer-overlay" id="ur-ai-overlay" hidden></div>
 		<aside class="ur-ai-drawer" id="ur-ai-drawer" role="dialog" aria-modal="true" aria-labelledby="ur-ai-drawer-title" hidden>
 			<header class="ur-ai-drawer__header">
-				<h2 id="ur-ai-drawer-title"><?php esc_html_e( 'Connect an AI Assistant', 'user-registration' ); ?></h2>
+				<h2 id="ur-ai-drawer-title"><?php esc_html_e( 'Connect MCP', 'user-registration' ); ?></h2>
 				<button type="button" class="ur-ai-drawer__close" id="ur-ai-close" aria-label="<?php esc_attr_e( 'Close', 'user-registration' ); ?>">&times;</button>
 			</header>
 			<div class="ur-ai-drawer__body ur-ai-connect">
@@ -601,7 +601,7 @@ class UR_Abilities_Connect {
 		$call = self::last_call();
 
 		if ( ! $call ) {
-			return __( 'No AI app has connected yet.', 'user-registration' );
+			return __( 'No MCP client has connected yet.', 'user-registration' );
 		}
 
 		/* translators: 1: name of the AI app, 2: how long ago, for example 2 minutes. */
@@ -670,8 +670,8 @@ class UR_Abilities_Connect {
 					'failed'     => __( 'Something went wrong. Try again.', 'user-registration' ),
 					/* translators: %s: name of the AI app. */
 					'title'      => __( 'Connect this site to %s', 'user-registration' ),
-					'confirm'    => __( 'Remove every AI password? AI apps already connected stop working until you make a new one.', 'user-registration' ),
-					'confirmOne' => __( 'Remove this AI app? It stops working until you make a new password for it.', 'user-registration' ),
+					'confirm'    => __( 'Remove every AI password? Apps already connected stop working until you make a new one.', 'user-registration' ),
+					'confirmOne' => __( 'Remove this MCP connection? It stops working until you make a new password for it.', 'user-registration' ),
 					'ready'      => __( 'Your site is ready', 'user-registration' ),
 					/* translators: %d: number of checks that did not pass. */
 					'attention1' => __( '1 thing needs attention', 'user-registration' ),
