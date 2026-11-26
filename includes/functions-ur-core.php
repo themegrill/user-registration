@@ -14044,7 +14044,7 @@ if ( ! function_exists( 'ur_start_pending_member_session' ) ) {
 	/**
 	 * Start a pending-member session: a random token kept server-side with an expiry.
 	 *
-	 * The token lives in user meta so webhooks that clear the auto-login transient cannot lock the registering browser out.
+	 * The token lives in user meta so webhooks that clear the auto-login transient cannot lock the registering browser out; the transient only holds a presence flag, never the token.
 	 *
 	 * @since x.x.x
 	 *
@@ -14063,7 +14063,7 @@ if ( ! function_exists( 'ur_start_pending_member_session' ) ) {
 				'expires' => time() + 2 * HOUR_IN_SECONDS,
 			)
 		);
-		set_transient( 'urm_pending_login_' . $user_id, $token, 2 * HOUR_IN_SECONDS );
+		set_transient( 'urm_pending_login_' . $user_id, '1', 2 * HOUR_IN_SECONDS );
 
 		return $token;
 	}
