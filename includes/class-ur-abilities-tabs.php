@@ -62,7 +62,7 @@ class UR_Abilities_Tabs {
 			. '.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled{opacity:.5;cursor:not-allowed}.user-registration-options-container > .urcr-tabs .urcr-tab.is-disabled:hover{color:#666}'
 			. '.ur-ai-connect-pane .ur-ai-connect-content{padding:0 24px 24px}.ur-ai-connect-pane .ur-ai-connect-content > h4:first-child{margin-top:8px}'
 			. '.ur-ai-active-pane .ur-ai-active{margin:0 0 8px}.ur-ai-active-pane .ur-ai-conn__title,.ur-ai-active-pane .ur-ai-conn__lead:empty{display:none}.ur-ai-active-pane--empty{display:none !important}'
-			. '.ur-ai-pane--off{display:none !important}';
+			. '.urcr-tabs .ur-ai-ready{position:relative;top:auto;right:auto;transform:none;margin:0 0 6px auto;align-self:center}.ur-ai-pane--off{display:none !important}';
 		wp_register_style( 'user-registration-ai-tabs', false, array(), UR_VERSION );
 		wp_enqueue_style( 'user-registration-ai-tabs' );
 		wp_add_inline_style( 'user-registration-ai-tabs', $css );

@@ -65,6 +65,9 @@
 
 		nav.insertBefore(cards.first());
 
+		// The site status badge and its checks popover sit at the end of the tab row, so they show on both tabs.
+		nav.append($("#ur-ai-ready"));
+
 		// Connecting needs the master switch on, so that tab waits for the switch.
 		function switchOn() {
 			var field = $("#" + cfg.switchId);

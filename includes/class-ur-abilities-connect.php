@@ -317,7 +317,7 @@ class UR_Abilities_Connect {
 				'id'    => 'enabled',
 				'label' => __( 'AI abilities are switched on', 'user-registration' ),
 				'ok'    => ur_option_checked( 'user_registration_enable_abilities', false ),
-				'fix'   => __( 'Switch on Enable AI Abilities above.', 'user-registration' ),
+				'fix'   => __( 'Switch on Enable AI Abilities.', 'user-registration' ),
 			),
 			array(
 				'id'    => 'visible',
@@ -329,7 +329,7 @@ class UR_Abilities_Connect {
 				'id'    => 'user',
 				'label' => __( 'A user for the AI exists, with a password', 'user-registration' ),
 				'ok'    => (bool) $has_pass,
-				'fix'   => __( 'Create the AI user and password below.', 'user-registration' ),
+				'fix'   => __( 'Generate a password in the Connect MCP tab.', 'user-registration' ),
 			),
 		);
 	}

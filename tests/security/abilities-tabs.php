@@ -76,6 +76,8 @@ security_assert( array( 'AI Integration' ) === $calls['localized']['urAiTabs']['
 $css = $calls['inline_style']['user-registration-ai-tabs'] ?? '';
 security_assert( false !== strpos( $css, '.ur-ai-pane--off{display:none !important}' ) && false === strpos( $css, '#ur-ability-access{display:none' ), 'The styles hide the cards of the inactive tab, and leave the access card alone, since it shows on the first tab' );
 
+security_assert( false !== strpos( file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-tabs.js' ), 'nav.append($("#ur-ai-ready"))' ) && false !== strpos( $css, '.urcr-tabs .ur-ai-ready{position:relative;' ), 'The site status badge moves to the end of the tab row, so it shows on both tabs' );
+
 // The tabs look like the Content Rules tabs: same class names, same rules.
 security_assert( false !== strpos( $css, '.urcr-tabs{display:flex;gap:8px;' ) && false !== strpos( $css, 'border-bottom:1px solid #e0e0e0' ) && false !== strpos( $css, '.urcr-tab{padding:12px 16px;font-size:14px;font-weight:500;color:#666;' ) && false !== strpos( $css, '.urcr-tab.urcr-tab-active{color:#475bb2;' ), 'The tab styles are the Content Rules ones: spacing, text, colours and the active underline' );
 $js_source = file_get_contents( dirname( __DIR__, 2 ) . '/assets/js/admin/ai-tabs.js' );
