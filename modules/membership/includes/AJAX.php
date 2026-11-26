@@ -869,13 +869,13 @@ class AJAX {
 		$cookie_key   = 'urm_pending_login_' . $member_id;
 		$cookie_token = isset( $_COOKIE[ $cookie_key ] ) ? wp_unslash( $_COOKIE[ $cookie_key ] ) : '';
 
-		if ( empty( $cookie_token ) ) {
+		if ( ! is_string( $cookie_token ) || '' === $cookie_token ) {
 			return false;
 		}
 
 		$saved_hash = get_transient( $cookie_key );
 
-		return ! empty( $saved_hash ) && hash_equals( (string) $saved_hash, (string) $cookie_token );
+		return is_string( $saved_hash ) && hash_equals( $saved_hash, $cookie_token );
 	}
 
 	public static function confirm_payment() {

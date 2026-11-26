@@ -12,7 +12,7 @@
  *
  * @see     https://docs.wpuserregistration.com/docs/how-to-edit-user-registration-template-files-such-as-login-form/
  * @package UserRegistration/Templates
- * @version 1.4.7
+ * @version 1.4.8
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

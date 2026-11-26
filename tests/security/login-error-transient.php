@@ -37,3 +37,5 @@ $_COOKIE['urm_pending_login_7']            = $token;
 security_assert( true === PendingSessionRunner::verify_pending_member_session( 7 ), 'Matching stored token is accepted' );
 $_COOKIE['urm_pending_login_7'] = 'wrong';
 security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'Mismatched cookie is refused' );
+$_COOKIE['urm_pending_login_7'] = array( 'x' );
+security_assert( false === PendingSessionRunner::verify_pending_member_session( 7 ), 'Array cookie is refused without a warning' );

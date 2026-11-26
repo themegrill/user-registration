@@ -5843,7 +5843,7 @@ if ( ! function_exists( 'ur_process_login' ) ) {
 				}
 
 				$error_message = apply_filters( 'login_errors', $message );
-				$error_key     = 'ur_login_error_' . wp_generate_password( 32, false );
+				$error_key     = 'ur_login_error_' . bin2hex( random_bytes( 16 ) );
 				set_transient( $error_key, $error_message, 300 ); // 5 minutes
 
 				/**
