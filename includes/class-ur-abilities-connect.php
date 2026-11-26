@@ -229,16 +229,18 @@ class UR_Abilities_Connect {
 		return array(
 			'claude' => array(
 				'label'    => 'Claude',
-				'intro'    => __( 'One password works for both. Use the part for the Claude you run.', 'user-registration' ),
+				'intro'    => __( 'Pick the one you use. The same password works for Claude Code and Claude Desktop.', 'user-registration' ),
 				'snippets' => array(
 					array(
 						'key'   => 'claude',
 						'label' => 'Claude Code',
+						'tag'   => __( 'Terminal', 'user-registration' ),
 						'hint'  => __( 'Paste this command into your terminal. It saves the connection for every folder.', 'user-registration' ),
 					),
 					array(
 						'key'   => 'desktop',
 						'label' => 'Claude Desktop',
+						'tag'   => __( 'Desktop app', 'user-registration' ),
 						'hint'  => __( 'Add this to claude_desktop_config.json (Settings, Developer, Edit Config), then restart Claude Desktop. It needs Node.js installed.', 'user-registration' ),
 					),
 				),
@@ -642,7 +644,7 @@ class UR_Abilities_Connect {
 			. '.ur-ai-consent{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;line-height:1.5}.ur-ai-consent input{margin:3px 0 0;flex:none}'
 			. '.ur-ai-panel__actions{display:flex;align-items:center;gap:18px;margin-bottom:14px}.ur-ai-panel__actions .button{height:34px;line-height:32px;padding:0 16px;margin:0}'
 			. '.ur-ai-link{border:0;background:none;padding:0;color:#475bb2;text-decoration:none;cursor:pointer;font-size:13px}.ur-ai-link:hover{color:#2d3f94}.ur-ai-connect__remove{margin:18px 0 0}.ur-ai-connect__notice{margin:8px 0 0;color:#646a7a}'
-			. '.ur-ai-prompt{position:relative}#ur-ai-prompts[hidden]{display:none}.ur-ai-prompt{margin-bottom:14px}.ur-ai-prompt__label{margin:0 0 2px;font-weight:600;color:#2d3559}.ur-ai-prompt__hint{margin:0 0 8px;color:#646a7a}.ur-ai-prompt pre{margin:0;min-height:80px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
+			. '.ur-ai-prompt{position:relative}#ur-ai-prompts[hidden]{display:none}.ur-ai-prompt{margin-bottom:14px}.ur-ai-prompt__label{display:flex;align-items:center;gap:8px;margin:0 0 4px;font-size:15px;font-weight:600;color:#2d3559}.ur-ai-prompt__tag{padding:1px 8px;border-radius:999px;background:#eef1fb;color:#475bb2;font-size:11px;font-weight:500}.ur-ai-prompt--titled + .ur-ai-prompt--titled{margin-top:20px;padding-top:20px;border-top:1px solid #e1e4ed}.ur-ai-prompt__hint{margin:0 0 8px;color:#646a7a}.ur-ai-prompt pre{margin:0;min-height:80px;max-height:260px;overflow:auto;padding:14px 14px 48px;border:1px solid #e1e4ed;border-radius:4px;background:#f8f9fb;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#2d3559}'
 			. '.ur-ai-prompt pre:empty:before{content:attr(data-empty);color:#8a90a2}.ur-ai-prompt .ur-ai-iconbtn{position:absolute;right:10px;bottom:10px;padding:7px;border:1px solid #d9def2;background:#fff}.ur-ai-prompt .ur-ai-iconbtn:hover{background:#eef1fb}'
 			. '.ur-ai-manual{margin:12px 0 0;padding:12px 14px;border:1px solid #e1e4ed;border-radius:4px}.ur-ai-manual dt{margin-top:8px;font-weight:600}.ur-ai-manual dt:first-child{margin-top:0}.ur-ai-manual dd{margin:2px 0 0;word-break:break-all}'
 			. ''

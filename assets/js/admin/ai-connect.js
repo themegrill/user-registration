@@ -82,7 +82,7 @@
 			var box = $('<div class="ur-ai-prompt">');
 
 			if (item.label) {
-				box.append($('<p class="ur-ai-prompt__label">').text(item.label));
+				box.addClass("ur-ai-prompt--titled").append($('<p class="ur-ai-prompt__label">').text(item.label).append(item.tag ? $('<span class="ur-ai-prompt__tag">').text(item.tag) : ""));
 			}
 
 			if (item.hint) {
