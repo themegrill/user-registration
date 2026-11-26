@@ -14,10 +14,9 @@ to the proxy's `REMOTE_ADDR` and shares a single 50-failure per-IP bucket,
 which allows one attacker to lock out all logins on the site for up to 24
 hours.
 
-Configure trusted proxies first (see `docs/security/trusted-proxies.md` once
-`user_registration_trusted_proxies` is active, or
-`user_registration_login_trusted_proxies` on this branch), verify the resolved
-client IP, and then enable the limiter:
+Configure trusted proxies first via `user_registration_trusted_proxies` (see
+`docs/security/trusted-proxies.md` for CIDR and Cloudflare examples), verify
+the resolved client IP, and then enable the limiter:
 
 ```php
 add_filter( 'user_registration_login_rate_limit_enabled', '__return_true' );

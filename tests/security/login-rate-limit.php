@@ -67,7 +67,7 @@ function do_action( $tag ) {
 }
 
 function rest_is_ip_address( $ip ) {
-	return false !== filter_var( $ip, FILTER_VALIDATE_IP );
+	return filter_var( $ip, FILTER_VALIDATE_IP );
 }
 
 function esc_html__( $text, $domain = '' ) {
@@ -100,6 +100,7 @@ class SecurityMockWpdb {
 
 $GLOBALS['wpdb'] = new SecurityMockWpdb();
 
+eval( security_function( 'includes/functions-ur-core.php', 'ur_get_ip_address' ) ); // phpcs:ignore Squiz.PHP.Eval.Discouraged
 require dirname( __DIR__, 2 ) . '/includes/class-ur-login-rate-limiter.php';
 
 // 0. Disabled by default: no state is written and no advisory lock is taken.
@@ -120,26 +121,26 @@ $GLOBALS['mock_filters']['user_registration_login_rate_limit_enabled'] = array(
 	},
 );
 
-// 1. get_client_ip() retains validated REMOTE_ADDR and ignores spoofable proxy headers unless REMOTE_ADDR is a trusted proxy.
+// 1. get_client_ip() delegates to ur_get_ip_address() and honors user_registration_trusted_proxies (including CIDRs).
 $_SERVER['REMOTE_ADDR']          = '203.0.113.10';
 $_SERVER['HTTP_X_FORWARDED_FOR'] = '1.2.3.4';
 $_SERVER['HTTP_X_REAL_IP']       = '5.6.7.8';
 security_assert( '203.0.113.10' === UR_Login_Rate_Limiter::get_client_ip(), 'Retain validated REMOTE_ADDR and ignore spoofable proxy headers' );
 
-$GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] = array(
+$GLOBALS['mock_filters']['user_registration_trusted_proxies'] = array(
 	function () {
-		return array( '203.0.113.10' );
+		return array( '203.0.113.0/24' );
 	},
 );
 
 $_SERVER['HTTP_X_FORWARDED_FOR'] = '198.51.100.1, 198.51.100.2, 203.0.113.10';
-security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Extract right-most untrusted forwarded IP when REMOTE_ADDR is a trusted proxy' );
+security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Extract right-most untrusted forwarded IP when REMOTE_ADDR matches trusted proxy CIDR' );
 $_SERVER['HTTP_CF_CONNECTING_IP'] = '9.9.9.9';
 $_SERVER['HTTP_X_REAL_IP']        = '8.8.8.8';
-security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Client-set CF-Connecting-IP and X-Real-IP are ignored even behind a trusted proxy' );
-unset( $_SERVER['HTTP_X_FORWARDED_FOR'] );
-security_assert( '203.0.113.10' === UR_Login_Rate_Limiter::get_client_ip(), 'Without X-Forwarded-For the trusted proxy address is used, not single-value headers' );
-unset( $_SERVER['HTTP_CF_CONNECTING_IP'], $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] );
+security_assert( '198.51.100.2' === UR_Login_Rate_Limiter::get_client_ip(), 'Client-set CF-Connecting-IP and X-Real-IP are ignored when X-Forwarded-For yields a client IP' );
+$_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.11, 203.0.113.10';
+security_assert( '203.0.113.10' === UR_Login_Rate_Limiter::get_client_ip(), 'When all X-Forwarded-For hops are trusted proxies, fall back to REMOTE_ADDR rather than X-Real-IP' );
+unset( $_SERVER['HTTP_X_FORWARDED_FOR'], $_SERVER['HTTP_X_REAL_IP'], $_SERVER['HTTP_CF_CONNECTING_IP'], $GLOBALS['mock_filters']['user_registration_trusted_proxies'] );
 
 $_SERVER['REMOTE_ADDR'] = 'not-an-ip';
 security_assert( '' === UR_Login_Rate_Limiter::get_client_ip(), 'Return empty string when REMOTE_ADDR is invalid' );
@@ -350,7 +351,7 @@ $GLOBALS['mock_users']         = array( $alice );
 $GLOBALS['mock_signon_calls']  = 0;
 $GLOBALS['mock_signon_result'] = new WP_Error( 'incorrect_password', 'Incorrect password' );
 $GLOBALS['options']            = array();
-unset( $GLOBALS['mock_filters']['user_registration_login_trusted_proxies'] );
+unset( $GLOBALS['mock_filters']['user_registration_trusted_proxies'] );
 
 // 11a. Five wrong passwords through ur_process_login() lock the account; 6th attempt via email short-circuits before wp_signon().
 $_SERVER['REMOTE_ADDR'] = '203.0.113.200';

@@ -98,30 +98,15 @@ class UR_Login_Rate_Limiter {
 	/**
 	 * Resolve the client IP address for rate limiting.
 	 *
-	 * Uses REMOTE_ADDR directly by default so attackers cannot bypass rate
-	 * limiting by rotating spoofable X-Forwarded-For or X-Real-IP headers.
-	 * Sites behind a CDN or reverse proxy can register trusted proxy IPs via
-	 * the `user_registration_login_trusted_proxies` filter, or supply a custom
+	 * Delegates to `ur_get_ip_address()`, which returns `REMOTE_ADDR` by default
+	 * and only trusts forwarded headers from proxies configured via
+	 * `user_registration_trusted_proxies`. Sites can also override the resolved
 	 * IP via `user_registration_login_rate_limit_ip`.
 	 *
 	 * @return string
 	 */
 	public static function get_client_ip() {
-		$ip = '';
-
-		if ( ! empty( $_SERVER['REMOTE_ADDR'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$raw_ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			$ip     = rest_is_ip_address( $raw_ip ) ? $raw_ip : '';
-		}
-
-		$trusted_proxies = (array) apply_filters( 'user_registration_login_trusted_proxies', array() );
-
-		if ( '' !== $ip && in_array( $ip, $trusted_proxies, true ) ) {
-			$forwarded = self::extract_forwarded_ip( $trusted_proxies );
-			if ( '' !== $forwarded ) {
-				$ip = $forwarded;
-			}
-		}
+		$ip = function_exists( 'ur_get_ip_address' ) ? ur_get_ip_address() : '';
 
 		return (string) apply_filters( 'user_registration_login_rate_limit_ip', $ip );
 	}
@@ -503,34 +488,6 @@ class UR_Login_Rate_Limiter {
 		} finally {
 			self::release_lock( $key, $lock_type );
 		}
-	}
-
-	/**
-	 * Extract the client IP from X-Forwarded-For when REMOTE_ADDR is a trusted proxy.
-	 *
-	 * Single-value headers such as CF-Connecting-IP or X-Real-IP are intentionally ignored:
-	 * a non-Cloudflare trusted proxy may pass client-supplied values straight through.
-	 *
-	 * @param array $trusted_proxies List of configured trusted proxy IP addresses.
-	 *
-	 * @return string Validated client IP or empty string.
-	 */
-	private static function extract_forwarded_ip( $trusted_proxies ) {
-		if ( empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) { // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-			return '';
-		}
-
-		$raw_list = sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-		$parts    = array_reverse( array_map( 'trim', explode( ',', $raw_list ) ) );
-
-		// Walk right-to-left to pick the first untrusted hop appended by a trusted proxy.
-		foreach ( $parts as $candidate ) {
-			if ( rest_is_ip_address( $candidate ) && ! in_array( $candidate, $trusted_proxies, true ) ) {
-				return $candidate;
-			}
-		}
-
-		return '';
 	}
 
 	/**
