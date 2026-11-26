@@ -119,7 +119,7 @@ class UR_Elementor_Widget_Registration extends Widget_Base {
 	 * Render widget output.
 	 */
 	protected function render() {
-		echo do_shortcode( $this->get_shortcode() );
+		echo ur_escape_shortcodes( do_shortcode( $this->get_shortcode() ) );
 	}
 	/**
 	 * Retrieve the  available UR forms.

@@ -37,10 +37,17 @@ function queued_error_messages( $message ) {
 }
 
 $payload = '[caption width="1" caption="PWNED"]x[/caption]';
-foreach ( array( 'plain' => $payload, 'url-encoded' => rawurlencode( $payload ), 'double-encoded' => rawurlencode( rawurlencode( $payload ) ) ) as $label => $input ) {
+// PHP decodes a request once into $_GET, so `url-encoded` here is a request whose message was encoded twice.
+$inputs = array(
+	'plain'            => $payload,
+	'url-encoded'      => rawurlencode( $payload ),
+	'nested-brackets'  => '[' . $payload . ']',
+);
+foreach ( $inputs as $label => $input ) {
 	$messages = queued_error_messages( $input );
 	security_assert( 1 === count( $messages ), "A single error notice is queued for the $label message" );
 	security_assert( false === strpos( $messages[0], '[' ) && false === strpos( $messages[0], ']' ), "No square brackets reach the queued notice for the $label message, so a later do_shortcode() pass cannot run it" );
+	security_assert( false !== strpos( $messages[0], '&#91;' ) && false !== strpos( $messages[0], '&#93;' ), "The $label message brackets are escaped to entities, not stripped" );
 	security_assert( false !== strpos( $messages[0], 'PWNED' ), "The $label message text stays readable" );
 }
 
