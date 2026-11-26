@@ -1081,10 +1081,7 @@ class StripeService {
 			);
 		}
 
-		// Only a plain one-time purchase is checked: its PaymentIntent amount is built from the same inputs as the order total, unlike invoice-priced subscriptions, upgrades and team orders.
-		$is_plain_one_time_order = 'paid' === ( $latest_order['order_type'] ?? '' ) && ! $this->is_team_order( $latest_order['ID'] ) && ! $is_upgrading && ! $this->is_renewing_membership( $membership_process, $latest_order['item_id'] );
-
-		if ( $is_plain_one_time_order && ! $this->is_payment_intent_covering_order( $intent, $latest_order ) ) {
+		if ( $this->is_amount_checked_order( $latest_order ) && ! $this->is_payment_intent_covering_order( $intent, $latest_order ) ) {
 			return $this->update_order_error(
 				$response,
 				__( 'Payment verification failed for this order.', 'user-registration' ),
@@ -1365,6 +1362,29 @@ class StripeService {
 	 */
 	private function is_renewing_membership( $membership_process, $membership_id ) {
 		return ! empty( $membership_process['renew'] ) && in_array( absint( $membership_id ), array_map( 'absint', (array) $membership_process['renew'] ), true );
+	}
+
+	/**
+	 * Whether a paid order's PaymentIntent amount is built from the same inputs as its total, so the two can be compared.
+	 *
+	 * Only a plain one-time purchase qualifies. Subscriptions are priced by Stripe invoices, and upgrades, renewals and
+	 * team orders are priced by other paths. Read from the order and the member's server-side state, never from request input.
+	 *
+	 * @param array $order Order row (needs `ID`, `user_id`, `item_id` and `order_type`).
+	 * @return bool
+	 */
+	private function is_amount_checked_order( $order ) {
+		if ( 'paid' !== ( $order['order_type'] ?? '' ) || $this->is_team_order( $order['ID'] ) ) {
+			return false;
+		}
+
+		$upgrade_meta = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $order['ID'], 'is_proration_upgrade' );
+
+		if ( ! empty( $upgrade_meta['meta_value'] ) ) {
+			return false;
+		}
+
+		return ! $this->is_renewing_membership( urm_get_membership_process( $order['user_id'] ), $order['item_id'] );
 	}
 
 	/**
@@ -4975,6 +4995,14 @@ class StripeService {
 			if ( 'pending' !== $order['status'] ) {
 				$logger->info(
 					sprintf( '[Backfill][Stripe][OneTime] Order %d for PaymentIntent %s already has status "%s" — skipping.', $order['ID'], $payment_intent_id, $order['status'] ),
+					array( 'source' => 'urm-missed-payment-backfill' )
+				);
+				continue;
+			}
+
+			if ( $this->is_amount_checked_order( $order ) && ! $this->is_payment_intent_covering_order( $payment_intent, $order ) ) {
+				$logger->warning(
+					sprintf( '[Backfill][Stripe][OneTime] PaymentIntent %s paid less than order %d or in another currency — leaving it pending.', $payment_intent_id, $order['ID'] ),
 					array( 'source' => 'urm-missed-payment-backfill' )
 				);
 				continue;
