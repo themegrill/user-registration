@@ -116,3 +116,111 @@ ip_case(
 // REMOTE_ADDR itself.
 ip_case( 'missing REMOTE_ADDR', array(), array(), '' );
 ip_case( 'invalid REMOTE_ADDR', array( 'REMOTE_ADDR' => 'not-an-ip' ), array(), '' );
+
+// CIDR ranges (IPv4, IPv6, IPv4-mapped IPv6) and malformed CIDRs.
+ip_case(
+	'IPv4 CIDR matches proxy peer',
+	array(
+		'REMOTE_ADDR'          => '173.245.55.10',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7',
+	),
+	array( '173.245.48.0/20' ),
+	'198.51.100.7'
+);
+ip_case(
+	'IPv4 CIDR does not match peer outside subnet',
+	array(
+		'REMOTE_ADDR'          => '173.245.64.1',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7',
+	),
+	array( '173.245.48.0/20' ),
+	'173.245.64.1'
+);
+ip_case(
+	'IPv6 CIDR matches proxy peer',
+	array(
+		'REMOTE_ADDR'          => '2400:cb00:2048:1::c629:d7a2',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7',
+	),
+	array( '2400:cb00::/32' ),
+	'198.51.100.7'
+);
+ip_case(
+	'IPv6 CIDR does not match peer outside subnet',
+	array(
+		'REMOTE_ADDR'          => '2400:cb01::1',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7',
+	),
+	array( '2400:cb00::/32' ),
+	'2400:cb01::1'
+);
+ip_case(
+	'IPv4-mapped IPv6 peer matches IPv4 CIDR',
+	array(
+		'REMOTE_ADDR'          => '::ffff:10.0.0.5',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7',
+	),
+	array( '10.0.0.0/24' ),
+	'198.51.100.7'
+);
+ip_case(
+	'trusted CIDR hop in XFF is skipped',
+	array(
+		'REMOTE_ADDR'          => '10.0.0.1',
+		'HTTP_X_FORWARDED_FOR' => '9.9.9.9, 198.51.100.7, 10.25.3.4',
+	),
+	array( '10.0.0.0/8' ),
+	'198.51.100.7'
+);
+ip_case(
+	'IPv4 CIDR does not match IPv6 peer',
+	array(
+		'REMOTE_ADDR'          => '2001:db8::1',
+		'HTTP_X_FORWARDED_FOR' => '198.51.100.7',
+	),
+	array( '0.0.0.0/0' ),
+	'2001:db8::1'
+);
+ip_case(
+	'malformed CIDR prefix > 32 is ignored',
+	$forged,
+	array( '203.0.113.0/33' ),
+	$peer
+);
+ip_case(
+	'malformed CIDR negative prefix is ignored',
+	$forged,
+	array( '203.0.113.0/-1' ),
+	$peer
+);
+ip_case(
+	'malformed CIDR non-numeric prefix is ignored',
+	$forged,
+	array( '203.0.113.0/abc' ),
+	$peer
+);
+ip_case(
+	'malformed CIDR extra slash is ignored',
+	$forged,
+	array( '203.0.113.0/24/16' ),
+	$peer
+);
+ip_case(
+	'malformed IPv6 CIDR prefix > 128 is ignored',
+	array(
+		'REMOTE_ADDR'          => '2400:cb00::1',
+		'HTTP_X_FORWARDED_FOR' => '198.51.100.7',
+	),
+	array( '2400:cb00::/129' ),
+	'2400:cb00::1'
+);
+ip_case(
+	'all-trusted XFF hops fall back to REMOTE_ADDR instead of X-Real-IP',
+	array(
+		'REMOTE_ADDR'          => $lb,
+		'HTTP_X_FORWARDED_FOR' => '10.0.0.2, 10.0.0.3',
+		'HTTP_X_REAL_IP'       => '1.2.3.4',
+	),
+	array( '10.0.0.0/24' ),
+	$lb
+);

@@ -6463,20 +6463,74 @@ if ( ! function_exists( 'ur_get_ip_address' ) ) {
 		$trusted_proxies = array();
 
 		/**
-		 * Filters the IPs of reverse proxies trusted to set X-Forwarded-For / X-Real-IP.
+		 * Filters the IPs or CIDR ranges of reverse proxies trusted to set X-Forwarded-For / X-Real-IP.
 		 *
 		 * @since x.x.x
 		 *
-		 * @param string[] $trusted_proxies Trusted proxy IPs (IPv4 or IPv6). Default empty: no proxy is trusted.
+		 * @param string[] $trusted_proxies Trusted proxy IPs or CIDRs (IPv4 or IPv6). Default empty: no proxy is trusted.
 		 */
 		foreach ( (array) apply_filters( 'user_registration_trusted_proxies', array() ) as $proxy ) {
-			if ( is_string( $proxy ) && rest_is_ip_address( trim( $proxy ) ) ) {
-				$trusted_proxies[] = $pack( trim( $proxy ) );
+			if ( ! is_string( $proxy ) ) {
+				continue;
 			}
+
+			$entry = trim( $proxy );
+
+			if ( false === strpos( $entry, '/' ) ) {
+				if ( rest_is_ip_address( $entry ) ) {
+					$packed            = $pack( $entry );
+					$trusted_proxies[] = array( $packed, str_repeat( "\xff", strlen( $packed ) ) );
+				}
+				continue;
+			}
+
+			$parts = explode( '/', $entry );
+			if ( 2 !== count( $parts ) || ! preg_match( '/^\d+$/', trim( $parts[1] ) ) ) {
+				continue;
+			}
+
+			$subnet_ip = rest_is_ip_address( trim( $parts[0] ) );
+			if ( ! $subnet_ip ) {
+				continue;
+			}
+
+			$raw_subnet = inet_pton( $subnet_ip );
+			$prefix     = (int) trim( $parts[1] );
+
+			// Normalize IPv4-mapped IPv6 CIDRs (::ffff:a.b.c.d/96..128) to 4-byte IPv4 so they match $pack().
+			if ( 16 === strlen( $raw_subnet ) && 0 === strncmp( $raw_subnet, "\0\0\0\0\0\0\0\0\0\0\xff\xff", 12 ) ) {
+				if ( $prefix < 96 || $prefix > 128 ) {
+					continue;
+				}
+				$raw_subnet = substr( $raw_subnet, 12 );
+				$prefix    -= 96;
+			}
+
+			$max_bits = 8 * strlen( $raw_subnet );
+			if ( $prefix < 0 || $prefix > $max_bits ) {
+				continue;
+			}
+
+			$full_bytes = intdiv( $prefix, 8 );
+			$rem_bits   = $prefix % 8;
+			$mask       = str_repeat( "\xff", $full_bytes );
+			if ( $rem_bits > 0 ) {
+				$mask .= chr( ( 0xff << ( 8 - $rem_bits ) ) & 0xff );
+			}
+			$mask              = str_pad( $mask, strlen( $raw_subnet ), "\x00" );
+			$trusted_proxies[] = array( $raw_subnet & $mask, $mask );
 		}
 
 		$is_trusted = static function ( $ip ) use ( $pack, $trusted_proxies ) {
-			return in_array( $pack( $ip ), $trusted_proxies, true );
+			$packed = $pack( $ip );
+
+			foreach ( $trusted_proxies as $rule ) {
+				if ( strlen( $packed ) === strlen( $rule[0] ) && ( $packed & $rule[1] ) === $rule[0] ) {
+					return true;
+				}
+			}
+
+			return false;
 		};
 
 		if ( ! $is_trusted( $remote_addr ) ) {
@@ -6498,6 +6552,9 @@ if ( ! function_exists( 'ur_get_ip_address' ) ) {
 					return $hop_ip;
 				}
 			}
+
+			// Do not fall through to X-Real-IP when every X-Forwarded-For hop was a trusted proxy.
+			return $remote_addr;
 		}
 
 		if ( isset( $_SERVER['HTTP_X_REAL_IP'] ) ) {
