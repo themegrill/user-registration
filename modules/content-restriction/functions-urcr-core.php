@@ -545,13 +545,15 @@ function urcr_is_allow_access( $logic_map = array(), $target_post = null ) {
 					break;
 
 				case 'profile_completeness':
-					$completeness_level = get_user_meta( $user->ID, 'user_registration_profile_completeness_completed_profile_percentage', true );
-					$completeness_level = ! empty( $completeness_level ) ? (int) $completeness_level : 100;
+					if ( $user->ID ) {
+						// A missing value means the profile was never scored, so it counts as 0.
+						$completeness_level = (int) get_user_meta( $user->ID, 'user_registration_profile_completeness_completed_profile_percentage', true );
 
-					$threshold = ! empty( $logic_map['value'] ) ? (int) $logic_map['value'] : 0;
+						$threshold = ! empty( $logic_map['value'] ) ? (int) $logic_map['value'] : 0;
 
-					if ( $completeness_level > $threshold ) {
-						return true;
+						if ( $completeness_level > $threshold ) {
+							return true;
+						}
 					}
 
 					break;
