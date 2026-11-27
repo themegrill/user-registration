@@ -210,16 +210,16 @@
         },
         {
             "name": "themegrill/themegrill-sdk",
-            "version": "1.0.4",
+            "version": "1.0.6",
             "source": {
                 "type": "git",
                 "url": "https://github.com/themegrill/themegrill-sdk.git",
-                "reference": "2787bc7bcd0c5d6bf470c986682fd74b390d34c3"
+                "reference": "31d32cd3b64d69e94cc27119ea4cbafcc6e3a4b3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/themegrill/themegrill-sdk/zipball/2787bc7bcd0c5d6bf470c986682fd74b390d34c3",
-                "reference": "2787bc7bcd0c5d6bf470c986682fd74b390d34c3",
+                "url": "https://api.github.com/repos/themegrill/themegrill-sdk/zipball/31d32cd3b64d69e94cc27119ea4cbafcc6e3a4b3",
+                "reference": "31d32cd3b64d69e94cc27119ea4cbafcc6e3a4b3",
                 "shasum": ""
             },
             "require": {
@@ -243,9 +243,9 @@
             "description": "A lightweight SDK that provides common functionality and shared features for ThemeGrill themes and plugins.",
             "support": {
                 "issues": "https://github.com/themegrill/themegrill-sdk/issues",
-                "source": "https://github.com/themegrill/themegrill-sdk/tree/v1.0.4"
+                "source": "https://github.com/themegrill/themegrill-sdk/tree/v1.0.6"
             },
-            "time": "2026-06-12T10:51:17+00:00"
+            "time": "2026-11-27T09:14:34+00:00"
         }
     ],
     "packages-dev": [
@@ -4801,5 +4801,5 @@
     "platform-overrides": {
         "php": "7.4.3"
     },
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }

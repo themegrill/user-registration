@@ -1,3 +1,6 @@
+= 5.3.3    - 27/11/2026 =
+* Fix      - Images in admin notices now show correctly.
+
 = 5.3.2    - 05/11/2026 =
 * Feature  - AI assistants can read membership plans, subscriptions and payments.
 * Enhance  - AI assistants can filter members by approval status and email verification.
