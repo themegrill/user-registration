@@ -1622,14 +1622,13 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 			$smtp         = self::detect_smtp( $failures, false );
 			$smtp_status  = isset( $smtp['status'] ) ? (string) $smtp['status'] : 'none';
 			$smart_active = is_plugin_active( 'smart-smtp/smart-smtp.php' );
-			$confirmation = self::get_email_confirmation_info();
 			$from_info    = self::get_from_address_info( self::get_site_domain(), (string) get_option( 'admin_email', '' ) );
 
 			$active_issues = array();
 			if ( ur_option_checked( 'user_registration_email_setting_disable_email' ) ) {
 				$active_issues[] = 'emails_disabled';
 			}
-			if ( ! empty( $confirmation['disabled'] ) ) {
+			if ( ! ur_option_checked( 'user_registration_enable_email_confirmation', true ) ) {
 				$active_issues[] = 'confirmation_disabled';
 			}
 			if ( 'token-expired' === $smtp_status ) {
