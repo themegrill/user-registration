@@ -469,3 +469,27 @@ $GLOBALS['mock_stale_cache'][ $race_key ] = array(
 );
 UR_Login_Rate_Limiter::consume_attempt( 'race_user', $race_ip );
 security_assert( 3 === get_transient( $race_key )['attempts'], 'Locked read ignores stale cached counter and keeps the concurrent increment' );
+
+// 12b. Same stale-cache guarantee for the lockout transition and the refund path.
+$stale_zero = array(
+	'attempts'     => 0,
+	'lockouts'     => 0,
+	'locked_until' => 0,
+);
+$GLOBALS['mock_stale_cache'][ $race_key ] = $stale_zero;
+UR_Login_Rate_Limiter::refund_attempt( 'race_user', $race_ip );
+security_assert( 2 === get_transient( $race_key )['attempts'], 'Locked refund ignores stale cached counter' );
+
+$lock_ip  = '203.0.113.211';
+$lock_key = UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( $lock_ip );
+set_transient(
+	$lock_key,
+	array(
+		'attempts'     => UR_Login_Rate_Limiter::DEFAULT_IP_MAX_ATTEMPTS,
+		'lockouts'     => 0,
+		'locked_until' => 0,
+	),
+	900
+);
+$GLOBALS['mock_stale_cache'][ $lock_key ] = $stale_zero;
+security_assert( true === UR_Login_Rate_Limiter::finalize_failed_attempt( 'race_user_2', $lock_ip ), 'Locked lockout transition ignores stale cached counter' );
