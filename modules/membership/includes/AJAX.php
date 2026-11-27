@@ -1902,7 +1902,6 @@ class AJAX {
 		$data              = array(
 			'current_subscription_id' => absint( $_POST['current_subscription_id'] ),
 			'selected_membership_id'  => absint( $_POST['selected_membership_id'] ),
-			'current_membership_id'   => absint( $_POST['current_membership_id'] ),
 			'selected_pg'             => sanitize_text_field( $_POST['selected_pg'] ),
 			'ur_authorize_net'        => $ur_authorize_data,
 		);
@@ -1935,9 +1934,11 @@ class AJAX {
 		$response                    = $upgrade_membership_response['response'];
 
 		if ( $response['status'] ) {
-			$selected_pg = $data['selected_pg'];
-			$member_id   = $upgrade_membership_response['extra']['member_id'];
-			$member      = get_userdata( $member_id );
+			// The locked upgrade reports the plan it really upgraded from; the submitted ID is never used.
+			$data['current_membership_id'] = $upgrade_membership_response['extra']['current_membership_id'];
+			$selected_pg                   = $data['selected_pg'];
+			$member_id                     = $upgrade_membership_response['extra']['member_id'];
+			$member                        = get_userdata( $member_id );
 
 			// Get membership type for logging
 			$membership_repository = new MembershipRepository();

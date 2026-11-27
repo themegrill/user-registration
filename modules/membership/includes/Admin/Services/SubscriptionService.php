@@ -596,6 +596,17 @@ class SubscriptionService {
 		// Always derive the current membership from the verified subscription, not the client-submitted value.
 		$data['current_membership_id'] = (int) $subscription['item_id'];
 
+		// Re-check eligibility under the lock so the path is validated against the same state that is executed.
+		$eligibility = $this->can_upgrade( $data );
+		if ( empty( $eligibility['status'] ) ) {
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => $eligibility['message'],
+				),
+			);
+		}
+
 		$user                                      = get_userdata( $subscription['user_id'] );
 		$payment_method                            = $data['selected_pg'];
 		$membership                                = $this->membership_repository->get_single_membership_by_ID( $subscription['item_id'] );
@@ -780,6 +791,7 @@ class SubscriptionService {
 				'transaction_id'           => $orders_data['orders_data']['transaction_id'],
 				'order_id'                 => $order['ID'],
 				'updated_membership_title' => $selected_membership_details['post_title'],
+				'current_membership_id'    => $data['current_membership_id'],
 			),
 			'response' => $response,
 		);
@@ -862,13 +874,27 @@ class SubscriptionService {
 	}
 
 	/**
-	 * validate if a membership can validate from current to another
+	 * Validate that the current user may upgrade their own subscription to the selected membership.
 	 *
-	 * @param $data
+	 * The current plan is read from the owned subscription; any submitted current_membership_id is ignored.
 	 *
-	 * @return array
+	 * @param array $data Request data; needs current_subscription_id and selected_membership_id.
+	 *
+	 * @return array Array with a boolean `status` and, on failure, a `message`.
 	 */
 	public function can_upgrade( $data ) {
+		$subscription = $this->subscription_repository->retrieve( $data['current_subscription_id'] ?? 0 );
+
+		if ( empty( $subscription ) || get_current_user_id() !== (int) $subscription['user_id'] ) {
+			return array(
+				'status'  => false,
+				'message' => __( 'You do not have permission to upgrade this subscription.', 'user-registration' ),
+			);
+		}
+
+		// The upgrade path must come from the verified subscription, never the client-submitted membership ID.
+		$data['current_membership_id'] = (int) $subscription['item_id'];
+
 		$membership_service       = new MembershipService();
 		$upgrade_service          = new UpgradeMembershipService();
 		$membership_details       = $membership_service->get_membership_details( $data['current_membership_id'] );
@@ -904,15 +930,6 @@ class SubscriptionService {
 			return array(
 				'status'  => false,
 				'message' => __( 'Sorry, you cannot upgrade to the selected plan.', 'user-registration' ),
-			);
-		}
-
-		$subscription                = $this->subscription_repository->retrieve( $data['current_subscription_id'] );
-
-		if ( empty( $subscription ) || (int) $subscription['user_id'] !== get_current_user_id() ) {
-			return array(
-				'status'  => false,
-				'message' => __( 'You do not have permission to upgrade this subscription.', 'user-registration' ),
 			);
 		}
 
