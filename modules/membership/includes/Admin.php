@@ -554,6 +554,23 @@ if ( ! class_exists( 'Admin' ) ) :
 			return $success_params;
 		}
 
+		/**
+		 * Drop the price-driving keys a first registration must never take from the browser.
+		 *
+		 * A first registration is never an upgrade, and `team_id` is only ever set from the server
+		 * response, so none of these may reach `PaymentService::get_payment_data()` from `members_data`.
+		 *
+		 * @since x.x.x
+		 *
+		 * @param array $data Registration data decoded from the client `members_data`.
+		 * @return array Data without the client-supplied price keys.
+		 */
+		private function remove_client_price_fields( $data ) {
+			unset( $data['upgrade'], $data['chargeable_amount'], $data['remaining_subscription_value'], $data['team_id'] );
+
+			return $data;
+		}
+
 		public function process_membership_after_registration( $success_params, $valid_form_data, $form_id, $user_id ) {
 
 			// module active
@@ -599,6 +616,8 @@ if ( ! class_exists( 'Admin' ) ) :
 
 			// Tax comes from the submitted country and the tax settings, never from client members_data.
 			unset( $data['tax_rate'], $data['tax_calculation_method'] );
+
+			$data = $this->remove_client_price_fields( $data );
 			foreach ( $valid_form_data as $field_data ) {
 				if ( isset( $field_data->extra_params['field_key'] ) && 'country' === $field_data->extra_params['field_key'] ) {
 					$data = array_merge( $data, urm_get_tax_details( $field_data->value ) );
