@@ -732,6 +732,7 @@ function urcr_apply_content_restriction( $actions, &$target_post = null ) {
 		if ( 'message' === $action['type'] ) {
 			$message = ! empty( $action['message'] ) ? urldecode( $action['message'] ) : get_option( 'user_registration_content_restriction_message', '' );
 			$message = apply_filters( 'user_registration_process_smart_tags', $message );
+			$message = wp_kses_post( $message ); // Sanitise before shortcodes render, their markup is trusted.
 			if ( function_exists( 'apply_shortcodes' ) ) {
 				$message = apply_shortcodes( $message );
 			} else {

@@ -821,6 +821,7 @@ if ( ! function_exists( 'urwc_handle_shop_restriction' ) ) {
 			: get_option( 'user_registration_content_restriction_message', '' );
 
 		$message = apply_filters( 'user_registration_process_smart_tags', $message );
+		$message = wp_kses_post( $message ); // Sanitise before shortcodes render, their markup is trusted.
 
 		$message = do_shortcode( $message );
 
