@@ -245,7 +245,7 @@ security_assert( 1 === Addon_Abilities::$runs && true === $on['needs_confirmatio
 $confirmed = $switch( array( 'on' => true ) + array( 'confirm_token' => $on['confirm_token'] ) );
 security_assert( 2 === Addon_Abilities::$runs && true === $confirmed['ok'], 'The risky request runs once it is confirmed' );
 
-// Content rules ask for a confirmation only when an active rule covers the whole site.
+// Content rules ask for a confirmation by effect: when the rule is on after the change, or was on before it.
 $whole_site = array( array( 'type' => 'whole_site' ) );
 $one_page   = array(
 	array(
@@ -254,7 +254,7 @@ $one_page   = array(
 	),
 );
 security_assert( true === URCR_Abilities::needs_confirmation( array( 'targets' => $whole_site ) ), 'A new whole-site rule needs a confirmation' );
-security_assert( false === URCR_Abilities::needs_confirmation( array( 'targets' => $one_page ) ), 'A new rule for one page runs straight away' );
+security_assert( true === URCR_Abilities::needs_confirmation( array( 'targets' => $one_page ) ), 'A new rule for one page needs a confirmation too' );
 $GLOBALS['rule_posts'][42] = (object) array(
 	'post_type'    => 'urcr_access_rule',
 	'post_status'  => 'publish',
@@ -265,30 +265,25 @@ $GLOBALS['rule_posts'][42] = (object) array(
 		)
 	),
 );
-security_assert(
-	true === URCR_Abilities::needs_confirmation(
+security_assert( true === URCR_Abilities::needs_confirmation( array( 'id' => 42, 'enabled' => true ) ), 'Switching a rule on needs a confirmation' );
+security_assert( false === URCR_Abilities::needs_confirmation( array( 'id' => 42, 'enabled' => false ) ), 'Switching a rule that is already off, off again, runs straight away' );
+security_assert( false === URCR_Abilities::needs_confirmation( array( 'id' => 42, 'targets' => $one_page ) ), 'Changing a switched-off rule runs straight away' );
+$GLOBALS['rule_posts'][43] = (object) array(
+	'post_type'    => 'urcr_access_rule',
+	'post_status'  => 'publish',
+	'post_content' => wp_json_encode(
 		array(
-			'id'      => 42,
-			'enabled' => true,
+			'enabled'         => true,
+			'target_contents' => $whole_site,
 		)
 	),
-	'Switching on a whole-site rule needs a confirmation'
 );
-security_assert(
-	false === URCR_Abilities::needs_confirmation(
-		array(
-			'id'      => 42,
-			'enabled' => false,
-		)
-	),
-	'Switching a rule off runs straight away'
-);
-security_assert(
-	false === URCR_Abilities::needs_confirmation(
-		array(
-			'id'      => 42,
-			'targets' => $one_page,
-		)
-	),
-	'Moving a switched-off rule to one page runs straight away'
-);
+security_assert( true === URCR_Abilities::needs_confirmation( array( 'id' => 43, 'enabled' => false ) ), 'Switching a rule that is on off needs a confirmation, it can open the site up' );
+security_assert( true === URCR_Abilities::needs_confirmation( array( 'id' => 43, 'targets' => $one_page ) ), 'Changing a rule that is on needs a confirmation' );
+
+// Settings and deletes live in a class that is stubbed here, so these read its source.
+$data_php = file_get_contents( dirname( __DIR__, 2 ) . '/includes/class-ur-abilities-data.php' );
+security_assert( preg_match( "/LOCKED_SETTING_TABS = array\([^)]*'payment'/", $data_php ), 'The Payment tab is never changed by AI' );
+security_assert( false !== strpos( $data_php, 'return ! in_array( $id, $safe, true ) || in_array( $id, $risky, true );' ) && false === strpos( $data_php, "strpos( \$id, 'role' )" ), 'Every setting shows a preview unless it is on the harmless list, not by name' );
+security_assert( preg_match( "/SAFE_SETTINGS = array\(\);/", $data_php ), 'The harmless list starts empty' );
+security_assert( false !== strpos( $data_php, 'user_can( $users[0], ' . chr( 39 ) . 'manage_options' . chr( 39 ) . ' )' ) && false !== strpos( $data_php, 'You cannot delete an administrator.' ), 'Deleting an administrator is refused, like approve and deny' );

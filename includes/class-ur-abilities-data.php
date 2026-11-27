@@ -15,8 +15,11 @@ class UR_Abilities_Data {
 	/** Setting field types AI assistants may change. */
 	const SETTING_TYPES = array( 'text', 'textarea', 'email', 'number', 'select', 'radio-group', 'multiselect', 'toggle', 'checkbox', 'single_select_page', 'color', 'tinymce' );
 
-	/** Settings tabs that are never changed by AI: the license, and tools that act on the whole site at once. */
-	const LOCKED_SETTING_TABS = array( 'license', 'import_export', 'tools' );
+	/** Settings tabs that are never changed by AI: the license, payments (where money goes) and tools that act on the whole site at once. */
+	const LOCKED_SETTING_TABS = array( 'license', 'payment', 'import_export', 'tools' );
+
+	/** Settings that may change without a preview. Empty on purpose: every other setting shows a preview first. */
+	const SAFE_SETTINGS = array();
 
 	/** Settings that can lock people out or open the site up, so a change always shows a preview first. */
 	const RISKY_SETTINGS = array(
@@ -1248,6 +1251,11 @@ class UR_Abilities_Data {
 
 		if ( ! ( new UR_Admin_User_Manager( $users[0] ) )->can_be_deleted() ) {
 			return new WP_Error( 'ur_abilities_forbidden', __( 'You cannot delete this member, for example your own account.', 'user-registration' ), array( 'status' => 403 ) );
+		}
+
+		// Like approve and deny, never remove an administrator: that could lock everyone out of the site.
+		if ( user_can( $users[0], 'manage_options' ) ) {
+			return new WP_Error( 'ur_abilities_forbidden', __( 'You cannot delete an administrator.', 'user-registration' ), array( 'status' => 403 ) );
 		}
 
 		$has_content = UR_Admin_User_Manager::users_have_content( array( $users[0]->ID ) );
@@ -3325,6 +3333,15 @@ class UR_Abilities_Data {
 		$id = (string) ( $input['id'] ?? '' );
 
 		/**
+		 * Filters the settings that may change without a preview first.
+		 *
+		 * @since xx.xx.xx
+		 *
+		 * @param array $ids Setting IDs.
+		 */
+		$safe = (array) apply_filters( 'user_registration_ability_safe_settings', self::SAFE_SETTINGS );
+
+		/**
 		 * Filters the settings whose change always shows a preview first.
 		 *
 		 * @since xx.xx.xx
@@ -3333,7 +3350,8 @@ class UR_Abilities_Data {
 		 */
 		$risky = (array) apply_filters( 'user_registration_ability_risky_settings', self::RISKY_SETTINGS );
 
-		return in_array( $id, $risky, true ) || false !== strpos( $id, 'role' ) || false !== strpos( $id, 'page_id' );
+		// Safe by default: a setting shows a preview unless it is on the harmless list.
+		return ! in_array( $id, $safe, true ) || in_array( $id, $risky, true );
 	}
 
 	/**

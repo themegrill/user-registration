@@ -206,7 +206,7 @@ class URCR_Abilities {
 				),
 				'create-content-rule'     => array(
 					'label'       => __( 'Create content rule', 'user-registration' ),
-					'description' => __( 'Create a content access rule, like the Content Access Rules screen. A rule that covers the whole site shows a preview first.', 'user-registration' ),
+					'description' => __( 'Create a content access rule, like the Content Access Rules screen. A rule that is on shows a preview first, because it changes who can see the pages it covers.', 'user-registration' ),
 					'level'       => 'write',
 					'confirm'     => array( __CLASS__, 'needs_confirmation' ),
 					'input'       => $fields,
@@ -218,7 +218,7 @@ class URCR_Abilities {
 				),
 				'update-content-rule'     => array(
 					'label'       => __( 'Update content rule', 'user-registration' ),
-					'description' => __( 'Change a content access rule, like the Content Access Rules screen. Only the given parts change. A change that leaves an active rule covering the whole site shows a preview first.', 'user-registration' ),
+					'description' => __( 'Change a content access rule, like the Content Access Rules screen. Only the given parts change. Changing a rule that is on, or leaving it on, shows a preview first.', 'user-registration' ),
 					'level'       => 'write',
 					'confirm'     => array( __CLASS__, 'needs_confirmation' ),
 					'input'       => array( 'id' => $id ) + $fields,
@@ -230,7 +230,7 @@ class URCR_Abilities {
 				),
 				'set-content-rule-status' => array(
 					'label'       => __( 'Switch content rule on or off', 'user-registration' ),
-					'description' => __( 'Switch a content access rule on or off. Switching a rule off is the safe way to remove its effect. Switching on a rule that covers the whole site shows a preview first.', 'user-registration' ),
+					'description' => __( 'Switch a content access rule on or off. Switching a rule on or off changes who can see the pages it covers, so it shows a preview first.', 'user-registration' ),
 					'level'       => 'write',
 					'confirm'     => array( __CLASS__, 'needs_confirmation' ),
 					'input'       => array(
@@ -380,7 +380,7 @@ class URCR_Abilities {
 	}
 
 	/**
-	 * Whether a create, update or switch on leaves an active rule covering the whole site.
+	 * Whether a create, update or switch changes the effect of a rule that is on, or leaves one on.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -391,17 +391,14 @@ class URCR_Abilities {
 		$current = ! empty( $input['id'] ) ? self::rule_content( $input['id'] ) : array();
 		$enabled = array_key_exists( 'enabled', $input ) ? (bool) $input['enabled'] : ( $current ? urcr_is_access_rule_enabled( $current ) : true );
 
-		if ( isset( $input['targets'] ) ) {
-			$whole_site = in_array( 'whole_site', wp_list_pluck( $input['targets'], 'type' ), true );
-		} else {
-			$whole_site = in_array( 'whole_site', wp_list_pluck( $current['target_contents'] ?? array(), 'type' ), true );
-		}
+		$was_on = $current && urcr_is_access_rule_enabled( $current );
 
-		return $enabled && $whole_site;
+		// Confirm by effect: a rule that is on after the change, or was on before it, changes who gets in.
+		return $enabled || $was_on;
 	}
 
 	/**
-	 * Describe a whole-site rule that is about to be saved.
+	 * Describe a rule that is about to be saved.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -417,13 +414,13 @@ class URCR_Abilities {
 
 		return sprintf(
 			/* translators: %s: rule title. */
-			__( 'Save the rule "%s", which covers the whole site. Every page is checked against it, so visitors who do not meet it can be kept out of the entire site.', 'user-registration' ),
+			__( 'Save the rule "%s". A rule that is on changes who can see the pages it covers, and one that covers the whole site is checked on every page.', 'user-registration' ),
 			$input['title'] ?? ( ! empty( $input['id'] ) ? get_the_title( $input['id'] ) : '' )
 		);
 	}
 
 	/**
-	 * Describe switching on a whole-site rule.
+	 * Describe switching a rule on or off.
 	 *
 	 * @since xx.xx.xx
 	 *
@@ -438,8 +435,9 @@ class URCR_Abilities {
 		}
 
 		return sprintf(
-			/* translators: %s: rule title. */
-			__( 'Switch on the rule "%s", which covers the whole site. Every page is checked against it, so visitors who do not meet it can be kept out of the entire site.', 'user-registration' ),
+			/* translators: 1: on or off, 2: rule title. */
+			__( 'Switch %1$s the rule "%2$s". This changes who can see the pages it covers, and switching a rule off can open them to visitors it kept out.', 'user-registration' ),
+			! empty( $input['enabled'] ) ? __( 'on', 'user-registration' ) : __( 'off', 'user-registration' ),
 			get_the_title( $input['id'] )
 		);
 	}
