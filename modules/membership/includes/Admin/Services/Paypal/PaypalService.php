@@ -519,6 +519,22 @@ class PaypalService {
 	}
 
 	/**
+	 * Whether a membership is already cancelled and still bound to the given PayPal subscription.
+	 *
+	 * @param int|string $subscription_id Membership subscription row ID.
+	 * @param string     $paypal_subscr_id PayPal subscription ID the IPN named.
+	 *
+	 * @return bool
+	 */
+	private function is_cancelled_with_paypal_id( $subscription_id, $paypal_subscr_id ) {
+		$current = $this->members_subscription_repository->get_subscription_data_by_subscription_id( $subscription_id );
+
+		return ! empty( $current )
+			&& 'canceled' === ( $current['status'] ?? '' )
+			&& (string) ( $current['subscription_id'] ?? '' ) === $paypal_subscr_id;
+	}
+
+	/**
 	 * Handle membership paypal ipn
 	 *
 	 * @param $data
@@ -675,7 +691,39 @@ class PaypalService {
 			return;
 		}
 
+		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything, whatever its type.
+		if ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) {
+			PaymentGatewayLogging::log_transaction_failure(
+				'paypal',
+				esc_html__( 'IPN ignored: recipient emails do not match', 'user-registration' ),
+				array(
+					'txn_type'        => $txn_type,
+					'subscription_id' => $subscription_id,
+					'member_id'       => $member_id,
+				)
+			);
+			return;
+		}
+
 		if ( 'subscr_cancel' === $txn_type ) { // handle cancel ipn.
+			$paypal_subscr_id = (string) ( $subscription['subscription_id'] ?? '' );
+			// Only a membership with a stored PayPal ID can be cancelled, and only by that subscription; one-time memberships never have one.
+			if ( '' === $paypal_subscr_id || ( $data['subscr_id'] ?? '' ) !== $paypal_subscr_id ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'Cancellation ignored: no stored PayPal subscription ID or it does not match this membership',
+					array(
+						'error_code'      => 'IPN_SUBSCR_ID_MISMATCH',
+						'member_id'       => $member_id,
+						'subscription_id' => $subscription_id,
+					)
+				);
+				return;
+			}
+			// PayPal retries IPNs and a member may already have cancelled on the site.
+			if ( 'canceled' === ( $subscription['status'] ?? '' ) ) {
+				return;
+			}
 			PaymentGatewayLogging::log_subscription_cancellation(
 				'paypal',
 				'Subscription cancellation IPN received from PayPal',
@@ -687,15 +735,32 @@ class PaypalService {
 					'subscr_id'           => $data['subscr_id'] ?? 'N/A',
 				)
 			);
-			// updating the status to cancel it for sure
-			$is_updated = $this->members_subscription_repository->update(
-				$subscription_id,
-				array(
-					'status' => 'canceled',
-				)
-			);
+			// The write only lands while the row still carries this PayPal ID, so an upgrade between the check and the write is not cancelled.
+			$is_updated = $this->members_subscription_repository->update_if_subscription_id_matches( $subscription_id, array( 'status' => 'canceled' ), $paypal_subscr_id );
 
-			if ( $is_updated ) {
+			if ( false === $is_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'Cancellation not applied: database error',
+					array(
+						'error_code'      => 'IPN_CANCEL_DB_ERROR',
+						'member_id'       => $member_id,
+						'subscription_id' => $subscription_id,
+					)
+				);
+			} elseif ( 0 === $is_updated && $this->is_cancelled_with_paypal_id( $subscription_id, $paypal_subscr_id ) ) {
+				return; // A concurrent retry of this same cancel got there first.
+			} elseif ( 0 === $is_updated ) {
+				PaymentGatewayLogging::log_error(
+					'paypal',
+					'Cancellation not applied: the membership moved to another PayPal subscription',
+					array(
+						'error_code'      => 'IPN_STALE_CANCEL',
+						'member_id'       => $member_id,
+						'subscription_id' => $subscription_id,
+					)
+				);
+			} else {
 				PaymentGatewayLogging::log_general(
 					'paypal',
 					'Subscription status changed to canceled',
@@ -714,20 +779,6 @@ class PaypalService {
 		}
 		$currency_meta  = $this->orders_repository->get_order_meta_by_order_id_and_meta_key( $latest_order['ID'], 'local_currency' );
 		$order_currency = ! empty( $currency_meta['meta_value'] ) ? $currency_meta['meta_value'] : get_option( 'user_registration_payment_currency', 'USD' );
-
-		// The notify URL is set in the payment form, so a verified IPN meant for someone else's PayPal account can name this member's order. It must not change anything.
-		if ( in_array( $txn_type, array( 'subscr_signup', 'web_accept', 'subscr_payment' ), true )
-			&& ( empty( $receiver_email ) || ! is_email( $receiver_email ) || strtolower( $data['business'] ?? '' ) !== strtolower( trim( $receiver_email ) ) ) ) {
-			PaymentGatewayLogging::log_transaction_failure(
-				'paypal',
-				esc_html__( 'Payment ignored: recipient emails do not match', 'user-registration' ),
-				array(
-					'subscription_id' => $subscription_id,
-					'member_id'       => $member_id,
-				)
-			);
-			return;
-		}
 
 		// return if first ipn received, change the status of order and subscription to complete and active respectively.
 		if ( 'subscr_signup' === $txn_type || 'web_accept' === $txn_type ) {
