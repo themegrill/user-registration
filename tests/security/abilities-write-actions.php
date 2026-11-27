@@ -294,3 +294,8 @@ foreach ( array( '/includes/class-ur-abilities.php', '/modules/content-restricti
 	preg_match_all( "/'caps'\s*=>\s*array\(([^)]*)\)/", file_get_contents( dirname( __DIR__, 2 ) . $abilities_file ), $declared );
 	security_assert( ! preg_match( '/promote_users|manage_options|install_plugins/', implode( ' ', $declared[1] ) ), $abilities_file . ' declares no admin right in caps' );
 }
+
+// A plan update that fails to sync with Stripe puts the plan back. The service needs a live site, so this reads its source.
+$plan_php = file_get_contents( dirname( __DIR__, 2 ) . '/modules/membership/includes/Admin/Services/MembershipService.php' );
+security_assert( 2 === substr_count( $plan_php, '$this->restore_plan( $before );' ), 'Both Stripe failures, an answer without success and an exception, put the plan back' );
+security_assert( 1 === preg_match( '/snapshot_plan\( \$data \);\s+\$updated_id = wp_insert_post\(/', $plan_php ), 'The plan is remembered right before it is saved' );

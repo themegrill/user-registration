@@ -1130,6 +1130,9 @@ class MembershipService {
 			}
 		}
 
+		// Remember the plan as it is now, so a failed Stripe sync can put it back.
+		$before = $this->snapshot_plan( $data );
+
 		$updated_id = wp_insert_post( $data['post_data'] );
 
 		if ( ! $updated_id ) {
@@ -1159,12 +1162,16 @@ class MembershipService {
 				);
 
 				if ( empty( $stripe_result['success'] ) ) {
+					$this->restore_plan( $before );
+
 					return array(
 						'status'  => false,
 						'message' => $stripe_result['message'] ?? __( 'Could not update product/price in Stripe.', 'user-registration' ),
 					);
 				}
 			} catch ( \Exception $e ) {
+				$this->restore_plan( $before );
+
 				return array(
 					'status'  => false,
 					'message' => $e->getMessage(),
@@ -1181,6 +1188,57 @@ class MembershipService {
 			'status'        => true,
 			'membership_id' => $updated_id,
 		);
+	}
+
+	/**
+	 * Remember a plan and the meta an update is about to change.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $data Plan data: post_data (with the ID) and post_meta_data.
+	 * @return array The post, and each meta value with whether it existed.
+	 */
+	private function snapshot_plan( $data ) {
+		$id     = isset( $data['post_data']['ID'] ) ? absint( $data['post_data']['ID'] ) : 0;
+		$before = array(
+			'post' => $id ? get_post( $id, ARRAY_A ) : null,
+			'meta' => array(),
+		);
+
+		foreach ( (array) ( $data['post_meta_data'] ?? array() ) as $datum ) {
+			$before['meta'][ $datum['meta_key'] ] = array(
+				'exists' => $id && metadata_exists( 'post', $id, $datum['meta_key'] ),
+				'value'  => $id ? get_post_meta( $id, $datum['meta_key'], true ) : '',
+			);
+		}
+
+		return $before;
+	}
+
+	/**
+	 * Put a plan back as it was before a failed update, so it matches Stripe again.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $before Result of snapshot_plan().
+	 */
+	private function restore_plan( $before ) {
+		if ( empty( $before['post']['ID'] ) ) {
+			return;
+		}
+
+		$id = (int) $before['post']['ID'];
+
+		wp_update_post( wp_slash( $before['post'] ) );
+
+		foreach ( $before['meta'] as $key => $old ) {
+			if ( $old['exists'] ) {
+				// wp_slash() offsets the wp_unslash() in update_post_meta(), which would break nested JSON strings.
+				update_post_meta( $id, $key, wp_slash( $old['value'] ) );
+			} else {
+				delete_post_meta( $id, $key );
+			}
+		}
 	}
 
 	/**
