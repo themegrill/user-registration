@@ -285,6 +285,11 @@ class UR_Form_Handler {
 						}
 					}
 
+					// Self-service password changes must go through the Change Password flow, never profile save.
+					if ( 'user_pass' === $new_key ) {
+						continue;
+					}
+
 					if ( in_array( $new_key, ur_get_user_table_fields() ) ) {
 
 						if ( 'display_name' === $new_key ) {
