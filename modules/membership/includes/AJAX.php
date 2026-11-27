@@ -959,10 +959,13 @@ class AJAX {
 					$previous_subscription = json_decode( $previous_subscription, true );
 					$previous_order        = json_decode( get_user_meta( $member_id, 'urm_previous_order_data', true ), true );
 					$subscription_service  = new SubscriptionService();
-					$subscription_service->cancel_subscription( is_array( $previous_order ) ? $previous_order : array(), $previous_subscription, true );
-					delete_user_meta( $member_id, 'urm_next_subscription_data' );
-					delete_user_meta( $member_id, 'urm_previous_subscription_data' );
-					delete_user_meta( $member_id, 'urm_previous_order_data' );
+					$cancel_result = $subscription_service->cancel_subscription( is_array( $previous_order ) ? $previous_order : array(), $previous_subscription, true );
+					if ( ! empty( $cancel_result['status'] ) || empty( $previous_subscription['subscription_id'] ) ) {
+						delete_user_meta( $member_id, 'urm_next_subscription_data' );
+						delete_user_meta( $member_id, 'urm_previous_subscription_data' );
+						delete_user_meta( $member_id, 'urm_previous_order_data' );
+						delete_user_meta( $member_id, 'urm_stripe_replaced_subscription' );
+					}
 				}
 			}
 
