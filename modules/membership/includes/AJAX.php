@@ -2276,7 +2276,30 @@ class AJAX {
 		$data['start_date'] = date( 'Y-m-d' );
 		$data['username']   = $member->user_login;
 
+		// Refuse a repeat purchase before any coupon use is claimed or order is created, so no live discounted order is left behind.
+		if ( 'free' !== $data['payment_method'] && in_array( $data['selected_membership_id'], urm_get_membership_process( $member_id )['multiple'] ) ) {
+			wp_send_json_error( array( 'message' => __( 'Membership purchase process already initiated.', 'user-registration' ) ) );
+		}
+
+		// Claim the coupon use before the order exists, so concurrent purchases cannot pass its cap.
+		$claimed_coupon = ( new CouponService() )->claim_for_checkout(
+			array(
+				'coupon'        => $data['coupon'] ?? '',
+				'membership_id' => $data['selected_membership_id'],
+			)
+		);
+
+		if ( false === $claimed_coupon ) {
+			wp_send_json_error( array( 'message' => esc_html__( 'This coupon has reached its usage limit.', 'user-registration' ) ) );
+		}
+
 		$response = $membership_service->create_membership_order_and_subscription( $data );
+
+		if ( '' !== $claimed_coupon ) {
+			$orders_repository = new OrdersRepository();
+			$new_order         = empty( $response['status'] ) ? false : $orders_repository->retrieve( $response['order_id'] );
+			$orders_repository->keep_coupon_claim( $claimed_coupon, $new_order );
+		}
 
 		if ( $response['status'] && class_exists( 'WPEverest\URMembership\Admin\Services\PaymentGatewayLogging' ) ) {
 			// For free and bank, status is 'active' immediately. For others, it's 'pending'
@@ -2352,6 +2375,8 @@ class AJAX {
 					$membership_process['multiple'][] = $data['selected_membership_id'];
 					update_user_meta( $member_id, 'urm_membership_process', $membership_process );
 				} else {
+					// A concurrent request won the slot after the early check, so end this order instead of leaving a live discounted one.
+					( new OrdersRepository() )->delete( $data['order_id'] );
 					wp_send_json_error(
 						array(
 							'message' => __( 'Membership purchase process already initiated.', 'user-registration' ),

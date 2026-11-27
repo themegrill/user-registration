@@ -683,7 +683,8 @@ class SubscriptionService {
 			);
 		}
 
-		if ( ! empty( $data['coupon'] ) ) {
+		$claimed_coupon = '';
+		if ( ! empty( $data['coupon'] ) && ur_check_module_activation( 'coupon' ) ) {
 			$members_data['coupon'] = $data['coupon'];
 			$coupon_service         = new CouponService();
 			$coupon_data            = array(
@@ -695,8 +696,21 @@ class SubscriptionService {
 			$response = $coupon_service->validate( $coupon_data );
 
 			if ( $response['status'] ) {
+				// Claim the use before the order exists, so a capped coupon cannot be redeemed past its limit.
+				if ( ! ur_claim_coupon_usage( $data['coupon'] ) ) {
+					return $this->reject_used_up_upgrade_coupon( $user->ID, $data['current_membership_id'] );
+				}
+
+				$claimed_coupon                       = $data['coupon'];
 				$response                             = json_decode( $response['data'], true );
 				$upgrade_details['chargeable_amount'] = $response['discounted_amount'];
+			} else {
+				// A coupon used up since the member applied it is rejected, not silently charged at full price.
+				$coupon_details = ur_get_coupon_details( $data['coupon'] );
+
+				if ( ! empty( $coupon_details ) && ! ur_coupon_has_remaining_uses( $coupon_details ) ) {
+					return $this->reject_used_up_upgrade_coupon( $user->ID, $data['current_membership_id'] );
+				}
 			}
 		}
 
@@ -715,12 +729,17 @@ class SubscriptionService {
 		$member_service = new MembersService();
 		$member_service->update_user_meta( $members_data, $user->ID );
 
+		// Known limit: the old gateway subscription is cancelled before the new order exists, so a later order failure leaves it cancelled.
 		if ( isset( $data['upgrade'] ) && $data['upgrade'] && 'subscription' === $current_membership_details['type'] && 'bank' !== $payment_method && 'off' === $selected_membership_details['trial_status'] && ! isset( $upgrade_details['delayed_until'] ) ) {
 
 			$cancel_subscription = $this->subscription_repository->cancel_subscription_by_id( $current_subscription_id, false, true );
 
 			if ( ! $cancel_subscription['status'] ) {
 				$response['status'] = false;
+
+				if ( '' !== $claimed_coupon ) {
+					ur_release_coupon_usage( $claimed_coupon );
+				}
 
 				$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
 
@@ -734,6 +753,28 @@ class SubscriptionService {
 
 		$orders_data = $order_service->prepare_orders_data( $members_data, $user->ID, $subscription, $upgrade_details ); // prepare data for orders table.
 		$order       = $this->orders_repository->create( $orders_data );
+
+		// Without the order, or the marker that lets a failed order give the use back, abort rather than strand the claim.
+		$claim_kept = ! empty( $order ) && ( '' === $claimed_coupon || $this->orders_repository->keep_coupon_claim( $claimed_coupon, $order ) );
+
+		if ( ! $claim_kept ) {
+			if ( ! empty( $order['ID'] ) ) {
+				$this->orders_repository->delete( $order['ID'] );
+			}
+
+			if ( '' !== $claimed_coupon && empty( $order ) ) {
+				ur_release_coupon_usage( $claimed_coupon );
+			}
+
+			$this->release_upgrade_guard( $user->ID, $data['current_membership_id'] );
+
+			return array(
+				'response' => array(
+					'status'  => false,
+					'message' => __( 'Could not create the upgrade order. Please try again.', 'user-registration' ),
+				),
+			);
+		}
 
 		$payment_service       = new PaymentService( $payment_method, $data['selected_membership_id'], $user->data->user_email );
 		$ur_authorize_net_data = isset( $data['ur_authorize_net'] ) ? $data['ur_authorize_net'] : array();
@@ -782,6 +823,24 @@ class SubscriptionService {
 				'updated_membership_title' => $selected_membership_details['post_title'],
 			),
 			'response' => $response,
+		);
+	}
+
+	/**
+	 * Abort an upgrade whose coupon has no uses left.
+	 *
+	 * @param int $member_id             Member user ID.
+	 * @param int $current_membership_id Membership being upgraded from.
+	 * @return array Checkout error response.
+	 */
+	private function reject_used_up_upgrade_coupon( $member_id, $current_membership_id ) {
+		$this->release_upgrade_guard( $member_id, $current_membership_id );
+
+		return array(
+			'response' => array(
+				'status'  => false,
+				'message' => __( 'This coupon has reached its usage limit.', 'user-registration' ),
+			),
 		);
 	}
 
