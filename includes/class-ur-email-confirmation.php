@@ -179,8 +179,8 @@ class UR_Email_Confirmation {
 			}
 
 			$output  = crypt_the_string( sanitize_text_field( wp_unslash( $_GET['ur_resend_id'] ) ), 'd' );
-			$output  = explode( '_', $output );
-			$user_id = absint( $output[0] );
+			$output  = is_string( $output ) ? explode( '_', $output ) : array();
+			$user_id = isset( $output[0] ) ? absint( $output[0] ) : 0;
 			$user    = get_user_by( 'id', $user_id );
 
 			$form_id = ur_get_form_id_by_userid( $user_id );
@@ -227,7 +227,13 @@ class UR_Email_Confirmation {
 				unset( $ur_token[0] );
 				$token_string = join( '', $ur_token );
 			}
-			$output     = crypt_the_string( $token_string, 'd' );
+			// Stored confirmation tokens are independently verified via hash_equals() against user meta.
+			$output = crypt_the_string( $token_string, 'd', true );
+
+			if ( ! is_string( $output ) || '' === $output ) {
+				return;
+			}
+
 			$output     = explode( '_', $output );
 			$user_id    = absint( $output[0] );
 			$user_token = get_user_meta( $user_id, 'ur_confirm_email_token', true );
@@ -385,7 +391,13 @@ class UR_Email_Confirmation {
 			$token .= $code_alphabet[ random_int( 0, $max - 1 ) ];
 		}
 
-		$token .= crypt_the_string( $user_id . '_' . time(), 'e' );
+		$encrypted = crypt_the_string( $user_id . '_' . time(), 'e' );
+
+		if ( false === $encrypted ) {
+			return '';
+		}
+
+		$token .= $encrypted;
 
 		return $token;
 
@@ -406,7 +418,13 @@ class UR_Email_Confirmation {
 		if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
 			$token = $this->get_token( $user_id );
 			update_user_meta( $user_id, 'ur_confirm_email', 0 );
-			update_user_meta( $user_id, 'ur_confirm_email_token', $token );
+
+			if ( '' === $token ) {
+				ur_get_logger()->error( sprintf( 'Email confirmation token could not be generated for user %d.', $user_id ), array( 'source' => 'user-registration' ) );
+				delete_user_meta( $user_id, 'ur_confirm_email_token' );
+			} else {
+				update_user_meta( $user_id, 'ur_confirm_email_token', $token );
+			}
 
 			if ( 'admin_approval_after_email_confirmation' === $login_option ) {
 				update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'false' );
