@@ -109,7 +109,7 @@ class UR_Elementor_Widget_Login extends Widget_Base {
 	 * @since 3.2.2
 	 */
 	protected function render() {
-		echo do_shortcode( $this->get_shortcode() );
+		echo ur_escape_shortcodes( do_shortcode( $this->get_shortcode() ) );
 	}
 	/**
 	 * Retrieve the  available  forms.

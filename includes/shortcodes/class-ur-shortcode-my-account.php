@@ -408,8 +408,10 @@ class UR_Shortcode_My_Account {
 				$error_message = '';
 
 				if ( isset( $_GET['message'] ) && is_scalar( $_GET['message'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-					$error_message = sanitize_text_field(
-						rawurldecode( wp_unslash( $_GET['message'] ) )
+					$error_message = ur_escape_shortcodes(
+						sanitize_text_field(
+							rawurldecode( wp_unslash( $_GET['message'] ) )
+						)
 					);
 				}
 

@@ -99,7 +99,7 @@ class UR_Elementor_Widget_Edit_Profile extends Widget_Base {
 	 *
 	 */
 	protected function render() {
-		echo do_shortcode( $this->get_shortcode() );
+		echo ur_escape_shortcodes( do_shortcode( $this->get_shortcode() ) );
 	}
 	/**
 	 * Retrieve the  available  forms.

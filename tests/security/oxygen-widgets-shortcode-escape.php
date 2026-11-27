@@ -1,0 +1,38 @@
+<?php
+/**
+ * Isolated security regression fixtures; no live site or database is loaded.
+ *
+ * @package UserRegistration/Tests
+ */
+
+// Test doubles and hostile fixture inputs intentionally bypass production-only conventions.
+// phpcs:disable Squiz.Commenting.FunctionComment.Missing, Squiz.Commenting.ClassComment.Missing, Squiz.Commenting.VariableComment.Missing
+
+require __DIR__ . '/bootstrap.php';
+
+/** Hostile markup as the shortcode output would carry it into the page for a later do_shortcode() pass. */
+const HOSTILE_OUTPUT = '<ul class="user-registration-error"><li>[caption width="1" caption="PWNED"]x[/caption]</li></ul>';
+
+function do_shortcode( $shortcode ) {
+	return HOSTILE_OUTPUT; }
+eval( security_function( 'includes/functions-ur-core.php', 'ur_escape_shortcodes' ) );
+
+$widgets = array(
+	'My Account'      => 'myaccount',
+	'Login'           => 'login',
+	'Registration'    => 'registration',
+	'Edit Profile'    => 'editprofile',
+	'Edit Password'   => 'editpassword',
+	'Profile Details' => 'profile-details',
+);
+
+$index = 0;
+foreach ( $widgets as $label => $slug ) {
+	$class = 'OxygenWidgetUnderTest' . ( ++$index );
+	eval( "class $class { public " . security_function( "includes/3rd-party/oxygen/widgets/class-ur-oxygen-widget-$slug.php", 'add_form' ) . ' }' );
+	ob_start();
+	( new $class() )->add_form( 'user_registration_my_account' );
+	$output = ob_get_clean();
+	security_assert( false === strpos( $output, '[caption' ) && false === strpos( $output, '[/caption' ), "$label Oxygen widget output carries no live shortcode for a later do_shortcode() pass" );
+	security_assert( false !== strpos( $output, 'PWNED' ) && false !== strpos( $output, '<ul class="user-registration-error">' ), "$label Oxygen widget keeps its markup and text intact" );
+}

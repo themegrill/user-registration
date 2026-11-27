@@ -103,7 +103,7 @@ class UR_Elementor_Widget_MyAccount extends Widget_Base {
 			ur_get_template( 'myaccount/my-account.php' );
 			echo '</div>';
 		} else {
-			echo do_shortcode( $this->get_shortcode() );
+			echo ur_escape_shortcodes( do_shortcode( $this->get_shortcode() ) );
 		}
 	}
 	/**
