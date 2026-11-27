@@ -67,6 +67,34 @@ test.describe("login methods @fresh", () => {
   /**
    * @area    login-forms
    * @tier    fresh
+   * @guards  #2034
+   * @source  write-spec 2026-11-24
+   * @why     Registration hashed the raw password while the login form compares the
+   *          slashed one WordPress adds to the request, so a password holding ', "
+   *          or \ could register but never log in. Registers with all three and
+   *          logs in with the same string. Deliberately does not assert the stored
+   *          hash, or the upgrade of accounts registered before the fix. Takes
+   *          about 45s on Playground, like the sibling register-then-login specs.
+   */
+  test("a password with a quote or backslash logs in after registering @fresh @login-forms", async ({ page, browser }) => {
+    await loginAsAdmin(page);
+    await ensureFirstRun(page);
+    const url = await registrationPageFor(page, await firstFormId(page));
+
+    const visitor = await newVisitor(browser);
+    const user = await visitor.newPage();
+    const password = `O'Neil"2024\\x!`;
+    const account = await registerOn(user, url, { password });
+
+    await loginToMyAccount(user, account.username, password);
+    await expect(user.locator(".user-registration-MyAccount-navigation")).toBeVisible();
+    await deleteUserByEmail(page, account.email);
+    await visitor.close();
+  });
+
+  /**
+   * @area    login-forms
+   * @tier    fresh
    * @guards  #1725
    * @source  verify-fix 2026-10-05
    * @why     The login and lost-password inputs carried no autocomplete token, so
