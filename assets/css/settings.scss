@@ -1,6 +1,7 @@
 @import "variables/variables";
 @import "mixins/mixins";
-@import "components/button", "components/typography", "components/toggle", "components/modal", "components/settings-tools";
+@import "components/button", "components/typography", "components/toggle",
+	"components/modal", "components/settings-tools", "components/email-health";
 
 // User Registration Global Settings CSS
 * {
@@ -2989,4 +2990,3 @@ body {
 		}
 	}
 }
-

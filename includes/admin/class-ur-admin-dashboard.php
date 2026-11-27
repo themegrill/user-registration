@@ -70,6 +70,7 @@ class UR_Admin_Dashboard {
 				'assetsURL'               => esc_url( UR()->plugin_url() . '/assets/' ),
 				'urRestApiNonce'          => wp_create_nonce( 'wp_rest' ),
 				'testEmailNonce'          => wp_create_nonce( 'test_email_nonce' ),
+				'emailHealthURL'          => esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=email&section=email-health' ) ),
 				'newFormURL'              => esc_url( admin_url( '/admin.php?page=add-new-registration' ) ),
 				'allFormsURL'             => esc_url( admin_url( '/admin.php?page=user-registration' ) ),
 				'version'                 => UR()->version,

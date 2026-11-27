@@ -568,7 +568,8 @@ class UR_Admin_Assets {
 			wp_enqueue_script( 'ur-chartjs' );
 		}
 		// send test email.
-		$current_tab = ! empty( $_REQUEST['tab'] ) ? sanitize_title( wp_unslash( $_REQUEST['tab'] ) ) : ''; //phpcs:ignore WordPress.Security.NonceVerification
+		$current_tab     = ! empty( $_REQUEST['tab'] ) ? sanitize_title( wp_unslash( $_REQUEST['tab'] ) ) : ''; //phpcs:ignore WordPress.Security.NonceVerification
+		$current_section = ! empty( $_REQUEST['section'] ) ? sanitize_title( wp_unslash( $_REQUEST['section'] ) ) : ''; //phpcs:ignore WordPress.Security.NonceVerification
 		if ( 'user-registration-membership_page_user-registration-settings' === $screen_id && 'email' === $current_tab ) {
 			wp_localize_script(
 				'user-registration-admin',
@@ -576,12 +577,27 @@ class UR_Admin_Assets {
 				array(
 					'ajax_url'         => admin_url( 'admin-ajax.php' ),
 					'test_email_nonce' => wp_create_nonce( 'test_email_nonce' ),
+					'email_health_url' => esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=email&section=email-health' ) ),
+					'i18n'             => array(
+						/* translators: %s: recipient email address */
+						'sent_prompt'            => __( 'Test email sent to %s (it can take a minute). Did you receive it?', 'user-registration' ),
+						'yes_received'           => __( 'Yes, received', 'user-registration' ),
+						'not_yet'                => __( 'Not yet', 'user-registration' ),
+						'in_spam'                => __( 'In spam', 'user-registration' ),
+						'not_received_title'     => __( "Didn't receive the email?", 'user-registration' ),
+						'not_received_desc'      => __( "Delivery can take a minute. If it still hasn't arrived, this is usually caused by server mail settings — not your form. We can check your setup together.", 'user-registration' ),
+						'spam_title'             => __( 'Found it in Spam?', 'user-registration' ),
+						'spam_desc'              => __( 'Emails landing in Spam are usually caused by server mail authentication or sender settings. We can check your setup together.', 'user-registration' ),
+						'failed_title'           => __( "Couldn't send test email", 'user-registration' ),
+						'failed_fallback'        => __( 'Your server could not send the email.', 'user-registration' ),
+						'failed_suffix'          => __( "We can check what's blocking delivery.", 'user-registration' ),
+						'lets_diagnose'          => __( "Let's Diagnose →", 'user-registration' ),
+						'confirm_failed'         => __( 'Could not confirm test email. Please refresh the page and try again.', 'user-registration' ),
+						'emails_disabled_notice' => __( 'Note: "Disable emails" is currently turned on in General settings, so registration emails are still paused.', 'user-registration' ),
+					),
 				)
 			);
-		}
 
-		$current_tab = ! empty( $_REQUEST['tab'] ) ? sanitize_title( wp_unslash( $_REQUEST['tab'] ) ) : ''; //phpcs:ignore WordPress.Security.NonceVerification
-		if ( 'user-registration-membership_page_user-registration-settings' === $screen_id && 'email' === $current_tab ) {
 			wp_localize_script(
 				'user-registration-admin',
 				'user_registration_email_setting_status',
@@ -590,6 +606,181 @@ class UR_Admin_Assets {
 					'user_registration_email_setting_status_nonce' => wp_create_nonce( 'email_setting_status_nonce' ),
 				)
 			);
+
+			if ( 'email-health' === $current_section ) {
+				$incoming_issue = ! empty( $_GET['issue'] ) ? UR_Email_Health::sanitize_incoming_issue( wp_unslash( $_GET['issue'] ) ) : ''; //phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+				wp_enqueue_script(
+					'ur-email-health',
+					UR()->plugin_url() . '/assets/js/admin/email-health' . $suffix . '.js',
+					array( 'jquery', 'sweetalert2' ),
+					UR_VERSION,
+					true
+				);
+
+				wp_localize_script(
+					'ur-email-health',
+					'urEmailHealthData',
+					array(
+						'ajax_url'         => admin_url( 'admin-ajax.php' ),
+						'nonce'            => wp_create_nonce( 'ur_email_health_nonce' ),
+						'test_email_nonce' => wp_create_nonce( 'test_email_nonce' ),
+						'initial_report'   => UR_Email_Health::get_report( $incoming_issue ),
+						'i18n'             => array(
+							'recheck'                     => __( '↻ Re-check', 'user-registration' ),
+							'recheck_done'                => __( 'Email health re-checked.', 'user-registration' ),
+							'auto_detected_connected'     => __( 'Auto-detected: SmartSMTP is now connected!', 'user-registration' ),
+							'connection_verified'         => __( 'SmartSMTP connection verified.', 'user-registration' ),
+							'still_not_connected'         => __( 'SmartSMTP is still waiting for a mail provider connection.', 'user-registration' ),
+							'opened_smart_smtp'           => __( 'Opened SmartSMTP. Switch back to this tab to auto-detect connection.', 'user-registration' ),
+							'request_failed'              => __( 'Something went wrong. Please try again.', 'user-registration' ),
+							'invalid_email'               => __( 'Please enter a valid email address.', 'user-registration' ),
+							'sr_problem'                  => __( 'Problem: ', 'user-registration' ),
+							'sr_in_progress'              => __( 'In progress: ', 'user-registration' ),
+							'sr_recommendation'           => __( 'Recommendation: ', 'user-registration' ),
+							'sr_passed'                   => __( 'Passed: ', 'user-registration' ),
+							'sr_info'                     => __( 'Info: ', 'user-registration' ),
+							'sr_optional'                 => __( 'Optional: ', 'user-registration' ),
+							'sr_action_needed'            => __( ' — action needed', 'user-registration' ),
+							'sr_check_recommended'        => __( ' — check recommended', 'user-registration' ),
+							'reg_emails_title'            => __( 'Registration Emails', 'user-registration' ),
+							'enabled'                     => __( 'Enabled', 'user-registration' ),
+							'all_disabled_title'          => __( 'All registration emails are disabled', 'user-registration' ),
+							'all_disabled_desc'           => __( '"Disable emails" is turned on in General settings, blocking registration and confirmation emails from sending.', 'user-registration' ),
+							'turn_emails_on'              => __( 'Turn emails back on', 'user-registration' ),
+							'notifications_title'         => __( 'Email Notifications', 'user-registration' ),
+							'all_active'                  => __( 'All required emails active', 'user-registration' ),
+							'confirm_off_title'           => __( 'Email Confirmation notification is turned off', 'user-registration' ),
+							/* translators: %s: form name */
+							'confirm_off_form_desc'       => __( 'Your "%s" form requires Email Confirmation to log in, so new users cannot activate their accounts.', 'user-registration' ),
+							'confirm_off_multi_desc'      => __( 'Your registration forms require Email Confirmation to log in, so new users cannot activate their accounts.', 'user-registration' ),
+							'confirm_off_default_desc'    => __( '"Email Confirmation" is disabled under Settings → Emails → To User.', 'user-registration' ),
+							'turn_confirm_on'             => __( 'Turn on confirmation email', 'user-registration' ),
+							'smtp_title'                  => __( 'Email Delivery (SMTP)', 'user-registration' ),
+							/* translators: %s: active SMTP plugin name */
+							'managed_by'                  => __( 'Managed by %s', 'user-registration' ),
+							'reconnect_title'             => __( 'SmartSMTP needs to reconnect to Google', 'user-registration' ),
+							/* translators: %s: error text */
+							'reconnect_desc_err'          => __( 'Recent failure: "%s". Reconnect your Google account to restore delivery.', 'user-registration' ),
+							'reconnect_desc'              => __( 'Your Google connection expired. Reconnect your Google account to restore delivery.', 'user-registration' ),
+							'reconnect_btn'               => __( 'Reconnect SmartSMTP ↗', 'user-registration' ),
+							'finish_tab_title'            => __( 'Finish connecting in the SmartSMTP tab', 'user-registration' ),
+							'finish_tab_desc'             => __( "Connect your email provider in SmartSMTP — we'll auto-detect it when you switch back.", 'user-registration' ),
+							'finish_setup_title'          => __( 'Finish setting up SmartSMTP', 'user-registration' ),
+							'finish_setup_desc'           => __( 'SmartSMTP is active, but no mailer is connected yet (still falling back to server mail). Open SmartSMTP to connect your provider.', 'user-registration' ),
+							/* translators: %s: error text */
+							'finish_setup_desc_err'       => __( 'Server error: "%s". SmartSMTP is active, but no mailer is connected yet. Open SmartSMTP to connect your provider.', 'user-registration' ),
+							'configure_smtp_btn'          => __( 'Configure SmartSMTP ↗', 'user-registration' ),
+							/* translators: %s: SMTP plugin name */
+							'other_unconfigured_title'    => __( 'Finish setting up %s', 'user-registration' ),
+							/* translators: 1: SMTP plugin name, 2: SMTP plugin name */
+							'other_unconfigured_desc'     => __( '%1$s is active, but no mail provider is configured yet (still falling back to server mail). Open %2$s to finish setup.', 'user-registration' ),
+							/* translators: 1: error text, 2: SMTP plugin name */
+							'other_unconfigured_desc_err' => __( 'Server error: "%1$s". %2$s is active, but no mail provider is configured yet. Open %2$s to finish setup.', 'user-registration' ),
+							/* translators: %s: SMTP plugin name */
+							'configure_other_btn'         => __( 'Configure %s ↗', 'user-registration' ),
+							'smtp_conflict_title'         => __( 'Multiple SMTP plugins are active', 'user-registration' ),
+							/* translators: 1: primary SMTP plugin name, 2: conflicting SMTP plugin names */
+							'smtp_conflict_desc'          => __( 'Both %1$s and %2$s are active. Running multiple SMTP plugins at once can cause delivery conflicts — deactivate the one you are not using.', 'user-registration' ),
+							'manage_plugins_btn'          => __( 'Manage Plugins', 'user-registration' ),
+							/* translators: %s: SMTP plugin or provider name */
+							'smtp_send_failed_title'      => __( '%s failed to send email', 'user-registration' ),
+							/* translators: 1: error text, 2: SMTP plugin or provider name */
+							'smtp_send_failed_desc'       => __( 'Error: "%1$s". Check your %2$s settings or mail logs.', 'user-registration' ),
+							/* translators: %s: SMTP plugin or provider name */
+							'smtp_send_failed_generic_desc' => __( 'A recent test email failed to send via %s. Check your mail provider credentials and logs.', 'user-registration' ),
+							'probe_error_title'           => __( 'Custom mail configuration threw an error', 'user-registration' ),
+							/* translators: 1: plugin or handler name, 2: error message */
+							'probe_error_desc'            => __( '%1$s threw an error while initializing mail: "%2$s". Fix or disable that mail hook, or connect SmartSMTP.', 'user-registration' ),
+							/* translators: %d: failed email count */
+							'recent_failures_title'       => __( '%d recent emails failed via server mail', 'user-registration' ),
+							/* translators: %d: single failed email count */
+							'recent_failure_single'       => __( '%d recent email failed via server mail', 'user-registration' ),
+							'server_failed_title'         => __( 'Server failed to send email', 'user-registration' ),
+							'unauth_server_title'         => __( 'Using unauthenticated server mail (PHP mail)', 'user-registration' ),
+							/* translators: %s: server error text */
+							'server_failed_desc'          => __( 'Server error: "%s". Connect SmartSMTP to send reliably through your email provider.', 'user-registration' ),
+							'unauth_server_desc'          => __( 'Default server mail lacks authentication, so email providers often filter it to Spam or block it. Connect SmartSMTP for reliable delivery.', 'user-registration' ),
+							'server_default_label'        => __( "Using your server's default mail system", 'user-registration' ),
+							'setup_smtp_link'             => __( 'Set up SMTP', 'user-registration' ),
+							'setup_smart_smtp_btn'        => __( 'Set up SmartSMTP', 'user-registration' ),
+							'setup_smtp_confirm_copy'     => __( 'Install <strong>SmartSMTP</strong> (free from WordPress.org) to send all emails from this site through Google Workspace, Brevo, or your SMTP host.', 'user-registration' ),
+							'activate_smtp_confirm_copy'  => __( 'Activate <strong>SmartSMTP</strong> to send all emails from this site through Google Workspace, Brevo, or your SMTP host.', 'user-registration' ),
+							'install_activate_btn'        => __( 'Install & Activate SmartSMTP', 'user-registration' ),
+							'activate_btn'                => __( 'Activate SmartSMTP', 'user-registration' ),
+							'install_modal_confirm_btn'   => __( 'Install & Activate', 'user-registration' ),
+							'activate_modal_confirm_btn'  => __( 'Activate', 'user-registration' ),
+							'installing_btn'              => __( 'Installing…', 'user-registration' ),
+							'activating_btn'              => __( 'Activating…', 'user-registration' ),
+							'redirecting_setup_title'     => __( 'SmartSMTP is ready', 'user-registration' ),
+							'redirecting_setup_desc'      => __( 'Redirecting you to SmartSMTP to connect your mail provider…', 'user-registration' ),
+							'redirecting_setup_link'      => __( 'Open SmartSMTP Setup now', 'user-registration' ),
+							'cancel'                      => __( 'Cancel', 'user-registration' ),
+							'save'                        => __( 'Save', 'user-registration' ),
+							'from_title'                  => __( 'Sender ("From") Address', 'user-registration' ),
+							/* translators: %s: email address */
+							'from_managed_smartsmtp'      => __( '%s (managed by SmartSMTP)', 'user-registration' ),
+							'from_mismatch_title'         => __( 'Sender "From" address doesn\'t match your domain', 'user-registration' ),
+							/* translators: 1: from email, 2: site domain */
+							'from_mismatch_desc'          => __( 'Sending from %1$s on %2$s can trigger spam filters.', 'user-registration' ),
+							'from_not_set'                => __( 'an empty sender address', 'user-registration' ),
+							'update_address'              => __( 'Update Address', 'user-registration' ),
+							/* translators: %s: site domain */
+							'from_editor_hint'            => __( 'Use an existing mailbox on <strong>%s</strong> (replies go here):', 'user-registration' ),
+							'verdict_spam_title'          => __( 'Your settings are correct, but your test landed in Spam', 'user-registration' ),
+							'verdict_spam_sub'            => __( 'All plugin checks passed. Review the domain and sender tips below.', 'user-registration' ),
+							'verdict_not_received_title'  => __( "Your settings are correct, but your test hasn't arrived yet", 'user-registration' ),
+							'verdict_not_received_sub'    => __( 'All plugin checks passed. Review the quick delivery checks below.', 'user-registration' ),
+							'verdict_ok_title'            => __( 'Your email setup looks good', 'user-registration' ),
+							/* translators: %s: provider name */
+							'verdict_ok_smtp_sub'         => __( 'Sending via %s. All registration email settings are active.', 'user-registration' ),
+							'verdict_ok_server_sub'       => __( 'All registration email settings are active and test email delivery was confirmed.', 'user-registration' ),
+							'verdict_unverified_title'    => __( 'Email delivery not tested yet', 'user-registration' ),
+							'verdict_unverified_sub'      => __( "All registration email settings are active, but server delivery hasn't been tested yet. Send a test email below to confirm emails reach your inbox.", 'user-registration' ),
+							/* translators: %d: problem count */
+							'problem_singular'            => __( '%d problem stops emails', 'user-registration' ),
+							/* translators: %d: problem count */
+							'problem_plural'              => __( '%d problems stop emails', 'user-registration' ),
+							/* translators: %d: recommendation count */
+							'rec_singular'                => __( '%d recommendation', 'user-registration' ),
+							/* translators: %d: recommendation count */
+							'rec_plural'                  => __( '%d recommendations', 'user-registration' ),
+							'header_sub_spam'             => __( 'Your test email landed in Spam — here is what we found in your setup.', 'user-registration' ),
+							'header_sub_not_received'     => __( "Your test email hasn't arrived yet — here is what we found in your setup.", 'user-registration' ),
+							'header_sub_failed'           => __( 'Your test email failed to send — here is what we found in your setup.', 'user-registration' ),
+							'header_sub_default'          => __( 'Review the items below so registration and password emails reach your users.', 'user-registration' ),
+							'tips_spam_title'             => __( 'Why it may still be landing in Spam', 'user-registration' ),
+							'tips_not_received_title'     => __( "Next steps if it still hasn't arrived", 'user-registration' ),
+							'tip_spf_dkim'                => __( "<strong>Check SPF, DKIM &amp; DMARC records:</strong> Confirm your domain's DNS records match your connected mail provider.", 'user-registration' ),
+							'tip_match_from'              => __( '<strong>Match your sender address:</strong> Ensure your "From" address matches your authenticated SMTP account (or enable Force From Email).', 'user-registration' ),
+							'tip_new_domain'              => __( '<strong>New domain or first sends:</strong> Mark the test email as "Not spam" once. New domains can take a few days to build trust with email providers.', 'user-registration' ),
+							'tip_logs_smartsmtp'          => __( '<strong>Check your mail logs:</strong> Review SmartSMTP → Mail Logs to see if the provider accepted or bounced the email.', 'user-registration' ),
+							/* translators: %s: SMTP plugin name */
+							'tip_logs_other'              => __( '<strong>Check your mail logs:</strong> Review %s logs to see if the provider accepted or bounced the email.', 'user-registration' ),
+							'tip_wait_queue'              => __( '<strong>Wait 1–2 minutes:</strong> Some mail servers briefly queue first-time sends — also check Spam and Promotions folders.', 'user-registration' ),
+							/* translators: %s: recipient email */
+							'tip_double_check_recipient'  => __( '<strong>Double-check the recipient:</strong> Verify <strong>%s</strong> for typos or test with another inbox.', 'user-registration' ),
+							'view_smartsmtp_logs'         => __( 'View SmartSMTP Mail Logs ↗', 'user-registration' ),
+							'dismiss'                     => __( 'Dismiss', 'user-registration' ),
+							'test_box_title'              => __( 'Send a Test Email', 'user-registration' ),
+							'send_test_email'             => __( 'Send Test Email', 'user-registration' ),
+							'sending'                     => __( 'Sending…', 'user-registration' ),
+							/* translators: %s: provider name */
+							'retest_prompt'               => __( '<strong>%s is connected.</strong> Click <strong>Send Test Email</strong> above to verify inbox delivery.', 'user-registration' ),
+							/* translators: %s: recipient email */
+							'sent_prompt'                 => __( 'Test email sent to <strong>%s</strong> (it can take a minute). Did you receive it?', 'user-registration' ),
+							'yes_received'                => __( 'Yes, received', 'user-registration' ),
+							'not_yet'                     => __( 'Not yet', 'user-registration' ),
+							'in_spam'                     => __( 'In spam', 'user-registration' ),
+							/* translators: %s: error text */
+							'failed_prefix'               => __( "Couldn't send:", 'user-registration' ),
+							'failed_fallback'             => __( 'Your server could not send the email.', 'user-registration' ),
+							'confirm_failed'              => __( 'Could not confirm test email. Please refresh the page and try again.', 'user-registration' ),
+							'emails_disabled_sent_warn'   => __( 'Note: "Disable emails" is turned on above — registration emails remain paused until you turn them back on.', 'user-registration' ),
+						),
+					)
+				);
+			}
 		}
 
 		wp_register_script( 'ur-live-user-notice', UR()->plugin_url() . '/assets/js/admin/live-user-notice' . $suffix . '.js', array( 'jquery', 'heartbeat' ), UR_VERSION, false );

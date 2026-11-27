@@ -216,6 +216,18 @@ if ( ! class_exists( 'UR_Settings_Page', false ) ) :
 						<a href="<?php echo esc_url( admin_url( 'admin.php?page=user-registration-settings&tab=' . $this->id . '&section=' . sanitize_title( $id ) ) ); ?>" class="<?php echo( $active_section === $id ? 'current' : '' ); ?> ur-scroll-ui__item">
 							<span class="timeline"></span>
 							<span class="submenu"><?php echo esc_html( $label ); ?></span>
+							<?php
+							echo wp_kses(
+								apply_filters( 'user_registration_settings_section_badge_' . $this->id, '', $id ),
+								array(
+									'span' => array(
+										'id'          => true,
+										'class'       => true,
+										'aria-hidden' => true,
+									),
+								)
+							);
+							?>
 							<?php if ( $show_premium_icon ) : ?>
 								<img style="width: 14px; height: 14px;margin-left: 4px;" src="<?php echo esc_url( UR()->plugin_url() . '/assets/images/icons/ur-pro-icon.png' ); ?>" />
 								<?php

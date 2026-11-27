@@ -8844,16 +8844,23 @@ if ( ! function_exists( 'ur_email_send_failed_handler' ) ) {
 			array( 'source' => 'ur_mail_logs' )
 		);
 
-		if ( '' !== json_decode( $error_instance->get_error_message() ) ) {
-			/* translators: %s: Status Log URL*/
+		$raw_error_message = trim( (string) $error_instance->get_error_message() );
+		$decoded_error     = '' !== $raw_error_message ? json_decode( $raw_error_message, true ) : null;
+		// Only link to the status log when wp_mail_failed passes a structured JSON error payload.
+		$is_json_payload = ( '' !== $raw_error_message && JSON_ERROR_NONE === json_last_error() && is_array( $decoded_error ) );
+
+		if ( $is_json_payload ) {
 			$error_message = wp_kses_post(
 				sprintf(
+					/* translators: %s: Status Log URL */
 					__( 'Please check the `ur_mail_logs` log under <a target="_blank" href="%s">Status Log</a> section.', 'user-registration' ),
 					admin_url( 'admin.php?page=user-registration-settings&tab=tools&section=logs' )
 				)
 			);
+			$raw_notice    = '';
 		} else {
-			$error_message = $error_instance->get_error_message();
+			$error_message = $raw_error_message;
+			$raw_notice    = $raw_error_message;
 		}
 
 		if ( '' !== $error_message ) {
@@ -8861,6 +8868,15 @@ if ( ! function_exists( 'ur_email_send_failed_handler' ) ) {
 				'user_registration_email_send_failed_message',
 				function ( $msg ) use ( $error_message ) {
 					return $error_message;
+				}
+			);
+		}
+
+		if ( '' !== $raw_notice ) {
+			add_filter(
+				'user_registration_email_send_failed_raw_message',
+				function ( $msg ) use ( $raw_notice ) {
+					return $raw_notice;
 				}
 			);
 		}

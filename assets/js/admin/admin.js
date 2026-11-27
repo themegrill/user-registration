@@ -1609,6 +1609,16 @@ jQuery(function ($) {
 	$(".user_registration_send_email_test").on("click", function (e) {
 		var $button = $(this);
 		var email = $("#user_registration_email_send_to").val();
+		var i18n = (user_registration_send_email && user_registration_send_email.i18n) || {};
+		var emailHealthUrl = (user_registration_send_email && user_registration_send_email.email_health_url) || "";
+		var escHtml = function (str) {
+			return String(str === undefined || str === null ? "" : str)
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;")
+				.replace(/"/g, "&quot;")
+				.replace(/'/g, "&#039;");
+		};
 		e.preventDefault();
 
 		if ($button.data("requestRunning")) {
@@ -1620,12 +1630,25 @@ jQuery(function ($) {
 			.prop("disabled", true)
 			.attr("aria-disabled", "true")
 			.addClass("disabled");
+
+		var $fieldWrap = $button.closest(".user-registration-global-settings--field");
+		var $fbSlot = $("#ur-gen-test-email-feedback");
+		if (!$fbSlot.length) {
+			$fbSlot = $('<div id="ur-gen-test-email-feedback" class="ur-eh-fb-slot" style="width:100%;align-self:stretch;" aria-live="polite"></div>');
+			if ($fieldWrap.length) {
+				$fieldWrap.append($fbSlot);
+			} else {
+				$button.after($fbSlot);
+			}
+		}
+
 		$.ajax({
 			url: user_registration_send_email.ajax_url,
 			data: {
 				action: "user_registration_send_test_email",
 				email: email,
-				nonce: user_registration_send_email.test_email_nonce
+				nonce: user_registration_send_email.test_email_nonce,
+				defer_completion: "1"
 			},
 			type: "post",
 			beforeSend: function () {
@@ -1643,27 +1666,92 @@ jQuery(function ($) {
 				$(
 					".user-registration-membership_page_user-registration-settings .notice"
 				).remove();
-				if (response.responseJSON.success === true) {
-					message_string =
-						'<div class="success notice notice-success is-dismissible"><p><strong>' +
-						response.responseJSON.data.message +
-						"</strong></p></div>";
-					$(".user-registration-options-container").prepend(
-						message_string
+
+				var json = response && response.responseJSON ? response.responseJSON : null;
+				if (json && json.success === true) {
+					var sentPrompt = (i18n.sent_prompt || "Test email sent to %s (it can take a minute). Did you receive it?")
+						.replace("%s", function () {
+							return "<strong>" + escHtml(email) + "</strong>";
+						});
+					var disabledWarn = json.data && json.data.emails_disabled
+						? '<div class="ur-eh-fb-bar is-warn" role="status"><span>' +
+							escHtml(i18n.emails_disabled_notice || 'Note: "Disable emails" is currently turned on in General settings, so registration emails are still paused.') +
+							"</span></div>"
+						: "";
+					$fbSlot.html(
+						'<div class="ur-eh-fb-bar notice-success" role="status">' +
+							"<span>" + sentPrompt + "</span>" +
+							'<div class="ur-eh-fb-actions">' +
+								'<button type="button" class="ur-eh-btn-subtle" data-ur-gen-fb="yes">' + escHtml(i18n.yes_received || "Yes, received") + "</button>" +
+								'<button type="button" class="ur-eh-btn-subtle" data-ur-gen-fb="not_yet">' + escHtml(i18n.not_yet || "Not yet") + "</button>" +
+								'<button type="button" class="ur-eh-btn-subtle" data-ur-gen-fb="spam">' + escHtml(i18n.in_spam || "In spam") + "</button>" +
+							"</div>" +
+						"</div>" +
+						disabledWarn +
+						'<div class="ur-gen-fb-error"></div>'
 					);
+
+					$fbSlot.off("click.urGenFb").on("click.urGenFb", "[data-ur-gen-fb]", function () {
+						var $btn = $(this);
+						var choice = $btn.data("urGenFb");
+						if (choice === "yes") {
+							var $actions = $fbSlot.find("[data-ur-gen-fb]");
+							$actions.prop("disabled", true);
+							$fbSlot.find(".ur-gen-fb-error").empty();
+							$.post(user_registration_send_email.ajax_url, {
+								action: "user_registration_confirm_test_email",
+								nonce: user_registration_send_email.test_email_nonce
+							})
+								.done(function (confirmRes) {
+									if (confirmRes && confirmRes.success) {
+										$fbSlot.empty();
+									} else {
+										$actions.prop("disabled", false);
+										var errMsg = (confirmRes && confirmRes.data && confirmRes.data.message) || i18n.confirm_failed || "Could not confirm test email. Please refresh the page and try again.";
+										$fbSlot.find(".ur-gen-fb-error").html('<div class="ur-eh-fb-bar is-err notice-error" role="alert"><span>' + escHtml(errMsg) + "</span></div>");
+									}
+								})
+								.fail(function () {
+									$actions.prop("disabled", false);
+									$fbSlot.find(".ur-gen-fb-error").html('<div class="ur-eh-fb-bar is-err notice-error" role="alert"><span>' + escHtml(i18n.confirm_failed || "Could not confirm test email. Please refresh the page and try again.") + "</span></div>");
+								});
+						} else if (choice === "not_yet") {
+							$fbSlot.html(
+								'<div class="ur-eh-fb-bar is-warn" role="status">' +
+									'<div class="ur-eh-fb-copy">' +
+										'<div class="ur-eh-fb-heading">' + escHtml(i18n.not_received_title || "Didn't receive the email?") + "</div>" +
+										'<div class="ur-eh-fb-desc">' + escHtml(i18n.not_received_desc || "") + "</div>" +
+									"</div>" +
+									'<a class="ur-eh-btn-primary" href="' + escHtml(emailHealthUrl + "&issue=not_received") + '">' + escHtml(i18n.lets_diagnose || "Let's Diagnose →") + "</a>" +
+								"</div>"
+							);
+						} else if (choice === "spam") {
+							$fbSlot.html(
+								'<div class="ur-eh-fb-bar is-warn" role="status">' +
+									'<div class="ur-eh-fb-copy">' +
+										'<div class="ur-eh-fb-heading">' + escHtml(i18n.spam_title || "Found it in Spam?") + "</div>" +
+										'<div class="ur-eh-fb-desc">' + escHtml(i18n.spam_desc || "") + "</div>" +
+									"</div>" +
+									'<a class="ur-eh-btn-primary" href="' + escHtml(emailHealthUrl + "&issue=spam") + '">' + escHtml(i18n.lets_diagnose || "Let's Diagnose →") + "</a>" +
+								"</div>"
+							);
+						}
+					});
 				} else {
-					message_string =
-						'<div class="error notice notice-error is-dismissible"><p><strong>' +
-						response.responseJSON.data.message +
-						"</strong></p></div>";
-					$(".user-registration-options-container").prepend(
-						message_string
+					var rawErr = String((json && json.data && (json.data.raw_error || json.data.message)) || (i18n.failed_fallback || "Your server could not send the email.")).trim();
+					if (rawErr && !/[.!?]$/.test(rawErr)) {
+						rawErr += ".";
+					}
+					$fbSlot.html(
+						'<div class="ur-eh-fb-bar is-err notice-error" role="alert">' +
+							'<div class="ur-eh-fb-copy">' +
+								'<div class="ur-eh-fb-heading">' + escHtml(i18n.failed_title || "Couldn't send test email") + "</div>" +
+								'<div class="ur-eh-fb-desc">' + escHtml(rawErr) + " " + escHtml(i18n.failed_suffix || "We can check what's blocking delivery.") + "</div>" +
+							"</div>" +
+							'<a class="ur-eh-btn-primary" href="' + escHtml(emailHealthUrl + "&issue=failed") + '">' + escHtml(i18n.lets_diagnose || "Let's Diagnose →") + "</a>" +
+						"</div>"
 					);
 				}
-				$(
-					".user-registration-membership_page_user-registration-settings .notice"
-				).css("display", "block");
-				$(window).scrollTop($(".notice").position());
 			}
 		});
 	});

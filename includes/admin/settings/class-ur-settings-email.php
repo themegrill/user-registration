@@ -39,6 +39,8 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 		 */
 		public function handle_hooks() {
 			add_filter( "user_registration_get_sections_{$this->id}", array( $this, 'get_sections_callback' ), 1, 1 );
+			add_filter( 'user_registration_settings_hide_save_button', array( $this, 'hide_save_button' ) );
+			add_filter( "user_registration_settings_section_badge_{$this->id}", array( $this, 'render_email_health_badge' ), 10, 2 );
 		}
 		public static function get_instance() {
 			if ( null === self::$_instance ) {
@@ -54,9 +56,52 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 			$sections['general']      = __( 'General', 'user-registration' );
 			$sections['to-admin']     = __( 'To Admin', 'user-registration' );
 			$sections['to-user']      = __( 'To User', 'user-registration' );
+			$sections['email-health'] = __( 'Email Health', 'user-registration' );
 			$sections['templates']    = __( 'Templates', 'user-registration' );
 			$sections['custom-email'] = __( 'Custom Email', 'user-registration' );
 			return $sections;
+		}
+
+		/**
+		 * Hide the global Save Changes button on the Email Health section.
+		 *
+		 * @param bool $hide Whether to hide the save button.
+		 * @return bool
+		 */
+		public function hide_save_button( $hide ) {
+			global $current_tab, $current_section;
+
+			if ( 'email' === $current_tab && 'email-health' === $current_section ) {
+				return true;
+			}
+
+			return $hide;
+		}
+
+		/**
+		 * Render the sidebar status dot for the Email Health submenu item.
+		 *
+		 * @param string $badge      Existing badge markup.
+		 * @param string $section_id Section slug.
+		 * @return string
+		 */
+		public function render_email_health_badge( $badge, $section_id ) {
+			if ( 'email-health' !== $section_id ) {
+				return $badge;
+			}
+
+			$issue = isset( $_GET['issue'] ) ? UR_Email_Health::sanitize_incoming_issue( wp_unslash( $_GET['issue'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$dot   = UR_Email_Health::get_sidebar_dot_status( $issue );
+
+			if ( 'critical' === $dot ) {
+				return '<span id="ur-eh-sidebar-dot" class="ur-eh-sidebar-dot is-critical"><span class="ur-eh-dot-circle" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__( ' — action needed', 'user-registration' ) . '</span></span>';
+			}
+
+			if ( 'warning' === $dot ) {
+				return '<span id="ur-eh-sidebar-dot" class="ur-eh-sidebar-dot is-warning"><span class="ur-eh-dot-circle" aria-hidden="true"></span><span class="screen-reader-text">' . esc_html__( ' — check recommended', 'user-registration' ) . '</span></span>';
+			}
+
+			return '<span id="ur-eh-sidebar-dot" class="ur-eh-sidebar-dot"></span>';
 		}
 
 		/**
@@ -419,6 +464,9 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 		 */
 		public function save() {
 			global $current_section;
+			if ( 'email-health' === $current_section ) {
+				return;
+			}
 			$emails = $this->get_emails();
 
 			foreach ( $emails as $email ) {
@@ -431,6 +479,18 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 			$settings = isset( $settings ) ? $settings : $this->get_settings();
 
 			UR_Admin_Settings::save_fields( $settings );
+		}
+
+		/**
+		 * Output the Email Health diagnostic mount container.
+		 *
+		 * @return void
+		 */
+		public function output_email_health_section() {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$issue = isset( $_GET['issue'] ) ? UR_Email_Health::sanitize_incoming_issue( wp_unslash( $_GET['issue'] ) ) : '';
+			UR_Email_Health::record_stat_event( 'visit', $issue );
+			echo '<div id="ur-email-health-root" class="ur-eh-root"></div>';
 		}
 
 		/**
@@ -454,6 +514,9 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 				case 'to-user':
 					$settings = $this->get_to_user_email_list_section();
 					break;
+				case 'email-health':
+					$this->output_email_health_section();
+					return;
 				case 'general':
 					$settings = $this->get_settings();
 					break;
