@@ -3169,6 +3169,8 @@ class UR_AJAX {
 				}
 			}
 
+			UR_Email_Health::record_stat_event( 'smart_smtp_installed' );
+
 			wp_send_json_success(
 				array(
 					'message' => __( 'SmartSMTP activated.', 'user-registration' ),
@@ -3227,6 +3229,8 @@ class UR_AJAX {
 				wp_send_json_error( array( 'message' => $activated->get_error_message() ) );
 			}
 		}
+
+		UR_Email_Health::record_stat_event( 'smart_smtp_installed' );
 
 		wp_send_json_success(
 			array(

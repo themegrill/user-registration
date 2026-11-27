@@ -487,6 +487,9 @@ if ( ! class_exists( 'UR_Settings_Email' ) ) :
 		 * @return void
 		 */
 		public function output_email_health_section() {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+			$issue = isset( $_GET['issue'] ) ? UR_Email_Health::sanitize_incoming_issue( wp_unslash( $_GET['issue'] ) ) : '';
+			UR_Email_Health::record_stat_event( 'visit', $issue );
 			echo '<div id="ur-email-health-root" class="ur-eh-root"></div>';
 		}
 

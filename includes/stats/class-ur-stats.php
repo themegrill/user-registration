@@ -451,9 +451,10 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		 * @return mixed
 		 */
 		public function run_on_save( $old_value, $value, $option ) {
-			// Opting out removes the stored copy of the last report.
+			// Opting out removes the stored copy of the last report and Email Health usage counters.
 			if ( ! ur_string_to_bool( $value ) ) {
 				delete_option( 'user_registration_stats_last_data' );
+				delete_option( 'user_registration_email_health_stats' );
 			}
 
 			if ( $value !== $old_value && $value && ( false === get_option( self::LAST_RUN_STAMP ) ) ) {
@@ -578,6 +579,19 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 			return $onboarding;
 		}
 
+		/**
+		 * Get non-PII Email Health usage and SMTP snapshot data.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public function get_email_health_data() {
+			if ( ! class_exists( 'UR_Email_Health' ) ) {
+				return array();
+			}
+
+			return UR_Email_Health::get_tracking_stats();
+		}
+
 
 		/**
 		 * Call API.
@@ -617,6 +631,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 				'product_info'      => $this->get_plugin_lists(),
 				'settings'          => array_merge( $this->get_global_settings(), $this->get_form_settings() ),
 				'onboarding'        => $this->get_onboarding_data(),
+				'email_health'      => $this->get_email_health_data(),
 			);
 
 			// Only the cron run builds the full report; module and opt-in saves send an empty payment health block.

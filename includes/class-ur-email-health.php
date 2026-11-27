@@ -35,6 +35,13 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 		const LEGACY_FAILURE_TRANSIENT = 'user_registration_mail_send_failed_count';
 
 		/**
+		 * Non-autoloaded option key for Email Health opt-in usage telemetry.
+		 *
+		 * @var string
+		 */
+		const STATS_OPTION = 'user_registration_email_health_stats';
+
+		/**
 		 * Known third-party SMTP / transactional mail plugins.
 		 *
 		 * @var array<string, string>
@@ -296,9 +303,10 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 		 * Detect active SMTP / transactional mail transport configuration.
 		 *
 		 * @param array|string $recent_failures Recent failure telemetry array (or legacy error string).
+		 * @param bool         $run_probe       Whether to probe third-party phpmailer_init hooks.
 		 * @return array<string, mixed>
 		 */
-		public static function detect_smtp( $recent_failures = array() ) {
+		public static function detect_smtp( $recent_failures = array(), $run_probe = true ) {
 			if ( ! function_exists( 'is_plugin_active' ) ) {
 				require_once ABSPATH . 'wp-admin/includes/plugin.php';
 			}
@@ -314,7 +322,7 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 
 			$can_install  = current_user_can( 'install_plugins' );
 			$can_activate = current_user_can( 'activate_plugins' );
-			$setup_url    = admin_url( 'admin.php?page=smart-smtp&urm_setup=google_workspace&is_active=true&source=urm#/primary-connection' );
+			$setup_url    = admin_url( 'admin.php?page=smart-smtp&urm_setup=google_workspace&is_active=true&one_click_setup=true&source=urm#/primary-connection' );
 			$logs_url     = admin_url( 'admin.php?page=smart-smtp#/mail-logs' );
 			$plugins_url  = admin_url( 'plugins.php' );
 			$active_known = self::get_active_known_smtp_plugins();
@@ -355,7 +363,12 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 				);
 			}
 
-			$probe = self::probe_third_party_transport();
+			$probe = $run_probe ? self::probe_third_party_transport() : array(
+				'owner'             => '',
+				'force_from'        => false,
+				'probe_error'       => '',
+				'probe_error_owner' => '',
+			);
 			if ( '' !== $probe['owner'] ) {
 				return array(
 					'status'                  => 'other-smtp',
@@ -1406,6 +1419,244 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 			}
 
 			return substr( $haystack, -$length ) === $needle;
+		}
+
+		/**
+		 * Print a defensive scroll helper on the SmartSMTP setup screen when opened from UR Email Health.
+		 *
+		 * @return void
+		 */
+		public static function maybe_scroll_smart_smtp_setup() {
+			if ( ! is_admin() || ! current_user_can( 'manage_options' ) ) {
+				return;
+			}
+
+			// phpcs:disable WordPress.Security.NonceVerification.Recommended
+			$page      = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+			$urm_setup = isset( $_GET['urm_setup'] ) ? sanitize_key( wp_unslash( $_GET['urm_setup'] ) ) : '';
+			$source    = isset( $_GET['source'] ) ? sanitize_key( wp_unslash( $_GET['source'] ) ) : '';
+			// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+			if ( 'smart-smtp' !== $page || 'google_workspace' !== $urm_setup || 'urm' !== $source ) {
+				return;
+			}
+			?>
+			<script>
+			(function () {
+				var targetSelector = 'input[name="gmail-connect-method-primary"][value="one-click"]';
+				var userScrolled = false;
+				var settled = false;
+				var observer = null;
+				var timeoutId = null;
+
+				function markUserScroll(event) {
+					if (event && event.type === "keydown") {
+						var keys = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
+						if (keys.indexOf(event.key) === -1) {
+							return;
+						}
+					}
+					userScrolled = true;
+				}
+
+				function cleanup() {
+					if (observer) {
+						observer.disconnect();
+						observer = null;
+					}
+					if (timeoutId) {
+						clearTimeout(timeoutId);
+						timeoutId = null;
+					}
+					window.removeEventListener("wheel", markUserScroll);
+					window.removeEventListener("touchstart", markUserScroll);
+					window.removeEventListener("keydown", markUserScroll);
+				}
+
+				function tryScroll() {
+					if (settled) {
+						return true;
+					}
+					var input = document.querySelector(targetSelector);
+					if (!input) {
+						return false;
+					}
+					settled = true;
+					var radio = input.closest("label.chakra-radio");
+					// Fall back cleanly if SmartSMTP's React card wrapper markup changes in a future release.
+					var card = radio && radio.parentElement && radio.parentElement.parentElement ? radio.parentElement.parentElement : input;
+					var behavior = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+
+					if (observer) {
+						observer.disconnect();
+						observer = null;
+					}
+					// Wait briefly for Chakra UI / React Query layout settling before scrolling.
+					setTimeout(function () {
+						if (!userScrolled && card && typeof card.scrollIntoView === "function") {
+							card.scrollIntoView({ behavior: behavior, block: "center" });
+						}
+						cleanup();
+					}, 180);
+					return true;
+				}
+
+				window.addEventListener("wheel", markUserScroll, { passive: true });
+				window.addEventListener("touchstart", markUserScroll, { passive: true });
+				window.addEventListener("keydown", markUserScroll);
+
+				if (tryScroll()) {
+					return;
+				}
+
+				if (typeof MutationObserver !== "undefined" && document.body) {
+					observer = new MutationObserver(function () {
+						tryScroll();
+					});
+					observer.observe(document.body, { childList: true, subtree: true });
+				}
+
+				timeoutId = setTimeout(cleanup, 5000);
+			})();
+			</script>
+			<?php
+		}
+
+		/**
+		 * Return the default Email Health opt-in usage telemetry structure.
+		 *
+		 * @return array<string, mixed>
+		 */
+		private static function get_default_stats() {
+			return array(
+				'used'                        => false,
+				'smart_smtp_installed_via_eh' => false,
+				'issues_seen'                 => array(),
+			);
+		}
+
+		/**
+		 * Load stored Email Health telemetry validated cleanly against defaults.
+		 *
+		 * @return array<string, mixed>
+		 */
+		private static function get_stored_stats() {
+			$defaults = self::get_default_stats();
+			$raw      = get_option( self::STATS_OPTION, array() );
+			if ( ! is_array( $raw ) ) {
+				return $defaults;
+			}
+
+			$allowed_issues = array( 'failed', 'not_received', 'spam' );
+			$issues_seen    = array();
+			if ( isset( $raw['issues_seen'] ) && is_array( $raw['issues_seen'] ) ) {
+				foreach ( $raw['issues_seen'] as $issue_slug ) {
+					$issue_slug = sanitize_key( (string) $issue_slug );
+					if ( in_array( $issue_slug, $allowed_issues, true ) ) {
+						$issues_seen[] = $issue_slug;
+					}
+				}
+			}
+
+			return array(
+				'used'                        => ! empty( $raw['used'] ),
+				'smart_smtp_installed_via_eh' => ! empty( $raw['smart_smtp_installed_via_eh'] ),
+				'issues_seen'                 => array_values( array_unique( $issues_seen ) ),
+			);
+		}
+
+		/**
+		 * Record an allowlisted Email Health event into the non-autoloaded stats option when tracking is opted in.
+		 *
+		 * @param string $event   Event slug ('visit' | 'smart_smtp_installed').
+		 * @param string $context Optional entry issue context ('failed' | 'not_received' | 'spam').
+		 * @return void
+		 */
+		public static function record_stat_event( $event, $context = '' ) {
+			// Respect WordPress.org opt-in tracking guidelines before storing any usage telemetry locally.
+			if ( ! ur_option_checked( 'user_registration_allow_usage_tracking', false ) ) {
+				return;
+			}
+
+			$event   = sanitize_key( (string) $event );
+			$context = sanitize_key( (string) $context );
+			$stats   = self::get_stored_stats();
+			$updated = false;
+
+			switch ( $event ) {
+				case 'visit':
+					$stats['used'] = true;
+					if ( in_array( $context, array( 'failed', 'not_received', 'spam' ), true ) && ! in_array( $context, $stats['issues_seen'], true ) ) {
+						$stats['issues_seen'][] = $context;
+					}
+					$updated = true;
+					break;
+
+				case 'smart_smtp_installed':
+					$stats['smart_smtp_installed_via_eh'] = true;
+					$updated                              = true;
+					break;
+			}
+
+			if ( $updated ) {
+				update_option( self::STATS_OPTION, $stats, false );
+			}
+		}
+
+		/**
+		 * Return non-sensitive Email Health adoption and abstract issue-category data when tracking is opted in.
+		 *
+		 * @return array<string, mixed>
+		 */
+		public static function get_tracking_stats() {
+			if ( ! ur_option_checked( 'user_registration_allow_usage_tracking', false ) ) {
+				return array();
+			}
+
+			if ( ! function_exists( 'is_plugin_active' ) ) {
+				require_once ABSPATH . 'wp-admin/includes/plugin.php';
+			}
+
+			$stats        = self::get_stored_stats();
+			$failures     = self::get_recent_failures();
+			$smtp         = self::detect_smtp( $failures, false );
+			$smtp_status  = isset( $smtp['status'] ) ? (string) $smtp['status'] : 'none';
+			$smart_active = is_plugin_active( 'smart-smtp/smart-smtp.php' );
+			$confirmation = self::get_email_confirmation_info();
+			$from_info    = self::get_from_address_info( self::get_site_domain(), (string) get_option( 'admin_email', '' ) );
+
+			$active_issues = array();
+			if ( ur_option_checked( 'user_registration_email_setting_disable_email' ) ) {
+				$active_issues[] = 'emails_disabled';
+			}
+			if ( ! empty( $confirmation['disabled'] ) ) {
+				$active_issues[] = 'confirmation_disabled';
+			}
+			if ( 'token-expired' === $smtp_status ) {
+				$active_issues[] = 'smtp_token_expired';
+			} elseif ( 'unconfigured' === $smtp_status || 'other-smtp-unconfigured' === $smtp_status ) {
+				$active_issues[] = 'smtp_unconfigured';
+			}
+			if ( ! empty( $smtp['conflicting_plugins'] ) ) {
+				$active_issues[] = 'smtp_conflict';
+			}
+			if ( ( (int) $failures['count'] > 0 ) || ( '' !== $failures['last_error'] ) ) {
+				$active_issues[] = 'recent_failures';
+			}
+			if ( ! in_array( $smtp_status, array( 'connected', 'other-smtp' ), true ) && ! empty( $from_info ) && empty( $from_info['matches_domain'] ) ) {
+				$active_issues[] = 'from_domain_mismatch';
+			}
+
+			return array(
+				'used'                        => (bool) $stats['used'],
+				'smart_smtp_installed_via_eh' => (bool) $stats['smart_smtp_installed_via_eh'],
+				'smart_smtp_active'           => $smart_active,
+				'smart_smtp_provider'         => $smart_active && isset( $smtp['provider_type'] ) ? (string) $smtp['provider_type'] : '',
+				'smtp_status'                 => $smtp_status,
+				'test_email_confirmed'        => (bool) get_option( 'user_registration_successful_test_mail', false ),
+				'issues_seen'                 => $stats['issues_seen'],
+				'active_issues'               => array_values( array_unique( $active_issues ) ),
+			);
 		}
 	}
 endif;

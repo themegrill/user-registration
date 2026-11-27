@@ -712,6 +712,9 @@ class UR_Admin_Assets {
 							'activate_modal_confirm_btn'  => __( 'Activate', 'user-registration' ),
 							'installing_btn'              => __( 'Installing…', 'user-registration' ),
 							'activating_btn'              => __( 'Activating…', 'user-registration' ),
+							'redirecting_setup_title'     => __( 'SmartSMTP is ready', 'user-registration' ),
+							'redirecting_setup_desc'      => __( 'Redirecting you to SmartSMTP to connect your mail provider…', 'user-registration' ),
+							'redirecting_setup_link'      => __( 'Open SmartSMTP Setup now', 'user-registration' ),
 							'cancel'                      => __( 'Cancel', 'user-registration' ),
 							'save'                        => __( 'Save', 'user-registration' ),
 							'from_title'                  => __( 'Sender ("From") Address', 'user-registration' ),
@@ -732,7 +735,7 @@ class UR_Admin_Assets {
 							/* translators: %s: provider name */
 							'verdict_ok_smtp_sub'         => __( 'Sending via %s. All registration email settings are active.', 'user-registration' ),
 							'verdict_ok_server_sub'       => __( 'All registration email settings are active and test email delivery was confirmed.', 'user-registration' ),
-							'verdict_unverified_title'    => __( 'Your email settings look good — test delivery', 'user-registration' ),
+							'verdict_unverified_title'    => __( 'Email delivery not tested yet', 'user-registration' ),
 							'verdict_unverified_sub'      => __( "All registration email settings are active, but server delivery hasn't been tested yet. Send a test email below to confirm emails reach your inbox.", 'user-registration' ),
 							/* translators: %d: problem count */
 							'problem_singular'            => __( '%d problem stops emails', 'user-registration' ),

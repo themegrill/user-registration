@@ -934,12 +934,69 @@
 			});
 	}
 
+	function isSafeAdminUrl(url) {
+		if (!url) {
+			return false;
+		}
+		try {
+			const parsed = new URL(String(url), window.location.href);
+			return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.origin === window.location.origin;
+		} catch (e) {
+			return false;
+		}
+	}
+
+	function shouldRedirectToSmartSmtpSetup(report) {
+		const smtp = (report && report.smtp) || {};
+		return isSafeAdminUrl(smtp.setup_url) && (smtp.status === "unconfigured" || smtp.status === "token-expired");
+	}
+
+	function redirectToSmartSmtpSetup(setupUrl) {
+		if (!isSafeAdminUrl(setupUrl)) {
+			return;
+		}
+		if (typeof window.Swal !== "undefined" && typeof window.Swal.fire === "function") {
+			window.Swal.fire({
+				title: esc(i18n.redirecting_setup_title),
+				html:
+					'<div class="ur-eh-redirect-status" role="status" aria-live="polite">' +
+					'  <span class="ur-eh-spinner is-brand" aria-hidden="true"></span>' +
+					"  <p>" +
+					esc(i18n.redirecting_setup_desc) +
+					"</p>" +
+					'  <a class="ur-eh-link-btn" href="' +
+					esc(setupUrl) +
+					'">' +
+					esc(i18n.redirecting_setup_link) +
+					"</a>" +
+					"</div>",
+				customClass: "user-registration-swal2-modal user-registration-swal2-modal--centered ur-eh-swal-modal",
+				showCloseButton: false,
+				showCancelButton: false,
+				showConfirmButton: false,
+				allowOutsideClick: false,
+				allowEscapeKey: false,
+				heightAuto: false,
+				width: "520px"
+			});
+		} else {
+			showToast(i18n.redirecting_setup_desc);
+		}
+
+		// Same-tab navigation avoids browser popup blockers after the async install request.
+		setTimeout(function () {
+			window.location.assign(setupUrl);
+		}, 900);
+	}
+
 	function installSmartSmtp() {
 		if (state.isWorking) {
 			return;
 		}
 		state.isWorking = true;
 		render();
+
+		let willRedirect = false;
 
 		postAjax("user_registration_email_health_install_smart_smtp", {
 			security: config.nonce,
@@ -948,6 +1005,13 @@
 			.done(function (res) {
 				if (res && res.success && res.data && res.data.report) {
 					state.report = res.data.report;
+					if (shouldRedirectToSmartSmtpSetup(state.report)) {
+						willRedirect = true;
+						state.isWorking = false;
+						render();
+						redirectToSmartSmtpSetup(state.report.smtp.setup_url);
+						return;
+					}
 					if (res.data.message) {
 						showToast(res.data.message);
 					}
@@ -959,6 +1023,9 @@
 				showToast(i18n.request_failed, true);
 			})
 			.always(function () {
+				if (willRedirect) {
+					return;
+				}
 				state.isWorking = false;
 				render();
 				focusHeaderVerdict();
@@ -1023,10 +1090,14 @@
 		}).then(function (result) {
 			if (result && result.isConfirmed && result.value && result.value.data && result.value.data.report) {
 				state.report = result.value.data.report;
+				render();
+				if (shouldRedirectToSmartSmtpSetup(state.report)) {
+					redirectToSmartSmtpSetup(state.report.smtp.setup_url);
+					return;
+				}
 				if (result.value.data.message) {
 					showToast(result.value.data.message);
 				}
-				render();
 				focusHeaderVerdict();
 			}
 		});
@@ -1146,7 +1217,7 @@
 			el.onclick = function () {
 				const setupUrl =
 					(state.report.smtp && state.report.smtp.setup_url) ||
-					"admin.php?page=smart-smtp&urm_setup=google_workspace&is_active=true&source=urm#/primary-connection";
+					"admin.php?page=smart-smtp&urm_setup=google_workspace&is_active=true&one_click_setup=true&source=urm#/primary-connection";
 				state.waitingForExternalSetup = true;
 				window.open(setupUrl, "_blank", "noopener,noreferrer");
 				showToast(i18n.opened_smart_smtp);
@@ -1247,6 +1318,15 @@
 			setTimeout(function () {
 				refreshStatus({ manual: false, autoTriggered: true });
 			}, 400);
+		}
+	});
+
+	window.addEventListener("pageshow", function (event) {
+		if (event && event.persisted) {
+			if (typeof window.Swal !== "undefined" && typeof window.Swal.isVisible === "function" && window.Swal.isVisible()) {
+				window.Swal.close();
+			}
+			refreshStatus({ manual: false, autoTriggered: true });
 		}
 	});
 

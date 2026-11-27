@@ -34,6 +34,11 @@ class UR_Admin {
 		add_filter( 'admin_footer_text', array( $this, 'admin_footer_text' ), 1 );
 		add_action( 'delete_user', 'ur_unlink_user_profile_pictures' );
 		add_action( 'admin_footer', 'ur_print_js', 25 );
+		// Only register the scroll helper on the exact SmartSMTP setup redirect from UR Email Health.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( isset( $_GET['page'], $_GET['urm_setup'], $_GET['source'] ) && 'smart-smtp' === $_GET['page'] && 'google_workspace' === $_GET['urm_setup'] && 'urm' === $_GET['source'] ) {
+			add_action( 'admin_footer', array( 'UR_Email_Health', 'maybe_scroll_smart_smtp_setup' ), 99 );
+		}
 		add_filter( 'heartbeat_received', array( $this, 'new_user_live_notice' ), 10, 2 );
 		add_filter( 'admin_body_class', array( $this, 'user_registration_add_body_classes' ) );
 		add_action( 'admin_init', array( $this, 'admin_redirects' ) );
