@@ -201,7 +201,7 @@ class UR_Abilities_Connect {
 				),
 				JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 			),
-			'claude'  => 'claude mcp add --transport http --scope user ' . $name . ' ' . $endpoint . ' --header "Authorization: Basic ' . $code . '"',
+			'claude'  => 'claude mcp add --transport http --scope user ' . $name . ' "' . $endpoint . '" --header "Authorization: Basic ' . $code . '"',
 			'cursor'  => wp_json_encode(
 				array(
 					'mcpServers' => array(

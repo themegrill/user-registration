@@ -218,7 +218,8 @@ class UR_Admin_User_Manager {
 					/* translators: %s: Username */
 					esc_html__( 'Sorry, you are not allowed to delete the user %s.', 'user-registration' ),
 					esc_html( $this->user->user_login )
-				)
+				),
+				array( 'status' => 403 )
 			);
 		}
 
@@ -229,7 +230,7 @@ class UR_Admin_User_Manager {
 		// Remove the profile picture and its details before the user is gone.
 		do_action( 'ur_remove_profile_pictures_and_metadata', $user_id );
 
-		return wp_delete_user( $user_id, $reassign ) ? true : new WP_Error( 'edit_users', esc_html__( 'The user could not be deleted.', 'user-registration' ) );
+		return wp_delete_user( $user_id, $reassign ) ? true : new WP_Error( 'edit_users', esc_html__( 'The user could not be deleted.', 'user-registration' ), array( 'status' => 500 ) );
 	}
 
 	/**

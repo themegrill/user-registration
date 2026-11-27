@@ -6,6 +6,10 @@
  * custom right, so a leaked password reaches nothing outside the AI abilities. While an ability the admin switched on
  * runs for that user, the user is lent the rights the ability itself checks, and only those.
  *
+ * Because of that, a permission callback or a per-object check such as edit_post() always passes for the AI user while
+ * an ability runs. Safety rests on the two settings (Enabled Abilities, Allow Changes), the list of abilities and the
+ * checks inside each ability, so no ability may declare promote_users or manage_options in its caps.
+ *
  * @package UserRegistration
  */
 

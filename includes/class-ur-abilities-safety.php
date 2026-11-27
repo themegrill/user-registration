@@ -128,6 +128,9 @@ class UR_Abilities_Safety {
 	/**
 	 * Run the ability once, only for the request and the user the code was made for.
 	 *
+	 * The code is read and then deleted, so two confirmations arriving at the same instant could both pass. They come from
+	 * the same user for the same request, so the effect is the same request running twice.
+	 *
 	 * @param string $name    Ability name.
 	 * @param array  $ability Ability definition.
 	 * @param array  $input   Input without the code.

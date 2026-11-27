@@ -1072,6 +1072,7 @@ class UR_Abilities {
 						'label'       => __( 'Resend verification email', 'user-registration' ),
 						'description' => __( 'Send the email confirmation link again to a member who has not confirmed their email yet.', 'user-registration' ),
 						'level'       => 'write',
+						'caps'        => array( 'edit_users' ),
 						'input'       => array( 'id' => $id ),
 						'required'    => array( 'id' ),
 						'output'      => $member,

@@ -3036,7 +3036,7 @@ class UR_Abilities_Data {
 			return $invalid( __( 'New members cannot get this role. Admin-level roles are never allowed.', 'user-registration' ) );
 		}
 
-		if ( isset( $settings['redirect_page_id'] ) && 'publish' !== get_post_status( $settings['redirect_page_id'] ) ) {
+		if ( ! empty( $settings['redirect_page_id'] ) && 'publish' !== get_post_status( $settings['redirect_page_id'] ) ) {
 			return $invalid( __( 'The redirect page must be a published page.', 'user-registration' ) );
 		}
 

@@ -442,7 +442,12 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 							$delete_count = 0;
 
 							foreach ( $userids as $id ) {
-								$deleted = ( new UR_Admin_User_Manager( $id ) )->delete();
+								try {
+									$deleted = ( new UR_Admin_User_Manager( $id ) )->delete();
+								} catch ( Exception $e ) {
+									$this->errors[] = new WP_Error( 'edit_users', $e->getMessage() );
+									continue;
+								}
 
 								if ( is_wp_error( $deleted ) ) {
 									$this->errors[] = $deleted;

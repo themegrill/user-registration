@@ -287,3 +287,10 @@ security_assert( preg_match( "/LOCKED_SETTING_TABS = array\([^)]*'payment'/", $d
 security_assert( false !== strpos( $data_php, 'return ! in_array( $id, $safe, true ) || in_array( $id, $risky, true );' ) && false === strpos( $data_php, "strpos( \$id, 'role' )" ), 'Every setting shows a preview unless it is on the harmless list, not by name' );
 security_assert( preg_match( "/SAFE_SETTINGS = array\(\);/", $data_php ), 'The harmless list starts empty' );
 security_assert( false !== strpos( $data_php, 'user_can( $users[0], ' . chr( 39 ) . 'manage_options' . chr( 39 ) . ' )' ) && false !== strpos( $data_php, 'You cannot delete an administrator.' ), 'Deleting an administrator is refused, like approve and deny' );
+
+// No ability may declare an admin right in its caps: the AI user is lent every declared right, so it would pass every
+// per-object check, including the guards that keep plan abilities from changing roles.
+foreach ( array( '/includes/class-ur-abilities.php', '/modules/content-restriction/class-urcr-abilities.php' ) as $abilities_file ) {
+	preg_match_all( "/'caps'\s*=>\s*array\(([^)]*)\)/", file_get_contents( dirname( __DIR__, 2 ) . $abilities_file ), $declared );
+	security_assert( ! preg_match( '/promote_users|manage_options|install_plugins/', implode( ' ', $declared[1] ) ), $abilities_file . ' declares no admin right in caps' );
+}

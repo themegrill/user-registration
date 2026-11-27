@@ -1937,7 +1937,7 @@ class SubscriptionService {
 	 */
 	public function create_admin_subscription( $subscription_data ) {
 		if ( empty( $subscription_data['member'] ) || empty( $subscription_data['plan'] ) ) {
-			return new \WP_Error( 'ur_subscription_missing_fields', __( 'Please fill in all required fields.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_missing_fields', __( 'Please fill in all required fields.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		$subscription_repository = new SubscriptionRepository();
@@ -1947,13 +1947,13 @@ class SubscriptionService {
 		$membership_meta = json_decode( wp_unslash( get_post_meta( $membership_id, 'ur_membership', true ) ), true );
 
 		if ( ! $membership || empty( $membership_meta ) ) {
-			return new \WP_Error( 'ur_subscription_invalid_plan', __( 'Invalid membership plan selected.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_invalid_plan', __( 'Invalid membership plan selected.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		$is_recurring = isset( $membership_meta['type'] ) && 'subscription' === $membership_meta['type'];
 
 		if ( $is_recurring && empty( $subscription_data['expiry_date'] ) ) {
-			return new \WP_Error( 'ur_subscription_missing_expiry', __( 'Expiry date is required for recurring subscription plans.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_missing_expiry', __( 'Expiry date is required for recurring subscription plans.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		$start_date     = ! empty( $subscription_data['start_date'] ) ? sanitize_text_field( $subscription_data['start_date'] ) : current_time( 'Y-m-d' );
@@ -1987,7 +1987,7 @@ class SubscriptionService {
 		$subscription = $subscription_repository->create( $data );
 
 		if ( false === $subscription ) {
-			return new \WP_Error( 'ur_subscription_create_failed', __( 'Failed to create subscription.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_create_failed', __( 'Failed to create subscription.', 'user-registration' ), array( 'status' => 500 ) );
 		}
 
 		$orders_repository = new OrdersRepository();
@@ -2051,14 +2051,14 @@ class SubscriptionService {
 	 */
 	public function update_admin_subscription( $subscription_id, $subscription_data ) {
 		if ( empty( $subscription_id ) ) {
-			return new \WP_Error( 'ur_subscription_missing_id', __( 'Subscription ID is required.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_missing_id', __( 'Subscription ID is required.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		$subscription_repository = new SubscriptionRepository();
 		$existing_subscription   = $subscription_repository->retrieve( $subscription_id );
 
 		if ( ! $existing_subscription ) {
-			return new \WP_Error( 'ur_subscription_not_found', __( 'Subscription not found.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_not_found', __( 'Subscription not found.', 'user-registration' ), array( 'status' => 404 ) );
 		}
 
 		$trial_has_ended = false;
@@ -2075,15 +2075,15 @@ class SubscriptionService {
 		$trial_end_date   = isset( $subscription_data['trial_end_date'] ) && ! empty( $subscription_data['trial_end_date'] ) ? sanitize_text_field( $subscription_data['trial_end_date'] ) : $existing_subscription['trial_end_date'];
 
 		if ( ! empty( $trial_start_date ) && ! empty( $trial_end_date ) && strtotime( $trial_start_date ) > strtotime( $trial_end_date ) ) {
-			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Trial start date cannot be after trial end date.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Trial start date cannot be after trial end date.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		if ( ! empty( $trial_end_date ) && ! empty( $expiry_date ) && strtotime( $trial_end_date ) > strtotime( $expiry_date ) ) {
-			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Trial end date cannot exceed expiry date.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Trial end date cannot exceed expiry date.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		if ( ! empty( $trial_start_date ) && ! empty( $expiry_date ) && strtotime( $expiry_date ) < strtotime( $trial_start_date ) ) {
-			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Expiry date cannot be less than trial start date.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_invalid_dates', __( 'Expiry date cannot be less than trial start date.', 'user-registration' ), array( 'status' => 400 ) );
 		}
 
 		if ( isset( $subscription_data['expiry_date'] ) ) {
@@ -2120,7 +2120,7 @@ class SubscriptionService {
 		}
 
 		if ( false === $subscription_repository->update( $subscription_id, $update_data ) ) {
-			return new \WP_Error( 'ur_subscription_update_failed', __( 'Failed to update subscription.', 'user-registration' ) );
+			return new \WP_Error( 'ur_subscription_update_failed', __( 'Failed to update subscription.', 'user-registration' ), array( 'status' => 500 ) );
 		}
 
 		if ( $expiry_date_changed && ! empty( $existing_subscription['user_id'] ) && ! empty( $existing_subscription['item_id'] ) ) {

@@ -215,7 +215,7 @@ security_assert( 1 === count( $created ) && 'ur-ai-assistant' === $second['login
 
 // Each app gets what it needs.
 $snippets = $result['snippets'];
-security_assert( 0 === strpos( $snippets['claude'], 'claude mcp add --transport http --scope user shop-example-com https://shop.example.com/wp-json/mcp/mcp-adapter-default-server --header "Authorization: Basic ' . $result['code'] . '"' ), 'Claude gets one command, saved for every folder' );
+security_assert( 0 === strpos( $snippets['claude'], 'claude mcp add --transport http --scope user shop-example-com "https://shop.example.com/wp-json/mcp/mcp-adapter-default-server" --header "Authorization: Basic ' . $result['code'] . '"' ), 'Claude gets one command, saved for every folder' );
 $cursor = json_decode( $snippets['cursor'], true );
 security_assert( 'https://shop.example.com/wp-json/mcp/mcp-adapter-default-server' === $cursor['mcpServers']['shop-example-com']['url'] && 'Basic ' . $result['code'] === $cursor['mcpServers']['shop-example-com']['headers']['Authorization'], 'Cursor gets a config with the address and the login' );
 security_assert( false !== strpos( $snippets['codex'], '[mcp_servers.shop-example-com]' ) && false !== strpos( $snippets['codex'], 'http_headers = { Authorization = "Basic ' . $result['code'] . '" }' ), 'Codex gets a config that signs in with Basic, not Bearer' );
