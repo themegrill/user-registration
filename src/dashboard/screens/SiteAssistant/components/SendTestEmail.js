@@ -26,9 +26,20 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 	const [email, setEmail] = useState(adminEmail);
 	const [sentEmail, setSentEmail] = useState("");
 	const [isLoading, setIsLoading] = useState(false);
+	const [isConfirming, setIsConfirming] = useState(false);
 	const [feedbackState, setFeedbackState] = useState(null); // null | 'sent' | 'not_yet' | 'spam' | 'failed'
+	const [sentWhileDisabled, setSentWhileDisabled] = useState(false);
 	const [lastError, setLastError] = useState("");
 	const toast = useToast();
+
+	const formatErrorWithSuffix = (err, suffix) => {
+		const clean = String(err || "").trim();
+		if (!clean) {
+			return suffix;
+		}
+		const punctuated = /[.!?]$/.test(clean) ? clean : `${clean}.`;
+		return `${punctuated} ${suffix}`;
+	};
 
 	const handleSendTestEmail = async () => {
 		if (!email || !email.includes("@")) {
@@ -69,6 +80,7 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 			if (result.success) {
 				setSentEmail(email);
 				setLastError("");
+				setSentWhileDisabled(Boolean(result.data?.emails_disabled));
 				setFeedbackState("sent");
 			} else {
 				const errText =
@@ -79,6 +91,7 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 						"user-registration"
 					);
 				setLastError(errText);
+				setSentWhileDisabled(false);
 				setFeedbackState("failed");
 			}
 		} catch (error) {
@@ -89,6 +102,7 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 						"user-registration"
 					)
 			);
+			setSentWhileDisabled(false);
 			setFeedbackState("failed");
 		} finally {
 			setIsLoading(false);
@@ -96,12 +110,15 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 	};
 
 	const handleConfirmReceived = async () => {
-		setFeedbackState(null);
+		if (isConfirming) {
+			return;
+		}
+		setIsConfirming(true);
 		try {
 			const adminURL =
 				window._UR_DASHBOARD_?.adminURL ||
 				window.location.origin + "/wp-admin/";
-			await fetch(`${adminURL}admin-ajax.php`, {
+			const response = await fetch(`${adminURL}admin-ajax.php`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded"
@@ -111,23 +128,58 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 					nonce: window._UR_DASHBOARD_?.testEmailNonce || ""
 				})
 			});
-		} catch (e) {
-			// Still advance the UI step cleanly if confirmation persistence fails transiently.
-		}
 
-		toast({
-			title: __("Test Email Confirmed", "user-registration"),
-			description: __(
-				"Great! Your site is delivering registration emails.",
-				"user-registration"
-			),
-			status: "success",
-			duration: 3000,
-			isClosable: true
-		});
+			if (!response.ok) {
+				throw new Error(
+					__(
+						"Could not confirm test email. Please refresh the page and try again.",
+						"user-registration"
+					)
+				);
+			}
 
-		if (onEmailSent) {
-			onEmailSent();
+			const result = await response.json();
+			if (!result || !result.success) {
+				throw new Error(
+					result?.data?.message ||
+						__(
+							"Could not confirm test email. Please refresh the page and try again.",
+							"user-registration"
+						)
+				);
+			}
+
+			setFeedbackState(null);
+			setSentWhileDisabled(false);
+			toast({
+				title: __("Test Email Confirmed", "user-registration"),
+				description: __(
+					"Great! Your site is delivering registration emails.",
+					"user-registration"
+				),
+				status: "success",
+				duration: 3000,
+				isClosable: true
+			});
+
+			if (onEmailSent) {
+				onEmailSent();
+			}
+		} catch (error) {
+			toast({
+				title: __("Confirmation Failed", "user-registration"),
+				description:
+					error.message ||
+					__(
+						"Could not confirm test email. Please refresh the page and try again.",
+						"user-registration"
+					),
+				status: "error",
+				duration: 4000,
+				isClosable: true
+			});
+		} finally {
+			setIsConfirming(false);
 		}
 	};
 
@@ -226,69 +278,113 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 
 					<Box aria-live="polite">
 						{feedbackState === "sent" && (
-							<Flex
-								p="14px 16px"
-								bg="gray.50"
-								border="1px solid"
-								borderColor="gray.200"
-								borderRadius="6px"
-								align="center"
-								justify="space-between"
-								gap="3"
-								wrap="wrap"
-								role="status"
-							>
-								<Text fontSize="14px" color="gray.700" m="0">
-									{sprintf(
-										/* translators: %s: recipient email address */
-										__(
-											"Test email sent to %s (it can take a minute). Did you receive it?",
-											"user-registration"
-										),
-										sentEmail
-									)}
-								</Text>
-								<HStack spacing={2} wrap="wrap">
-									<Button
-										size="sm"
-										variant="outline"
-										bg="white"
-										borderColor="gray.300"
-										color="gray.800"
-										fontWeight="medium"
-										onClick={handleConfirmReceived}
-									>
-										{__(
-											"Yes, received",
-											"user-registration"
+							<Stack spacing={2}>
+								<Flex
+									p="14px 16px"
+									bg="gray.50"
+									border="1px solid"
+									borderColor="gray.200"
+									borderRadius="6px"
+									align="center"
+									justify="space-between"
+									gap="3"
+									wrap="wrap"
+									role="status"
+								>
+									<Text fontSize="14px" color="gray.700" m="0">
+										{sprintf(
+											/* translators: %s: recipient email address */
+											__(
+												"Test email sent to %s (it can take a minute). Did you receive it?",
+												"user-registration"
+											),
+											sentEmail
 										)}
-									</Button>
-									<Button
-										size="sm"
-										variant="outline"
-										bg="white"
-										borderColor="gray.300"
-										color="gray.800"
-										fontWeight="medium"
-										onClick={() =>
-											setFeedbackState("not_yet")
-										}
+									</Text>
+									<HStack spacing={2} wrap="wrap">
+										<Button
+											size="sm"
+											variant="outline"
+											bg="white"
+											borderColor="gray.300"
+											color="gray.800"
+											fontWeight="medium"
+											isLoading={isConfirming}
+											onClick={handleConfirmReceived}
+										>
+											{__(
+												"Yes, received",
+												"user-registration"
+											)}
+										</Button>
+										<Button
+											size="sm"
+											variant="outline"
+											bg="white"
+											borderColor="gray.300"
+											color="gray.800"
+											fontWeight="medium"
+											isDisabled={isConfirming}
+											onClick={() =>
+												setFeedbackState("not_yet")
+											}
+										>
+											{__("Not yet", "user-registration")}
+										</Button>
+										<Button
+											size="sm"
+											variant="outline"
+											bg="white"
+											borderColor="gray.300"
+											color="gray.800"
+											fontWeight="medium"
+											isDisabled={isConfirming}
+											onClick={() =>
+												setFeedbackState("spam")
+											}
+										>
+											{__("In spam", "user-registration")}
+										</Button>
+									</HStack>
+								</Flex>
+								{sentWhileDisabled && (
+									<Flex
+										p="10px 14px"
+										bg="#fffbeb"
+										border="1px solid"
+										borderColor="#fde68a"
+										borderRadius="6px"
+										align="center"
+										justify="space-between"
+										gap="3"
+										wrap="wrap"
+										role="status"
 									>
-										{__("Not yet", "user-registration")}
-									</Button>
-									<Button
-										size="sm"
-										variant="outline"
-										bg="white"
-										borderColor="gray.300"
-										color="gray.800"
-										fontWeight="medium"
-										onClick={() => setFeedbackState("spam")}
-									>
-										{__("In spam", "user-registration")}
-									</Button>
-								</HStack>
-							</Flex>
+										<Text
+											fontSize="13px"
+											color="gray.700"
+											m="0"
+										>
+											{__(
+												'Note: "Disable emails" is currently turned on in General settings, so registration emails are still paused.',
+												"user-registration"
+											)}
+										</Text>
+										<Button
+											as="a"
+											href={emailHealthURL}
+											size="xs"
+											variant="link"
+											colorScheme="primary"
+										>
+											{__(
+												"Check Email Health →",
+												"user-registration"
+											)}
+										</Button>
+									</Flex>
+								)}
+							</Stack>
 						)}
 
 						{feedbackState === "not_yet" && (
@@ -425,12 +521,13 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 										color="gray.600"
 										m="0"
 									>
-										{lastError +
-											" " +
+										{formatErrorWithSuffix(
+											lastError,
 											__(
 												"We can check what's blocking delivery.",
 												"user-registration"
-											)}
+											)
+										)}
 									</Text>
 								</Box>
 								<Button

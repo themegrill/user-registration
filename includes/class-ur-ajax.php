@@ -566,16 +566,7 @@ class UR_AJAX {
 			wp_die( - 1 );
 		}
 
-		if ( ur_option_checked( 'user_registration_email_setting_disable_email' ) ) {
-			$disabled_message = __( '"Disable emails" is turned on in General settings.', 'user-registration' );
-			wp_send_json_error(
-				array(
-					'code'      => 'emails_disabled',
-					'message'   => $disabled_message,
-					'raw_error' => $disabled_message,
-				)
-			);
-		}
+		$emails_disabled = ur_option_checked( 'user_registration_email_setting_disable_email' );
 
 		$email = sanitize_email( isset( $_POST['email'] ) ? wp_unslash( $_POST['email'] ) : '' ); // phpcs:ignore WordPress.Security.NonceVerification
 		if ( ! is_email( $email ) ) {
@@ -621,13 +612,16 @@ class UR_AJAX {
 		$defer_completion = ! empty( $_POST['defer_completion'] ); // phpcs:ignore WordPress.Security.NonceVerification
 
 		if ( $status ) {
+			UR_Email_Health::clear_failures();
 			if ( ! $defer_completion ) {
 				update_option( 'user_registration_successful_test_mail', true );
 			}
 			wp_send_json_success(
 				array(
-					'message' => __( 'Test email was sent successfully! Please check your inbox to make sure it is delivered.', 'user-registration' ),
-					'email'   => $email,
+					'message'         => __( 'Test email was sent successfully! Please check your inbox to make sure it is delivered.', 'user-registration' ),
+					'email'           => $email,
+					'emails_disabled' => $emails_disabled,
+					'report'          => UR_Email_Health::get_report(),
 				)
 			);
 		} else {
@@ -637,11 +631,14 @@ class UR_AJAX {
 				$stripped  = trim( wp_strip_all_tags( $error_message ) );
 				$raw_error = '' !== $stripped ? $stripped : __( 'Your server could not send the email.', 'user-registration' );
 			}
+			UR_Email_Health::record_failure( $raw_error, 'test' );
 			wp_send_json_error(
 				array(
 					/* translators: %s: error message */
-					'message'   => sprintf( __( 'Test email was unsuccessful! %s', 'user-registration' ), $error_message ),
-					'raw_error' => $raw_error,
+					'message'         => sprintf( __( 'Test email was unsuccessful! %s', 'user-registration' ), $error_message ),
+					'raw_error'       => $raw_error,
+					'emails_disabled' => $emails_disabled,
+					'report'          => UR_Email_Health::get_report( 'failed' ),
 				)
 			);
 		}
@@ -660,11 +657,12 @@ class UR_AJAX {
 		}
 
 		update_option( 'user_registration_successful_test_mail', true );
-		delete_transient( 'user_registration_mail_send_failed_count' );
+		UR_Email_Health::clear_failures();
 
 		wp_send_json_success(
 			array(
 				'message' => __( 'Test email delivery confirmed.', 'user-registration' ),
+				'report'  => UR_Email_Health::get_report(),
 			)
 		);
 	}
@@ -3079,7 +3077,7 @@ class UR_AJAX {
 		switch ( $fix_action ) {
 			case 'enable_emails':
 				update_option( 'user_registration_email_setting_disable_email', 'no' );
-				delete_transient( 'user_registration_mail_send_failed_count' );
+				UR_Email_Health::clear_failures();
 				$message = __( 'Registration emails enabled.', 'user-registration' );
 				break;
 
@@ -3089,18 +3087,31 @@ class UR_AJAX {
 				break;
 
 			case 'update_from_address':
-				$from_address = isset( $_POST['from_address'] ) ? sanitize_email( wp_unslash( $_POST['from_address'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification
-				if ( ! is_email( $from_address ) ) {
+				$raw_from     = isset( $_POST['from_address'] ) ? trim( (string) wp_unslash( $_POST['from_address'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+				$raw_parts    = explode( ',', $raw_from );
+				$clean_emails = array();
+
+				foreach ( $raw_parts as $part ) {
+					$candidate = trim( $part );
+					$sanitized = sanitize_email( $candidate );
+					if ( '' === $candidate || $sanitized !== $candidate || ! is_email( $sanitized ) ) {
+						wp_send_json_error( array( 'message' => __( 'Please enter a valid email address.', 'user-registration' ) ) );
+					}
+					$clean_emails[] = $sanitized;
+				}
+
+				if ( empty( $clean_emails ) ) {
 					wp_send_json_error( array( 'message' => __( 'Please enter a valid email address.', 'user-registration' ) ) );
 				}
+
+				$from_address = implode( ', ', $clean_emails );
 				update_option( 'user_registration_email_from_address', $from_address );
 				/* translators: %s: updated sender email address */
 				$message = sprintf( __( 'Sender address updated to %s.', 'user-registration' ), $from_address );
 				break;
 
 			case 'clear_failures':
-				delete_transient( 'user_registration_mail_send_failed_count' );
-				update_option( 'user_registration_successful_test_mail', true );
+				UR_Email_Health::clear_failures();
 				$message = __( 'Delivery status updated.', 'user-registration' );
 				break;
 
@@ -3131,7 +3142,7 @@ class UR_AJAX {
 		$issue = isset( $_POST['issue'] ) ? UR_Email_Health::sanitize_incoming_issue( wp_unslash( $_POST['issue'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$smtp  = UR_Email_Health::detect_smtp();
 
-		if ( isset( $smtp['status'] ) && 'other-smtp' === $smtp['status'] ) {
+		if ( isset( $smtp['status'] ) && in_array( $smtp['status'], array( 'other-smtp', 'other-smtp-unconfigured' ), true ) ) {
 			wp_send_json_error(
 				array(
 					/* translators: %s: active SMTP plugin name */

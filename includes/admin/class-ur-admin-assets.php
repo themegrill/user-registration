@@ -580,18 +580,20 @@ class UR_Admin_Assets {
 					'email_health_url' => esc_url_raw( admin_url( 'admin.php?page=user-registration-settings&tab=email&section=email-health' ) ),
 					'i18n'             => array(
 						/* translators: %s: recipient email address */
-						'sent_prompt'        => __( 'Test email sent to %s (it can take a minute). Did you receive it?', 'user-registration' ),
-						'yes_received'       => __( 'Yes, received', 'user-registration' ),
-						'not_yet'            => __( 'Not yet', 'user-registration' ),
-						'in_spam'            => __( 'In spam', 'user-registration' ),
-						'not_received_title' => __( "Didn't receive the email?", 'user-registration' ),
-						'not_received_desc'  => __( "Delivery can take a minute. If it still hasn't arrived, this is usually caused by server mail settings — not your form. We can check your setup together.", 'user-registration' ),
-						'spam_title'         => __( 'Found it in Spam?', 'user-registration' ),
-						'spam_desc'          => __( 'Emails landing in Spam are usually caused by server mail authentication or sender settings. We can check your setup together.', 'user-registration' ),
-						'failed_title'       => __( "Couldn't send test email", 'user-registration' ),
-						'failed_fallback'    => __( 'Your server could not send the email.', 'user-registration' ),
-						'failed_suffix'      => __( "We can check what's blocking delivery.", 'user-registration' ),
-						'lets_diagnose'      => __( "Let's Diagnose →", 'user-registration' ),
+						'sent_prompt'            => __( 'Test email sent to %s (it can take a minute). Did you receive it?', 'user-registration' ),
+						'yes_received'           => __( 'Yes, received', 'user-registration' ),
+						'not_yet'                => __( 'Not yet', 'user-registration' ),
+						'in_spam'                => __( 'In spam', 'user-registration' ),
+						'not_received_title'     => __( "Didn't receive the email?", 'user-registration' ),
+						'not_received_desc'      => __( "Delivery can take a minute. If it still hasn't arrived, this is usually caused by server mail settings — not your form. We can check your setup together.", 'user-registration' ),
+						'spam_title'             => __( 'Found it in Spam?', 'user-registration' ),
+						'spam_desc'              => __( 'Emails landing in Spam are usually caused by server mail authentication or sender settings. We can check your setup together.', 'user-registration' ),
+						'failed_title'           => __( "Couldn't send test email", 'user-registration' ),
+						'failed_fallback'        => __( 'Your server could not send the email.', 'user-registration' ),
+						'failed_suffix'          => __( "We can check what's blocking delivery.", 'user-registration' ),
+						'lets_diagnose'          => __( "Let's Diagnose →", 'user-registration' ),
+						'confirm_failed'         => __( 'Could not confirm test email. Please refresh the page and try again.', 'user-registration' ),
+						'emails_disabled_notice' => __( 'Note: "Disable emails" is currently turned on in General settings, so registration emails are still paused.', 'user-registration' ),
 					),
 				)
 			);
@@ -664,9 +666,32 @@ class UR_Admin_Assets {
 							'reconnect_btn'              => __( 'Reconnect SmartSMTP ↗', 'user-registration' ),
 							'finish_tab_title'           => __( 'Finish connecting in the SmartSMTP tab', 'user-registration' ),
 							'finish_tab_desc'            => __( "Connect your email provider in SmartSMTP — we'll auto-detect it when you switch back.", 'user-registration' ),
-							'finish_setup_title'         => __( 'Finish setting up SmartSMTP', 'user-registration' ),
-							'finish_setup_desc'          => __( 'SmartSMTP is active, but no mailer is connected yet (still falling back to server mail). Open SmartSMTP to connect your provider.', 'user-registration' ),
-							'configure_smtp_btn'         => __( 'Configure SmartSMTP ↗', 'user-registration' ),
+							'finish_setup_title'            => __( 'Finish setting up SmartSMTP', 'user-registration' ),
+							'finish_setup_desc'             => __( 'SmartSMTP is active, but no mailer is connected yet (still falling back to server mail). Open SmartSMTP to connect your provider.', 'user-registration' ),
+							/* translators: %s: error text */
+							'finish_setup_desc_err'         => __( 'Server error: "%s". SmartSMTP is active, but no mailer is connected yet. Open SmartSMTP to connect your provider.', 'user-registration' ),
+							'configure_smtp_btn'            => __( 'Configure SmartSMTP ↗', 'user-registration' ),
+							/* translators: %s: SMTP plugin name */
+							'other_unconfigured_title'      => __( 'Finish setting up %s', 'user-registration' ),
+							/* translators: 1: SMTP plugin name, 2: SMTP plugin name */
+							'other_unconfigured_desc'       => __( '%1$s is active, but no mail provider is configured yet (still falling back to server mail). Open %2$s to finish setup.', 'user-registration' ),
+							/* translators: 1: error text, 2: SMTP plugin name */
+							'other_unconfigured_desc_err'   => __( 'Server error: "%1$s". %2$s is active, but no mail provider is configured yet. Open %2$s to finish setup.', 'user-registration' ),
+							/* translators: %s: SMTP plugin name */
+							'configure_other_btn'           => __( 'Configure %s ↗', 'user-registration' ),
+							'smtp_conflict_title'           => __( 'Multiple SMTP plugins are active', 'user-registration' ),
+							/* translators: 1: primary SMTP plugin name, 2: conflicting SMTP plugin names */
+							'smtp_conflict_desc'            => __( 'Both %1$s and %2$s are active. Running multiple SMTP plugins at once can cause delivery conflicts — deactivate the one you are not using.', 'user-registration' ),
+							'manage_plugins_btn'            => __( 'Manage Plugins', 'user-registration' ),
+							/* translators: %s: SMTP plugin or provider name */
+							'smtp_send_failed_title'        => __( '%s failed to send email', 'user-registration' ),
+							/* translators: 1: error text, 2: SMTP plugin or provider name */
+							'smtp_send_failed_desc'         => __( 'Error: "%1$s". Check your %2$s settings or mail logs.', 'user-registration' ),
+							/* translators: %s: SMTP plugin or provider name */
+							'smtp_send_failed_generic_desc' => __( 'A recent test email failed to send via %s. Check your mail provider credentials and logs.', 'user-registration' ),
+							'probe_error_title'             => __( 'Custom mail configuration threw an error', 'user-registration' ),
+							/* translators: 1: plugin or handler name, 2: error message */
+							'probe_error_desc'              => __( '%1$s threw an error while initializing mail: "%2$s". Fix or disable that mail hook, or connect SmartSMTP.', 'user-registration' ),
 							/* translators: %d: failed email count */
 							'recent_failures_title'      => __( '%d recent emails failed via server mail', 'user-registration' ),
 							/* translators: %d: single failed email count */
@@ -714,6 +739,7 @@ class UR_Admin_Assets {
 							'rec_plural'                 => __( '%d recommendations', 'user-registration' ),
 							'header_sub_spam'            => __( 'Your test email landed in Spam — here is what we found in your setup.', 'user-registration' ),
 							'header_sub_not_received'    => __( "Your test email hasn't arrived yet — here is what we found in your setup.", 'user-registration' ),
+							'header_sub_failed'          => __( 'Your test email failed to send — here is what we found in your setup.', 'user-registration' ),
 							'header_sub_default'         => __( 'Review the items below so registration and password emails reach your users.', 'user-registration' ),
 							'tips_spam_title'            => __( 'Why it may still be landing in Spam', 'user-registration' ),
 							'tips_not_received_title'    => __( "Next steps if it still hasn't arrived", 'user-registration' ),
@@ -741,6 +767,8 @@ class UR_Admin_Assets {
 							/* translators: %s: error text */
 							'failed_prefix'              => __( "Couldn't send:", 'user-registration' ),
 							'failed_fallback'            => __( 'Your server could not send the email.', 'user-registration' ),
+							'confirm_failed'             => __( 'Could not confirm test email. Please refresh the page and try again.', 'user-registration' ),
+							'emails_disabled_sent_warn'  => __( 'Note: "Disable emails" is turned on above — registration emails remain paused until you turn them back on.', 'user-registration' ),
 						),
 					)
 				);

@@ -1670,7 +1670,14 @@ jQuery(function ($) {
 				var json = response && response.responseJSON ? response.responseJSON : null;
 				if (json && json.success === true) {
 					var sentPrompt = (i18n.sent_prompt || "Test email sent to %s (it can take a minute). Did you receive it?")
-						.replace("%s", "<strong>" + escHtml(email) + "</strong>");
+						.replace("%s", function () {
+							return "<strong>" + escHtml(email) + "</strong>";
+						});
+					var disabledWarn = json.data && json.data.emails_disabled
+						? '<div class="ur-eh-fb-bar is-warn" role="status"><span>' +
+							escHtml(i18n.emails_disabled_notice || 'Note: "Disable emails" is currently turned on in General settings, so registration emails are still paused.') +
+							"</span></div>"
+						: "";
 					$fbSlot.html(
 						'<div class="ur-eh-fb-bar notice-success" role="status">' +
 							"<span>" + sentPrompt + "</span>" +
@@ -1679,17 +1686,35 @@ jQuery(function ($) {
 								'<button type="button" class="ur-eh-btn-subtle" data-ur-gen-fb="not_yet">' + escHtml(i18n.not_yet || "Not yet") + "</button>" +
 								'<button type="button" class="ur-eh-btn-subtle" data-ur-gen-fb="spam">' + escHtml(i18n.in_spam || "In spam") + "</button>" +
 							"</div>" +
-						"</div>"
+						"</div>" +
+						disabledWarn +
+						'<div class="ur-gen-fb-error"></div>'
 					);
 
 					$fbSlot.off("click.urGenFb").on("click.urGenFb", "[data-ur-gen-fb]", function () {
-						var choice = $(this).data("urGenFb");
+						var $btn = $(this);
+						var choice = $btn.data("urGenFb");
 						if (choice === "yes") {
-							$fbSlot.empty();
+							var $actions = $fbSlot.find("[data-ur-gen-fb]");
+							$actions.prop("disabled", true);
+							$fbSlot.find(".ur-gen-fb-error").empty();
 							$.post(user_registration_send_email.ajax_url, {
 								action: "user_registration_confirm_test_email",
 								nonce: user_registration_send_email.test_email_nonce
-							});
+							})
+								.done(function (confirmRes) {
+									if (confirmRes && confirmRes.success) {
+										$fbSlot.empty();
+									} else {
+										$actions.prop("disabled", false);
+										var errMsg = (confirmRes && confirmRes.data && confirmRes.data.message) || i18n.confirm_failed || "Could not confirm test email. Please refresh the page and try again.";
+										$fbSlot.find(".ur-gen-fb-error").html('<div class="ur-eh-fb-bar is-err notice-error" role="alert"><span>' + escHtml(errMsg) + "</span></div>");
+									}
+								})
+								.fail(function () {
+									$actions.prop("disabled", false);
+									$fbSlot.find(".ur-gen-fb-error").html('<div class="ur-eh-fb-bar is-err notice-error" role="alert"><span>' + escHtml(i18n.confirm_failed || "Could not confirm test email. Please refresh the page and try again.") + "</span></div>");
+								});
 						} else if (choice === "not_yet") {
 							$fbSlot.html(
 								'<div class="ur-eh-fb-bar is-warn" role="status">' +
@@ -1713,7 +1738,10 @@ jQuery(function ($) {
 						}
 					});
 				} else {
-					var rawErr = (json && json.data && (json.data.raw_error || json.data.message)) || (i18n.failed_fallback || "Your server could not send the email.");
+					var rawErr = String((json && json.data && (json.data.raw_error || json.data.message)) || (i18n.failed_fallback || "Your server could not send the email.")).trim();
+					if (rawErr && !/[.!?]$/.test(rawErr)) {
+						rawErr += ".";
+					}
 					$fbSlot.html(
 						'<div class="ur-eh-fb-bar is-err notice-error" role="alert">' +
 							'<div class="ur-eh-fb-copy">' +

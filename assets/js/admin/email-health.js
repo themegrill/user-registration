@@ -21,10 +21,12 @@
 		editingFromInline: false,
 		isWorking: false,
 		isSendingTest: false,
+		isConfirmingTest: false,
 		isRechecking: false,
 		ehTestState: null, // null | 'sent' | 'failed' | 'retest'
 		testError: "",
-		lastSentTo: ""
+		lastSentTo: "",
+		testSentWhileDisabled: false
 	};
 
 	function esc(val) {
@@ -58,6 +60,18 @@
 
 	function isValidEmail(val) {
 		return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val || "").trim());
+	}
+
+	function isValidEmailList(val) {
+		const parts = String(val || "")
+			.split(",")
+			.map(function (item) {
+				return item.trim();
+			});
+		if (!parts.length || parts.some(function (item) { return item === ""; })) {
+			return false;
+		}
+		return parts.every(isValidEmail);
 	}
 
 	function ensureToastStack() {
@@ -104,13 +118,24 @@
 		const smtp = report.smtp || {};
 		const failures = report.recent_failures || {};
 		const confirmation = report.email_confirmation || {};
+		const incoming = report.incoming_issue || "";
+		const conflicts = Array.isArray(smtp.conflicting_plugins) ? smtp.conflicting_plugins : [];
+
 		const hasCritical =
 			Boolean(report.emails_disabled) ||
-			Boolean(confirmation.disabled) ||
+			(Boolean(confirmation.disabled) && Boolean(confirmation.form_requires_confirmation)) ||
 			smtp.status === "token-expired" ||
+			Boolean(smtp.probe_error) ||
 			Number(failures.count || 0) > 0 ||
-			Boolean(failures.last_error);
-		const hasIncoming = Boolean(report.incoming_issue);
+			Boolean(failures.last_error) ||
+			incoming === "failed";
+
+		const hasWarning =
+			Boolean(confirmation.disabled) ||
+			smtp.status === "unconfigured" ||
+			smtp.status === "other-smtp-unconfigured" ||
+			conflicts.length > 0 ||
+			Boolean(incoming);
 
 		dotEl.className = "ur-eh-sidebar-dot";
 		if (hasCritical) {
@@ -119,7 +144,7 @@
 				'<span class="ur-eh-dot-circle" aria-hidden="true"></span><span class="screen-reader-text">' +
 				esc(i18n.sr_action_needed) +
 				"</span>";
-		} else if (hasIncoming) {
+		} else if (hasWarning) {
 			dotEl.classList.add("is-warning");
 			dotEl.innerHTML =
 				'<span class="ur-eh-dot-circle" aria-hidden="true"></span><span class="screen-reader-text">' +
@@ -128,6 +153,41 @@
 		} else {
 			dotEl.innerHTML = "";
 		}
+	}
+
+	function buildSmtpConfirmBox(smtp) {
+		if (!state.confirmingSmtpInstall) {
+			return "";
+		}
+
+		const actionBtnLabel = smtp.smart_smtp_installed
+			? state.isWorking
+				? i18n.activating_btn
+				: i18n.activate_btn
+			: state.isWorking
+				? i18n.installing_btn
+				: i18n.install_activate_btn;
+		const confirmCopy = smtp.smart_smtp_installed ? i18n.activate_smtp_confirm_copy : i18n.setup_smtp_confirm_copy;
+
+		return (
+			'<div class="ur-eh-confirm-box">' +
+			"<p>" +
+			confirmCopy +
+			"</p>" +
+			'<div class="ur-eh-confirm-actions">' +
+			'<button type="button" class="ur-eh-btn-primary" id="ur-eh-confirm-install-btn" data-action="install-smtp" ' +
+			(state.isWorking ? "disabled" : "") +
+			">" +
+			(state.isWorking
+				? '<span class="ur-eh-spinner" aria-hidden="true"></span><span>' + esc(actionBtnLabel) + "</span>"
+				: esc(actionBtnLabel)) +
+			"</button>" +
+			'<button type="button" class="ur-eh-btn-subtle" style="height:36px;" data-action="cancel-smtp-confirm">' +
+			esc(i18n.cancel) +
+			"</button>" +
+			"</div>" +
+			"</div>"
+		);
 	}
 
 	function buildSmtpActionBtn() {
@@ -146,6 +206,22 @@
 				"</button>"
 			);
 		}
+		if (smtp.status === "other-smtp-unconfigured") {
+			if (!smtp.other_smtp_settings_url) {
+				return "";
+			}
+			return (
+				'<a class="ur-eh-btn-primary" href="' +
+				esc(smtp.other_smtp_settings_url) +
+				'" target="_blank" rel="noopener noreferrer">' +
+				esc(sprintf(i18n.configure_other_btn, smtp.other_smtp_name || "SMTP")) +
+				"</a>"
+			);
+		}
+
+		if (state.confirmingSmtpInstall) {
+			return "";
+		}
 
 		const canInstallOrActivate = smtp.smart_smtp_installed
 			? smtp.can_activate_plugins
@@ -159,7 +235,7 @@
 		const workingLabel = smtp.smart_smtp_installed ? i18n.activating_btn : i18n.installing_btn;
 
 		return (
-			'<button type="button" class="ur-eh-btn-primary" data-action="install-smtp" ' +
+			'<button type="button" class="ur-eh-btn-primary" data-action="open-smtp-confirm" ' +
 			(state.isWorking ? "disabled" : "") +
 			">" +
 			(state.isWorking
@@ -224,11 +300,13 @@
 		const failures = report.recent_failures || {};
 		const incomingIssue = report.incoming_issue || "";
 		const siteDomain = report.site_domain || "";
+		const conflicts = Array.isArray(smtp.conflicting_plugins) ? smtp.conflicting_plugins : [];
 
 		const smtpReady = smtp.status === "connected" || smtp.status === "other-smtp";
 		const recentFailedCount = Number(failures.count || 0);
 		const lastError = failures.last_error || "";
-		const hasDeliveryEvidence = recentFailedCount > 0 || Boolean(lastError) || Boolean(incomingIssue);
+		const hasFailureRecord = recentFailedCount > 0 || Boolean(lastError) || incomingIssue === "failed";
+		const hasDeliveryEvidence = hasFailureRecord || Boolean(incomingIssue);
 		const forceFromBySmartSmtp = smtp.status === "connected" && Boolean(smtp.force_from);
 		const forceFromByOther = smtp.status === "other-smtp" && Boolean(smtp.force_from);
 		const fromOk = smtpReady || Boolean(fromInfo.matches_domain) || !hasDeliveryEvidence;
@@ -306,55 +384,106 @@
 				});
 			} else {
 				issues.push({
-					type: "warn",
+					type: hasFailureRecord ? "err" : "warn",
 					title: i18n.finish_setup_title,
-					desc: i18n.finish_setup_desc,
+					desc: lastError ? sprintf(i18n.finish_setup_desc_err, cleanErr(lastError)) : i18n.finish_setup_desc,
 					right: buildSmtpActionBtn()
 				});
 			}
-		} else if (smtp.status === "connected") {
-			quietRows.push({
-				icon: "ok",
-				title: i18n.smtp_title,
-				value: smtp.provider_label || "SmartSMTP"
+		} else if (smtp.status === "other-smtp-unconfigured") {
+			const otherName = smtp.other_smtp_name || "SMTP";
+			issues.push({
+				type: hasFailureRecord ? "err" : "warn",
+				title: sprintf(i18n.other_unconfigured_title, otherName),
+				desc: lastError
+					? sprintf(i18n.other_unconfigured_desc_err, cleanErr(lastError), otherName)
+					: sprintf(i18n.other_unconfigured_desc, otherName, otherName),
+				right: buildSmtpActionBtn()
 			});
+		} else if (smtp.status === "connected") {
+			const providerLabel = smtp.provider_label || "SmartSMTP";
+			if (hasFailureRecord) {
+				const cta = smtp.logs_url
+					? '<a class="ur-eh-btn-outline" href="' +
+						esc(smtp.logs_url) +
+						'" target="_blank" rel="noopener noreferrer">' +
+						esc(i18n.view_smartsmtp_logs) +
+						"</a>"
+					: "";
+				issues.push({
+					type: "err",
+					title: sprintf(i18n.smtp_send_failed_title, providerLabel),
+					desc: lastError
+						? sprintf(i18n.smtp_send_failed_desc, cleanErr(lastError), providerLabel)
+						: sprintf(i18n.smtp_send_failed_generic_desc, providerLabel),
+					right: cta
+				});
+			} else {
+				quietRows.push({
+					icon: "ok",
+					title: i18n.smtp_title,
+					value: providerLabel
+				});
+			}
 		} else if (smtp.status === "other-smtp") {
-			quietRows.push({
-				icon: "ok",
-				title: i18n.smtp_title,
-				value: sprintf(i18n.managed_by, smtp.other_smtp_name || "SMTP")
+			const otherName = smtp.other_smtp_name || "SMTP";
+			if (hasFailureRecord) {
+				const settingsCta = smtp.other_smtp_settings_url
+					? '<a class="ur-eh-btn-outline" href="' +
+						esc(smtp.other_smtp_settings_url) +
+						'" target="_blank" rel="noopener noreferrer">' +
+						esc(sprintf(i18n.configure_other_btn, otherName)) +
+						"</a>"
+					: "";
+				issues.push({
+					type: "err",
+					title: sprintf(i18n.smtp_send_failed_title, otherName),
+					desc: lastError
+						? sprintf(i18n.smtp_send_failed_desc, cleanErr(lastError), otherName)
+						: sprintf(i18n.smtp_send_failed_generic_desc, otherName),
+					right: settingsCta
+				});
+			} else {
+				quietRows.push({
+					icon: "ok",
+					title: i18n.smtp_title,
+					value: sprintf(i18n.managed_by, otherName)
+				});
+			}
+		} else if (smtp.probe_error) {
+			issues.push({
+				type: "err",
+				title: i18n.probe_error_title,
+				desc: sprintf(
+					i18n.probe_error_desc,
+					smtp.probe_error_owner || "Custom mail handler",
+					cleanErr(smtp.probe_error)
+				),
+				right: buildSmtpActionBtn(),
+				extra: buildSmtpConfirmBox(smtp)
 			});
 		} else if (hasDeliveryEvidence) {
-			const isErr = Boolean(lastError) || recentFailedCount > 0;
+			const isErr = hasFailureRecord;
 			let title = i18n.unauth_server_title;
 			if (recentFailedCount > 0) {
 				title = sprintf(
 					recentFailedCount === 1 ? i18n.recent_failure_single : i18n.recent_failures_title,
 					recentFailedCount
 				);
-			} else if (lastError) {
+			} else if (lastError || incomingIssue === "failed") {
 				title = i18n.server_failed_title;
 			}
 			issues.push({
 				type: isErr ? "err" : "warn",
 				title: title,
 				desc: lastError ? sprintf(i18n.server_failed_desc, cleanErr(lastError)) : i18n.unauth_server_desc,
-				right: buildSmtpActionBtn()
+				right: buildSmtpActionBtn(),
+				extra: buildSmtpConfirmBox(smtp)
 			});
 		} else {
 			const canInstallOrActivate = smtp.smart_smtp_installed
 				? smtp.can_activate_plugins
 				: smtp.can_install_plugins && smtp.can_activate_plugins;
-			const actionBtnLabel = smtp.smart_smtp_installed
-				? state.isWorking
-					? i18n.activating_btn
-					: i18n.activate_btn
-				: state.isWorking
-					? i18n.installing_btn
-					: i18n.install_activate_btn;
-			const confirmCopy = smtp.smart_smtp_installed
-				? i18n.activate_smtp_confirm_copy
-				: i18n.setup_smtp_confirm_copy;
 
 			let valueHtml = esc(i18n.server_default_label);
 			if (!state.confirmingSmtpInstall && canInstallOrActivate) {
@@ -370,27 +499,27 @@
 				title: i18n.smtp_title,
 				value: valueHtml,
 				rawValue: true,
-				extra: state.confirmingSmtpInstall
-					? '<div class="ur-eh-confirm-box">' +
-						"<p>" +
-						confirmCopy +
-						"</p>" +
-						'<div class="ur-eh-confirm-actions">' +
-						'<button type="button" class="ur-eh-btn-primary" id="ur-eh-confirm-install-btn" data-action="install-smtp" ' +
-						(state.isWorking ? "disabled" : "") +
-						">" +
-						(state.isWorking
-							? '<span class="ur-eh-spinner" aria-hidden="true"></span><span>' +
-								esc(actionBtnLabel) +
-								"</span>"
-							: esc(actionBtnLabel)) +
-						"</button>" +
-						'<button type="button" class="ur-eh-btn-subtle" style="height:36px;" data-action="cancel-smtp-confirm">' +
-						esc(i18n.cancel) +
-						"</button>" +
-						"</div>" +
-						"</div>"
-					: ""
+				extra: buildSmtpConfirmBox(smtp)
+			});
+		}
+
+		// 3b. Conflicting SMTP plugins warning
+		if (conflicts.length > 0) {
+			const primaryName =
+				smtp.other_smtp_name || (smtp.provider_label ? smtp.provider_label : "SmartSMTP");
+			const pluginsCta =
+				smtp.can_activate_plugins && smtp.plugins_url
+					? '<a class="ur-eh-btn-outline" href="' +
+						esc(smtp.plugins_url) +
+						'">' +
+						esc(i18n.manage_plugins_btn) +
+						"</a>"
+					: "";
+			issues.push({
+				type: "warn",
+				title: i18n.smtp_conflict_title,
+				desc: sprintf(i18n.smtp_conflict_desc, primaryName, conflicts.join(", ")),
+				right: pluginsCta
 			});
 		}
 
@@ -431,7 +560,7 @@
 						sprintf(i18n.from_editor_hint, esc(siteDomain)) +
 						"</div>" +
 						'<div class="ur-eh-inline-editor-row">' +
-						'<input type="email" class="ur-eh-input is-inline-input" id="ur-eh-inline-from-input" value="' +
+						'<input type="email" multiple class="ur-eh-input is-inline-input" id="ur-eh-inline-from-input" value="' +
 						esc(fromInfo.suggested || "") +
 						'" />' +
 						'<button type="button" class="ur-eh-btn-primary" style="height:34px;" data-action="save-inline-from" ' +
@@ -504,7 +633,9 @@
 					? i18n.header_sub_spam
 					: incomingIssue === "not_received"
 						? i18n.header_sub_not_received
-						: i18n.header_sub_default;
+						: incomingIssue === "failed"
+							? i18n.header_sub_failed
+							: i18n.header_sub_default;
 		}
 
 		document.getElementById("ur-eh-header-slot").innerHTML =
@@ -685,23 +816,35 @@
 				"</span>" +
 				"</div>";
 		} else if (state.ehTestState === "sent") {
+			const disabledWarnHtml = state.testSentWhileDisabled
+				? '<div class="ur-eh-fb-bar is-warn" role="status"><span>' +
+					esc(i18n.emails_disabled_sent_warn) +
+					"</span></div>"
+				: "";
 			fbSlot.innerHTML =
 				'<div class="ur-eh-fb-bar" role="status">' +
 				"  <span>" +
 				sprintf(i18n.sent_prompt, esc(state.lastSentTo || state.testEmail)) +
 				"</span>" +
 				'  <div class="ur-eh-fb-actions">' +
-				'    <button type="button" class="ur-eh-btn-subtle" data-fb="yes">' +
+				'    <button type="button" class="ur-eh-btn-subtle" data-fb="yes" ' +
+				(state.isConfirmingTest ? "disabled" : "") +
+				">" +
 				esc(i18n.yes_received) +
 				"</button>" +
-				'    <button type="button" class="ur-eh-btn-subtle" data-fb="not_yet">' +
+				'    <button type="button" class="ur-eh-btn-subtle" data-fb="not_yet" ' +
+				(state.isConfirmingTest ? "disabled" : "") +
+				">" +
 				esc(i18n.not_yet) +
 				"</button>" +
-				'    <button type="button" class="ur-eh-btn-subtle" data-fb="spam">' +
+				'    <button type="button" class="ur-eh-btn-subtle" data-fb="spam" ' +
+				(state.isConfirmingTest ? "disabled" : "") +
+				">" +
 				esc(i18n.in_spam) +
 				"</button>" +
 				"  </div>" +
-				"</div>";
+				"</div>" +
+				disabledWarnHtml;
 		} else if (state.ehTestState === "failed") {
 			fbSlot.innerHTML =
 				'<div class="ur-eh-fb-bar is-err" role="alert">' +
@@ -794,9 +937,12 @@
 			.done(function (res) {
 				if (res && res.success && res.data && res.data.report) {
 					state.report = res.data.report;
-					if (fixAction === "enable_emails" && state.ehTestState === "failed") {
-						state.ehTestState = null;
-						state.testError = "";
+					if (fixAction === "enable_emails") {
+						state.testSentWhileDisabled = false;
+						if (state.ehTestState === "failed") {
+							state.ehTestState = null;
+							state.testError = "";
+						}
 					}
 					if (fixAction === "update_from_address") {
 						state.editingFromInline = false;
@@ -875,19 +1021,67 @@
 					state.lastSentTo = targetEmail;
 					state.ehTestState = "sent";
 					state.testError = "";
+					state.testSentWhileDisabled = Boolean(res.data && res.data.emails_disabled);
+					if (res.data && res.data.report) {
+						state.report = res.data.report;
+					} else {
+						refreshStatus({ manual: false });
+					}
 				} else {
 					state.ehTestState = "failed";
+					state.testSentWhileDisabled = false;
 					state.testError =
 						(res && res.data && (res.data.raw_error || res.data.message)) || i18n.failed_fallback;
-					refreshStatus({ manual: false });
+					if (res && res.data && res.data.report) {
+						state.report = res.data.report;
+					} else {
+						refreshStatus({ manual: false });
+					}
 				}
 			})
 			.fail(function () {
 				state.ehTestState = "failed";
+				state.testSentWhileDisabled = false;
 				state.testError = i18n.request_failed;
 			})
 			.always(function () {
 				state.isSendingTest = false;
+				render();
+			});
+	}
+
+	function confirmTestEmailReceived() {
+		if (state.isConfirmingTest) {
+			return;
+		}
+		state.isConfirmingTest = true;
+		render();
+
+		postAjax("user_registration_confirm_test_email", {
+			nonce: config.test_email_nonce
+		})
+			.done(function (res) {
+				if (res && res.success) {
+					state.ehTestState = null;
+					state.testSentWhileDisabled = false;
+					if (res.data && res.data.report) {
+						state.report = res.data.report;
+					} else {
+						state.report.incoming_issue = "";
+						if (state.report.recent_failures) {
+							state.report.recent_failures.count = 0;
+							state.report.recent_failures.last_error = "";
+						}
+					}
+				} else {
+					showToast((res && res.data && res.data.message) || i18n.confirm_failed || i18n.request_failed, true);
+				}
+			})
+			.fail(function () {
+				showToast(i18n.confirm_failed || i18n.request_failed, true);
+			})
+			.always(function () {
+				state.isConfirmingTest = false;
 				render();
 			});
 	}
@@ -979,7 +1173,7 @@
 			el.onclick = function () {
 				const inp = document.getElementById("ur-eh-inline-from-input");
 				const val = inp ? inp.value.trim() : "";
-				if (!isValidEmail(val)) {
+				if (!isValidEmailList(val)) {
 					showToast(i18n.invalid_email, true);
 					return;
 				}
@@ -1000,7 +1194,7 @@
 				if (e.key === "Enter") {
 					e.preventDefault();
 					const val = inlineFromInput.value.trim();
-					if (!isValidEmail(val)) {
+					if (!isValidEmailList(val)) {
 						showToast(i18n.invalid_email, true);
 						return;
 					}
@@ -1013,24 +1207,17 @@
 			el.onclick = function () {
 				const choice = el.getAttribute("data-fb");
 				if (choice === "yes") {
-					state.ehTestState = null;
-					state.report.incoming_issue = "";
-					if (state.report.recent_failures) {
-						state.report.recent_failures.count = 0;
-						state.report.recent_failures.last_error = "";
-					}
-					postAjax("user_registration_confirm_test_email", {
-						nonce: config.test_email_nonce
-					});
-					render();
+					confirmTestEmailReceived();
 				} else if (choice === "not_yet") {
 					state.ehTestState = null;
+					state.testSentWhileDisabled = false;
 					state.report.incoming_issue = "not_received";
 					render();
 					window.scrollTo({ top: 0, behavior: "smooth" });
 					focusHeaderVerdict();
 				} else if (choice === "spam") {
 					state.ehTestState = null;
+					state.testSentWhileDisabled = false;
 					state.report.incoming_issue = "spam";
 					render();
 					window.scrollTo({ top: 0, behavior: "smooth" });
