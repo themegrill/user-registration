@@ -352,6 +352,118 @@ function ur_string_to_bool( $string ) {
 }
 
 /**
+ * Gets the names a form field can be listed under in `urcl_hide_fields`.
+ *
+ * The template names a field by its advanced name first and its general name second, so either can be what the browser sends.
+ *
+ * @since x.x.x
+ *
+ * @param object $field Form field object.
+ *
+ * @return string[]
+ */
+function ur_get_field_names_for_conditional_logic( $field ) {
+	$names = array(
+		isset( $field->advance_setting->field_name ) ? $field->advance_setting->field_name : '',
+		isset( $field->general_setting->field_name ) ? $field->general_setting->field_name : '',
+	);
+
+	return array_values(
+		array_filter(
+			$names,
+			static function ( $name ) {
+				return is_string( $name ) && '' !== $name;
+			}
+		)
+	);
+}
+
+/**
+ * Gets the names of the fields that sit inside a row with conditional logic enabled.
+ *
+ * @since x.x.x
+ *
+ * @param int $form_id Form ID.
+ *
+ * @return string[]
+ */
+function ur_get_conditional_row_field_names( $form_id ) {
+	static $cache = array();
+
+	$form_id = absint( $form_id );
+
+	if ( 0 === $form_id ) {
+		return array();
+	}
+
+	if ( isset( $cache[ $form_id ] ) ) {
+		return $cache[ $form_id ];
+	}
+
+	$field_names         = array();
+	$row_data            = json_decode( (string) get_post_meta( $form_id, 'user_registration_form_row_data', true ) );
+	$row_ids             = json_decode( (string) get_post_meta( $form_id, 'user_registration_form_row_ids', true ) );
+	$conditional_row_ids = array();
+
+	foreach ( is_array( $row_data ) ? $row_data : array() as $single_row_data ) {
+		if ( isset( $single_row_data->row_id, $single_row_data->conditional_logic_enabled ) && ur_string_to_bool( $single_row_data->conditional_logic_enabled ) ) {
+			$conditional_row_ids[] = absint( $single_row_data->row_id );
+		}
+	}
+
+	$rows = empty( $conditional_row_ids ) ? array() : UR()->form->get_form( $form_id, array( 'content_only' => true ) );
+
+	foreach ( is_array( $rows ) ? $rows : array() as $index => $grids ) {
+		$row_id = ( is_array( $row_ids ) && isset( $row_ids[ $index ] ) ) ? absint( $row_ids[ $index ] ) : $index;
+
+		if ( ! in_array( $row_id, $conditional_row_ids, true ) ) {
+			continue;
+		}
+
+		foreach ( is_iterable( $grids ) ? $grids : array() as $grid ) {
+			foreach ( is_iterable( $grid ) ? $grid : array() as $row_field ) {
+				$field_names = array_merge( $field_names, ur_get_field_names_for_conditional_logic( $row_field ) );
+			}
+		}
+	}
+
+	$cache[ $form_id ] = $field_names;
+
+	return $field_names;
+}
+
+/**
+ * Checks whether the request marks a field as hidden by conditional logic the form really has.
+ *
+ * The client-sent `urcl_hide_fields` list is only honoured for a field that has conditional logic enabled itself or sits in a row that does.
+ *
+ * @since x.x.x
+ *
+ * @param object $field   Form field object.
+ * @param int    $form_id Form ID, needed to find rows with conditional logic.
+ *
+ * @return bool
+ */
+function ur_is_field_hidden_by_conditional_logic( $field, $form_id = 0 ) {
+	$field_names = ur_get_field_names_for_conditional_logic( $field );
+
+	if ( empty( $field_names ) || ! isset( $_POST['urcl_hide_fields'] ) || ! is_string( $_POST['urcl_hide_fields'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		return false;
+	}
+
+	// Without the assoc flag a JSON object decodes to an object, so only a real list passes is_array().
+	$hidden_fields = json_decode( wp_unslash( $_POST['urcl_hide_fields'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing,WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+
+	if ( ! is_array( $hidden_fields ) || empty( array_intersect( $field_names, array_filter( $hidden_fields, 'is_string' ) ) ) ) {
+		return false;
+	}
+
+	$has_logic = isset( $field->advance_setting->enable_conditional_logic ) && ur_string_to_bool( $field->advance_setting->enable_conditional_logic );
+
+	return $has_logic || array() !== array_intersect( $field_names, ur_get_conditional_row_field_names( $form_id ) );
+}
+
+/**
  * Converts a bool to a 'yes' or 'no'.
  *
  * @param bool $bool String to convert.
@@ -6790,31 +6902,17 @@ if ( ! function_exists( 'user_registration_conditional_user_meta_filter' ) ) {
 	 * @since 3.0.4
 	 */
 	function user_registration_conditional_user_meta_filter( $valid_form_data, $user_id, $form_id ) {
-		if ( $user_id <= 0 ) {
+		if ( $user_id <= 0 || ! isset( $_POST['urcl_hide_fields'] ) ) { //phpcs:ignore.
 			return $valid_form_data;
 		}
 
-		$field_name   = '';
-		$hidden_field = isset( $_POST['urcl_hide_fields'] ) ? ur_clean( $_POST['urcl_hide_fields'] ) : array(); //phpcs:ignore.
+		$is_registration = isset( $_POST['action'] ) && 'user_registration_user_form_submit' === $_POST['action']; //phpcs:ignore.
+		$key_prefix      = $is_registration ? '' : 'user_registration_';
 
-		if ( empty( $hidden_field ) ) {
-			return $valid_form_data;
-		}
-
-		$hidden_array_field = json_decode( stripslashes( $hidden_field ) );
-
-		if ( isset( $_POST['action'] ) && 'user_registration_user_form_submit' === $_POST['action'] ) { //phpcs:ignore.
-			foreach ( $hidden_array_field as $field ) {
-				$field_name = $field;
-				if ( in_array( $field_name, array_keys( $valid_form_data ) ) ) {
-					unset( $valid_form_data[ $field_name ] );
-				}
-			}
-		} else {
-			foreach ( $hidden_array_field as $field ) {
-				$field_name = 'user_registration_' . $field;
-				if ( in_array( $field_name, array_keys( $valid_form_data ) ) ) {
-					unset( $valid_form_data[ $field_name ] );
+		foreach ( ur_get_form_field_data( $form_id ) as $form_field ) {
+			if ( ur_is_field_hidden_by_conditional_logic( $form_field, $form_id ) ) {
+				foreach ( ur_get_field_names_for_conditional_logic( $form_field ) as $field_name ) {
+					unset( $valid_form_data[ $key_prefix . $field_name ] );
 				}
 			}
 		}
@@ -7250,7 +7348,7 @@ if ( ! function_exists( 'user_registration_validate_form_field_data' ) ) {
 
 			$validations = $form_validator->get_field_validations( $single_field_key );
 
-			if ( $form_validator->is_field_required( $single_form_field, $form_data ) ) {
+			if ( $form_validator->is_field_required( $single_form_field, $form_data, $form_id ) ) {
 				array_unshift( $validations, 'required' );
 			}
 
@@ -7410,9 +7508,7 @@ if ( ! function_exists( 'user_registration_validate_edit_profile_form_field_data
 
 			$required = isset( $single_form_field->general_setting->required ) ? $single_form_field->general_setting->required : false;
 
-			$urcl_hide_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( stripslashes( $_POST['urcl_hide_fields'] ), true ) : array(); //phpcs:ignore;
-
-			if ( ! in_array( $single_field_name, $urcl_hide_fields, true ) && ur_string_to_bool( $required ) ) {
+			if ( ! ur_is_field_hidden_by_conditional_logic( $single_form_field, $form_id ) && ur_string_to_bool( $required ) ) {
 				array_unshift( $validations, 'required' );
 			}
 

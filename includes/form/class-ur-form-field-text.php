@@ -73,10 +73,8 @@ class UR_Form_Field_Text extends UR_Form_Field {
 		$value = isset( $form_data->value ) ? $form_data->value : '';
 		$label = $single_form_field->general_setting->field_name;
 
-		$field_name  = isset( $form_data->field_name ) ? $form_data->field_name : '';
-		$urcl_fields = isset( $_POST['urcl_hide_fields'] ) ? (array) json_decode( stripslashes( $_POST['urcl_hide_fields'] ), true ) : array();
-		//Ignore URCL fields validation.
-		if ( in_array( $field_name, $urcl_fields ) ) {
+		// Ignore URCL fields validation.
+		if ( ur_is_field_hidden_by_conditional_logic( $single_form_field, $form_id ) ) {
 			return;
 		}
 		// Validate Limit Length.
