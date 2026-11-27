@@ -180,6 +180,16 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 		}
 	}
 
+	/**
+	 * Reactivates a subscription, only restoring it locally once the payment gateway confirms.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int  $subscription_id Local subscription ID.
+	 * @param bool $send_email      Unused; kept for caller compatibility.
+	 *
+	 * @return array Result with a `status` flag and, on failure, an optional `message`.
+	 */
 	public function reactivate_subscription_by_id( $subscription_id, $send_email = true ) {
 		$subscription       = $this->retrieve( $subscription_id );
 		$pending_cancel_key = 'urm_pending_cancel_' . $subscription_id;
@@ -211,7 +221,14 @@ class SubscriptionRepository extends BaseRepository implements SubscriptionInter
 			$order = $this->orders_repository->get_order_by_subscription( $subscription_id );
 
 			$subscription_service = new SubscriptionService();
-			$subscription_service->reactivate_subscription( $order, $subscription );
+			$gateway_result       = (array) $subscription_service->reactivate_subscription( $order, $subscription );
+
+			if ( empty( $gateway_result['status'] ) ) {
+				return array(
+					'status'  => false,
+					'message' => ! empty( $gateway_result['message'] ) ? $gateway_result['message'] : esc_html__( 'Failed to reactivate subscription with payment gateway.', 'user-registration' ),
+				);
+			}
 
 			// Only restore to 'active' if the order's payment has actually been approved/completed
 			// (e.g. Bank Transfer orders stay 'pending' until an admin approves them); otherwise

@@ -1,3 +1,7 @@
+= 5.3.3    - Unreleased =
+* Fix      - A canceled subscription now reactivates only when the payment gateway confirms it. Old PayPal Standard subscriptions without REST credentials can no longer be reactivated.
+
+
 = 5.3.2    - 05/11/2026 =
 * Feature  - AI assistants can read membership plans, subscriptions and payments.
 * Enhance  - AI assistants can filter members by approval status and email verification.
