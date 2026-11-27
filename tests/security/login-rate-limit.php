@@ -15,7 +15,23 @@ $GLOBALS['mock_filters']    = array();
 $GLOBALS['mock_actions']    = array();
 $GLOBALS['mock_locks']      = array();
 
+$GLOBALS['mock_stale_cache'] = array();
+
+function wp_using_ext_object_cache() {
+	return false;
+}
+
+function wp_cache_delete( $key, $group = '' ) {
+	if ( 'options' === $group && 0 === strpos( $key, '_transient_' ) ) {
+		unset( $GLOBALS['mock_stale_cache'][ substr( $key, strlen( '_transient_' ) ) ] );
+	}
+	return true;
+}
+
 function get_transient( $key ) {
+	if ( isset( $GLOBALS['mock_stale_cache'][ $key ] ) ) {
+		return $GLOBALS['mock_stale_cache'][ $key ];
+	}
 	if ( ! isset( $GLOBALS['mock_transients'][ $key ] ) ) {
 		return false;
 	}
@@ -433,3 +449,23 @@ $resp_email_only_5 = security_response(
 	}
 );
 security_assert( false === $resp_email_only_5->success && false !== strpos( $resp_email_only_5->data['message'], 'Too many failed login attempts' ), 'Email-only unknown-email 5th attempt triggers lockout through ur_process_login()' );
+
+// 12. Regression: a read inside the bucket lock must bypass the request's stale option cache (simultaneous requests lost increments).
+$race_ip  = '203.0.113.210';
+$race_key = UR_Login_Rate_Limiter::IP_KEY_PREFIX . md5( $race_ip );
+set_transient(
+	$race_key,
+	array(
+		'attempts'     => 2,
+		'lockouts'     => 0,
+		'locked_until' => 0,
+	),
+	900
+);
+$GLOBALS['mock_stale_cache'][ $race_key ] = array(
+	'attempts'     => 0,
+	'lockouts'     => 0,
+	'locked_until' => 0,
+);
+UR_Login_Rate_Limiter::consume_attempt( 'race_user', $race_ip );
+security_assert( 3 === get_transient( $race_key )['attempts'], 'Locked read ignores stale cached counter and keeps the concurrent increment' );

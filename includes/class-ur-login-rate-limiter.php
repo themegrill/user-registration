@@ -391,7 +391,7 @@ class UR_Login_Rate_Limiter {
 		$lock_type      = self::acquire_lock( $key );
 
 		try {
-			$state = self::get_bucket_state( $key );
+			$state = self::get_bucket_state( $key, true );
 
 			if ( $state['locked_until'] > $now || $state['attempts'] >= $max_limit ) {
 				return false;
@@ -427,7 +427,7 @@ class UR_Login_Rate_Limiter {
 		$lockouts_count  = 0;
 
 		try {
-			$state = self::get_bucket_state( $key );
+			$state = self::get_bucket_state( $key, true );
 
 			// Do not extend an already active lockout.
 			if ( $state['locked_until'] > $now ) {
@@ -476,7 +476,7 @@ class UR_Login_Rate_Limiter {
 		$lock_type      = self::acquire_lock( $key );
 
 		try {
-			$state = self::get_bucket_state( $key );
+			$state = self::get_bucket_state( $key, true );
 			if ( $state['attempts'] > 0 ) {
 				$state['attempts']--;
 				if ( 0 === $state['attempts'] && 0 === $state['lockouts'] && 0 === $state['locked_until'] ) {
@@ -552,11 +552,19 @@ class UR_Login_Rate_Limiter {
 	/**
 	 * Read and normalize a rate-limit bucket from transients.
 	 *
-	 * @param string $key Transient key.
+	 * @param string $key   Transient key.
+	 * @param bool   $fresh True to bypass this request's in-memory option cache; required for reads inside the bucket lock.
 	 *
 	 * @return array{attempts: int, lockouts: int, locked_until: int}
 	 */
-	private static function get_bucket_state( $key ) {
+	private static function get_bucket_state( $key, $fresh = false ) {
+		if ( $fresh && ! ( function_exists( 'wp_using_ext_object_cache' ) && wp_using_ext_object_cache() ) ) {
+			// Without a persistent cache, transients are options cached per request; another request may have written since.
+			wp_cache_delete( '_transient_' . $key, 'options' );
+			wp_cache_delete( '_transient_timeout_' . $key, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+
 		$raw = get_transient( $key );
 
 		if ( ! is_array( $raw ) ) {
