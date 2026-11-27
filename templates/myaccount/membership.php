@@ -117,7 +117,8 @@ $current_url = get_permalink( get_option( 'user_registration_myaccount_page_id' 
 
 													ob_start();
 													?>
-													<span class="user-registration-help-tip" data-tip="<?php echo esc_attr( $notice ); ?>">
+													<?php // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- ur_sanitize_tip_html() encodes the value for the attribute. ?>
+													<span class="user-registration-help-tip" data-tip="<?php echo ur_sanitize_tip_html( $notice ); ?>">
 														<svg xmlns="http://www.w3.org/2000/svg" fill="#FFC107" viewBox="0 0 24 24" height="18px" width="18px">
 															<path fill-rule="evenodd" d="M9.491 4.44c1.115-1.92 3.903-1.92 5.017 0l7.1 12.24C22.722 18.6 21.328 21 19.1 21H4.9c-2.229 0-3.622-2.4-2.508-4.32L9.49 4.44h.001Zm2.51 5.038a.726.726 0 0 1 .723.72v3.6a.718.718 0 0 1-.724.72.726.726 0 0 1-.724-.72v-3.6a.718.718 0 0 1 .724-.72Zm0 7.92a.726.726 0 0 0 .723-.72.718.718 0 0 0-.724-.72.718.718 0 1 0 0 1.44Z" clip-rule="evenodd"/>
 														</svg>
