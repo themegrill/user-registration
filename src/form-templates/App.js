@@ -29,21 +29,30 @@ const TabFilters = ({ onTabChange }) => {
 
 	return (
 		<Tabs variant="unstyled" ml="auto" onChange={onTabChange}>
-			<TabList gap="8px">
+			<TabList
+				bg="#f3f4f6"
+				gap="2px"
+				borderRadius="5px"
+				p="4px"
+				>
 				{filters.map((label) => (
 					<Tab
 						key={label}
 						_selected={{
 							color: "#475bb2",
-							borderBottom: "2px solid",
-							borderColor: "#475bb2"
+							bg:"white",
+							boxShadow:"0 4px 24px 0 rgba(10,10,10, .06)",
 						}}
-						color="#383838"
-						fontWeight="500"
-						fontSize="16px"
-						lineHeight="20px"
-						px={{ base: 1, md: 2 }} // Add horizontal padding to tabs
+						fontSize="14px"
+						lineHeight="24px"
+						color="#646970"
+						fontWeight="medium"
+						whiteSpace="nowrap"
+						h="32px"
+						borderRadius="4px"
+						p="6px 16px"
 						boxShadow="none !important"
+						ml="0px !important"
 					>
 						{label}
 					</Tab>
@@ -80,34 +89,29 @@ const App = () => {
 				border={"1px solid #e1e1e1"}
 				borderRadius={"13px"}
 				backgroundColor="white"
-				padding="24px 28px"
+				padding="24px"
+				overflow="hidden"
 			>
-				<Box gap="24px" display="flex" flexDirection="column">
+				<Box display="flex" flexDirection="column">
 					<HStack
 						align="center"
 						bg="white"
 						direction={{ base: "column", md: "row" }}
 						borderBottom="1px solid #e1e1e1"
-						padding="0 0 10px"
+						margin="0 -24px"
+						padding="0 24px 20px"
 						boxShadow="none"
 					>
-						<HStack gap="24px">
-							<HStack gap="16px">
-								<Heading
-									textAlign={{ base: "center", md: "left" }}
-									lineHeight="30px"
-									fontWeight="600"
-									margin="0"
-									fontSize={{
-										base: "16px",
-										md: "18px",
-										lg: "20px"
-									}}
-									color="#222222"
-								>
-									{__("Add New Form", "user-registration")}
-								</Heading>
-							</HStack>
+						<HStack gap="16px">
+							<Heading
+								lineHeight="26px"
+								fontWeight="600"
+								margin="0"
+								fontSize="18px"
+								color="#383838"
+							>
+								{__("Add New Form", "user-registration")}
+							</Heading>
 							<Button
 								style={{
 									border: "1px solid #475bb2",
@@ -118,7 +122,7 @@ const App = () => {
 								backgroundColor="#f6f7f7"
 								fontWeight="500"
 								height="34px"
-								padding="0 12px"
+								padding="0 16px"
 								alignContent="center"
 								fontSize="14px"
 								lineHeight="20px"
@@ -141,33 +145,6 @@ const App = () => {
 						<TabFilters onTabChange={handleTabChange} />
 					</HStack>
 					{/* Main Content Area */}
-					<Box bg="white" p="0" rounded="md" gap="24px">
-						<VStack align="start" gap="4px">
-							<Heading
-								as="h2"
-								fontSize="16px"
-								lineHeight="26px"
-								m={0}
-								color="#26262E"
-								fontWeight="500"
-								fontFamily={"inherit"}
-							>
-								{__("Select a Template", "user-registration")}
-							</Heading>
-							<Text
-								fontSize="14px"
-								lineHeight="25px"
-								fontWeight="400"
-								color="#4D4D4D"
-								m={0}
-							>
-								{__(
-									"To get started quickly, you can pick from our ready-made templates, begin with a blank form, or design your own.",
-									"user-registration"
-								)}
-							</Text>
-						</VStack>
-					</Box>
 					<Box bg="white" rounded="md" gap="24px" boxShadow="none">
 						<Main filter={selectedTab} />
 					</Box>

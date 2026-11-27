@@ -331,30 +331,132 @@ const TemplateList = ({ selectedCategory, templates }) => {
 
 	return (
 		<Box>
+			<VStack
+				position="relative"
+				bg="white"
+				border="1px solid rgba(0, 0, 0, 0.08)"
+				borderRadius="13px"
+				p="26px 30px"
+				mb="32px"
+				overflow="hidden"
+				display="flex"
+				alignItems="flex-start"
+				width="100%"
+				sx={{
+					'::before': {
+					content: '""',
+					position: "absolute",
+					inset: "0",
+					bg: "radial-gradient(ellipse 60% 120% at 100% 50%, rgba(64, 99, 240, 0.07) 0%, transparent 70%), radial-gradient(ellipse 40% 80% at 80% 20%, rgba(61, 126, 245, 0.06) 0%, transparent 60%)",
+					pointerEvents: "none",
+					},
+				}}
+				>
+				<Text
+					display="inline-block"
+					alignItems="center"
+					gap="6px"
+					bg="rgba(66, 64, 240, 0.08)"
+					border="1px solid rgba(64, 92, 240, 0.2)"
+					borderRadius="20px"
+					p="4px 12px"
+					fontSize="12px !important"
+					lineHeight="1.5 !important"
+					fontWeight="medium !important"
+					color="#475bb2 !important"
+					letterSpacing="0.23px"
+					m="0 0 12px"
+				>✦ {__('Ready-made templates', 'user-registration')}</Text>
+				<Heading
+					as="h2"
+					fontSize="26px"
+					lineHeight="1.2"
+					m="0 0 8px !important"
+					color="#0f0f1a !important"
+					fontWeight="700 !important"
+					fontFamily={"inherit"}
+				>
+					{__("Build faster with beautiful templates", "user-registration")}
+				</Heading>
+				<Text
+					fontSize="14px"
+					lineHeight="1.6"
+					fontWeight="400"
+					color="#4A5568"
+					maxWidth="480px"
+					m={0}
+				>
+					{__(
+						"Pick from 50 professionally designed form templates. Customize, deploy, and start collecting responses in minutes.",
+						"user-registration"
+					)}
+				</Text>
+			</VStack>
+		
 			<Heading
 				as="h3"
 				fontSize="18px"
 				lineHeight="26px"
+				letterSpacing="0.2px"
 				fontWeight="semibold"
-				m="0px 0px 32px"
+				m="0px 0px 32px !important"
 				color="#26262E"
 				borderBottom="1px solid #e1e1e1"
-				paddingBottom="20px"
-				mb="30px !important"
+				paddingBottom="12px"
 			>
-				{selectedCategory.toUpperCase()}
+				{selectedCategory}
 			</Heading>
 			{templates?.length ? (
-				<SimpleGrid
-					columns={{ base: 1, md: 2, lg: 2, xl: 3, "2xl": 4 }}
-					spacing={6}
-				>
-					{templates.map((template) => (
+				<SimpleGrid gridTemplateColumns="repeat(auto-fill, minmax(280px, 1fr))" spacing={6}>
+					{templates.map((template) => {
+						if (template.slug === 'blank') {
+							return (
+								<Box
+									key={template.slug}
+									borderWidth="2px"
+									borderStyle="dashed"
+									borderColor="#c3c3c3"
+									borderRadius="13px"
+									bg="white"
+									display="flex"
+									flexDirection="column"
+									minHeight="320px"
+									alignItems="center"
+									justifyContent="center"
+									cursor="pointer"
+									transition="all .3s"
+									onClick={() => handleTemplateClick(template)}
+									_hover={{
+										borderColor: '#475bb2',
+										boxShadow: '0px 5px 24px rgba(58, 34, 93, 0.12)',
+									}}
+								>
+									<Center
+										bg="rgba(71, 91, 178, 0.10)"
+										borderRadius="50%"
+										w="48px"
+										h="48px"
+										mb="16px"
+									>
+										<Icon viewBox="0 0 24 24" boxSize={6} color="#475bb2">
+											<path fill="currentColor" d="M19 11h-6V5a1 1 0 0 0-2 0v6H5a1 1 0 0 0 0 2h6v6a1 1 0 0 0 2 0v-6h6a1 1 0 0 0 0-2z" />
+										</Icon>
+									</Center>
+									<Heading fontSize="18px" fontWeight="600" mb="8px !important" color="#0f0f1a">
+										{__('Start Blank', 'everest-forms')}
+									</Heading>
+									<Text fontSize="14px" color="gray.500" m={0}>
+										{__('Create from scratch', 'user-registration')}
+									</Text>
+								</Box>
+							);
+						}
+
+						return (
 						<Box
 							key={template.slug}
-							borderWidth="2px"
+							border="1px solid #e1e1e1"
 							borderRadius="8px"
-							borderColor="#F6F4FA"
 							overflow="hidden"
 							position="relative"
 							onMouseOver={() => setHoverCardId(template.id)}
@@ -364,46 +466,47 @@ const TemplateList = ({ selectedCategory, templates }) => {
 							p={0}
 							transition="all .3s"
 							_hover={{
+								borderColor:"transparent",
 								boxShadow:
 									"0px 5px 24px rgba(58, 34, 93, 0.12)",
-								"::before": {
+								'::before': {
 									content: '""',
-									position: "absolute",
+									position: 'absolute',
 									top: 0,
 									left: 0,
-									width: "100%",
-									height: "207px",
-									bg: "rgba(0, 0, 0, 0.4)",
-									zIndex: 1
+									width: '100%',
+									height: '250px',
+									bg: "#181818",
+									opacity: ".5",
+									zIndex: 1,
 								},
 								"& > div > .template-title": {
 									color: "#475bb2"
 								}
 							}}
 						>
-							<Center mb={0} height="207px">
+							<Center mb={0}>
 								<Box
 									position="relative"
 									width="100%"
-									height="100%"
+									height="250px"
 									display="flex"
 									justifyContent="center"
-									alignItems="center"
-									bg="#ECECF6"
-									borderRadius="4px 4px 0px 0px"
+									alignItems="flex-start"
+									bg= { 'linear-gradient(129deg, #F3F2F8 2.83%, #F7F5F9 110.96%)' }
+									p="10px 18px 0"
+									borderRadius="6px 6px 0px 0px"
 									overflow="hidden"
 									transition="all .3s"
+									borderBottom="1px solid #e1e1e1"
 								>
 									<Image
-										boxShadow={
-											template.slug == "blank"
-												? "none"
-												: "0px 3px 12px rgba(58, 34, 93, 0.12)"
-										}
+										boxShadow="0 6px 14px 0 #E5E1EF"
 										src={modifyImageUrl(template.imageUrl)}
 										alt={template.title}
 										objectFit="contain"
-										height="100%"
+										borderRadius="6px"
+										marginTop="8px"
 									/>
 									{template.isPro ? (
 										!licenseDetail ? (
@@ -414,11 +517,11 @@ const TemplateList = ({ selectedCategory, templates }) => {
 												bottom="12px"
 												right="12px"
 												borderRadius="4px"
-												fontSize="12px"
-												p="2px 6px"
-												textTransform="capitalize"
+												fontSize="11px"
+												fontWeight="semibold"
+												p="4px 8px"
+												textTransform="uppercase"
 												zIndex="2"
-												fontWeight="500"
 											>
 												{__("Pro", "user-registration")}
 											</Badge>
@@ -430,11 +533,11 @@ const TemplateList = ({ selectedCategory, templates }) => {
 												bottom="12px"
 												right="12px"
 												borderRadius="4px"
-												fontSize="12px"
-												p="2px 6px"
-												textTransform="capitalize"
+												fontSize="11px"
+												p="4px 8px"
+												textTransform="uppercase"
 												zIndex="2"
-												fontWeight="500"
+												fontWeight="semibold"
 											>
 												{template.plan?.[0] ||
 													__(
@@ -446,8 +549,8 @@ const TemplateList = ({ selectedCategory, templates }) => {
 									) : null}
 									{/* Hover Buttons */}
 									{hoverCardId === template.id && (
-										<VStack
-											spacing={4}
+										<HStack
+											spacing={3}
 											position="absolute"
 											top="50%"
 											left="50%"
@@ -455,8 +558,12 @@ const TemplateList = ({ selectedCategory, templates }) => {
 											zIndex={2}
 										>
 											<Button
-												borderRadius="50px"
-												leftIcon={<IoPlayOutline />}
+												borderRadius="4px"
+												fontSize="14px"
+												lineHeight="24px"
+												fontWeight="medium"
+												p="0 16px"
+												minWidth="auto"
 												style={{
 													borderColor: "#475bb2",
 													color: "white"
@@ -471,18 +578,21 @@ const TemplateList = ({ selectedCategory, templates }) => {
 												width="100%"
 											>
 												{__(
-													"Get Started",
+													"Use Template",
 													"user-registration"
 												)}
 											</Button>
 											{template.preview_link && (
 												<Button
-													borderRadius="50px"
-													leftIcon={
-														<MdOutlineRemoveRedEye />
-													}
-													color="#4D4D4D"
-													variant="outline"
+													borderRadius="4px"
+													fontSize="14px"
+													lineHeight="24px"
+													fontWeight="medium"
+													p="0 16px"
+													minWidth="auto"
+													color="#0f0f1a"
+													bg="#f4f4f4"
+													border="1px solid rgba(0,0,0,0.12)"
 													onClick={() =>
 														window.open(
 															template.preview_link,
@@ -495,6 +605,7 @@ const TemplateList = ({ selectedCategory, templates }) => {
 													}}
 													bg="#FFFFFF"
 													width="100%"
+													ml="0px !important"
 												>
 													{__(
 														"Preview",
@@ -502,7 +613,7 @@ const TemplateList = ({ selectedCategory, templates }) => {
 													)}
 												</Button>
 											)}
-										</VStack>
+										</HStack>
 									)}
 								</Box>
 							</Center>
@@ -515,11 +626,14 @@ const TemplateList = ({ selectedCategory, templates }) => {
 									}
 									aria-label={`Toggle favorite for ${template.title}`}
 									position="absolute"
-									top={2}
-									right={2}
+									top={3}
+									right={3}
 									zIndex={3}
 									bg="transparent"
 									border="none"
+									display="flex"
+									alignItems="center"
+									justifyContent="center"
 									_hover={{ color: "red.600" }}
 								>
 									<Icon
@@ -528,7 +642,7 @@ const TemplateList = ({ selectedCategory, templates }) => {
 												? FaHeart
 												: FaRegHeart
 										}
-										boxSize={6}
+										boxSize={5}
 										color={
 											favorites.includes(template.slug)
 												? "red"
@@ -538,15 +652,18 @@ const TemplateList = ({ selectedCategory, templates }) => {
 								</Box>
 							)}
 
-							<VStack padding="8px 16px 16px 16px" gap="10px">
+							<VStack 
+								p="16px"
+								alignItems="flex-start"
+								>
 								<Heading
 									className="template-title"
 									width="100%"
 									textAlign="left"
-									fontWeight="500"
+									fontWeight="bold"
 									fontSize="16px"
 									margin="0px"
-									lineHeight="22px"
+									lineHeight="24px"
 								>
 									{template.title}
 								</Heading>
@@ -556,13 +673,13 @@ const TemplateList = ({ selectedCategory, templates }) => {
 									fontSize="14px"
 									fontWeight="400"
 									color="gray.600"
-									lineHeight="25px"
+									lineHeight="22px"
 								>
 									{template.description}
 								</Text>
 							</VStack>
 						</Box>
-					))}
+					)})}
 				</SimpleGrid>
 			) : (
 				<Box

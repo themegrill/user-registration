@@ -47,7 +47,12 @@ const Sidebar = React.memo(
 				: categories;
 
 		return (
-			<Box>
+			<Box 
+				p="24px 24px 24px 0"
+				maxWidth="320px"
+				w="100%"
+				boxSizing="border-box"
+				>
 				<InputGroup mb="26px">
 					<InputLeftElement
 						pointerEvents="none"
@@ -83,14 +88,14 @@ const Sidebar = React.memo(
 					/>
 				</InputGroup>
 
-				<VStack align="stretch" gap="2px">
+				<VStack align="stretch" gap="4px">
 					{orderedCategories.map((category) => (
 						<HStack
 							key={category.name}
-							p="12px"
+							p="10px 10px 10px 16px"
+							bg="#f5f5f5"
 							_hover={{
-								bg: "#EDEFF7",
-								color: "#475bb2",
+								bg: "#f5f5f5",
 								"& > .badge": {
 									bg:
 										selectedCategory === category.name
@@ -100,25 +105,21 @@ const Sidebar = React.memo(
 							}}
 							borderRadius="md"
 							cursor="pointer"
+							justifyContent="space-between"
 							bg={
 								selectedCategory === category.name
-									? "#EDEFF7"
+									? "#f5f5f5"
 									: "transparent"
 							}
 							onClick={() => onCategorySelect(category.name)}
-							justifyContent="space-between"
 						>
 							<Text
-								color={
-									selectedCategory === category.name
-										? "#475bb2"
-										: ""
-								}
-								fontWeight="500"
+								className="urm-category-list"
+								color={selectedCategory === category.name ? "#475bb2" : "#4A5568"}
+								fontWeight="medium"
 								margin="0px"
-								fontSize="16px"
-								lineHeight="20px"
-								alignItems="center"
+								fontSize="14px"
+								lineHeight="22px"
 							>
 								{category.name}
 							</Text>
@@ -127,11 +128,11 @@ const Sidebar = React.memo(
 								display="flex"
 								alignItems="center"
 								justifyContent="center"
+								fontWeight="semibold"
 								width="32px"
-								height="32px"
-								padding="6px"
-								borderRadius="8px"
-								gap="10px"
+								height="26px"
+								padding="0"
+								borderRadius="4px"
 								color={
 									selectedCategory === category.name
 										? "#475bb2"
@@ -140,58 +141,56 @@ const Sidebar = React.memo(
 								bg={
 									selectedCategory === category.name
 										? "white"
-										: "#F2F2F2"
+										: "#f5f5f5"
 								}
 							>
 								{category.count}
 							</Badge>
 						</HStack>
 					))}
+
 					<Card
-						align="center"
-						background="linear-gradient(70deg, #475bb2, #94A7E7B2)"
-						padding="40px 24px"
+						align='center'
 						marginTop="26px"
-					>
-						<CardHeader padding="0px">
-							<Heading
-								fontSize="18px"
-								color="#ffffff"
-								lineHeight="28px"
-								padding="0px 20px"
-								textAlign="center"
-							>
-								{__(
-									"Can't Find The Form Template You Need?",
-									"user-registration"
-								)}
+						padding="16px"
+						bg="linear-gradient(135deg, rgba(64, 129, 240, 0.08), rgba(61,126,245,0.06))"
+						border="1px solid rgba(64, 99, 240, 0.18)"
+						borderRadius="9px"
+						boxShadow="none"
+						>
+						<CardHeader padding="0px" marginBottom="12px">
+							<Heading as="h5" fontSize="16px" color="#0f0f1a !important" lineHeight="26px" fontWeight="semibold"  padding="0px" margin="0px 0px 6px !important">
+							{__("Can't find a template?", "user-registration")}
 							</Heading>
+							<Text fontSize="14px" lineHeight="22px !important" color="#6b6b85 !important" margin="0">{__('Request a custom template built for your needs.', 'user-registration')}</Text>
 						</CardHeader>
 						<CardFooter padding="0" width="100%">
-							<a
-								href="https://wpuserregistration.com/request-template"
-								target="_blank"
-								rel="noopener noreferrer"
-								style={{ width: "inherit" }}
+						<a
+							href="https://wpuserregistration.com/request-template"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="evf-custom-template"
+							style={{
+								display: "flex",
+								alignItems: "center",
+								justifyContent: "center",
+								borderRadius:"4px",
+								width: "100%",
+								padding: "0px 12px",
+								background: "linear-gradient(135deg, #4045f0, #3d71f5)",
+								color: "white",
+								fontSize: "14px",
+								lineHeight: "24px",
+								fontWeight: "medium",
+								height: "34px"
+							}}
+							onFocus={(e) => {
+								e.currentTarget.style.outline = "none";
+								e.currentTarget.style.boxShadow = "none";
+							}}
 							>
-								<Button
-									backgroundColor="#FFFFFF"
-									color="#475bb2"
-									padding="12px 10px"
-									borderRadius="4px"
-									width="inherit"
-									fontWeight="500"
-									_hover={{
-										backgroundColor: "#475BB2",
-										color: "white !important"
-									}}
-								>
-									{__(
-										"Request Template",
-										"user-registration"
-									)}
-								</Button>
-							</a>
+								✦ {__("Request Template","user-registration")}
+						</a>
 						</CardFooter>
 					</Card>
 				</VStack>

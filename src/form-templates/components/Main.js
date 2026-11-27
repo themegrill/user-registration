@@ -100,9 +100,11 @@ const Main = ({ filter }) => {
 		<Box>
 			<Flex direction={{ base: "column", md: "row" }}>
 				<Box
-					width={sidebarWidth}
-					mr={{ base: 0, md: 4 }}
-					mb={{ base: 4, md: 0 }}
+					maxWidth="320px"
+					w="100%"
+					pl="24px"
+					ml="-24px"
+					boxSizing="border-box"
 				>
 					<Sidebar
 						categories={categories}
@@ -111,13 +113,7 @@ const Main = ({ filter }) => {
 						onSearchChange={handleSearchChange}
 					/>
 				</Box>
-				<Box
-					width="1px"
-					bg="linear-gradient(90deg, #CDD0D8 0%, rgba(255, 255, 255, 0) 158.04%)"
-					mx="4"
-					marginRight="28px"
-				/>
-				<Box flex={1}>
+				<Box borderLeft="1px solid #e1e1e1" p="24px" mr="-24px" flex={1}>
 					<TemplateList
 						selectedCategory={selectedCategory}
 						templates={filteredTemplates}
