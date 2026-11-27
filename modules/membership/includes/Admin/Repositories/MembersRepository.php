@@ -23,6 +23,41 @@ class MembersRepository extends BaseRepository implements MembersInterface {
 	}
 
 	/**
+	 * Delete several users one at a time, each followed by the membership rows the schema no longer cascades.
+	 *
+	 * The rows go last so a user row that cannot be deleted keeps its membership data.
+	 *
+	 * @param string $ids Comma separated user IDs.
+	 * @return bool|int False when nothing was asked for, a user row could not be deleted (that member keeps their rows, the ones before it are fully deleted) or a deleted member's rows could not be removed; otherwise the number of users deleted.
+	 */
+	public function delete_multiple( $ids ) {
+		$user_ids = array_filter( array_map( 'absint', explode( ',', $ids ) ) );
+
+		if ( empty( $user_ids ) ) {
+			return false;
+		}
+
+		$subscriptions_repository = new SubscriptionRepository();
+		$deleted                  = 0;
+
+		foreach ( $user_ids as $user_id ) {
+			$result = parent::delete_multiple( (string) $user_id );
+
+			if ( false === $result ) {
+				return false;
+			}
+
+			$deleted += (int) $result;
+
+			if ( ! $subscriptions_repository->delete_by_user( $user_id ) ) {
+				return false;
+			}
+		}
+
+		return $deleted;
+	}
+
+	/**
 	 * Create new Membership
 	 *
 	 * @param $data

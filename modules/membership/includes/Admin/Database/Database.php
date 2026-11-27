@@ -47,7 +47,8 @@ class Database {
 	 * Creates the necessary tables for the URMembership plugin.
 	 *
 	 * This function creates the subscriptions table, orders table, and orders meta table.
-	 * It also handles the creation of foreign key constraints and indexes.
+	 * No foreign keys are declared because MySQL rejects them when `wp_users` is MyISAM; the rows that
+	 * `ON DELETE CASCADE` used to remove are deleted in PHP by the repositories instead.
 	 *
 	 * @return void
 	 */
@@ -57,7 +58,6 @@ class Database {
 		$subscriptions_table = TableList::subscriptions_table();
 		$posts_table         = TableList::posts_table();
 		$posts_meta_table    = TableList::posts_meta_table();
-		$users_table         = TableList::users_table();
 		global $wpdb;
 
 		if ( $wpdb->has_cap( 'collation' ) ) {
@@ -85,7 +85,7 @@ class Database {
 						created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 						updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     					PRIMARY KEY (ID),
-				    FOREIGN KEY (user_id) REFERENCES $users_table(ID) ON DELETE CASCADE ON UPDATE NO ACTION
+    					KEY user_id (user_id)
     					) $collate
                     "
 		);
@@ -109,10 +109,8 @@ class Database {
 					  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     				  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 					  PRIMARY KEY (ID),
-					  FOREIGN KEY (user_id) REFERENCES $users_table(ID) ON DELETE CASCADE ON UPDATE NO ACTION,
-					  FOREIGN KEY (subscription_id) REFERENCES $subscriptions_table(ID) ON DELETE CASCADE ON UPDATE NO ACTION,
-					  FOREIGN KEY (created_by) REFERENCES $users_table(ID) ON UPDATE NO ACTION,
 					  INDEX idx_user_id (user_id),
+					  INDEX idx_subscription_id (subscription_id),
 					  INDEX idx_created_by (created_by),
 					  INDEX idx_order_type (order_type),
 					  INDEX idx_transaction_id (transaction_id)
@@ -129,7 +127,7 @@ class Database {
                       meta_key varchar(255) COLLATE utf8mb4_unicode_520_ci DEFAULT NULL,
                       meta_value longtext COLLATE utf8mb4_unicode_520_ci,
                       PRIMARY KEY (meta_id),
-                      FOREIGN KEY (order_id) REFERENCES " . $orders_table . "(ID) ON DELETE CASCADE ON UPDATE NO ACTION
+                      KEY order_id (order_id)
                     ) $collate
                     "
 		);
@@ -157,11 +155,7 @@ class Database {
 				PRIMARY KEY (id),
 				KEY subscription_id (subscription_id),
 				KEY user_id (user_id),
-				KEY event_type (event_type),
-
-				FOREIGN KEY (subscription_id)
-					REFERENCES $subscriptions_table(ID)
-					ON DELETE CASCADE ON UPDATE NO ACTION
+				KEY event_type (event_type)
 			) $collate"
 		);
 
