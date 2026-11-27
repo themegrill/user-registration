@@ -955,6 +955,9 @@
 		if (!isSafeAdminUrl(setupUrl)) {
 			return;
 		}
+
+		let redirectTimer = null;
+
 		if (typeof window.Swal !== "undefined" && typeof window.Swal.fire === "function") {
 			window.Swal.fire({
 				title: esc(i18n.redirecting_setup_title),
@@ -964,7 +967,7 @@
 					"  <p>" +
 					esc(i18n.redirecting_setup_desc) +
 					"</p>" +
-					'  <a class="ur-eh-link-btn" href="' +
+					'  <a class="ur-eh-btn-outline ur-eh-redirect-btn" id="ur-eh-redirect-link" href="' +
 					esc(setupUrl) +
 					'">' +
 					esc(i18n.redirecting_setup_link) +
@@ -977,14 +980,32 @@
 				allowOutsideClick: false,
 				allowEscapeKey: false,
 				heightAuto: false,
-				width: "520px"
+				width: "520px",
+				didOpen: function (popup) {
+					// Focus modal title so WordPress core a:focus ring does not highlight the fallback button on open.
+					const titleEl = popup ? popup.querySelector(".swal2-title") : null;
+					if (titleEl) {
+						titleEl.setAttribute("tabindex", "-1");
+						titleEl.focus();
+					}
+					const linkEl = popup ? popup.querySelector("#ur-eh-redirect-link") : null;
+					if (linkEl) {
+						linkEl.addEventListener("click", function () {
+							if (redirectTimer) {
+								clearTimeout(redirectTimer);
+								redirectTimer = null;
+							}
+						});
+					}
+				}
 			});
 		} else {
 			showToast(i18n.redirecting_setup_desc);
 		}
 
 		// Same-tab navigation avoids browser popup blockers after the async install request.
-		setTimeout(function () {
+		redirectTimer = setTimeout(function () {
+			redirectTimer = null;
 			window.location.assign(setupUrl);
 		}, 900);
 	}

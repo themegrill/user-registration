@@ -652,12 +652,16 @@
 	}
 }
 
+.swal2-container .swal2-popup.ur-eh-swal-modal .swal2-title:focus {
+	outline: none;
+}
+
 .ur-eh-redirect-status {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 12px;
-	padding: 8px 0 4px;
+	gap: 14px;
+	padding: 12px 0 24px;
 	text-align: center;
 
 	p {
@@ -665,6 +669,40 @@
 		font-size: 14px;
 		color: #374151;
 		line-height: 1.5;
+	}
+
+	.ur-eh-redirect-btn {
+		margin-top: 4px;
+		height: 36px;
+		padding: 0 16px;
+		background: #ffffff;
+		color: #475bb2;
+		border: 1px solid #475bb2;
+		border-radius: 4px;
+		font-size: 13px;
+		font-weight: 500;
+		text-decoration: none;
+		box-shadow: none;
+
+		&:hover {
+			background: #edeff7;
+			color: #475bb2;
+			border-color: #475bb2;
+		}
+
+		&:focus {
+			background: #ffffff;
+			color: #475bb2;
+			border-color: #475bb2;
+			box-shadow: none;
+			outline: none;
+		}
+
+		&:focus-visible {
+			outline: 2px solid #475bb2;
+			outline-offset: 2px;
+			box-shadow: none;
+		}
 	}
 }
 
