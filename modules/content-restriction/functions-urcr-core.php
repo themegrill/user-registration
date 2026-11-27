@@ -2070,6 +2070,106 @@ function urcr_is_content_access_granted( $target_post ) {
 }
 
 /**
+ * See if any Elementor element in the given tree is switched to "Restrict This Section".
+ *
+ * @param array $elements Decoded Elementor elements, as stored in the _elementor_data meta.
+ *
+ * @return bool
+ * @since x.x.x
+ */
+function urcr_elementor_has_restricted_section( $elements ) {
+	foreach ( (array) $elements as $element ) {
+		if ( ! is_array( $element ) ) {
+			continue;
+		}
+
+		if ( ! empty( $element['settings']['urcr_restrict_section'] ) && ur_string_to_bool( $element['settings']['urcr_restrict_section'] ) ) {
+			return true;
+		}
+
+		if ( ! empty( $element['elements'] ) && urcr_elementor_has_restricted_section( $element['elements'] ) ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * See if the current visitor is denied a restricted Elementor section of the given post.
+ *
+ * Elementor also stores a plain copy of every section in post_content, which the render time
+ * section restriction never touches, so anything derived from post_content needs this check.
+ *
+ * @param int|WP_Post $post Post ID or object.
+ *
+ * @return bool True when the post has a restricted section the visitor cannot read.
+ * @since x.x.x
+ */
+function urcr_is_elementor_section_denied( $post ) {
+	static $denials  = array();
+	static $checking = false;
+
+	$post = get_post( $post );
+
+	if ( ! $post instanceof WP_Post ) {
+		return false;
+	}
+
+	$data = get_post_meta( $post->ID, '_elementor_data', true );
+	// Most posts never use the setting, so skip decoding their large builder data.
+	$elements = is_string( $data ) && false !== strpos( $data, 'urcr_restrict_section' ) ? json_decode( $data, true ) : $data;
+
+	if ( ! is_array( $elements ) || ! urcr_elementor_has_restricted_section( $elements ) ) {
+		return false;
+	}
+
+	// Without a per post override the shortcode decides from global settings alone, so one answer serves every such post.
+	$scope = 'on' === get_post_meta( $post->ID, 'urcr_meta_override_global_settings', true ) ? $post->ID : 'global';
+	$key   = get_current_blog_id() . ':' . get_current_user_id() . ':' . $scope;
+
+	if ( isset( $denials[ $key ] ) ) {
+		return $denials[ $key ];
+	}
+
+	// A denial message that asks for an excerpt mid-check must neither recurse nor have its guess cached.
+	if ( $checking ) {
+		return true;
+	}
+
+	$checking = true;
+
+	try {
+		$denials[ $key ] = urcr_is_restrict_shortcode_denied( $post );
+	} finally {
+		$checking = false;
+	}
+
+	return $denials[ $key ];
+}
+
+/**
+ * Ask the [urcr_restrict] shortcode, as a restricted Elementor section does, whether it hides its content.
+ *
+ * @param WP_Post $post Post the section belongs to; the shortcode reads it from the global.
+ *
+ * @return bool
+ * @since x.x.x
+ */
+function urcr_is_restrict_shortcode_denied( $post ) {
+	$previous_post   = isset( $GLOBALS['post'] ) ? $GLOBALS['post'] : null;
+	$GLOBALS['post'] = $post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restored below.
+
+	try {
+		$rendered = do_shortcode( '[urcr_restrict]granted[/urcr_restrict]' );
+	} finally {
+		$GLOBALS['post'] = $previous_post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Restores the caller's post.
+	}
+
+	return 'granted' !== $rendered;
+}
+
+/**
  * See if the given post is still waiting for its content drip to release.
  *
  * @param object $target_post Post to check against.

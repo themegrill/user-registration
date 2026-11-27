@@ -71,6 +71,9 @@ class URCR_Shortcodes {
 			$get_meta_data_roles       = get_post_meta( $post->ID, 'urcr_meta_roles', $single = true );
 			$current_user_roles        = ( is_user_logged_in() && ! empty( wp_get_current_user()->roles ) ) ? (array) wp_get_current_user()->roles : array( 'guest' );
 
+			// WordPress passes an empty string when the shortcode has no attributes.
+			$atts = is_array( $atts ) ? $atts : array();
+
 			foreach ( $atts as $key => $value ) {
 				if ( is_string( $value ) ) {
 					$value        = html_entity_decode( $value, ENT_QUOTES );

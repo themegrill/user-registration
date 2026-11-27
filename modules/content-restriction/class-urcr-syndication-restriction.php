@@ -15,6 +15,7 @@ class URCR_Syndication_Restriction {
 		add_action( 'wp', array( __CLASS__, 'filter_feed_comments' ), PHP_INT_MAX );
 		add_filter( 'the_content_feed', array( __CLASS__, 'filter_feed_content' ), PHP_INT_MAX );
 		add_filter( 'the_excerpt_rss', array( __CLASS__, 'filter_feed_content' ), PHP_INT_MAX );
+		add_filter( 'get_the_excerpt', array( __CLASS__, 'filter_elementor_excerpt' ), PHP_INT_MAX, 2 );
 		add_filter( 'oembed_response_data', array( __CLASS__, 'filter_oembed' ), PHP_INT_MAX, 2 );
 		add_filter( 'wp_sitemaps_posts_query_args', array( __CLASS__, 'filter_sitemap_query' ) );
 	}
@@ -59,6 +60,27 @@ class URCR_Syndication_Restriction {
 	public static function filter_feed_content( $content ) {
 		global $post;
 		return urcr_is_content_access_granted( $post ) ? $content : '';
+	}
+
+	/**
+	 * Blank an auto-generated excerpt that was trimmed from restricted Elementor section text.
+	 * Runs on get_the_excerpt, so REST, feeds, search embeds and themes all share it.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param string       $excerpt Excerpt.
+	 * @param WP_Post|null $post    Post the excerpt belongs to.
+	 * @return string
+	 */
+	public static function filter_elementor_excerpt( $excerpt, $post = null ) {
+		$post = get_post( $post );
+
+		// A hand written excerpt is the author's choice; only the one cut from post_content leaks.
+		if ( $post instanceof WP_Post && '' === trim( $post->post_excerpt ) && urcr_is_elementor_section_denied( $post ) ) {
+			return '';
+		}
+
+		return $excerpt;
 	}
 
 	/**
