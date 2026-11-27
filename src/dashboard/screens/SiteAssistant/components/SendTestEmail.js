@@ -427,6 +427,17 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 									as="a"
 									href={diagnoseHref("not_received")}
 									colorScheme="primary"
+									color="white !important"
+									_hover={{
+										color: "white !important",
+										bg: "primary.600",
+										textDecoration: "none"
+									}}
+									_focus={{
+										color: "white !important",
+										textDecoration: "none"
+									}}
+									_active={{ color: "white !important" }}
 									size="sm"
 									rounded="base"
 									fontSize="13.5px"
@@ -479,6 +490,17 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 									as="a"
 									href={diagnoseHref("spam")}
 									colorScheme="primary"
+									color="white !important"
+									_hover={{
+										color: "white !important",
+										bg: "primary.600",
+										textDecoration: "none"
+									}}
+									_focus={{
+										color: "white !important",
+										textDecoration: "none"
+									}}
+									_active={{ color: "white !important" }}
 									size="sm"
 									rounded="base"
 									fontSize="13.5px"
@@ -534,6 +556,17 @@ const SendTestEmail = ({ isOpen, onToggle, onEmailSent, numbering }) => {
 									as="a"
 									href={diagnoseHref("failed")}
 									colorScheme="primary"
+									color="white !important"
+									_hover={{
+										color: "white !important",
+										bg: "primary.600",
+										textDecoration: "none"
+									}}
+									_focus={{
+										color: "white !important",
+										textDecoration: "none"
+									}}
+									_active={{ color: "white !important" }}
 									size="sm"
 									rounded="base"
 									fontSize="13.5px"

@@ -613,7 +613,7 @@ class UR_Admin_Assets {
 				wp_enqueue_script(
 					'ur-email-health',
 					UR()->plugin_url() . '/assets/js/admin/email-health' . $suffix . '.js',
-					array( 'jquery' ),
+					array( 'jquery', 'sweetalert2' ),
 					UR_VERSION,
 					true
 				);
@@ -703,10 +703,13 @@ class UR_Admin_Assets {
 							'unauth_server_desc'          => __( 'Default server mail lacks authentication, so email providers often filter it to Spam or block it. Connect SmartSMTP for reliable delivery.', 'user-registration' ),
 							'server_default_label'        => __( "Using your server's default mail system", 'user-registration' ),
 							'setup_smtp_link'             => __( 'Set up SMTP', 'user-registration' ),
-							'setup_smtp_confirm_copy'     => __( 'Install <strong>SmartSMTP</strong> to send all emails from this site through Google Workspace, Brevo, or your SMTP host.', 'user-registration' ),
+							'setup_smart_smtp_btn'        => __( 'Set up SmartSMTP', 'user-registration' ),
+							'setup_smtp_confirm_copy'     => __( 'Install <strong>SmartSMTP</strong> (free from WordPress.org) to send all emails from this site through Google Workspace, Brevo, or your SMTP host.', 'user-registration' ),
 							'activate_smtp_confirm_copy'  => __( 'Activate <strong>SmartSMTP</strong> to send all emails from this site through Google Workspace, Brevo, or your SMTP host.', 'user-registration' ),
 							'install_activate_btn'        => __( 'Install & Activate SmartSMTP', 'user-registration' ),
 							'activate_btn'                => __( 'Activate SmartSMTP', 'user-registration' ),
+							'install_modal_confirm_btn'   => __( 'Install & Activate', 'user-registration' ),
+							'activate_modal_confirm_btn'  => __( 'Activate', 'user-registration' ),
 							'installing_btn'              => __( 'Installing…', 'user-registration' ),
 							'activating_btn'              => __( 'Activating…', 'user-registration' ),
 							'cancel'                      => __( 'Cancel', 'user-registration' ),
@@ -728,7 +731,9 @@ class UR_Admin_Assets {
 							'verdict_ok_title'            => __( 'Your email setup looks good', 'user-registration' ),
 							/* translators: %s: provider name */
 							'verdict_ok_smtp_sub'         => __( 'Sending via %s. All registration email settings are active.', 'user-registration' ),
-							'verdict_ok_server_sub'       => __( 'All registration email settings are active. Send a test email below to verify your server delivers to your inbox.', 'user-registration' ),
+							'verdict_ok_server_sub'       => __( 'All registration email settings are active and test email delivery was confirmed.', 'user-registration' ),
+							'verdict_unverified_title'    => __( 'Your email settings look good — test delivery', 'user-registration' ),
+							'verdict_unverified_sub'      => __( "All registration email settings are active, but server delivery hasn't been tested yet. Send a test email below to confirm emails reach your inbox.", 'user-registration' ),
 							/* translators: %d: problem count */
 							'problem_singular'            => __( '%d problem stops emails', 'user-registration' ),
 							/* translators: %d: problem count */

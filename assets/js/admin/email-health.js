@@ -17,7 +17,6 @@
 		report: config.initial_report || {},
 		testEmail: (config.initial_report && config.initial_report.admin_email) || "",
 		waitingForExternalSetup: false,
-		confirmingSmtpInstall: false,
 		editingFromInline: false,
 		isWorking: false,
 		isSendingTest: false,
@@ -155,41 +154,6 @@
 		}
 	}
 
-	function buildSmtpConfirmBox(smtp) {
-		if (!state.confirmingSmtpInstall) {
-			return "";
-		}
-
-		const actionBtnLabel = smtp.smart_smtp_installed
-			? state.isWorking
-				? i18n.activating_btn
-				: i18n.activate_btn
-			: state.isWorking
-				? i18n.installing_btn
-				: i18n.install_activate_btn;
-		const confirmCopy = smtp.smart_smtp_installed ? i18n.activate_smtp_confirm_copy : i18n.setup_smtp_confirm_copy;
-
-		return (
-			'<div class="ur-eh-confirm-box">' +
-			"<p>" +
-			confirmCopy +
-			"</p>" +
-			'<div class="ur-eh-confirm-actions">' +
-			'<button type="button" class="ur-eh-btn-primary" id="ur-eh-confirm-install-btn" data-action="install-smtp" ' +
-			(state.isWorking ? "disabled" : "") +
-			">" +
-			(state.isWorking
-				? '<span class="ur-eh-spinner" aria-hidden="true"></span><span>' + esc(actionBtnLabel) + "</span>"
-				: esc(actionBtnLabel)) +
-			"</button>" +
-			'<button type="button" class="ur-eh-btn-subtle" style="height:36px;" data-action="cancel-smtp-confirm">' +
-			esc(i18n.cancel) +
-			"</button>" +
-			"</div>" +
-			"</div>"
-		);
-	}
-
 	function buildSmtpActionBtn() {
 		const smtp = state.report.smtp || {};
 		if (smtp.status === "token-expired") {
@@ -219,10 +183,6 @@
 			);
 		}
 
-		if (state.confirmingSmtpInstall) {
-			return "";
-		}
-
 		const canInstallOrActivate = smtp.smart_smtp_installed
 			? smtp.can_activate_plugins
 			: smtp.can_install_plugins && smtp.can_activate_plugins;
@@ -231,7 +191,7 @@
 			return "";
 		}
 
-		const idleLabel = smtp.smart_smtp_installed ? i18n.activate_btn : i18n.install_activate_btn;
+		const idleLabel = i18n.setup_smart_smtp_btn || i18n.setup_smtp_link;
 		const workingLabel = smtp.smart_smtp_installed ? i18n.activating_btn : i18n.installing_btn;
 
 		return (
@@ -459,8 +419,7 @@
 					smtp.probe_error_owner || "Custom mail handler",
 					cleanErr(smtp.probe_error)
 				),
-				right: buildSmtpActionBtn(),
-				extra: buildSmtpConfirmBox(smtp)
+				right: buildSmtpActionBtn()
 			});
 		} else if (hasDeliveryEvidence) {
 			const isErr = hasFailureRecord;
@@ -477,8 +436,7 @@
 				type: isErr ? "err" : "warn",
 				title: title,
 				desc: lastError ? sprintf(i18n.server_failed_desc, cleanErr(lastError)) : i18n.unauth_server_desc,
-				right: buildSmtpActionBtn(),
-				extra: buildSmtpConfirmBox(smtp)
+				right: buildSmtpActionBtn()
 			});
 		} else {
 			const canInstallOrActivate = smtp.smart_smtp_installed
@@ -486,7 +444,7 @@
 				: smtp.can_install_plugins && smtp.can_activate_plugins;
 
 			let valueHtml = esc(i18n.server_default_label);
-			if (!state.confirmingSmtpInstall && canInstallOrActivate) {
+			if (canInstallOrActivate) {
 				valueHtml +=
 					' · <button type="button" class="ur-eh-link-btn" data-action="open-smtp-confirm">' +
 					esc(i18n.setup_smtp_link) +
@@ -495,11 +453,10 @@
 
 			quietRows.push({
 				icon: "neutral",
-				srPrefix: state.confirmingSmtpInstall ? i18n.sr_optional : i18n.sr_info,
+				srPrefix: i18n.sr_info,
 				title: i18n.smtp_title,
 				value: valueHtml,
-				rawValue: true,
-				extra: buildSmtpConfirmBox(smtp)
+				rawValue: true
 			});
 		}
 
@@ -586,9 +543,17 @@
 		}).length;
 		const hasIncomingWhileHealthy =
 			issues.length === 0 && (incomingIssue === "spam" || incomingIssue === "not_received");
+		const isUnverifiedServerMail =
+			issues.length === 0 && !smtpReady && !Boolean(report.test_email_confirmed) && !incomingIssue;
 
 		const ringClass =
-			issues.length === 0 ? (hasIncomingWhileHealthy ? "neutral" : "ok") : problemCount > 0 ? "err" : "warn";
+			issues.length === 0
+				? hasIncomingWhileHealthy || isUnverifiedServerMail
+					? "neutral"
+					: "ok"
+				: problemCount > 0
+					? "err"
+					: "warn";
 
 		const ringIcon =
 			ringClass === "ok"
@@ -607,6 +572,9 @@
 			} else if (incomingIssue === "not_received") {
 				headerTitle = i18n.verdict_not_received_title;
 				headerSub = i18n.verdict_not_received_sub;
+			} else if (isUnverifiedServerMail) {
+				headerTitle = i18n.verdict_unverified_title;
+				headerSub = i18n.verdict_unverified_sub;
 			} else {
 				headerTitle = i18n.verdict_ok_title;
 				if (smtpReady) {
@@ -971,7 +939,6 @@
 			return;
 		}
 		state.isWorking = true;
-		state.confirmingSmtpInstall = false;
 		render();
 
 		postAjax("user_registration_email_health_install_smart_smtp", {
@@ -996,6 +963,73 @@
 				render();
 				focusHeaderVerdict();
 			});
+	}
+
+	function openSmtpInstallModal() {
+		const smtp = state.report.smtp || {};
+		const isInstalled = Boolean(smtp.smart_smtp_installed);
+		const title = isInstalled ? i18n.activate_btn : i18n.install_activate_btn;
+		const copy = isInstalled ? i18n.activate_smtp_confirm_copy : i18n.setup_smtp_confirm_copy;
+		const confirmLabel = isInstalled
+			? i18n.activate_modal_confirm_btn || i18n.activate_btn
+			: i18n.install_modal_confirm_btn || i18n.install_activate_btn;
+
+		if (typeof window.Swal === "undefined" || typeof window.Swal.fire !== "function") {
+			if (window.confirm(title)) {
+				installSmartSmtp();
+			}
+			return;
+		}
+
+		window.Swal.fire({
+			title: esc(title),
+			html: copy,
+			customClass: "user-registration-swal2-modal user-registration-swal2-modal--centered ur-eh-swal-modal",
+			showCloseButton: true,
+			showCancelButton: true,
+			showConfirmButton: true,
+			confirmButtonText: esc(confirmLabel),
+			cancelButtonText: esc(i18n.cancel),
+			showLoaderOnConfirm: true,
+			allowOutsideClick: function () {
+				return !window.Swal.isLoading();
+			},
+			allowEscapeKey: function () {
+				return !window.Swal.isLoading();
+			},
+			heightAuto: false,
+			width: "520px",
+			preConfirm: function () {
+				return new Promise(function (resolve) {
+					postAjax("user_registration_email_health_install_smart_smtp", {
+						security: config.nonce,
+						issue: state.report.incoming_issue || ""
+					})
+						.done(function (res) {
+							if (res && res.success && res.data && res.data.report) {
+								resolve(res);
+								return;
+							}
+							const msg = (res && res.data && res.data.message) || i18n.request_failed;
+							window.Swal.showValidationMessage(esc(msg));
+							resolve(false);
+						})
+						.fail(function () {
+							window.Swal.showValidationMessage(esc(i18n.request_failed));
+							resolve(false);
+						});
+				});
+			}
+		}).then(function (result) {
+			if (result && result.isConfirmed && result.value && result.value.data && result.value.data.report) {
+				state.report = result.value.data.report;
+				if (result.value.data.message) {
+					showToast(result.value.data.message);
+				}
+				render();
+				focusHeaderVerdict();
+			}
+		});
 	}
 
 	function sendTestEmail() {
@@ -1104,26 +1138,7 @@
 
 		rootEl.querySelectorAll('[data-action="open-smtp-confirm"]').forEach(function (el) {
 			el.onclick = function () {
-				state.confirmingSmtpInstall = true;
-				render();
-				const btn = document.getElementById("ur-eh-confirm-install-btn");
-				if (btn) {
-					btn.focus();
-				}
-			};
-		});
-
-		rootEl.querySelectorAll('[data-action="cancel-smtp-confirm"]').forEach(function (el) {
-			el.onclick = function () {
-				state.confirmingSmtpInstall = false;
-				render();
-				focusHeaderVerdict();
-			};
-		});
-
-		rootEl.querySelectorAll('[data-action="install-smtp"]').forEach(function (el) {
-			el.onclick = function () {
-				installSmartSmtp();
+				openSmtpInstallModal();
 			};
 		});
 

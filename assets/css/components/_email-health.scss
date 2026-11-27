@@ -633,6 +633,18 @@
 	}
 }
 
+.swal2-container .swal2-popup.ur-eh-swal-modal .swal2-actions.swal2-loading {
+	.swal2-cancel {
+		flex: 0 0 calc(50% - 8px) !important;
+		max-width: calc(50% - 8px);
+		margin: 0;
+	}
+
+	.swal2-loader {
+		margin: 0 auto !important;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.ur-eh-spinner {
 		animation: none;

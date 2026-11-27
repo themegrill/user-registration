@@ -162,18 +162,20 @@ if ( ! class_exists( 'UR_Email_Health' ) ) :
 			$recent_failures = self::get_recent_failures();
 			$smtp            = self::detect_smtp( $recent_failures );
 			$from_address    = self::get_from_address_info( $site_domain, $admin_email );
-			$confirmation    = self::get_email_confirmation_info();
-			$emails_disabled = ur_option_checked( 'user_registration_email_setting_disable_email' );
+			$confirmation         = self::get_email_confirmation_info();
+			$emails_disabled      = ur_option_checked( 'user_registration_email_setting_disable_email' );
+			$test_email_confirmed = (bool) get_option( 'user_registration_successful_test_mail', false );
 
 			$report = array(
-				'site_domain'        => $site_domain,
-				'admin_email'        => $admin_email,
-				'emails_disabled'    => $emails_disabled,
-				'email_confirmation' => $confirmation,
-				'from_address'       => $from_address,
-				'smtp'               => $smtp,
-				'recent_failures'    => $recent_failures,
-				'incoming_issue'     => $incoming_issue,
+				'site_domain'          => $site_domain,
+				'admin_email'          => $admin_email,
+				'emails_disabled'      => $emails_disabled,
+				'email_confirmation'   => $confirmation,
+				'from_address'         => $from_address,
+				'smtp'                 => $smtp,
+				'recent_failures'      => $recent_failures,
+				'incoming_issue'       => $incoming_issue,
+				'test_email_confirmed' => $test_email_confirmed,
 			);
 
 			$report['sidebar_dot'] = self::compute_sidebar_dot( $report );
