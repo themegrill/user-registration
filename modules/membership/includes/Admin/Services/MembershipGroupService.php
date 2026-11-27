@@ -292,9 +292,22 @@ class MembershipGroupService {
 		return $updated_array;
 	}
 
+	/**
+	 * Whether membership groups can be used: Pro, a Plus or higher plan, and the module turned on.
+	 *
+	 * Shared by the group features and the AI abilities, so the lock is the same everywhere.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public static function is_available() {
+		return UR_PRO_ACTIVE && urm_check_if_plus_and_above_plan() && ur_check_module_activation( 'membership-groups' );
+	}
+
 	public function check_if_multiple_memberships_allowed( $group_id ) {
 
-		if ( UR_PRO_ACTIVE && urm_check_if_plus_and_above_plan() && ur_check_module_activation( 'membership-groups' ) ) {
+		if ( self::is_available() ) {
 			$group_mode = get_post_meta( $group_id, 'urmg_mode', true );
 
 			return ur_string_to_bool( 'multiple' === $group_mode );
@@ -305,7 +318,7 @@ class MembershipGroupService {
 
 	public function check_if_upgrade_allowed( $group_id ) {
 
-		if ( UR_PRO_ACTIVE && urm_check_if_plus_and_above_plan() && ur_check_module_activation( 'membership-groups' ) ) {
+		if ( self::is_available() ) {
 			$group_mode = get_post_meta( $group_id, 'urmg_mode', true );
 
 			return ur_string_to_bool( 'upgrade' === $group_mode );

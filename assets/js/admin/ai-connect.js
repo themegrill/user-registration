@@ -1,0 +1,390 @@
+/**
+ * Connect MCP on Settings, Advanced, AI Integration.
+ *
+ * Runs the readiness check, makes the AI user and its password in one click once the admin agrees, and shows
+ * what the chosen AI app needs.
+ */
+(function ($) {
+	"use strict";
+
+	var cfg = window.urAiConnect || {};
+	var i18n = cfg.i18n || {};
+	var apps = cfg.apps || {};
+	var current = "claude";
+	var generated = null;
+
+	function post(action, data) {
+		return $.post(cfg.ajaxUrl, $.extend({ action: action, security: cfg.nonce }, data || {}));
+	}
+
+	function message(response) {
+		return response && response.data && response.data.message ? response.data.message : i18n.failed;
+	}
+
+	function notice(text) {
+		$("#ur-ai-result").text(text).prop("hidden", !text);
+	}
+
+	function copyText(text, button) {
+		var done = function () {
+			var $button = $(button);
+
+			// An icon button shows a check mark for a moment, then the copy symbol again.
+			if ($button.hasClass("ur-ai-iconbtn")) {
+				$button.addClass("is-copied").attr({ title: i18n.copied, "aria-label": i18n.copied });
+				setTimeout(function () {
+					$button.removeClass("is-copied").attr({ title: i18n.copy, "aria-label": i18n.copy });
+				}, 1500);
+				return;
+			}
+
+			var label = $(button).data("label") || $(button).text();
+			$(button).data("label", label).text(i18n.copied);
+			setTimeout(function () {
+				$(button).text(label);
+			}, 1500);
+		};
+
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(text).then(done, function () {
+				fallbackCopy(text);
+				done();
+			});
+			return;
+		}
+
+		fallbackCopy(text);
+		done();
+	}
+
+	function fallbackCopy(text) {
+		var area = $("<textarea>").val(text).css({ position: "fixed", opacity: 0 }).appendTo("body");
+		area[0].select();
+		try {
+			document.execCommand("copy");
+		} catch (e) {
+			// The text stays on screen to copy by hand.
+		}
+		area.remove();
+	}
+
+	// One box per thing to paste. Before generating there is a single empty box with the waiting text; after,
+	// each snippet of the app gets its own box and its own Copy button (Claude has two: Code and Desktop).
+	function drawPrompts(app, data) {
+		var holder = $("#ur-ai-prompts").empty();
+
+		if (!data) {
+			holder.append($('<div class="ur-ai-prompt">').append($("<pre>").attr("data-empty", holder.data("empty"))));
+			return;
+		}
+
+		app.snippets.forEach(function (item) {
+			var box = $('<div class="ur-ai-prompt">');
+
+			if (item.label) {
+				box.addClass("ur-ai-prompt--titled").append($('<p class="ur-ai-prompt__label">').text(item.label).append(item.tag ? $('<span class="ur-ai-prompt__tag">').text(item.tag) : ""));
+			}
+
+			if (item.hint) {
+				box.append($('<p class="ur-ai-prompt__hint">').text(item.hint));
+			}
+
+			box.append($('<div class="ur-ai-prompt__code">').append($("<pre>").text(data.snippets[item.key]), $('<button type="button" class="ur-ai-iconbtn ur-ai-copy-prompt">').attr({ title: i18n.copy, "aria-label": i18n.copy }).html(cfg.copyIcon)));
+			holder.append(box);
+		});
+	}
+
+	// A fresh page starts from nothing: nothing generated, nothing agreed to. Each generate makes a password named after the app it was made for, so the activity log can tell the apps apart.
+	function selectApp(key) {
+		var app = apps[key];
+
+		if (!app) {
+			return;
+		}
+
+		current = key;
+		$(".ur-ai-apps__tab[data-app]").each(function () {
+			$(this).toggleClass("is-active", $(this).data("app") === key);
+		});
+		$("#ur-ai-panel-title").text(i18n.title.replace("%s", app.label));
+		$("#ur-ai-panel-intro").text(app.intro);
+		$("#ur-ai-consent").prop("checked", false);
+		$("#ur-ai-create").prop("disabled", true);
+		notice("");
+
+		// A prompt that was generated stays while the person looks at the other apps, which all share the same
+		// password. It is only forgotten on reload, or when the passwords are removed.
+		if (generated) {
+			showResult(generated);
+			return;
+		}
+
+		drawPrompts(app, null);
+		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", true);
+		$("#ur-ai-m-user, #ur-ai-m-pass").text("-");
+	}
+
+	// Redraw what the server says exists: the checks, the connected apps and, once the AI user exists, the
+	// agreement that no longer talks about making a user.
+	// The status at the top right: ready, or how many things need attention. Clicking it opens the checks in a small
+	// popover, so the list is there when wanted and out of the way otherwise.
+	function updateSummary() {
+		var bad = $("#ur-ai-checks").children(".is-bad").length;
+		var text = i18n.ready;
+
+		if (bad) {
+			text = 1 === bad ? i18n.attention1 : i18n.attentionN.replace("%d", bad);
+		}
+
+		$("#ur-ai-ready-status").removeClass("is-ok is-bad is-loading").addClass(bad ? "is-bad" : "is-ok").text(text);
+	}
+
+	function setPop(open) {
+		$("#ur-ai-ready-pop").prop("hidden", !open);
+		$("#ur-ai-ready-status").attr("aria-expanded", open ? "true" : "false");
+	}
+
+	function applyState(data) {
+		if (data.checks) {
+			$("#ur-ai-checks").html(data.checks);
+			updateSummary();
+		}
+
+		if (undefined !== data.connections) {
+			$("#ur-ai-connections").html(data.connections);
+			$(document).trigger("ur-ai-connections-changed");
+		}
+
+		if (data.consent) {
+			var text = $("#ur-ai-consent-text");
+			var manual = $("#ur-ai-manual").prop("hidden") === false;
+
+			text.data("base", data.consent.prompt).data("alt", data.consent.password).html(manual ? data.consent.password : data.consent.prompt);
+		}
+	}
+
+	function showResult(data) {
+		generated = data;
+		drawPrompts(apps[current], data);
+		$("#ur-ai-copy-pass, #ur-ai-once").prop("hidden", false);
+		$("#ur-ai-m-user").text(data.login);
+		$("#ur-ai-m-pass").text(data.password);
+		$("#ur-ai-m-endpoint").text(data.endpoint);
+		$("#ur-ai-copy-pass").data("password", data.password.replace(/\s+/g, ""));
+	}
+
+	selectApp(current);
+
+	$(document).on("keydown", function (event) {
+		if ("Escape" === event.key && !$("#ur-ai-ready-pop").prop("hidden")) {
+			setPop(false);
+			return;
+		}
+	});
+
+	$(document).on("click", ".ur-ai-apps__tab[data-app]", function () {
+		selectApp($(this).data("app"));
+	});
+
+	$(document).on("change", "#ur-ai-consent", function () {
+		$("#ur-ai-create").prop("disabled", !this.checked);
+	});
+
+	$(document).on("click", "#ur-ai-manual-toggle", function () {
+		var button = $(this);
+		var manual = $("#ur-ai-manual").prop("hidden");
+
+		// Two views of one panel: the prompt to paste, or the details to type in by hand.
+		$("#ur-ai-manual").prop("hidden", !manual);
+		$("#ur-ai-prompts").prop("hidden", manual);
+		button.data("label", button.data("label") || button.text());
+		button.text(manual ? button.data("alt") : button.data("label"));
+
+		// The button and the agreement say what they will do in this view.
+		[$("#ur-ai-create"), $("#ur-ai-consent-text")].forEach(function (item, index) {
+			var html = index ? "html" : "text";
+
+			if (!item.data("base")) {
+				item.data("base", item[html]());
+			}
+
+			item[html](manual ? item.data("alt") : item.data("base"));
+		});
+	});
+
+	$(document).on("click", ".ur-ai-copy-prompt", function () {
+		copyText($(this).siblings("pre").text(), this);
+	});
+
+	$(document).on("click", "#ur-ai-copy-pass", function () {
+		copyText($(this).data("password"), this);
+	});
+
+	// A quiet suggestion at the bottom: one question at a time, from all of them, starting with one that only looks.
+	// The shuffle button picks another at random, never the same one twice in a row.
+	var asks = [];
+
+	Object.keys(cfg.asks || {}).forEach(function (level) {
+		(cfg.asks[level].questions || []).forEach(function (text) {
+			asks.push(text);
+		});
+	});
+
+	var askIndex = 0;
+
+	function showAsk() {
+		if (!asks[askIndex]) {
+			return;
+		}
+
+		$("#ur-ai-ask-text").text(asks[askIndex]);
+		$("#ur-ai-ask-next").prop("hidden", asks.length < 2);
+	}
+
+	$(document).on("click", "#ur-ai-ask-next", function () {
+		var next = askIndex;
+
+		while (asks.length > 1 && next === askIndex) {
+			next = Math.floor(Math.random() * asks.length);
+		}
+
+		askIndex = next;
+		showAsk();
+	});
+
+	$(document).on("click", "#ur-ai-ask-copy", function () {
+		copyText($("#ur-ai-ask-text").text(), this);
+	});
+
+	// Every row spins while the site is checked, then settles one after another into a tick or a cross.
+	// The spinner shows for a moment even when the answer is instant, so the check is seen to happen.
+	$(document).on("click", "#ur-ai-ready-status", function () {
+		setPop($("#ur-ai-ready-pop").prop("hidden"));
+	});
+
+	// Clicking anywhere else, or pressing Escape, closes the popover.
+	$(document).on("click", function (event) {
+		if (!$(event.target).closest("#ur-ai-ready").length) {
+			setPop(false);
+		}
+	});
+
+	$(document).on("click", "#ur-ai-check", function () {
+		var button = $(this).prop("disabled", true);
+		var list = $("#ur-ai-checks");
+		var started = Date.now();
+
+		// Open the popover so every row is seen spinning, and say so in the status.
+		setPop(true);
+		$("#ur-ai-ready-status").removeClass("is-ok is-bad").addClass("is-loading").text(i18n.checking);
+		list.children().removeClass("is-ok is-bad").addClass("is-loading");
+
+		function settle(data) {
+			var rows = $("<ul>").html(data.checks).children();
+
+			rows.each(function (index) {
+				var row = this;
+
+				setTimeout(function () {
+					list.children().eq(index).replaceWith(row);
+				}, index * 220);
+			});
+
+			setTimeout(function () {
+				// Rows may have been added or removed since the last check, so end on exactly what the server sent.
+				list.html(data.checks);
+				updateSummary();
+				button.prop("disabled", false);
+			}, rows.length * 220 + 50);
+		}
+
+		post("ur_ai_connect_check")
+			.done(function (response) {
+				if (!response.success) {
+					list.children().removeClass("is-loading");
+					updateSummary();
+					button.prop("disabled", false);
+					return;
+				}
+
+				setTimeout(function () {
+					settle(response.data);
+				}, Math.max(0, 600 - (Date.now() - started)));
+			})
+			.fail(function () {
+				list.children().removeClass("is-loading");
+				updateSummary();
+				button.prop("disabled", false);
+			});
+	});
+
+	$(document).on("click", "#ur-ai-create", function () {
+		var button = $(this).prop("disabled", true);
+
+		button.addClass("ur-ai-busy");
+		notice("");
+
+		post("ur_ai_connect_create", { app: apps[current].name || apps[current].label })
+			.done(function (response) {
+				if (response.success) {
+					showResult(response.data);
+					applyState(response.data);
+				} else {
+					notice(message(response));
+				}
+			})
+			.fail(function (xhr) {
+				notice(message(xhr.responseJSON));
+			})
+			.always(function () {
+				// The consent covers one password. Ask again for the next one.
+				button.removeClass("ur-ai-busy").prop("disabled", true);
+				$("#ur-ai-consent").prop("checked", false);
+			});
+	});
+
+	$(document).on("click", "#ur-ai-revoke", function () {
+		if (!window.confirm(i18n.confirm)) {
+			return;
+		}
+
+		var link = $(this);
+
+		link.addClass("ur-ai-busy").prop("disabled", true);
+		post("ur_ai_connect_revoke")
+			.done(function (response) {
+				if (response.success) {
+					applyState(response.data);
+					generated = null;
+					selectApp(current);
+					notice(i18n.removed);
+				}
+			})
+			.always(function () {
+				link.removeClass("ur-ai-busy").prop("disabled", false);
+			});
+	});
+
+	$(document).on("click", ".ur-ai-remove-one", function () {
+		if (!window.confirm(i18n.confirmOne)) {
+			return;
+		}
+
+		var link = $(this);
+		var row = link.closest("li").addClass("is-removing");
+
+		link.addClass("ur-ai-busy").prop("disabled", true);
+		post("ur_ai_connect_remove", { uuid: link.data("uuid") })
+			.done(function (response) {
+				if (response.success) {
+					applyState(response.data);
+					selectApp(current);
+					notice(i18n.removed);
+				}
+			})
+			.always(function () {
+				row.removeClass("is-removing");
+				link.removeClass("ur-ai-busy").prop("disabled", false);
+			});
+	});
+})(jQuery);

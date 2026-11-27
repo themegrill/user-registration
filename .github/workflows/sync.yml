@@ -3,6 +3,8 @@ on:
     push:
         branches:
             - develop
+            # Temporary: sync the AI abilities epic to the Pro branch of the same name (pro#2062). Remove before merging, with the target in sync-file-list.yml.
+            - 2062-ai-mcp-parity
         workflow_dispatch:
 jobs:
     sync:

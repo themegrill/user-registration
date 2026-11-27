@@ -1,0 +1,274 @@
+<?php
+/**
+ * Record of what AI assistants did on the site, written to the plugin's own log.
+ *
+ * Each action becomes one line under the source `user-registration-ai`, shown in Tools, Logs. Only the facts needed
+ * to answer who, what and how it went are kept: the user, the AI app, the ability, the outcome, the ids it touched
+ * and how many items it returned. Names, emails and other member details, input values and failed sign-ins are never
+ * written.
+ *
+ * @package UserRegistration
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+/** Writes one log line for every AI action and hands each entry to a hook. */
+class UR_Abilities_Activity {
+	/** Log source, as listed in Tools, Logs. Like every plugin log, it is written only while Enable Log is on. */
+	const SOURCE = 'user-registration-ai';
+
+	/**
+	 * Wrap a permission check so a refused call is recorded.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string   $name     Ability name.
+	 * @param string   $level    Ability level.
+	 * @param callable $callback Permission check.
+	 * @return callable
+	 */
+	public static function wrap_permission( $name, $level, $callback ) {
+		return function ( $input = null ) use ( $name, $level, $callback ) {
+			$result = call_user_func( $callback, $input );
+
+			if ( is_wp_error( $result ) || ! $result ) {
+				self::record(
+					array(
+						'ability' => $name,
+						'level'   => $level,
+						'outcome' => 'refused',
+						'code'    => is_wp_error( $result ) ? $result->get_error_code() : 'forbidden',
+						'targets' => self::targets( $input ),
+					)
+				);
+			}
+
+			return $result;
+		};
+	}
+
+	/**
+	 * Wrap an ability so every run is recorded, with how it went and how long it took.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string   $name     Ability name.
+	 * @param string   $level    Ability level.
+	 * @param callable $callback What the ability runs.
+	 * @return callable
+	 */
+	public static function wrap_execute( $name, $level, $callback ) {
+		return function ( $input = null ) use ( $name, $level, $callback ) {
+			$start = microtime( true );
+
+			try {
+				$result = call_user_func( $callback, $input );
+			} catch ( Throwable $error ) {
+				self::record(
+					array(
+						'ability'     => $name,
+						'level'       => $level,
+						'outcome'     => 'error',
+						'code'        => 'exception',
+						'targets'     => self::targets( $input ),
+						'duration_ms' => self::since( $start ),
+					)
+				);
+
+				throw $error;
+			}
+
+			self::record(
+				array(
+					'ability'     => $name,
+					'level'       => $level,
+					'targets'     => self::targets( $input ),
+					'duration_ms' => self::since( $start ),
+				) + self::describe( $result )
+			);
+
+			return $result;
+		};
+	}
+
+	/**
+	 * Write one log line and pass the entry to the hook. Never stops the ability.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $entry ability, level, outcome, code, targets, items, duration_ms and the HTTP status of an error.
+	 */
+	public static function record( $entry ) {
+		$row = array(
+			'user_id'     => (int) get_current_user_id(),
+			'app'         => self::app_name(),
+			'ability'     => substr( sanitize_text_field( (string) ( $entry['ability'] ?? '' ) ), 0, 100 ),
+			'level'       => in_array( $entry['level'] ?? '', array( 'write', 'delete' ), true ) ? $entry['level'] : 'read',
+			'outcome'     => in_array( $entry['outcome'] ?? '', array( 'refused', 'error', 'preview' ), true ) ? $entry['outcome'] : 'success',
+			'code'        => substr( sanitize_key( (string) ( $entry['code'] ?? '' ) ), 0, 100 ),
+			'targets'     => substr( (string) ( $entry['targets'] ?? '' ), 0, 255 ),
+			'items'       => isset( $entry['items'] ) ? (int) $entry['items'] : null,
+			'duration_ms' => (int) ( $entry['duration_ms'] ?? 0 ),
+		);
+
+		self::note_call( $row );
+
+		if ( function_exists( 'ur_get_logger' ) ) {
+			// A mistake the AI can fix, such as an unknown id, is a warning. Only a real fault is an error.
+			$client = isset( $entry['status'] ) && $entry['status'] >= 400 && $entry['status'] < 500;
+			$method = 'refused' === $row['outcome'] || ( 'error' === $row['outcome'] && $client ) ? 'warning' : ( 'error' === $row['outcome'] ? 'error' : 'info' );
+
+			ur_get_logger()->{ $method }( self::line( $row ), array( 'source' => self::SOURCE ) );
+		}
+
+		/**
+		 * Fires after an AI action is recorded, so an activity log plugin can pick it up.
+		 *
+		 * @since xx.xx.xx
+		 *
+		 * @param array $row user_id, app, ability, level, outcome, code, targets (ids), items and duration_ms. It
+		 *                   holds no member details.
+		 */
+		do_action( 'user_registration_ai_activity_logged', $row );
+	}
+
+	/**
+	 * Remember the last AI call, so the Connect card can show when an AI app last connected. It works even while logging is off.
+	 *
+	 * @param array $row The entry.
+	 */
+	private static function note_call( $row ) {
+		$last = get_option( UR_Abilities_Connect::LAST_CALL_OPTION );
+
+		// One write a minute is enough to say when an AI app was last seen.
+		if ( is_array( $last ) && ! empty( $last['time'] ) && time() - (int) $last['time'] < MINUTE_IN_SECONDS && $last['app'] === $row['app'] ) {
+			return;
+		}
+
+		update_option(
+			UR_Abilities_Connect::LAST_CALL_OPTION,
+			array(
+				'time' => time(),
+				'app'  => $row['app'],
+			),
+			false
+		);
+	}
+
+	/**
+	 * Build the log line for an entry.
+	 *
+	 * @param array $row The entry.
+	 * @return string
+	 */
+	private static function line( $row ) {
+		$details = array_filter(
+			array(
+				$row['outcome'],
+				$row['code'],
+				$row['targets'],
+				null === $row['items'] ? '' : $row['items'] . ' items',
+				$row['duration_ms'] . ' ms',
+			),
+			'strlen'
+		);
+
+		return sprintf(
+			'AI [%1$s] %2$s by %3$s%4$s: %5$s',
+			strtoupper( $row['level'] ),
+			$row['ability'],
+			self::who( $row['user_id'] ),
+			'' === $row['app'] ? '' : ' via ' . $row['app'],
+			implode( ', ', $details )
+		);
+	}
+
+	/**
+	 * Name the person who asked the AI: their username with their ID, since a username can change later.
+	 *
+	 * This is the admin running the assistant, not a member the action touched, so no member details are written.
+	 *
+	 * @param int $user_id User ID.
+	 * @return string For example `admin (user #1)`, or `user 1` when the user cannot be read.
+	 */
+	private static function who( $user_id ) {
+		$user = $user_id && function_exists( 'get_userdata' ) ? get_userdata( $user_id ) : false;
+
+		return $user ? sprintf( '%s (user #%d)', sanitize_user( $user->user_login, true ), $user_id ) : 'user ' . (int) $user_id;
+	}
+
+	/**
+	 * Work out the outcome of a finished run.
+	 *
+	 * @param mixed $result What the ability returned.
+	 * @return array outcome, code, status and items.
+	 */
+	private static function describe( $result ) {
+		if ( is_wp_error( $result ) ) {
+			$data = $result->get_error_data();
+
+			return array(
+				'outcome' => 'error',
+				'code'    => $result->get_error_code(),
+				'status'  => is_array( $data ) && isset( $data['status'] ) ? (int) $data['status'] : 0,
+			);
+		}
+
+		if ( is_array( $result ) && ! empty( $result['needs_confirmation'] ) ) {
+			return array( 'outcome' => 'preview' );
+		}
+
+		return is_array( $result ) && isset( $result['items'] ) && is_array( $result['items'] ) ? array( 'items' => count( $result['items'] ) ) : array();
+	}
+
+	/**
+	 * Collect the record ids an ability was asked about. Names, emails and other values are left out.
+	 *
+	 * @param mixed $input Input of the ability.
+	 * @return string Ids as `key:number`, separated by commas.
+	 */
+	private static function targets( $input ) {
+		$ids = array();
+
+		foreach ( is_array( $input ) ? $input : array() as $key => $value ) {
+			if ( ( 'id' === $key || '_id' === substr( (string) $key, -3 ) ) && is_int( $value ) && $value > 0 ) {
+				$ids[] = $key . ':' . $value;
+			}
+		}
+
+		return implode( ',', $ids );
+	}
+
+	/**
+	 * Milliseconds since a start time.
+	 *
+	 * @param float $start Result of microtime( true ).
+	 * @return int
+	 */
+	private static function since( $start ) {
+		return (int) round( ( microtime( true ) - $start ) * 1000 );
+	}
+
+	/**
+	 * Get the name of the AI app, which is the name the admin gave its application password.
+	 *
+	 * @since xx.xx.xx Public, so AI-made records can note which app made them.
+	 *
+	 * @return string Empty when the call did not come through an application password.
+	 */
+	public static function app_name() {
+		if ( ! function_exists( 'rest_get_authenticated_app_password' ) || ! class_exists( 'WP_Application_Passwords' ) ) {
+			return '';
+		}
+
+		$uuid = rest_get_authenticated_app_password();
+
+		foreach ( $uuid ? WP_Application_Passwords::get_user_application_passwords( get_current_user_id() ) : array() as $item ) {
+			if ( isset( $item['uuid'], $item['name'] ) && $uuid === $item['uuid'] ) {
+				return substr( sanitize_text_field( $item['name'] ), 0, 100 );
+			}
+		}
+
+		return '';
+	}
+}

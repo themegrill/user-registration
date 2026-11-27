@@ -422,20 +422,7 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 
 							$userids = array_diff( $userids, array( get_current_user_id() ) );
 
-							/**
-							 * Check whether the user to be deleted has additional content in the site.
-							 *
-							 * @since 4.1
-							 */
-							$users_have_content = (bool) apply_filters( 'user_registration_users_have_additional_content', false, $userids );
-
-							if ( $userids && ! $users_have_content ) {
-								if ( $wpdb->get_var( "SELECT ID FROM {$wpdb->posts} WHERE post_author IN( " . implode( ',', $userids ) . ' ) LIMIT 1' ) ) {
-									$users_have_content = true;
-								} elseif ( $wpdb->get_var( "SELECT link_id FROM {$wpdb->links} WHERE link_owner IN( " . implode( ',', $userids ) . ' ) LIMIT 1' ) ) {
-									$users_have_content = true;
-								}
-							}
+							$users_have_content = UR_Admin_User_Manager::users_have_content( $userids );
 
 							if ( $users_have_content ) {
 								$redirect_url = add_query_arg(
@@ -455,23 +442,17 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 							$delete_count = 0;
 
 							foreach ( $userids as $id ) {
-								if ( ! current_user_can( 'delete_user', $id ) ) {
-									$user = get_userdata( $id );
-
-									$this->errors[] = new WP_Error(
-										'edit_users',
-										sprintf(
-										/* translators: %s: Username */
-											esc_html__( 'Sorry, you are not allowed to delete the user %s.', 'user-registration' ),
-											esc_html( $user->user_login )
-										)
-									);
+								try {
+									$deleted = ( new UR_Admin_User_Manager( $id ) )->delete();
+								} catch ( Exception $e ) {
+									$this->errors[] = new WP_Error( 'edit_users', $e->getMessage() );
 									continue;
 								}
 
-								// remove user profile picture and profile picture related information.
-								do_action( 'ur_remove_profile_pictures_and_metadata', $id );
-								wp_delete_user( $id );
+								if ( is_wp_error( $deleted ) ) {
+									$this->errors[] = $deleted;
+									continue;
+								}
 
 								++$delete_count;
 							}
@@ -610,18 +591,8 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 							foreach ( $userids as $user_id ) {
 								try {
 									$user_manager = new UR_Admin_User_Manager( $user_id );
-									$form_id      = ur_get_form_id_by_userid( $user_id );
-									$login_option = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_login_options', get_option( 'user_registration_general_setting_login_options', 'default' ) );
 
-									$user_manager->approve();
-
-									if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
-										update_user_meta( $user_id, 'ur_confirm_email', '1' );
-										delete_user_meta( $user_id, 'ur_confirm_email_token' );
-										if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-											update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'true' );
-										}
-									}
+									$user_manager->set_approval( true );
 
 									++$approval_count;
 								} catch ( Exception $e ) {
@@ -749,22 +720,12 @@ if ( ! class_exists( 'User_Registration_Members_Menu' ) ) {
 							foreach ( $userids as $user_id ) {
 								try {
 									$user_manager = new UR_Admin_User_Manager( $user_id );
-									$form_id      = ur_get_form_id_by_userid( $user_id );
-									$login_option = ur_get_single_post_meta( $form_id, 'user_registration_form_setting_login_options', get_option( 'user_registration_general_setting_login_options', 'default' ) );
 
 									if ( current_user_can( 'manage_options' ) && $user_id === get_current_user_id() ) {
 										$this->errors[] = new WP_Error( 'edit_users', __( 'Sorry, Admin cannot deny themselves.', 'user_registration' ) );
 										continue;
 									}
-									$user_manager->deny();
-
-									if ( 'email_confirmation' === $login_option || 'admin_approval_after_email_confirmation' === $login_option ) {
-										update_user_meta( $user_id, 'ur_confirm_email', '0' );
-										delete_user_meta( $user_id, 'ur_confirm_email_token' );
-										if ( 'admin_approval_after_email_confirmation' === $login_option ) {
-											update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', 'denied' );
-										}
-									}
+									$user_manager->set_approval( false );
 
 									++$denial_count;
 								} catch ( Exception $e ) {

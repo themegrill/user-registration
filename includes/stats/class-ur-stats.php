@@ -267,6 +267,26 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 		}
 
 		/**
+		 * Returns how many registration forms an AI assistant created, published or not.
+		 *
+		 * @since xx.xx.xx
+		 *
+		 * @return int
+		 */
+		public function get_ai_form_count() {
+			global $wpdb;
+
+			return (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(DISTINCT p.ID) FROM $wpdb->posts p INNER JOIN $wpdb->postmeta m ON m.post_id = p.ID WHERE p.post_type = %s AND p.post_status <> %s AND m.meta_key = %s",
+					'user_registration',
+					'trash',
+					'_ur_created_by_ai'
+				)
+			);
+		}
+
+		/**
 		 * Returns list of all active plugins.
 		 *
 		 * @return array
@@ -288,6 +308,7 @@ if ( ! class_exists( 'UR_Stats' ) ) {
 					'is_premium'               => $is_premium,
 					'license_key'              => $is_premium ? $license_key : '',
 					'total_form_count'         => $this->get_form_count(),
+					'ai_form_count'            => $this->get_ai_form_count(),
 					'total_user_count'         => $this->get_user_count(),
 					'membership_form_users'    => $form_wise_users['membership_form_users'],
 					'normal_form_users'        => $form_wise_users['normal_form_users'],

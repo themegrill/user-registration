@@ -1,4 +1,5 @@
-themegrill/user-registration-pro@develop:
+# Temporary: target the Pro AI abilities branch while it is built (pro#2062). Set back to @develop before merging.
+themegrill/user-registration-pro@2062-ai-mcp-parity:
     - source: assets
       exclude: |
         js/divi-vb-modules.js
@@ -14,4 +15,16 @@ themegrill/user-registration-pro@develop:
     - uninstall.php
     - wpml-config.xml
     - tests/e2e
+    # The PHP tests the synced abilities specs run. Listed one by one: Pro keeps its own tests/security/bootstrap.php.
+    - tests/security/abilities-access.php
+    - tests/security/abilities-activity-stubs.php
+    - tests/security/abilities-activity.php
+    - tests/security/abilities-error-status.php
+    - tests/security/abilities-existing-site.php
+    - tests/security/abilities-modules.php
+    - tests/security/abilities-registry.php
+    - tests/security/abilities-revenue.php
+    - tests/security/abilities-safety.php
+    - tests/security/abilities-settings.php
+    - tests/security/abilities-write-actions.php
     - playwright.config.ts

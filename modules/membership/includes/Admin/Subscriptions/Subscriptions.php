@@ -55,24 +55,9 @@ class Subscriptions {
 				continue;
 			}
 
-			$subscription         = $repo->retrieve( $id );
-			$needs_gateway_cancel = is_array( $subscription ) && ! empty( $subscription['subscription_id'] ) && 'canceled' !== ( $subscription['status'] ?? '' );
-
-			// Cancel at the gateway first (force for PayPal/Stripe) so delete does not leave live billing.
-			// send_email=false: admin cleanup should not email members. A failed cancel does not block the
-			// local delete (already-canceled / bank / unconfigured gateway rows must stay removable), but it is
-			// counted so the admin is told to cancel it in the gateway dashboard.
-			try {
-				$result = $repo->cancel_subscription_by_id( $id, false, false, true );
-			} catch ( \Exception $e ) {
-				$result = array( 'status' => false );
-			}
-
-			if ( $needs_gateway_cancel && empty( $result['status'] ) ) {
+			if ( $repo->delete_and_cancel_at_gateway( $id ) ) {
 				++$failed;
 			}
-
-			$repo->delete( $id );
 		}
 
 		$redirect = admin_url( 'admin.php?page=user-registration-subscriptions&deleted=1' );

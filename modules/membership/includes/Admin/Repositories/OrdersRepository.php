@@ -108,6 +108,41 @@ class OrdersRepository extends BaseRepository implements OrdersInterface {
 	}
 
 	/**
+	 * Count orders and add up their amounts by plan and status.
+	 *
+	 * Optional keys: membership_id, date_from and date_to (Y-m-d).
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $args Filters.
+	 *
+	 * @return array Rows with item_id, status, orders and amount. Empty when the table is missing.
+	 */
+	public function get_summary( $args ) {
+		global $wpdb;
+
+		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $this->table ) ) !== $this->table ) {
+			return array();
+		}
+
+		$sql = "SELECT urmo.item_id, urmo.status, COUNT(*) AS orders, SUM(urmo.total_amount) AS amount FROM $this->table urmo WHERE 1 = 1";
+
+		if ( isset( $args['membership_id'] ) ) {
+			$sql .= $wpdb->prepare( ' AND urmo.item_id = %d', $args['membership_id'] );
+		}
+		if ( isset( $args['date_from'] ) ) {
+			$sql .= $wpdb->prepare( ' AND DATE(urmo.created_at) >= %s', $args['date_from'] );
+		}
+		if ( isset( $args['date_to'] ) ) {
+			$sql .= $wpdb->prepare( ' AND DATE(urmo.created_at) <= %s', $args['date_to'] );
+		}
+
+		$result = $this->wpdb()->get_results( $sql . ' GROUP BY urmo.item_id, urmo.status', ARRAY_A );
+
+		return ! $result ? array() : $result;
+	}
+
+	/**
 	 * Create a new order
 	 *
 	 * @param $data

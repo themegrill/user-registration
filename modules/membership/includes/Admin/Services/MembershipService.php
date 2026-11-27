@@ -653,6 +653,20 @@ class MembershipService {
 	}
 
 	/**
+	 * Whether this site's edition allows a plan type. Recurring (subscription) plans need Pro.
+	 *
+	 * Shared by the plan editor and the AI abilities, so the lock is the same everywhere.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param string $type Plan type: free, paid or subscription.
+	 * @return bool
+	 */
+	public static function is_plan_type_available( $type ) {
+		return 'subscription' !== $type || UR_PRO_ACTIVE;
+	}
+
+	/**
 	 * Validate Membership Data.
 	 *
 	 * @param array $data Membership data.
@@ -664,7 +678,7 @@ class MembershipService {
 			'status' => true,
 		);
 
-		if ( isset( $data['post_meta_data']['type'] ) && 'subscription' === $data['post_meta_data']['type'] && ! UR_PRO_ACTIVE ) {
+		if ( isset( $data['post_meta_data']['type'] ) && ! self::is_plan_type_available( $data['post_meta_data']['type'] ) ) {
 			$result['status']  = false;
 			$result['message'] = esc_html__( 'Subscription type is a paid feature.', 'user-registration' );
 
@@ -990,6 +1004,260 @@ class MembershipService {
 	}
 
 	/**
+	 * Subscription statuses that stop a plan from being deleted.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return array
+	 */
+	public function get_delete_blocking_statuses() {
+		return apply_filters(
+			'urm_valid_membership_statuses',
+			array(
+				__( 'active', 'user-registration' ),
+				__( 'pending', 'user-registration' ),
+				__( 'trial', 'user-registration' ),
+			)
+		);
+	}
+
+	/**
+	 * Create a membership plan from the data the plan editor posts.
+	 *
+	 * Shared by the plan editor and the AI abilities, so a plan made either way is checked, saved and
+	 * synced to Stripe by the same code.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array      $data      Plan data: post_data and post_meta_data, as the plan editor posts them.
+	 * @param array|null $rule_data Content access rule data, when the editor sends it.
+	 * @return array status (bool), and membership_id on success or message on failure.
+	 */
+	public function create_membership_plan( $data, $rule_data = null ) {
+		$is_stripe_enabled = urm_is_payment_gateway_configured( 'stripe' );
+		$data              = $this->prepare_membership_post_data( $data );
+
+		if ( isset( $data['status'] ) && ! $data['status'] ) {
+			return array(
+				'status'  => false,
+				'message' => $data['message'],
+			);
+		}
+
+		$data = apply_filters( 'ur_membership_after_create_membership_data_prepare', $data );
+
+		$new_membership_id = wp_insert_post( $data['post_data'] );
+
+		if ( ! $new_membership_id ) {
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Sorry! There was an unexpected error while saving the membership data . ', 'user-registration' ),
+			);
+		}
+
+		if ( ! empty( $data['post_meta_data'] ) ) {
+			foreach ( $data['post_meta_data'] as $datum ) {
+				add_post_meta( $new_membership_id, $datum['meta_key'], $datum['meta_value'] );
+			}
+		}
+		$meta_data = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
+
+		if ( $is_stripe_enabled && 'free' !== $meta_data['type'] ) {
+			$stripe_service        = new StripeService();
+			$data['membership_id'] = $new_membership_id;
+			$membership_repository = new MembershipRepository();
+			$membership            = $membership_repository->get_single_membership_by_ID( $new_membership_id );
+			try {
+				$stripe_service->sync_product_and_price_in_stripe( $membership );
+			} catch ( \Exception $e ) {
+				wp_delete_post( $new_membership_id, true );
+
+				return array(
+					'status'  => false,
+					'message' => $e->getMessage(),
+				);
+			}
+		}
+
+		// Create or update content access rule if rule data provided.
+		if ( $rule_data && function_exists( 'urcr_create_or_update_membership_rule' ) ) {
+			$_POST['urcr_membership_access_rule_data'] = wp_unslash( wp_json_encode( $rule_data ) );
+			urcr_create_or_update_membership_rule( $new_membership_id, $rule_data );
+		}
+
+		return array(
+			'status'        => true,
+			'membership_id' => $new_membership_id,
+		);
+	}
+
+	/**
+	 * Update a membership plan from the data the plan editor posts.
+	 *
+	 * Shared by the plan editor and the AI abilities.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array      $data      Plan data: post_data (with the ID) and post_meta_data.
+	 * @param array|null $rule_data Content access rule data, when the editor sends it.
+	 * @return array status (bool), and membership_id on success or message on failure.
+	 */
+	public function update_membership_plan( $data, $rule_data = null ) {
+		$is_stripe_enabled = urm_is_payment_gateway_configured( 'stripe' );
+		$data              = $this->prepare_membership_post_data( $data );
+
+		if ( isset( $data['status'] ) && ! $data['status'] ) {
+			return array(
+				'status'  => false,
+				'message' => $data['message'],
+			);
+		}
+
+		$data = apply_filters( 'ur_membership_after_create_membership_data_prepare', $data );
+
+		if ( $is_stripe_enabled ) {
+			$meta_data_check = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
+			if (
+				'free' !== $meta_data_check['type'] &&
+				isset( $meta_data_check['subscription']['duration'], $meta_data_check['subscription']['value'] ) &&
+				'year' === $meta_data_check['subscription']['duration'] &&
+				(int) $meta_data_check['subscription']['value'] > 3
+			) {
+				return array(
+					'status'  => false,
+					'message' => __( 'Stripe does not support yearly subscription periods greater than 3 years.', 'user-registration' ),
+				);
+			}
+		}
+
+		// Remember the plan as it is now, so a failed Stripe sync can put it back.
+		$before = $this->snapshot_plan( $data );
+
+		$updated_id = wp_insert_post( $data['post_data'] );
+
+		if ( ! $updated_id ) {
+			return array(
+				'status'  => false,
+				'message' => esc_html__( 'Sorry! There was an unexpected error while saving the membership data . ', 'user-registration' ),
+			);
+		}
+
+		if ( ! empty( $data['post_meta_data'] ) ) {
+			foreach ( $data['post_meta_data'] as $datum ) {
+				update_post_meta( $updated_id, $datum['meta_key'], $datum['meta_value'] );
+			}
+		}
+
+		$meta_data = json_decode( $data['post_meta_data']['ur_membership']['meta_value'], true );
+
+		if ( $is_stripe_enabled && 'free' !== $meta_data['type'] ) {
+			$stripe_service = new StripeService();
+			try {
+				$stripe_result = $stripe_service->sync_product_and_price_in_stripe(
+					array(
+						'ID'         => $updated_id,
+						'post_title' => $data['post_data']['post_title'],
+						'meta_value' => $meta_data,
+					)
+				);
+
+				if ( empty( $stripe_result['success'] ) ) {
+					$this->restore_plan( $before );
+
+					return array(
+						'status'  => false,
+						'message' => $stripe_result['message'] ?? __( 'Could not update product/price in Stripe.', 'user-registration' ),
+					);
+				}
+			} catch ( \Exception $e ) {
+				$this->restore_plan( $before );
+
+				return array(
+					'status'  => false,
+					'message' => $e->getMessage(),
+				);
+			}
+		}
+
+		// Create or update content access rule if rule data provided.
+		if ( $rule_data && function_exists( 'urcr_create_or_update_membership_rule' ) ) {
+			urcr_create_or_update_membership_rule( $updated_id, $rule_data );
+		}
+
+		return array(
+			'status'        => true,
+			'membership_id' => $updated_id,
+		);
+	}
+
+	/**
+	 * Remember a plan and the meta an update is about to change.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $data Plan data: post_data (with the ID) and post_meta_data.
+	 * @return array The post, and each meta value with whether it existed.
+	 */
+	private function snapshot_plan( $data ) {
+		$id     = isset( $data['post_data']['ID'] ) ? absint( $data['post_data']['ID'] ) : 0;
+		$before = array(
+			'post' => $id ? get_post( $id, ARRAY_A ) : null,
+			'meta' => array(),
+		);
+
+		foreach ( (array) ( $data['post_meta_data'] ?? array() ) as $datum ) {
+			$before['meta'][ $datum['meta_key'] ] = array(
+				'exists' => $id && metadata_exists( 'post', $id, $datum['meta_key'] ),
+				'value'  => $id ? get_post_meta( $id, $datum['meta_key'], true ) : '',
+			);
+		}
+
+		return $before;
+	}
+
+	/**
+	 * Put a plan back as it was before a failed update, so it matches Stripe again.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param array $before Result of snapshot_plan().
+	 */
+	private function restore_plan( $before ) {
+		if ( empty( $before['post']['ID'] ) ) {
+			return;
+		}
+
+		$id = (int) $before['post']['ID'];
+
+		wp_update_post( wp_slash( $before['post'] ) );
+
+		foreach ( $before['meta'] as $key => $old ) {
+			if ( $old['exists'] ) {
+				// wp_slash() offsets the wp_unslash() in update_post_meta(), which would break nested JSON strings.
+				update_post_meta( $id, $key, wp_slash( $old['value'] ) );
+			} else {
+				delete_post_meta( $id, $key );
+			}
+		}
+	}
+
+	/**
+	 * Count the members whose subscription stops the plan from being deleted.
+	 *
+	 * Shared by the plan delete and the AI abilities, so they agree.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param int $membership_id Membership ID.
+	 * @return int
+	 */
+	public function count_delete_blocking_members( $membership_id ) {
+		$result = $this->membership_repository->check_deletable_membership( $membership_id, $this->get_delete_blocking_statuses() );
+
+		return (int) ( $result['total'] ?? 0 );
+	}
+
+	/**
 	 * Delete membership if allowed.
 	 *
 	 * @param int $membership_id Membership ID.
@@ -1001,18 +1269,9 @@ class MembershipService {
 			'status' => true,
 		);
 
-		$valid_membership_statuses = apply_filters(
-			'urm_valid_membership_statuses',
-			array(
-				__( 'active', 'user-registration' ),
-				__( 'pending', 'user-registration' ),
-				__( 'trial', 'user-registration' ),
-			)
-		);
+		$valid_membership_statuses = $this->get_delete_blocking_statuses();
 
-		$active_members = $this->membership_repository->check_deletable_membership( $membership_id, $valid_membership_statuses );
-
-		if ( $active_members['total'] > 0 ) {
+		if ( $this->count_delete_blocking_members( $membership_id ) > 0 ) {
 			$html  = '<p>' . __( 'You cannot delete a membership plan if it has active users assigned to it with any of the following statuses:', 'user-registration' ) . '</p>';
 			$html .= '<ul>';
 			foreach ( $valid_membership_statuses as $status ) {

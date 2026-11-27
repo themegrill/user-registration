@@ -159,6 +159,110 @@ class UR_Admin_User_Manager {
 	}
 
 	/**
+	 * Approve or deny the user and keep their email confirmation in step.
+	 *
+	 * Shared by every admin screen and the AI abilities, so they all behave the same.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param bool $approve True to approve, false to deny.
+	 * @return bool|int Result of saving the status.
+	 */
+	public function set_approval( $approve ) {
+		$user_id      = absint( $this->user->ID );
+		$login_option = ur_get_user_login_option( $user_id );
+		$result       = $approve ? $this->approve() : $this->deny();
+
+		if ( in_array( $login_option, array( 'email_confirmation', 'admin_approval_after_email_confirmation' ), true ) ) {
+			update_user_meta( $user_id, 'ur_confirm_email', $approve ? '1' : '0' );
+			delete_user_meta( $user_id, 'ur_confirm_email_token' );
+
+			if ( 'admin_approval_after_email_confirmation' === $login_option ) {
+				update_user_meta( $user_id, 'ur_admin_approval_after_email_confirmation', $approve ? 'true' : 'denied' );
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Whether the current user may delete this user. Nobody can delete themselves.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @return bool
+	 */
+	public function can_be_deleted() {
+		$user_id = absint( $this->user->ID );
+
+		return $user_id && get_current_user_id() !== $user_id && current_user_can( 'delete_user', $user_id );
+	}
+
+	/**
+	 * Delete the user the way the Users and Members screens do. On multisite this only removes them from this site.
+	 *
+	 * Shared by every admin screen and the AI abilities, so they all behave the same.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param int|null $reassign User ID to give the user's posts and links to, or null to delete them.
+	 * @return true|WP_Error
+	 */
+	public function delete( $reassign = null ) {
+		$user_id = absint( $this->user->ID );
+
+		if ( ! $this->can_be_deleted() ) {
+			return new WP_Error(
+				'edit_users',
+				sprintf(
+					/* translators: %s: Username */
+					esc_html__( 'Sorry, you are not allowed to delete the user %s.', 'user-registration' ),
+					esc_html( $this->user->user_login )
+				),
+				array( 'status' => 403 )
+			);
+		}
+
+		if ( ! function_exists( 'wp_delete_user' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/user.php';
+		}
+
+		// Remove the profile picture and its details before the user is gone.
+		do_action( 'ur_remove_profile_pictures_and_metadata', $user_id );
+
+		return wp_delete_user( $user_id, $reassign ) ? true : new WP_Error( 'edit_users', esc_html__( 'The user could not be deleted.', 'user-registration' ), array( 'status' => 500 ) );
+	}
+
+	/**
+	 * Whether any of the users own posts or links, so deleting them needs a choice about that content.
+	 *
+	 * @since xx.xx.xx
+	 *
+	 * @param int[] $user_ids User IDs.
+	 * @return bool
+	 */
+	public static function users_have_content( $user_ids ) {
+		global $wpdb;
+
+		$user_ids = array_filter( array_map( 'absint', (array) $user_ids ) );
+
+		/**
+		 * Check whether the user to be deleted has additional content in the site.
+		 *
+		 * @since 4.1
+		 */
+		$users_have_content = (bool) apply_filters( 'user_registration_users_have_additional_content', false, $user_ids );
+
+		if ( $user_ids && ! $users_have_content ) {
+			$in                 = implode( ',', $user_ids );
+			$users_have_content = (bool) $wpdb->get_var( "SELECT ID FROM {$wpdb->posts} WHERE post_author IN( {$in} ) LIMIT 1" ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery -- IDs are cast to integers above.
+				|| (bool) $wpdb->get_var( "SELECT link_id FROM {$wpdb->links} WHERE link_owner IN( {$in} ) LIMIT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery -- IDs are cast to integers above.
+		}
+
+		return $users_have_content;
+	}
+
+	/**
 	 * Get the status of the user.
 	 * If the status is not present (user registered when plugin was not active)
 	 * then it return an empty string if $exact_value == true, otherwise it return approved flag
