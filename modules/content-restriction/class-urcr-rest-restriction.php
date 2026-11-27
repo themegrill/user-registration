@@ -19,6 +19,11 @@ defined( 'ABSPATH' ) || exit;
 class URCR_REST_Restriction {
 
 	/**
+	 * Posts access checked per batch when scanning a REST collection.
+	 */
+	const SCAN_CHUNK_SIZE = 500;
+
+	/**
 	 * Hook in the REST response filters.
 	 *
 	 * @since 5.2.8
@@ -27,6 +32,7 @@ class URCR_REST_Restriction {
 		add_action( 'rest_api_init', array( __CLASS__, 'register_response_filters' ) );
 		add_filter( 'rest_request_after_callbacks', array( __CLASS__, 'restrict_woocommerce_response' ), PHP_INT_MAX, 3 );
 		add_filter( 'rest_comment_query', array( __CLASS__, 'exclude_restricted_post_comments' ), PHP_INT_MAX );
+		add_filter( 'rest_post_search_query', array( __CLASS__, 'exclude_restricted_posts' ), PHP_INT_MAX, 2 );
 		add_filter( 'rest_request_after_callbacks', array( __CLASS__, 'restrict_single_comment' ), PHP_INT_MAX, 3 );
 		foreach ( array( 'product', 'product_variation' ) as $post_type ) {
 			// Legacy WC controllers pass WP_Post; newer controllers pass WC_Product.
@@ -218,6 +224,67 @@ class URCR_REST_Restriction {
 	}
 
 	/**
+	 * IDs of every post matching the query that the current user cannot access.
+	 * No post can be skipped, or the totals would leak again, so the scan runs in chunks and holds one chunk of posts in memory at a time.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param array $args WP_Query arguments built by the REST controller.
+	 * @return int[]
+	 */
+	private static function find_restricted_post_ids( $args ) {
+		$candidates = new WP_Query(
+			array_merge(
+				$args,
+				array(
+					'fields'                 => 'ids',
+					'posts_per_page'         => -1,
+					'paged'                  => 1,
+					'offset'                 => 0,
+					'no_found_rows'          => true,
+					'update_post_meta_cache' => false,
+					'update_post_term_cache' => false,
+				)
+			)
+		);
+
+		$excluded = array();
+
+		foreach ( array_chunk( $candidates->posts, self::SCAN_CHUNK_SIZE ) as $chunk ) {
+			// Posts, meta and terms are primed in bulk so each access check reads from cache instead of the database.
+			_prime_post_caches( $chunk, true, true );
+
+			foreach ( $chunk as $post_id ) {
+				if ( ! self::is_post_access_granted( absint( $post_id ) ) ) {
+					$excluded[] = absint( $post_id );
+				}
+			}
+
+			self::release_post_caches( $chunk );
+		}
+
+		return $excluded;
+	}
+
+	/**
+	 * Drop checked posts from the in-memory cache, unless an external object cache holds them for other requests.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param int[] $post_ids Post IDs that were just access checked.
+	 */
+	private static function release_post_caches( $post_ids ) {
+		if ( wp_using_ext_object_cache() ) {
+			return;
+		}
+
+		foreach ( $post_ids as $post_id ) {
+			wp_cache_delete( $post_id, 'posts' );
+			wp_cache_delete( $post_id, 'post_meta' );
+		}
+	}
+
+	/**
 	 * Access decision for a post, worked out once per user and request.
 	 * Each decision walks every access rule, so repeats are worth avoiding.
 	 *
@@ -265,6 +332,43 @@ class URCR_REST_Restriction {
 	}
 
 	/**
+	 * Leave inaccessible posts out of REST collection and search queries.
+	 * Done in the query so X-WP-Total and X-WP-TotalPages cannot be used to probe restricted content.
+	 *
+	 * @since x.x.x
+	 *
+	 * @param array           $args    WP_Query arguments built by the REST posts or search controller.
+	 * @param WP_REST_Request $request Request object.
+	 * @return array
+	 */
+	public static function exclude_restricted_posts( $args, $request ) {
+		// Super admins are always granted access, and a site with nothing that can restrict a post has nothing to hide.
+		if ( ! function_exists( 'urcr_is_content_access_granted' )
+			|| is_super_admin()
+			|| ! ur_string_to_bool( get_option( 'user_registration_content_restriction_enable', true ) )
+			|| ! urcr_has_restriction_source() ) {
+			return $args;
+		}
+
+		$excluded = self::find_restricted_post_ids( $args );
+
+		if ( ! $excluded ) {
+			return $args;
+		}
+
+		// WP_Query ignores post__not_in when post__in is set, so an include list is trimmed instead.
+		if ( ! empty( $args['post__in'] ) ) {
+			$remaining        = array_values( array_diff( array_map( 'absint', (array) $args['post__in'] ), $excluded ) );
+			$args['post__in'] = $remaining ? $remaining : array( 0 );
+			return $args;
+		}
+
+		$args['post__not_in'] = array_merge( isset( $args['post__not_in'] ) ? (array) $args['post__not_in'] : array(), $excluded );
+
+		return $args;
+	}
+
+	/**
 	 * Register a prepare filter for every publicly readable post type.
 	 *
 	 * @since 5.2.8
@@ -288,6 +392,7 @@ class URCR_REST_Restriction {
 
 		foreach ( (array) $post_types as $post_type ) {
 			add_filter( 'rest_prepare_' . $post_type, array( __CLASS__, 'restrict_response' ), PHP_INT_MAX, 3 );
+			add_filter( 'rest_' . $post_type . '_query', array( __CLASS__, 'exclude_restricted_posts' ), PHP_INT_MAX, 2 );
 		}
 	}
 
