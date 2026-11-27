@@ -409,6 +409,7 @@ class PaypalService {
 			$member_service->login_member( $member_id, true, $password );
 		}
 		delete_transient( 'urm_pending_login_' . $member_id );
+		ur_clear_pending_member_session( $member_id );
 		ur_membership_redirect_to_thank_you_page( $member_id, $member_order );
 	}
 

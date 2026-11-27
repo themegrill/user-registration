@@ -338,16 +338,6 @@ class MembersService {
 			if ( empty( $saved_hash ) ) {
 				return false;
 			}
-
-			$expected_hash = hash_hmac(
-				'sha256',
-				(string) $user_id,
-				wp_salt( 'auth' )
-			);
-
-			if ( ! hash_equals( $expected_hash, $saved_hash ) ) {
-				return false;
-			}
 		} else {
 
 			if ( ! wp_check_password( $password, $user->user_pass, $user_id ) ) {
@@ -356,6 +346,7 @@ class MembersService {
 		}
 
 		delete_transient( 'urm_pending_login_' . $user_id );
+		ur_clear_pending_member_session( $user_id );
 		wp_clear_auth_cookie();
 		$remember = apply_filters( 'user_registration_autologin_remember_user', false );
 		wp_set_auth_cookie( $user_id, $remember );

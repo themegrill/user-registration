@@ -859,8 +859,8 @@ class AJAX {
 
 	/**
 	 * Verify a logged-out payment confirmation belongs to the browser that created
-	 * this pending registration: the cookie must match the signup transient, or
-	 * (UR-4727) the server-recomputed HMAC when the transient was cleared mid-flow.
+	 * this pending registration: the cookie must match the random token kept in user meta
+	 * at signup; fails closed once that token has expired or been cleared.
 	 *
 	 * @param int $member_id Pending member/user ID.
 	 * @return bool
@@ -869,19 +869,13 @@ class AJAX {
 		$cookie_key   = 'urm_pending_login_' . $member_id;
 		$cookie_token = isset( $_COOKIE[ $cookie_key ] ) ? wp_unslash( $_COOKIE[ $cookie_key ] ) : '';
 
-		if ( empty( $cookie_token ) ) {
+		if ( ! is_string( $cookie_token ) || '' === $cookie_token ) {
 			return false;
 		}
 
-		$saved_hash = get_transient( $cookie_key );
-		if ( ! empty( $saved_hash ) && hash_equals( (string) $saved_hash, (string) $cookie_token ) ) {
-			return true;
-		}
+		$saved_token = ur_get_pending_member_token( $member_id );
 
-		// Fallback: transient gone but the cookie still proves this browser registered.
-		$expected_hash = hash_hmac( 'sha256', (string) $member_id, wp_salt( 'auth' ) );
-
-		return hash_equals( $expected_hash, (string) $cookie_token );
+		return '' !== $saved_token && hash_equals( $saved_token, $cookie_token );
 	}
 
 	public static function confirm_payment() {
@@ -983,6 +977,7 @@ class AJAX {
 			}
 
 			delete_transient( 'urm_pending_login_' . $member_id );
+			ur_clear_pending_member_session( $member_id );
 			$response = array(
 				'message'                => $update_stripe_order['message'] ?? '',
 				'is_upgrading'           => ur_string_to_bool( $is_upgrading ),

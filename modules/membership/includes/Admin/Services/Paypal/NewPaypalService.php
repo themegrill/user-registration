@@ -1669,6 +1669,7 @@ class NewPaypalService {
 		$this->handle_auto_login_after_payment( $member_id );
 
 		delete_transient( 'urm_pending_login_' . $member_id );
+		ur_clear_pending_member_session( $member_id );
 		$member_order = $this->members_orders_repository->retrieve( $member_order['ID'] );
 
 		PaymentGatewayLogging::log_transaction_success(
@@ -2602,6 +2603,7 @@ class NewPaypalService {
 
 		if ( ! empty( $order['user_id'] ) ) {
 			delete_transient( 'urm_pending_login_' . absint( $order['user_id'] ) );
+			ur_clear_pending_member_session( absint( $order['user_id'] ) );
 		}
 
 		PaymentGatewayLogging::log_general(
